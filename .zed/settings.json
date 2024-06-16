@@ -1,0 +1,15 @@
+{
+  "languages": {
+    "TypeScript": {
+      "language_servers": [
+        "deno",
+        "!typescript",
+        "!typescript-language-server",
+        "!biome",
+        "!prettier",
+        "!eslint"
+      ]
+    }
+  },
+  "typescript.preferences.importModuleSpecifier": "relative"
+}

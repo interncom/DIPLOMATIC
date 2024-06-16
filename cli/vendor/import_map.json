@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "https://deno.land/std/testing/asserts.ts": "./deno.land/std@0.224.0/testing/asserts.ts",
+    "https://deno.land/": "./deno.land/",
+    "https://raw.githubusercontent.com/": "./raw.githubusercontent.com/"
+  }
+}

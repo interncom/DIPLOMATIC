@@ -1,18 +1,22 @@
-import { assert } from "https://deno.land/std/testing/asserts.ts";
 import { API } from "../src/api.ts";
 import type { CipherOp, IOp, ISyncRequest } from "../src/types.ts";
-import { deriveAuthKeyPair, generateSeed } from "../src/auth.ts";
-import { serialize, encrypt, deriveEncryptionKey } from "../src/client.ts";
+import {
+  deriveAuthKeyPair,
+  generateSeed,
+  IKeyPair,
+  sign,
+} from "../src/auth.ts";
+import { deriveEncryptionKey, encrypt, serialize } from "../src/client.ts";
+import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 type HostID = string;
 interface IHost {
   url: string;
   id: HostID;
-}
-
-interface IKeyPair {
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
 }
 
 interface IClient {
@@ -42,7 +46,7 @@ Deno.test("API", async (t) => {
   // Register.
   await t.step("registration", () => {
     const hostID = api.getID();
-    assert(hostID === "id");
+    assertEquals(hostID, "id");
 
     // Derive keyPair to use with host.
     const keyPair = deriveAuthKeyPair(hostID, seed);
@@ -54,7 +58,7 @@ Deno.test("API", async (t) => {
     client.keys.set(hostID, keyPair);
 
     api.postUsers(keyPair.publicKey);
-    assert(api.users.has(keyPair.publicKey));
+    assertEquals(api.users.has(keyPair.publicKey), true);
 
     client.hosts.push({
       url,
@@ -84,19 +88,24 @@ Deno.test("API", async (t) => {
     }
     // encryptedOps.push(new Uint8Array([0x0D]));
 
+    const keyPair = client.keys.get("id");
+    assertNotEquals(keyPair, undefined);
+    if (!keyPair) {
+      return;
+    }
+
     const req: ISyncRequest = {
       begin: new Date().toUTCString(),
       ops: encryptedOps,
     };
-    const pubKey = client.keys.get("id")?.publicKey;
-    assert(pubKey !== undefined);
-    if (!pubKey) {
-      return;
-    }
-    const resp = api.postSync(req, pubKey);
+    const reqPack = encode(req);
+    const sig = sign(reqPack, keyPair);
+
+    const pubKey = keyPair.publicKey;
+    const resp = api.postSync(reqPack, pubKey, sig);
     const storedOp = Array.from(api.ops.get(pubKey)?.values() ?? [])?.[0];
-    assert(storedOp === encryptedOps[0]);
-    assert(resp.ops.length < 1);
+    assertEquals(storedOp, encryptedOps[0]);
+    assertEquals(resp.ops.length, 0);
   });
 
   // TODO: sync another client.

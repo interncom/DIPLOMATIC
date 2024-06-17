@@ -1,5 +1,10 @@
 import * as sodium from "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
 
+export interface IKeyPair {
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
+}
+
 interface KeyPair {
   keyType: "public" | "private" | "secret";
   privateKey: Uint8Array;
@@ -18,7 +23,9 @@ export function deriveAuthKeyPair(hostID: string, seed: Uint8Array): KeyPair {
     hostID,
     seed,
   );
-  const keyPair = sodium.crypto_box_seed_keypair(keyPairDerivationSeed) as KeyPair;
+  const keyPair = sodium.crypto_sign_seed_keypair(
+    keyPairDerivationSeed,
+  ) as KeyPair;
   return keyPair;
 }
 
@@ -34,12 +41,34 @@ export function generateAuthorizationWitness(
   keyPair: KeyPair,
 ): IAuthorizationWitness {
   const timestamp = now.toUTCString();
-  const sig = sodium.crypto_sign(timestamp, keyPair.privateKey) as Uint8Array;
+  const sig = sign(timestamp, keyPair);
   return {
     pubKey: keyPair.publicKey,
     timestamp,
     sig,
   };
+}
+
+export function sign(
+  message: Uint8Array | string,
+  keyPair: IKeyPair,
+): Uint8Array {
+  const sig = sodium.crypto_sign_detached(
+    message,
+    keyPair.privateKey,
+    "uint8array",
+  ) as Uint8Array;
+  return sig;
+}
+
+export function checkSig(
+  sig: Uint8Array,
+  message: Uint8Array,
+  pubKey: Uint8Array,
+): boolean {
+  // Separate the sig for easier interop with other implementations, e.g. Noble or WebCrypto.
+  const valid = sodium.crypto_sign_verify_detached(sig, message, pubKey);
+  return valid;
 }
 
 export function validateAuthorizationWitness(

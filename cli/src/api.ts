@@ -1,3 +1,5 @@
+import { decode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
+import { checkSig } from "./auth.ts";
 import type { CipherOp, ISyncRequest } from "./types.ts";
 
 type UserPubKey = Uint8Array;
@@ -38,10 +40,22 @@ export class API {
     this.users.add(pubKey);
   }
 
-  postSync(req: ISyncRequest, pubKey: Uint8Array): ISyncResponse {
+  postSync(
+    reqPack: Uint8Array,
+    pubKey: Uint8Array,
+    sig: Uint8Array,
+  ): ISyncResponse {
     if (!this.users.has(pubKey)) {
-      throw "Unauthorized"
+      throw "Unauthorized";
     }
+
+    const sigValid = checkSig(sig, reqPack, pubKey);
+    if (!sigValid) {
+      throw "Invalid signature";
+    }
+
+    const req = decode(reqPack) as ISyncRequest;
+    // TODO: runtime typecheck it's a valid ISyncRequest.
 
     const userOps = this.ops.get(pubKey) ?? new Map();
 

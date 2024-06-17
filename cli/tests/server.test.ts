@@ -1,4 +1,6 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { IRegistrationRequest } from "../src/types.ts";
+import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 
 function extractUrl(str: string): string | null {
   const urlRegex = /(https?:\/\/[^\s]+)/;
@@ -7,6 +9,7 @@ function extractUrl(str: string): string | null {
 }
 
 const serverID = "id123";
+const registrationToken = "tok123";
 
 async function startServer(): Promise<{ proc: Deno.Process, url: URL } | undefined> {
   // NOTE: must run from cli dir.
@@ -14,6 +17,7 @@ async function startServer(): Promise<{ proc: Deno.Process, url: URL } | undefin
     cmd: ["deno", "run", "--allow-env", "--allow-net", "src/server.ts"],
     env: {
       DIPLOMATIC_ID: serverID,
+      DIPLOMATIC_REG_TOKEN: registrationToken,
     },
     stdout: "piped",
     stderr: "piped",
@@ -42,9 +46,37 @@ Deno.test("GET /id", async () => {
   }
 
   try {
-    const response = await fetch(`${server.url}id`);
+    const url = server.url;
+    url.pathname = "/id";
+    const response = await fetch(url, { method: "GET" });
     const body = await response.text();
     assertEquals(body, serverID);
+  } finally {
+    server.proc.close();
+    server.proc.stdout?.close();
+    server.proc.stderr?.close();
+  }
+});
+
+
+Deno.test("POST /users", async () => {
+  const server = await startServer();
+  if (!server) {
+    throw "a fit";
+  }
+
+  try {
+    const req: IRegistrationRequest = {
+      token: registrationToken,
+      pubKey: new Uint8Array([0xFF]),
+    };
+    const reqPack = encode(req);
+
+    const url = server.url;
+    url.pathname = "/users";
+    const response = await fetch(url, { method: "POST", body: reqPack });
+    await response.body?.cancel()
+    assertEquals(response.status, 200);
   } finally {
     server.proc.close();
     server.proc.stdout?.close();

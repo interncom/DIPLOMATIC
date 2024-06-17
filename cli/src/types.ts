@@ -7,6 +7,7 @@ enum Verb {
 // Body types are application-specific.
 type OpBody = {
   test: unknown;
+  status: string;
 };
 type OpType = keyof OpBody;
 
@@ -29,4 +30,5 @@ export interface ISyncRequest {
 
 export interface IRegistrationRequest {
   token: string;
+  pubKey: Uint8Array;
 }

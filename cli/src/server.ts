@@ -19,8 +19,17 @@ const storage: IStorage = {
   ops: [],
 }
 
+const hostID = Deno.env.get("DIPLOMATIC_ID");
+
 const handler = async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
+
+  if (request.method === "GET" && url.pathname === "/id") {
+    if (!hostID) {
+      return new Response("Server misconfigured", { status: 500 });
+    }
+    return new Response(hostID, { status: 200 });
+  }
 
   if (request.method === "POST" && url.pathname === "/users") {
     try {

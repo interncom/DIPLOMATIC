@@ -1,5 +1,3 @@
-// Server.
-
 import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
 import { checkSig } from "./auth.ts";

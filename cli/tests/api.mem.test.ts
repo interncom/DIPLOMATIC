@@ -6,7 +6,7 @@ import {
   IKeyPair,
   sign,
 } from "../src/auth.ts";
-import { deriveEncryptionKey, encrypt, serialize } from "../src/client.ts";
+import { deriveEncryptionKey, encrypt, serialize } from "../src/crypto.ts";
 import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import {
   assertEquals,

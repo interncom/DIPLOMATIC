@@ -5,7 +5,7 @@ export interface IKeyPair {
   privateKey: Uint8Array;
 }
 
-interface KeyPair {
+export interface KeyPair {
   keyType: "public" | "private" | "secret";
   privateKey: Uint8Array;
   publicKey: Uint8Array;

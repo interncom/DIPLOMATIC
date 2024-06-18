@@ -1,7 +1,7 @@
 // Client.
 
 import { generateSeed } from "./auth.ts";
-import { deriveEncryptionKey, serialize } from "./client.ts";
+import { deriveEncryptionKey, serialize } from "./crypto.ts";
 import { port, regToken } from "./consts.ts";
 import type { IOp, IRegistrationRequest, ISyncRequest } from "./types.ts";
 import { encode, decode } from "https://deno.land/x/msgpack@v1.4/mod.ts";

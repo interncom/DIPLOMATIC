@@ -1,6 +1,5 @@
 // Server.
 
-import { port } from "./consts.ts";
 import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
 import { checkSig } from "./auth.ts";
@@ -25,10 +24,14 @@ const storage: IStorage = {
   ops: new Map(), // Path => op binary.
 }
 
-const hostID = Deno.env.get("DIPLOMATIC_ID");
+const hostID = Deno.env.get("DIPLOMATIC_HOST_ID");
+const port = Number.parseInt(Deno.env.get("DIPLOMATIC_HOST_PORT"));
 const regToken = Deno.env.get("DIPLOMATIC_REG_TOKEN");
 if (!hostID) {
-  throw "Missing DIPLOMATIC_ID env var"
+  throw "Missing DIPLOMATIC_HOST_ID env var"
+}
+if (!port) {
+  throw "Missing DIPLOMATIC_HOST_PORT env var"
 }
 if (!regToken) {
   throw "Missing DIPLOMATIC_REG_TOKEN env var"
@@ -77,7 +80,7 @@ const handler = async (request: Request): Promise<Response> => {
         return new Response("Invalid request", { status: 400 });
       }
 
-      // Check user is registerd.
+      // Check user is registered.
       const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
       if (!pubKeyHex) {
         return new Response("Missing pubkey", { status: 401 });

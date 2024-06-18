@@ -147,6 +147,47 @@ const handler = async (request: Request): Promise<Response> => {
     }
   }
 
+  if (request.method === "GET" && url.pathname.startsWith("/ops")) {
+    try {
+      // Check user is registerd.
+      const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
+      if (!pubKeyHex) {
+        return new Response("Missing pubkey", { status: 401 });
+      }
+      if (!storage.users.has(pubKeyHex)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      // Check signature.
+      const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
+      if (!sigHex) {
+        return new Response("Missing signature", { status: 401 });
+      }
+      const pubKey = htob(pubKeyHex);
+      const sig = htob(sigHex);
+      const sigValid = checkSig(sig, url.pathname, pubKey);
+      if (!sigValid) {
+        return new Response("Invalid signature", { status: 401 });
+      }
+
+      // Retrieve ops.
+      const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
+      const begin = decodeURIComponent(beginComponent);
+      const userOpPaths: string[] = [];
+      for (const [key, _] of storage.ops) {
+        const [pkh, ts] = key.split('/');
+        if (pkh === pubKeyHex && ts >= begin) {
+          userOpPaths.push(ts);
+        }
+      }
+
+      const respPack = encode({ paths: userOpPaths });
+      return new Response(respPack, { status: 200 });
+    } catch {
+      return new Response("Processing request", { status: 500 });
+    }
+  }
+
   return new Response("Not Found", { status: 404 });
 };
 

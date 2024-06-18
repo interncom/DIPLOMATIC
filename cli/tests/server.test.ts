@@ -1,9 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { decode, decodeStream, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
+import { decode, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import { deriveAuthKeyPair, generateSeed, sign } from "../src/auth.ts";
 import type { IOperationRequest, IRegistrationRequest } from "../src/types.ts";
 import { btoh } from "../src/lib.ts";
-import { assertNotEquals, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 function extractUrl(str: string): string | null {
   const urlRegex = /(https?:\/\/[^\s]+)/;

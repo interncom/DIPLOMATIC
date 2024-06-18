@@ -147,42 +147,6 @@ const handler = async (request: Request): Promise<Response> => {
     }
   }
 
-  // if (request.method === "POST" && url.pathname === "/sync") {
-  //   try {
-  //     if (!request.body) {
-  //       return new Response("Invalid request", { status: 400 });
-  //     }
-  //     // TODO: check request type.
-  //     const rb = await decodeAsync(request.body) as ISyncRequest;
-
-  //     // Check request body is valid
-
-  //     // Gather ops since device last synced.
-  //     const lowBound = rb.begin;
-  //     const retOps = storage.ops.filter(op => {
-  //       return op.storedAt > lowBound;
-  //     });
-
-  //     // Process ops
-  //     for (const op of rb.ops) {
-  //       const sigValid = true; // check pubKey signed op.
-  //       if (!sigValid) {
-  //         return new Response("Invalid signature", { status: 401 });
-  //       }
-  //       const storedOp: IStoredOp = {
-  //         bin: op,
-  //         storedAt: new Date().toISOString(),
-  //       };
-  //       storage.ops.push(storedOp);
-  //     }
-
-  //     const body = JSON.stringify({ ops: retOps, syncedAt: new Date().toISOString() });
-  //     return new Response(body, { status: 200 });
-  //   } catch {
-  //     return new Response("Processing request", { status: 400 });
-  //   }
-  // }
-
   return new Response("Not Found", { status: 404 });
 };
 

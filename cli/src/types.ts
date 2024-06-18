@@ -32,3 +32,7 @@ export interface IRegistrationRequest {
   token: string;
   pubKey: Uint8Array;
 }
+
+export interface IOperationRequest {
+  cipher: Uint8Array;
+}

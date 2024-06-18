@@ -13,6 +13,7 @@ function extractUrl(str: string): string | null {
 
 // Server config.
 const hostID = "id123";
+const port = "3311";
 const registrationToken = "tok123";
 
 // Client config.
@@ -25,7 +26,8 @@ async function startServer(): Promise<{ proc: Deno.Process, url: URL } | undefin
   const p = Deno.run({
     cmd: ["deno", "run", "--allow-env", "--allow-net", "src/server.ts"],
     env: {
-      DIPLOMATIC_ID: hostID,
+      DIPLOMATIC_HOST_ID: hostID,
+      DIPLOMATIC_HOST_PORT: port,
       DIPLOMATIC_REG_TOKEN: registrationToken,
     },
     stdout: "piped",

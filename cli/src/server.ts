@@ -95,7 +95,7 @@ const handler = async (request: Request): Promise<Response> => {
       const sig = htob(sigHex);
       const sigValid = checkSig(sig, req.cipher, pubKey);
       if (!sigValid) {
-        throw "Invalid signature";
+        return new Response("Invalid signature", { status: 401 });
       }
 
       const path = opPath(now);
@@ -130,7 +130,7 @@ const handler = async (request: Request): Promise<Response> => {
       const sig = htob(sigHex);
       const sigValid = checkSig(sig, path, pubKey);
       if (!sigValid) {
-        throw "Invalid signature";
+        return new Response("Invalid signature", { status: 401 });
       }
 
       // Retrieve op.

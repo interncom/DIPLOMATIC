@@ -1,8 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
+import { decode, decodeStream, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import { deriveAuthKeyPair, generateSeed, sign } from "../src/auth.ts";
 import type { IOperationRequest, IRegistrationRequest } from "../src/types.ts";
 import { btoh } from "../src/lib.ts";
+import { assertNotEquals, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 function extractUrl(str: string): string | null {
   const urlRegex = /(https?:\/\/[^\s]+)/;
@@ -54,6 +55,8 @@ Deno.test("server", async (t) => {
   }
   const url = server.url;
 
+  const cipherOp = new Uint8Array([0xFE, 0xFE]);
+
   await t.step("GET /id", async () => {
     url.pathname = "/id";
     const response = await fetch(url, { method: "GET" });
@@ -76,9 +79,11 @@ Deno.test("server", async (t) => {
     assertEquals(response.status, 200);
   });
 
+  let opPath: string;
+
   await t.step("POST /ops", async () => {
     const req: IOperationRequest = {
-      cipher: new Uint8Array([0xFE, 0xFE]),
+      cipher: cipherOp,
     };
     const reqPack = encode(req);
 
@@ -96,7 +101,29 @@ Deno.test("server", async (t) => {
     if (!response.ok) {
       console.log(await response.text())
     }
-    await response.body?.cancel()
+    opPath = await response.text();
+    assertNotEquals(opPath.length, 0);
+    assertEquals(response.status, 200);
+  });
+
+  await t.step("GET /ops/:path", async () => {
+    // Fetch a specific op.
+    url.pathname = `/ops/${opPath}`;
+    const sig = sign(opPath, keyPair);
+    const sigHex = btoh(sig);
+    const keyHex = btoh(pubKey);
+    const response = await fetch(url, {
+      method: "GET", headers: {
+        "X-DIPLOMATIC-SIG": sigHex,
+        "X-DIPLOMATIC-KEY": keyHex,
+      }
+    });
+    const respBuf = await response.arrayBuffer();
+    const resp = decode(respBuf) as { cipher: Uint8Array };
+    if (resp.cipher === undefined) {
+      throw "Missing cipher";
+    }
+    assertEquals(resp.cipher, cipherOp);
     assertEquals(response.status, 200);
   });
 

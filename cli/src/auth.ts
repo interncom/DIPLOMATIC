@@ -63,7 +63,7 @@ export function sign(
 
 export function checkSig(
   sig: Uint8Array,
-  message: Uint8Array,
+  message: Uint8Array | string,
   pubKey: Uint8Array,
 ): boolean {
   // Separate the sig for easier interop with other implementations, e.g. Noble or WebCrypto.

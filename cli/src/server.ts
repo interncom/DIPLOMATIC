@@ -1,10 +1,14 @@
 // Server.
 
 import { port } from "./consts.ts";
-import { decodeAsync } from "https://deno.land/x/msgpack@v1.4/mod.ts";
+import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
 import { checkSig } from "./auth.ts";
 import { btoh, htob } from "./lib.ts";
+
+function opPath(storedAt: Date): string {
+  return storedAt.toISOString();
+}
 
 interface IStoredOp {
   bin: Uint8Array;
@@ -13,12 +17,12 @@ interface IStoredOp {
 
 interface IStorage {
   users: Set<string>;
-  ops: IStoredOp[];
+  ops: Map<string, Uint8Array>;
 }
 
 const storage: IStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
-  ops: [],
+  ops: new Map(), // Path => op binary.
 }
 
 const hostID = Deno.env.get("DIPLOMATIC_ID");
@@ -62,6 +66,8 @@ const handler = async (request: Request): Promise<Response> => {
   }
 
   if (request.method === "POST" && url.pathname === "/ops") {
+    const now = new Date();
+
     try {
       if (!request.body) {
         return new Response("Invalid request", { status: 400 });
@@ -92,9 +98,50 @@ const handler = async (request: Request): Promise<Response> => {
         throw "Invalid signature";
       }
 
-      // TODO: Store encrypted op.
+      const path = opPath(now);
+      const fullPath = [pubKeyHex, path].join('/');
+      storage.ops.set(fullPath, req.cipher);
 
-      return new Response(null, { status: 200 });
+      return new Response(path, { status: 200 });
+    } catch {
+      return new Response("Processing request", { status: 500 });
+    }
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/ops/")) {
+    try {
+      // Check user is registerd.
+      const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
+      if (!pubKeyHex) {
+        return new Response("Missing pubkey", { status: 401 });
+      }
+      if (!storage.users.has(pubKeyHex)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      const path = url.pathname.substring("/ops/".length);
+
+      // Check signature.
+      const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
+      if (!sigHex) {
+        return new Response("Missing signature", { status: 401 });
+      }
+      const pubKey = htob(pubKeyHex);
+      const sig = htob(sigHex);
+      const sigValid = checkSig(sig, path, pubKey);
+      if (!sigValid) {
+        throw "Invalid signature";
+      }
+
+      // Retrieve op.
+      const fullPath = [pubKeyHex, path].join('/');
+      const cipher = storage.ops.get(fullPath);
+      if (cipher === undefined) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      const respPack = encode({ cipher });
+      return new Response(respPack, { status: 200 });
     } catch {
       return new Response("Processing request", { status: 500 });
     }

@@ -127,6 +127,32 @@ Deno.test("server", async (t) => {
     assertEquals(response.status, 200);
   });
 
+  await t.step("GET /ops?begin=", async () => {
+    // Fetch ops in open-ended range.
+    const t0 = new Date(0).toISOString();
+    const path = `/ops?begin=${t0}`;
+    url.pathname = path;
+
+    const sigPath = `/ops%3Fbegin=${t0}`;
+    const sig = sign(sigPath, keyPair);
+    const sigHex = btoh(sig);
+    const keyHex = btoh(pubKey);
+    const response = await fetch(url, {
+      method: "GET", headers: {
+        "X-DIPLOMATIC-SIG": sigHex,
+        "X-DIPLOMATIC-KEY": keyHex,
+      }
+    });
+    if (response.status !== 200) {
+      console.log(await response.text());
+    }
+    assertEquals(response.status, 200);
+    const respBuf = await response.arrayBuffer();
+    const resp = decode(respBuf) as { paths: string[] };
+    assertEquals(resp.paths.length, 1);
+    assertEquals(resp.paths[0], opPath);
+  });
+
   server.proc.close();
   server.proc.stdout?.close();
   server.proc.stderr?.close();

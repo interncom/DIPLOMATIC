@@ -35,6 +35,37 @@ if (!regToken) {
   throw "Missing DIPLOMATIC_REG_TOKEN env var"
 }
 
+const allowedHeaders = [
+  "X-DIPLOMATIC-KEY",
+  "X-DIPLOMATIC-SIG",
+];
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*", // Allow any origin
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": allowedHeaders.join(","),
+};
+
+function cors(resp: Response): Response {
+  return new Response(resp.body, {
+    headers: { ...resp.headers, ...corsHeaders },
+    status: resp.status,
+    statusText: resp.statusText,
+  });
+}
+
+const corsHandler = async (request: Request): Promise<Response> => {
+  if (request.method === "OPTIONS") {
+    // Handle CORS preflight request
+    return cors(new Response(null));
+  }
+  const resp = await handler(request);
+
+  console.log(`[${resp.status}] ${request.method} ${request.url}`);
+
+  return cors(resp);
+}
+
 const handler = async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
 
@@ -60,7 +91,7 @@ const handler = async (request: Request): Promise<Response> => {
       // TODO: check pubKey length.
       const pubKeyHex = btoh(req.pubKey);
       storage.users.add(pubKeyHex);
-      return new Response(null, { status: 200 });
+      return new Response("", { status: 200 });
     } catch {
       return new Response("Processing request", { status: 500 });
     }
@@ -193,4 +224,4 @@ const handler = async (request: Request): Promise<Response> => {
 };
 
 console.log("DIPLOMATIC PARCEL SERVICE ACTIVE");
-Deno.serve({ port }, handler);
+Deno.serve({ port }, corsHandler);

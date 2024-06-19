@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { deriveAuthKeyPair, generateSeed } from "../src/auth.ts";
-import { DiplomaticClient } from "../src/client.ts";
+import DiplomaticClient from "../src/client.ts";
 
 function extractUrl(str: string): string | null {
   const urlRegex = /(https?:\/\/[^\s]+)/;

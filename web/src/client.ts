@@ -1,7 +1,7 @@
-import { decode, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
+import { decode, encode } from "@msgpack/msgpack";
+import type { IOperationRequest, IRegistrationRequest } from "../../cli/src/types.ts";
 import { KeyPair, sign } from "./auth.ts";
-import { btoh } from "./lib.ts";
+import { btoh } from "../../cli/src/lib.ts";
 
 export default class DiplomaticClient {
   hostURL: URL;

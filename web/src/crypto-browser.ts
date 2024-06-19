@@ -1,5 +1,5 @@
-import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import * as sodium from "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
+import { encode } from "@msgpack/msgpack";
+import * as sodium from "../../cli/vendor/raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
 
 export function serialize(data: unknown): Uint8Array {
   return encode(data);

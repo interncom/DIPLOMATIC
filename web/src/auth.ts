@@ -1,4 +1,4 @@
-import * as sodium from "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
+import * as sodium from "../../cli/vendor/raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
 
 export interface IKeyPair {
   publicKey: Uint8Array;

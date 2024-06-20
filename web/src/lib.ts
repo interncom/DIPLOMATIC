@@ -1,5 +1,6 @@
+import { useCallback, useState } from "react";
 import type { IOp } from "../../cli/src/types";
-import { IStatus } from "./App";
+import type { IStatus } from "./App";
 
 export function store(status: IStatus) {
   localStorage.setItem("status", status.status);
@@ -29,4 +30,14 @@ export function genOp(status: string): IOp<"status"> {
 export function apply(op: IOp<"status">) {
   const status = op.body;
   store({ status, updatedAt: op.ts });
+}
+
+export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void] {
+  const [status, setStatus] = useState<IStatus>();
+  const applier = useCallback((op: IOp<"status">) => {
+    apply(op);
+    const newStatus = load();
+    setStatus(newStatus);
+  }, []);
+  return [status, applier];
 }

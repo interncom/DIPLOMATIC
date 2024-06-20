@@ -2,19 +2,38 @@ import { useCallback, useEffect, useState } from 'react';
 import './App.css'
 import DiplomaticClient from "./lib/client";
 import { htob } from '../../cli/src/lib';
-import { load, genOp, apply } from './lib';
+import { load, genOp, apply, useStatus } from './lib';
 import SeedConfig from './seedConfig';
+import type { IOp } from '../../cli/src/types';
 
 export interface IStatus {
   status: string;
   updatedAt: string;
 }
 
-// function usePollingSync(intervalMillis: number, keyPair?: KeyPair) {
-// }
+function usePollingSync(client: DiplomaticClient | undefined, intervalMillis: number, updatedAt: string | undefined, apply: (delta: IOp<"status">) => void) {
+  useEffect(() => {
+    if (!client) {
+      return;
+    }
+
+    async function poll() {
+      if (!client) {
+        return;
+      }
+      console.log("Polling")
+      await client.processDeltas(new Date(0), updatedAt, apply);
+    }
+
+    const handle = setInterval(poll, intervalMillis);
+    return () => {
+      clearInterval(handle);
+    }
+  }, [client, intervalMillis, updatedAt, apply])
+}
 
 function App() {
-  const [status, setStatus] = useState(load());
+  const [status, apply] = useStatus();
 
   // Seed config.
   const [seed, setSeed] = useState<Uint8Array>();
@@ -45,21 +64,7 @@ function App() {
     });
   }, [seed]);
 
-
-  useEffect(() => {
-    // TODO: make the client store keypairs.
-    if (!client) {
-      return;
-    }
-    client.getDeltas(new Date(0)).then(deltas => {
-      for (const delta of deltas) {
-        if (!status?.updatedAt || delta.ts > status.updatedAt) {
-          apply(delta);
-        }
-        console.log("delta", delta, status?.updatedAt);
-      }
-    });
-  }, [client, status])
+  usePollingSync(client, 100, status?.updatedAt, apply);
 
   // Status handling.
   const [statusField, setStatusField] = useState("");
@@ -71,11 +76,8 @@ function App() {
       client.putDelta(op);
     }
 
-    const newStatus = load();
-    setStatus(newStatus);
-
     evt.preventDefault();
-  }, [statusField, client]);
+  }, [statusField, apply, client]);
 
   if (!seed) {
     return <SeedConfig setSeed={setSeed} />

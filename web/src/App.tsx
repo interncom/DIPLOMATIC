@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css'
-import DiplomaticClient from "./client";
-import { deriveAuthKeyPair } from './auth';
-import { decrypt, deriveEncryptionKey, encrypt, serialize } from './crypto-browser';
+import DiplomaticClient from "./lib/client";
 import { htob } from '../../cli/src/lib';
 import { load, genOp, apply } from './lib';
 import SeedConfig from './seedConfig';
-import { decode } from '@msgpack/msgpack';
 
 export interface IStatus {
   status: string;
   updatedAt: string;
 }
+
+// function usePollingSync(intervalMillis: number, keyPair?: KeyPair) {
+// }
 
 function App() {
   const [status, setStatus] = useState(load());
@@ -27,34 +27,39 @@ function App() {
     }
   }, []);
 
-  // Encryption config.
-  const encKey = seed ? deriveEncryptionKey(seed) : undefined;
-
   // Host config.
-  const hostURL = "http://localhost:3311";
-  const hostID = "id123";
-  const keyPair = seed ? deriveAuthKeyPair(hostID, seed) : undefined;
-  const client = new DiplomaticClient(new URL(hostURL));
+  const [client, setClient] = useState<DiplomaticClient>();
+  useEffect(() => {
+    async function register() {
+      if (!seed) {
+        return;
+      }
+      const hostURL = "http://localhost:3311";
+      const client = new DiplomaticClient(seed);
+      await client.register(hostURL)
+      setClient(client);
+    }
+
+    register().catch((err) => {
+      console.error("Registering client", err);
+    });
+  }, [seed]);
+
+
   useEffect(() => {
     // TODO: make the client store keypairs.
-    if (keyPair) {
-      client.register(keyPair.publicKey, "tok123");
-
-      if (encKey) {
-        client.getDeltaPaths(new Date(0), keyPair).then(async (resp) => {
-          for (const path of resp.paths) {
-            const cipher = await client.getDelta(path, keyPair);
-            const deltaPack = decrypt(cipher, encKey)
-            const delta = decode(deltaPack) as any;
-            if (!status?.updatedAt || delta.ts > status.updatedAt) {
-              apply(delta);
-            }
-            console.log("delta", delta, status?.updatedAt);
-          }
-        })
-      }
+    if (!client) {
+      return;
     }
-  }, [keyPair, client, encKey, status])
+    client.getDeltas(new Date(0)).then(deltas => {
+      for (const delta of deltas) {
+        if (!status?.updatedAt || delta.ts > status.updatedAt) {
+          apply(delta);
+        }
+        console.log("delta", delta, status?.updatedAt);
+      }
+    });
+  }, [client, status])
 
   // Status handling.
   const [statusField, setStatusField] = useState("");
@@ -62,17 +67,15 @@ function App() {
     const op = genOp(statusField);
     apply(op);
 
-    if (encKey && keyPair) {
-      const opPack = serialize(op);
-      const cipherOp = encrypt(opPack, encKey);
-      client.putDelta(cipherOp, keyPair)
+    if (client) {
+      client.putDelta(op);
     }
 
     const newStatus = load();
     setStatus(newStatus);
 
     evt.preventDefault();
-  }, [statusField, client.putDelta, encKey, keyPair]);
+  }, [statusField, client]);
 
   if (!seed) {
     return <SeedConfig setSeed={setSeed} />

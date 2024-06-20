@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { btoh, htob } from "../../cli/src/lib";
-import { generateSeed } from "./auth";
+import { generateSeed } from "./lib/auth";
 
 interface IProps {
   setSeed: (seed: Uint8Array) => void;

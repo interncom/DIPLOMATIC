@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import './App.css'
 import DiplomaticClient from "./lib/client";
 import { htob } from '../../cli/src/lib';
-import { load, genOp, apply, useStatus } from './lib';
+import { genOp, useStatus } from './lib';
 import SeedConfig from './seedConfig';
 import type { IOp } from '../../cli/src/types';
 

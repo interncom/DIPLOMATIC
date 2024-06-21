@@ -1,6 +1,6 @@
 import { encode, decode } from "@msgpack/msgpack";
 import { btoh } from "../../../cli/src/lib";
-import type { IRegistrationRequest, IOperationRequest } from "../../../cli/src/types";
+import type { IRegistrationRequest, IOperationRequest, IGetDeltaPathsResponse } from "../../../cli/src/types";
 import { type KeyPair, sign } from "./auth";
 
 export async function getHostID(hostURL: string | URL): Promise<string> {
@@ -76,7 +76,7 @@ export async function getDelta(hostURL: string | URL, opPath: string, keyPair: K
   return resp.cipher;
 }
 
-export async function getDeltaPaths(hostURL: string | URL, begin: Date, keyPair: KeyPair): Promise<{ paths: string[] }> {
+export async function getDeltaPaths(hostURL: string | URL, begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {
   const t = begin.toISOString();
   const path = `/ops?begin=${t}`;
   const url = new URL(hostURL)

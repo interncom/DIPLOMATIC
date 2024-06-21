@@ -1,5 +1,5 @@
 import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
+import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest } from "./types.ts";
 import { checkSig } from "./auth.ts";
 import { btoh, htob } from "./lib.ts";
 
@@ -180,6 +180,7 @@ const handler = async (request: Request): Promise<Response> => {
   }
 
   if (request.method === "GET" && url.pathname.startsWith("/ops")) {
+    const now = new Date();
     try {
       // Check user is registerd.
       const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
@@ -203,17 +204,22 @@ const handler = async (request: Request): Promise<Response> => {
       }
 
       // Retrieve ops.
+      const fetchedAt = now.toISOString();
       const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
       const begin = decodeURIComponent(beginComponent);
       const userOpPaths: string[] = [];
       for (const [key, _] of storage.ops) {
         const [pkh, ts] = key.split('/');
-        if (pkh === pubKeyHex && ts >= begin) {
+        if (pkh === pubKeyHex && ts >= begin && ts < fetchedAt) {
           userOpPaths.push(ts);
         }
       }
 
-      const respPack = encode({ paths: userOpPaths });
+      const resp: IGetDeltaPathsResponse = {
+        paths: userOpPaths,
+        fetchedAt,
+      }
+      const respPack = encode(resp);
       return new Response(respPack, { status: 200 });
     } catch {
       return new Response("Processing request", { status: 500 });
@@ -223,5 +229,5 @@ const handler = async (request: Request): Promise<Response> => {
   return new Response("Not Found", { status: 404 });
 };
 
-console.log("DIPLOMATIC PARCEL SERVICE ACTIVE");
+console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
 Deno.serve({ port }, corsHandler);

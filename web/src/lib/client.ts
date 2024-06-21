@@ -9,6 +9,7 @@ export default class DiplomaticClient {
   encKey: Uint8Array;
   hostURL?: URL;
   hostKeyPair?: KeyPair;
+  lastFetchedAt?: string;
 
   constructor(seed: Uint8Array) {
     this.seed = seed;
@@ -31,12 +32,14 @@ export default class DiplomaticClient {
     await putDelta(this.hostURL, cipherOp, this.hostKeyPair);
   }
 
-  async getDeltas(begin: Date): Promise<IOp<"status">[]> {
+  async getDeltas(): Promise<IOp<"status">[]> {
     if (!this.hostURL || !this.hostKeyPair) {
       return [];
     }
+    const begin = new Date(this.lastFetchedAt ?? 0);
     const pathResp = await getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
     const paths = pathResp.paths;
+    this.lastFetchedAt = pathResp.fetchedAt;
     const deltas: IOp<"status">[] = [];
     for (const path of paths) {
       const cipher = await getDelta(this.hostURL, path, this.hostKeyPair);
@@ -48,8 +51,8 @@ export default class DiplomaticClient {
     return deltas;
   }
 
-  async processDeltas(begin: Date, updatedAt: string | undefined, apply: (delta: IOp<"status">) => void) {
-    this.getDeltas(begin).then(deltas => {
+  async processDeltas(updatedAt: string | undefined, apply: (delta: IOp<"status">) => void) {
+    this.getDeltas().then(deltas => {
       for (const delta of deltas) {
         if (!updatedAt || delta.ts > updatedAt) {
           apply(delta);

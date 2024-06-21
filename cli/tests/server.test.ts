@@ -87,6 +87,7 @@ Deno.test("server", async (t) => {
     const resp = await client.getDeltaPaths(t0, keyPair);
     assertEquals(resp.paths.length, 1);
     assertEquals(resp.paths[0], opPath);
+    assertNotEquals(resp.fetchedAt, undefined);
   });
 
   server.proc.close();

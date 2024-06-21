@@ -32,12 +32,15 @@ export function apply(op: IOp<"status">) {
   store({ status, updatedAt: op.ts });
 }
 
-export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void] {
+export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void, () => void] {
   const [status, setStatus] = useState<IStatus>();
   const applier = useCallback((op: IOp<"status">) => {
     apply(op);
     const newStatus = load();
     setStatus(newStatus);
   }, []);
-  return [status, applier];
+  const clear = useCallback(() => {
+    setStatus(undefined);
+  }, [])
+  return [status, applier, clear];
 }

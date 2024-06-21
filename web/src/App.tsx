@@ -22,7 +22,7 @@ function usePollingSync(client: DiplomaticClient | undefined, intervalMillis: nu
         return;
       }
       console.log("Polling")
-      await client.processDeltas(new Date(0), updatedAt, apply);
+      await client.processDeltas(updatedAt, apply);
     }
 
     const handle = setInterval(poll, intervalMillis);

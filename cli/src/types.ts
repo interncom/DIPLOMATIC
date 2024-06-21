@@ -36,3 +36,8 @@ export interface IRegistrationRequest {
 export interface IOperationRequest {
   cipher: Uint8Array;
 }
+
+export interface IGetDeltaPathsResponse {
+  paths: string[];
+  fetchedAt: string;
+}

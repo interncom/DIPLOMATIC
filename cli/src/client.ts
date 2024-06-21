@@ -1,5 +1,5 @@
 import { decode, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IOperationRequest, IRegistrationRequest } from "./types.ts";
+import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest } from "./types.ts";
 import { KeyPair, sign } from "./auth.ts";
 import { btoh } from "./lib.ts";
 
@@ -82,7 +82,7 @@ export default class DiplomaticClient {
     return resp.cipher;
   }
 
-  async getDeltaPaths(begin: Date, keyPair: KeyPair): Promise<{ paths: string[] }> {
+  async getDeltaPaths(begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {
     const t = begin.toISOString();
     const path = `/ops?begin=${t}`;
     const url = new URL(this.hostURL)
@@ -102,7 +102,7 @@ export default class DiplomaticClient {
       throw "Uh oh";
     }
     const respBuf = await response.arrayBuffer();
-    const resp = decode(respBuf) as { paths: string[] };
+    const resp = decode(respBuf) as IGetDeltaPathsResponse;
     return resp;
   }
 }

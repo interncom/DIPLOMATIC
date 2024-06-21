@@ -19,14 +19,16 @@ export default function SeedConfig({ setSeed }: IProps) {
     const seed = htob(seedString);
     setSeed(seed);
     localStorage.setItem("seedHex", seedString);
-    history.pushState({}, "Your new page title");
+
+    // Trigger password save prompt.
+    window.location.replace("/");
   }, [seedString, setSeed]);
 
   return (
     <div>
       <h1>Initialize</h1>
       <form onSubmit={handleInitFormSubmit} style={{ display: "flex", flexDirection: "column" }}>
-        <input name="username" type="text" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input name="username" type="text" autoComplete="username" placeholder={username} onChange={(e) => setUsername(e.target.value)} required />
         <input name="password" type="password" autoComplete="new-password" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
         <button type="submit">Store</button>
         <button type="button" onClick={genSeed}>Generate</button>

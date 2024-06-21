@@ -7,6 +7,7 @@ interface IProps {
 }
 export default function SeedConfig({ setSeed }: IProps) {
   const [seedString, setSeedString] = useState("");
+  const [username, setUsername] = useState("default");
 
   const genSeed = useCallback(() => {
     const seed = generateSeed();
@@ -18,13 +19,15 @@ export default function SeedConfig({ setSeed }: IProps) {
     const seed = htob(seedString);
     setSeed(seed);
     localStorage.setItem("seedHex", seedString);
+    history.pushState({}, "Your new page title");
   }, [seedString, setSeed]);
 
   return (
     <div>
       <h1>Initialize</h1>
       <form onSubmit={handleInitFormSubmit} style={{ display: "flex", flexDirection: "column" }}>
-        <input type="text" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
+        <input name="username" type="text" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input name="password" type="password" autoComplete="new-password" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
         <button type="submit">Store</button>
         <button type="button" onClick={genSeed}>Generate</button>
       </form>

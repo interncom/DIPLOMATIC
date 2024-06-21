@@ -1,3 +1,4 @@
+// @ts-ignore
 import * as sodium from "../../../cli/vendor/raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
 
 export interface IKeyPair {

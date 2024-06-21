@@ -33,7 +33,7 @@ function usePollingSync(client: DiplomaticClient | undefined, intervalMillis: nu
 }
 
 function App() {
-  const [status, apply] = useStatus();
+  const [status, apply, clearStatus] = useStatus();
 
   // Seed config.
   const [seed, setSeed] = useState<Uint8Array>();
@@ -83,6 +83,14 @@ function App() {
     return <SeedConfig setSeed={setSeed} />
   }
 
+  function handleLogout() {
+    localStorage.clear();
+    setSeed(undefined);
+    setClient(undefined);
+    setStatusField("");
+    clearStatus();
+  }
+
   return (
     <>
       <h1>STATUS</h1>
@@ -90,6 +98,9 @@ function App() {
       <form onSubmit={handleSubmit}>
         <input type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} />
       </form>
+      <div>
+        <button type="button" onClick={handleLogout}>logout</button>
+      </div>
     </>
   )
 }

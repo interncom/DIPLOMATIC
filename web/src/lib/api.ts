@@ -96,6 +96,6 @@ export async function getDeltaPaths(hostURL: string | URL, begin: Date, keyPair:
     throw "Uh oh";
   }
   const respBuf = await response.arrayBuffer();
-  const resp = decode(respBuf) as { paths: string[] };
+  const resp = decode(respBuf) as IGetDeltaPathsResponse;
   return resp;
 }

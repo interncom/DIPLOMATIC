@@ -4,4 +4,10 @@ Demo of DIPLOMATIC sync protocol. Syncs a status message.
 
 ## Password Manager Seed Storage
 
-Host on a public website with HTTPS (may not be necessary—not sure), then Firefox and Safari will prompt to save password even when generating with the generate button. It is necessary for the user to type something in the username field to trigger this.
+Host over HTTPS, then Firefox and Safari will prompt to save password. It is necessary for the user to type something in the username field to trigger this.
+
+### Local Testing
+
+1. (Optional) Install `mkcert` for generating a self-signed certificate.
+1. (Optional) `mkcert localhost` to generate the certs (already commited to repo).
+1. `npm run dev` to start Vite's server, using those certificates.

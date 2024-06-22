@@ -10,4 +10,4 @@ Host over HTTPS, then Firefox and Safari will prompt to save password. It is nec
 
 1. (Optional) Install `mkcert` for generating a self-signed certificate.
 1. (Optional) `mkcert localhost` to generate the certs (already commited to repo).
-1. `npm run dev` to start Vite's server, using those certificates.
+1. `npm run dev:https` to start Vite's server, using those certificates.

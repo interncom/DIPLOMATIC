@@ -1,5 +1,5 @@
 import { htob, btoh } from "../../../cli/src/lib";
-import { IClientStateStore } from "./client";
+import { IClientStateStore } from "./types";
 
 const seedKey = "seedHex";
 const hostURLKey = "hostURL";

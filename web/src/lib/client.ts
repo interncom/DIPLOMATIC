@@ -3,17 +3,7 @@ import type { IOp } from "../../../cli/src/types.ts";
 import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto.ts";
 import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
 import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
-
-export interface IClientStateStore {
-  getSeed: () => Promise<Uint8Array | undefined>;
-  setSeed: (seed: Uint8Array) => Promise<void>;
-  getHostURL: () => Promise<string | undefined>;
-  setHostURL: (url: string) => Promise<void>;
-  getHostID: () => Promise<string | undefined>;
-  setHostID: (id: string) => Promise<void>;
-}
-
-export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";
+import { IClientStateStore, DiplomaticClientState } from "./types.ts";
 
 export default class DiplomaticClient {
   store: IClientStateStore;

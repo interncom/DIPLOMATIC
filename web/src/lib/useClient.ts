@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import DiplomaticClient, { DiplomaticClientState, IClientStateStore } from "./client";
+import DiplomaticClient from "./client";
+import { DiplomaticClientState, IClientStateStore } from "./types";
 
 const initialState: DiplomaticClientState = "loading";
 

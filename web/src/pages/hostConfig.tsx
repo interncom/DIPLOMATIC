@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type DiplomaticClient from "./lib/client";
+import type DiplomaticClient from "../lib/client";
 
 interface IProps {
   client: DiplomaticClient;

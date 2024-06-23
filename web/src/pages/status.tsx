@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
-import DiplomaticClient from "./lib/client";
-import { usePollingSync } from "./lib/sync";
-import { genOp, useStatus } from "./appState";
+import DiplomaticClient from "../lib/client";
+import { usePollingSync } from "../lib/sync";
+import { genOp, useStatus } from "../appState";
 
 interface IProps {
   client: DiplomaticClient;

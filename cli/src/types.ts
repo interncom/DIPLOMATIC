@@ -1,4 +1,4 @@
-enum Verb {
+export enum Verb {
   DELETE = 0,
   UPSERT = 1,
 }

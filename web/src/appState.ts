@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { IOp } from "../../cli/src/types";
+import { Verb, type IOp } from "../../cli/src/types";
 import type { IStatus } from "./App";
 
 export function store(status: IStatus) {
@@ -20,7 +20,7 @@ export function genOp(status: string): IOp<"status"> {
   const op: IOp<"status"> = {
     ts: new Date().toISOString(),
     type: "status",
-    verb: 1,
+    verb: Verb.UPSERT,
     ver: 0,
     body: status,
   };

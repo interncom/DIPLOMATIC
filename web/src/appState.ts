@@ -27,9 +27,13 @@ export function genOp(status: string): IOp<"status"> {
   return op;
 }
 
+// Applier MUST transactionally ignore deltas upserting entities modified after the delta timestamp.
 export function apply(op: IOp<"status">) {
-  const status = op.body;
-  store({ status, updatedAt: op.ts });
+  const curr = load();
+  if (!curr?.updatedAt || op.ts > curr.updatedAt) {
+    const status = op.body;
+    store({ status, updatedAt: op.ts });
+  }
 }
 
 export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void, () => void] {

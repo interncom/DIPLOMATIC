@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
 import { btoh, htob } from "../../cli/src/lib";
 import { generateSeed } from "./lib/auth";
+import type DiplomaticClient from "./lib/client";
 
 interface IProps {
-  setSeed: (seed: Uint8Array) => void;
+  client: DiplomaticClient;
 }
-export default function SeedConfig({ setSeed }: IProps) {
+export default function SeedConfig({ client }: IProps) {
   const [seedString, setSeedString] = useState("");
   const [username, setUsername] = useState("default");
 
@@ -17,12 +18,12 @@ export default function SeedConfig({ setSeed }: IProps) {
 
   const handleInitFormSubmit = useCallback(() => {
     const seed = htob(seedString);
-    setSeed(seed);
+    client.setSeed(seed);
     localStorage.setItem("seedHex", seedString);
 
     // Trigger password save prompt.
     window.location.replace("/");
-  }, [seedString, setSeed]);
+  }, [seedString, client]);
 
   return (
     <div>

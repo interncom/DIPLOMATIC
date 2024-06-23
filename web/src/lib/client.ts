@@ -7,6 +7,10 @@ import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
 export interface IClientStateStore {
   getSeed: () => Promise<Uint8Array | undefined>;
   setSeed: (seed: Uint8Array) => Promise<void>;
+  getHostURL: () => Promise<string | undefined>;
+  setHostURL: (url: string) => Promise<void>;
+  getHostID: () => Promise<string | undefined>;
+  setHostID: (id: string) => Promise<void>;
 }
 
 export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";
@@ -29,15 +33,53 @@ export default class DiplomaticClient {
 
   async init() {
     await this.loadSeed();
+    await this.loadHost();
+    this.listener?.(this.state);
   }
 
   async loadSeed() {
-    // TODO: extract to pluggable storage module.
     const seed = await this.store.getSeed();
     if (seed) {
       // TODO: check validity.
-      this.setSeed(seed);
+      this.seed = seed;
+      this.encKey = deriveEncryptionKey(seed);
     }
+  }
+
+  setSeed(seed: Uint8Array) {
+    this.seed = seed;
+    this.encKey = deriveEncryptionKey(seed);
+    this.store.setSeed(seed);
+    this.listener?.(this.state);
+  }
+
+  async loadHost() {
+    if (!this.seed) {
+      return;
+    }
+    const hostURL = await this.store.getHostURL();
+    const hostID = await this.store.getHostID();
+    if (!hostURL || !hostID) {
+      return;
+    }
+    this.hostURL = new URL(hostURL);
+    this.hostKeyPair = deriveAuthKeyPair(hostID, this.seed);
+  }
+
+  // TODO: dedupe with loadHost.
+  async register(hostURL: string) {
+    if (!this.seed) {
+      return;
+    }
+    this.hostURL = new URL(hostURL);
+    const hostID = await getHostID(hostURL);
+    this.hostKeyPair = deriveAuthKeyPair(hostID, this.seed);
+    await register(hostURL, this.hostKeyPair.publicKey, "tok123");
+
+    await this.store.setHostURL(hostURL);
+    await this.store.setHostID(hostID);
+
+    this.listener?.(this.state);
   }
 
   get state(): DiplomaticClientState {
@@ -48,24 +90,6 @@ export default class DiplomaticClient {
       return "hostless";
     }
     return "ready";
-  }
-
-  setSeed(seed: Uint8Array) {
-    this.seed = seed;
-    this.encKey = deriveEncryptionKey(seed);
-    this.store.setSeed(seed);
-    this.listener?.(this.state);
-  }
-
-  async register(hostURL: string) {
-    if (!this.seed) {
-      return;
-    }
-    this.hostURL = new URL(hostURL);
-    const hostID = await getHostID(hostURL);
-    this.hostKeyPair = deriveAuthKeyPair(hostID, this.seed);
-    await register(hostURL, this.hostKeyPair.publicKey, "tok123");
-    this.listener?.(this.state);
   }
 
   async putDelta(delta: IOp<"status">) {

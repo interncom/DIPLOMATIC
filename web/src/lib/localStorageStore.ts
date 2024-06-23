@@ -2,6 +2,8 @@ import { htob, btoh } from "../../../cli/src/lib";
 import { IClientStateStore } from "./client";
 
 const seedKey = "seedHex";
+const hostURLKey = "hostURL";
+const hostIDKey = "hostID";
 
 export const localStorageStore: IClientStateStore = {
   async getSeed() {
@@ -14,5 +16,17 @@ export const localStorageStore: IClientStateStore = {
   async setSeed(seed: Uint8Array) {
     const seedString = btoh(seed);
     localStorage.setItem(seedKey, seedString);
-  }
+  },
+  async getHostURL() {
+    return localStorage.getItem(hostURLKey) ?? undefined;
+  },
+  async setHostURL(url: string) {
+    return localStorage.setItem(hostURLKey, url);
+  },
+  async getHostID() {
+    return localStorage.getItem(hostIDKey) ?? undefined;
+  },
+  async setHostID(id: string) {
+    return localStorage.setItem(hostIDKey, id);
+  },
 }

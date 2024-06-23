@@ -1,5 +1,4 @@
 import './App.css'
-import { useStatus } from './appState';
 import SeedConfig from './seedConfig';
 import Status from './status';
 import HostConfig from './hostConfig';
@@ -11,7 +10,6 @@ export interface IStatus {
 }
 
 export default function App() {
-  const [status, apply, clearStatus] = useStatus();
   const [client, state, resetClient] = useClient();
 
   // TODO: abstract app state out into a module
@@ -19,7 +17,6 @@ export default function App() {
   function handleLogout() {
     localStorage.clear();
     resetClient();
-    clearStatus();
   }
 
   switch (state) {
@@ -30,6 +27,6 @@ export default function App() {
     case "hostless":
       return <HostConfig client={client} />;
     case "ready":
-      return <Status client={client} apply={apply} status={status} onLogout={handleLogout} />;
+      return <Status client={client} onLogout={handleLogout} />;
   }
 }

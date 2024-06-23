@@ -11,7 +11,7 @@ function extractUrl(str: string): string | null {
 
 // Server config.
 const hostID = "id123";
-const port = "3311";
+const port = "3331";
 const registrationToken = "tok123";
 
 // Client config.

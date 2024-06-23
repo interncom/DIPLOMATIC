@@ -12,8 +12,6 @@ export interface IStatus {
 export default function App() {
   const [client, state, resetClient] = useClient();
 
-  // TODO: abstract app state out into a module
-  // Status handling.
   function handleLogout() {
     localStorage.clear();
     resetClient();

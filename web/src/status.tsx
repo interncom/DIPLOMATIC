@@ -14,6 +14,8 @@ export default function Status({ client, onLogout }: IProps) {
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     const op = genOp(statusField);
+    // TODO: combine these two lines by having the client know how to apply ops.
+    // Then it can enqueue the op for sync and immediately apply it locally.
     apply(op);
     client?.putDelta(op);
     evt.preventDefault();

@@ -1,6 +1,5 @@
-import { useCallback } from 'react';
 import './App.css'
-import { genOp, useStatus } from './appState';
+import { useStatus } from './appState';
 import SeedConfig from './seedConfig';
 import Status from './status';
 import HostConfig from './hostConfig';
@@ -15,13 +14,8 @@ export default function App() {
   const [status, apply, clearStatus] = useStatus();
   const [client, state, resetClient] = useClient();
 
+  // TODO: abstract app state out into a module
   // Status handling.
-  const handleSetStatus = useCallback((statStr: string) => {
-    const op = genOp(statStr);
-    apply(op);
-    client?.putDelta(op);
-  }, [apply, client])
-
   function handleLogout() {
     localStorage.clear();
     resetClient();
@@ -36,6 +30,6 @@ export default function App() {
     case "hostless":
       return <HostConfig client={client} />;
     case "ready":
-      return <Status client={client} apply={apply} status={status} onSetStatus={handleSetStatus} onLogout={handleLogout} />;
+      return <Status client={client} apply={apply} status={status} onLogout={handleLogout} />;
   }
 }

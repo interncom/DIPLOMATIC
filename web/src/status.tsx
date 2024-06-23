@@ -3,20 +3,22 @@ import type { IStatus } from "./App";
 import DiplomaticClient from "./lib/client";
 import { IOp } from "../../cli/src/types";
 import { usePollingSync } from "./lib/sync";
+import { genOp } from "./appState";
 
 interface IProps {
   client: DiplomaticClient;
   apply: (op: IOp<"status">) => void;
   status: IStatus | undefined;
-  onSetStatus: (statStr: string) => void;
   onLogout: () => void;
 }
-export default function Status({ client, apply, status, onSetStatus, onLogout }: IProps) {
+export default function Status({ client, apply, status, onLogout }: IProps) {
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
-    onSetStatus(statusField);
+    const op = genOp(statusField);
+    apply(op);
+    client?.putDelta(op);
     evt.preventDefault();
-  }, [onSetStatus, statusField]);
+  }, [statusField]);
 
   usePollingSync(client, 1000, apply);
 

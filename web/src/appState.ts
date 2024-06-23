@@ -36,15 +36,12 @@ export function apply(op: IOp<"status">) {
   }
 }
 
-export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void, () => void] {
+export function useStatus(): [IStatus | undefined, (op: IOp<"status">) => void] {
   const [status, setStatus] = useState<IStatus>();
   const applier = useCallback((op: IOp<"status">) => {
     apply(op);
     const newStatus = load();
     setStatus(newStatus);
   }, []);
-  const clear = useCallback(() => {
-    setStatus(undefined);
-  }, [])
-  return [status, applier, clear];
+  return [status, applier];
 }

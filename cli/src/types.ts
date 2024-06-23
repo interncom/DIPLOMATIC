@@ -1,7 +1,6 @@
 enum Verb {
-  CREATE = 1,
-  UPDATE = 2,
-  DELETE = 3,
+  DELETE = 0,
+  UPSERT = 1,
 }
 
 // Body types are application-specific.

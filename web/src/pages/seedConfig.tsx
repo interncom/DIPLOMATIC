@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
-import { btoh, htob } from "../../cli/src/lib";
-import { generateSeed } from "./lib/auth";
-import type DiplomaticClient from "./lib/client";
+import { btoh, htob } from "../../../cli/src/lib";
+import { generateSeed } from "../lib/auth";
+import type DiplomaticClient from "../lib/client";
 
 interface IProps {
   client: DiplomaticClient;

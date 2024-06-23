@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 import type { IOp } from "../../../cli/src/types.ts";
-import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto-browser.ts";
+import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto.ts";
 import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
 import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
 import { htob } from "../../../cli/src/lib.ts";

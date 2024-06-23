@@ -1,7 +1,7 @@
 import './App.css'
-import SeedConfig from './seedConfig';
-import Status from './status';
-import HostConfig from './hostConfig';
+import SeedConfig from './pages/seedConfig';
+import Status from './pages/status';
+import HostConfig from './pages/hostConfig';
 import useClient from './lib/useClient';
 
 export interface IStatus {

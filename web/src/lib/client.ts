@@ -3,11 +3,17 @@ import type { IOp } from "../../../cli/src/types.ts";
 import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto.ts";
 import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
 import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
-import { htob } from "../../../cli/src/lib.ts";
+
+export interface IClientStateStore {
+  getSeed: () => Promise<Uint8Array | undefined>;
+  setSeed: (seed: Uint8Array) => Promise<void>;
+}
 
 export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";
 
 export default class DiplomaticClient {
+  store: IClientStateStore;
+
   listener?: (state: DiplomaticClientState) => void;
 
   seed?: Uint8Array;
@@ -16,20 +22,20 @@ export default class DiplomaticClient {
   hostKeyPair?: KeyPair;
   lastFetchedAt?: string;
 
-  constructor() {
-    // TODO: initiate load of seed and host config from storage.
-    // Take in a pluggable storage module to support this.
-    // Emit state change upon successful load.
-    // this.listener(this.state);
-    this.loadSeed();
+  constructor(store: IClientStateStore) {
+    this.store = store;
+    this.init();
   }
 
-  loadSeed() {
+  async init() {
+    await this.loadSeed();
+  }
+
+  async loadSeed() {
     // TODO: extract to pluggable storage module.
-    const storedSeed = localStorage.getItem("seedHex");
-    // TODO: check validity.
-    if (storedSeed) {
-      const seed = htob(storedSeed);
+    const seed = await this.store.getSeed();
+    if (seed) {
+      // TODO: check validity.
       this.setSeed(seed);
     }
   }
@@ -47,6 +53,7 @@ export default class DiplomaticClient {
   setSeed(seed: Uint8Array) {
     this.seed = seed;
     this.encKey = deriveEncryptionKey(seed);
+    this.store.setSeed(seed);
     this.listener?.(this.state);
   }
 

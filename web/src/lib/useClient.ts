@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import DiplomaticClient, { DiplomaticClientState } from "./client";
+import DiplomaticClient, { DiplomaticClientState, IClientStateStore } from "./client";
 
-export default function useClient(): [DiplomaticClient, DiplomaticClientState, () => void] {
+export default function useClient(store: IClientStateStore): [DiplomaticClient, DiplomaticClientState, () => void] {
   const [state, setState] = useState<DiplomaticClientState>("loading");
-  const [client, setClient] = useState(new DiplomaticClient());
+  const [client, setClient] = useState(new DiplomaticClient(store));
   useEffect(() => {
     setState(client.state);
     client.listener = setState;
   }, [client]);
   const reset = useCallback(() => {
-    setClient(new DiplomaticClient());
+    setClient(new DiplomaticClient(store));
     setState("loading");
   }, []);
   return [client, state, reset];

@@ -19,7 +19,6 @@ export default function SeedConfig({ client }: IProps) {
   const handleInitFormSubmit = useCallback(() => {
     const seed = htob(seedString);
     client.setSeed(seed);
-    localStorage.setItem("seedHex", seedString);
 
     // Trigger password save prompt.
     window.location.replace("/");

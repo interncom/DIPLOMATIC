@@ -35,6 +35,9 @@ if (!regToken) {
   throw "Missing DIPLOMATIC_REG_TOKEN env var"
 }
 
+const args = Deno.args;
+const useHttps = args.includes("--https");
+
 const allowedHeaders = [
   "X-DIPLOMATIC-KEY",
   "X-DIPLOMATIC-SIG",
@@ -142,7 +145,7 @@ const handler = async (request: Request): Promise<Response> => {
 
   if (request.method === "GET" && url.pathname.startsWith("/ops/")) {
     try {
-      // Check user is registerd.
+      // Check user is registered.
       const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
       if (!pubKeyHex) {
         return new Response("Missing pubkey", { status: 401 });
@@ -229,5 +232,13 @@ const handler = async (request: Request): Promise<Response> => {
   return new Response("Not Found", { status: 404 });
 };
 
-console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
-Deno.serve({ port }, corsHandler);
+
+if (useHttps) {
+  const cert = Deno.readTextFileSync("../certs/localhost.pem");
+  const key = Deno.readTextFileSync("../certs/localhost-key.pem");
+  console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on https://localhost:${port}`);
+  Deno.serve({ port, cert, key }, corsHandler);
+} else {
+  console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
+  Deno.serve({ port }, corsHandler);
+}

@@ -24,6 +24,7 @@ export default class DiplomaticClient {
   }
 
   async init() {
+    await this.store.init?.();
     await this.loadSeed();
     await this.loadHost();
     this.listener?.(this.state);

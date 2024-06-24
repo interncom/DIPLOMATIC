@@ -5,8 +5,11 @@ import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts
 import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
 import { IClientStateStore, DiplomaticClientState } from "./types.ts";
 
+export type Applier = (op: IOp) => Promise<void>;
+
 export default class DiplomaticClient {
   store: IClientStateStore;
+  applier: Applier;
 
   listener?: (state: DiplomaticClientState) => void;
 
@@ -16,8 +19,9 @@ export default class DiplomaticClient {
   hostKeyPair?: KeyPair;
   lastFetchedAt?: string;
 
-  constructor(store: IClientStateStore) {
+  constructor(store: IClientStateStore, applier: Applier) {
     this.store = store;
+    this.applier = applier;
     this.init();
   }
 
@@ -82,7 +86,7 @@ export default class DiplomaticClient {
     return "ready";
   }
 
-  async putDelta(delta: IOp<"status">) {
+  async putDelta(delta: IOp) {
     if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
       return [];
     }
@@ -91,7 +95,7 @@ export default class DiplomaticClient {
     await putDelta(this.hostURL, cipherOp, this.hostKeyPair);
   }
 
-  async getDeltas(): Promise<IOp<"status">[]> {
+  async getDeltas(): Promise<IOp[]> {
     if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
       return [];
     }
@@ -99,21 +103,38 @@ export default class DiplomaticClient {
     const pathResp = await getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
     const paths = pathResp.paths;
     this.lastFetchedAt = pathResp.fetchedAt;
-    const deltas: IOp<"status">[] = [];
+    const deltas: IOp[] = [];
     for (const path of paths) {
       const cipher = await getDelta(this.hostURL, path, this.hostKeyPair);
       const deltaPack = decrypt(cipher, this.encKey)
-      const delta = decode(deltaPack) as IOp<"status">;
+      const delta = decode(deltaPack) as IOp;
       deltas.push(delta);
     }
 
     return deltas;
   }
 
-  async processDeltas(apply: (delta: IOp<"status">) => void) {
+  async processDeltas() {
     const deltas = await this.getDeltas();
     for (const delta of deltas) {
-      apply(delta);
+      await this.applier(delta);
+    }
+  }
+
+  async apply(delta: IOp) {
+    // TODO: just enqueue it--doesn't need to be put yet.
+    // NOTE: DIPLOMATIC *must* ensure the delta is queued before locally executing it.
+    // This has the potential to cause lag before UI updates, but the greater evil is to update local state first but fail to queue the delta for sync, causing remote state to never match local.
+    await this.putDelta(delta);
+
+    try {
+      await this.applier(delta);
+
+      // TODO: push delta.
+      // await this.putDelta(delta);
+    } catch {
+      // TODO: if delta fails to apply, delete queued delta.
+      // Therefore, never push deltas until delta application succeeds.
     }
   }
 }

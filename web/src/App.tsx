@@ -4,6 +4,7 @@ import Status from './pages/status';
 import HostConfig from './pages/hostConfig';
 import useClient from './lib/useClient';
 import { localStorageStore } from './lib/localStorageStore';
+import { apply } from './appState';
 
 export interface IStatus {
   status: string;
@@ -11,7 +12,7 @@ export interface IStatus {
 }
 
 export default function App() {
-  const [client, state, resetClient] = useClient(localStorageStore);
+  const [client, state, resetClient] = useClient(localStorageStore, apply);
 
   function handleLogout() {
     localStorage.clear();

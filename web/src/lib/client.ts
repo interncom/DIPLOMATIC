@@ -3,9 +3,7 @@ import type { IOp } from "../../../cli/src/types.ts";
 import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto.ts";
 import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
 import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
-import { IClientStateStore, DiplomaticClientState } from "./types.ts";
-
-export type Applier = (op: IOp) => Promise<void>;
+import { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
 
 export default class DiplomaticClient {
   store: IClientStateStore;

@@ -4,20 +4,14 @@ export enum Verb {
 }
 
 // Body types are application-specific.
-type OpBody = {
-  test: unknown;
-  status: string;
-};
-type OpType = keyof OpBody;
-
 type Timestamp = string
 
-export interface IOp<T extends OpType> {
+export interface IOp {
   ts: Timestamp; // UTC unix timestamp
-  type: T;
+  type: string;
   verb: Verb;
   ver: number; // Version number, application-specific not about the protocol;
-  body: OpBody[T];
+  body: unknown;
 }
 
 export type CipherOp = Uint8Array // encrypted serialized IOp

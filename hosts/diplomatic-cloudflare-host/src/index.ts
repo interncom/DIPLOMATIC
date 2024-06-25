@@ -52,12 +52,16 @@ export default {
       },
 
       async setOp(pubKeyHex: string, path: string, op: Uint8Array) {
-        await env.DIP_DB.prepare("INSERT INTO ops (userPubKey, recordedAt, op) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(pubKeyHex, path, op).run();
+        await env.DIP_DB.prepare("INSERT INTO ops (userPubKey, recordedAt, op, size) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").bind(pubKeyHex, path, op, op.byteLength).run();
       },
 
       async getOp(pubKeyHex: string, path: string) {
-        const row = await env.DIP_DB.prepare("SELECT op FROM ops WHERE userPubKey = ? AND recordedAt = ?").bind(pubKeyHex, path).first<{ op: Uint8Array }>();
-        return row?.op;
+        const row = await env.DIP_DB.prepare("SELECT op, size FROM ops WHERE userPubKey = ? AND recordedAt = ?").bind(pubKeyHex, path).first<{ op: Uint8Array, size: number }>();
+        if (!row) {
+          return undefined;
+        }
+        const op = new Uint8Array(row.op);
+        return op.subarray(0, row.size);
       },
 
       async listOps(pubKeyHex: string, begin: string, end: string) {

@@ -9,5 +9,6 @@ CREATE TABLE IF NOT EXISTS ops (
   userPubKey TEXT,
   recordedAt TEXT,
   op BLOB,
+  size INT,
   PRIMARY KEY (userPubKey, recordedAt)
 );

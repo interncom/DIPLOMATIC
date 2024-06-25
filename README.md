@@ -12,12 +12,15 @@ DIPLOMATIC is a secure sync protocol for single-user distributed applications.
 
 ## Development
 
-`deno vendor src/*.ts tests/* --force` to vendor new deps.
+From `cli` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Client
 
-`deno run --allow-net --allow-read --allow-write src/dbag.ts .state`
+1. `cd client`
+1. `npm run dev`
+
+See also `client/README.md`.
 
 ### Server
 
-`deno run --allow-net src/server.ts`
+`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read hosts/deno-cli/server.ts --https`

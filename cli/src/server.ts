@@ -72,7 +72,7 @@ export class DiplomaticServer {
         }
         // TODO: check pubKey length.
         const pubKeyHex = btoh(req.pubKey);
-        this.storage.users.add(pubKeyHex);
+        await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
       } catch {
         return new Response("Processing request", { status: 500 });
@@ -96,7 +96,7 @@ export class DiplomaticServer {
         if (!pubKeyHex) {
           return new Response("Missing pubkey", { status: 401 });
         }
-        if (!this.storage.users.has(pubKeyHex)) {
+        if (!await this.storage.hasUser(pubKeyHex)) {
           return new Response("Unauthorized", { status: 401 });
         }
 
@@ -114,7 +114,7 @@ export class DiplomaticServer {
 
         const path = opPath(now);
         const fullPath = [pubKeyHex, path].join('/');
-        this.storage.ops.set(fullPath, req.cipher);
+        await this.storage.setOp(fullPath, req.cipher);
 
         return new Response(path, { status: 200 });
       } catch {
@@ -129,7 +129,7 @@ export class DiplomaticServer {
         if (!pubKeyHex) {
           return new Response("Missing pubkey", { status: 401 });
         }
-        if (!this.storage.users.has(pubKeyHex)) {
+        if (!await this.storage.hasUser(pubKeyHex)) {
           return new Response("Unauthorized", { status: 401 });
         }
 
@@ -149,7 +149,7 @@ export class DiplomaticServer {
 
         // Retrieve op.
         const fullPath = [pubKeyHex, path].join('/');
-        const cipher = this.storage.ops.get(fullPath);
+        const cipher = await this.storage.getOp(fullPath);
         if (cipher === undefined) {
           return new Response("Not found", { status: 404 });
         }
@@ -164,12 +164,12 @@ export class DiplomaticServer {
     if (request.method === "GET" && url.pathname.startsWith("/ops")) {
       const now = new Date();
       try {
-        // Check user is registerd.
+        // Check user is registered.
         const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
         if (!pubKeyHex) {
           return new Response("Missing pubkey", { status: 401 });
         }
-        if (!this.storage.users.has(pubKeyHex)) {
+        if (!await this.storage.hasUser(pubKeyHex)) {
           return new Response("Unauthorized", { status: 401 });
         }
 
@@ -189,13 +189,7 @@ export class DiplomaticServer {
         const fetchedAt = now.toISOString();
         const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
         const begin = decodeURIComponent(beginComponent);
-        const userOpPaths: string[] = [];
-        for (const [key, _] of this.storage.ops) {
-          const [pkh, ts] = key.split('/');
-          if (pkh === pubKeyHex && ts >= begin && ts < fetchedAt) {
-            userOpPaths.push(ts);
-          }
-        }
+        const userOpPaths = await this.storage.listOps(pubKeyHex, begin, fetchedAt);
 
         const resp: IGetDeltaPathsResponse = {
           paths: userOpPaths,

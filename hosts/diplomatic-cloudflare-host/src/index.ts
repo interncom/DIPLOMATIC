@@ -11,14 +11,24 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-// Implement IHostCrypto interface
-import type { IHostCrypto } from "../../../shared/types";
+import type { IHostCrypto, IMsgpackCodec } from "../../../shared/types";
+
 const cloudflareCrypto: IHostCrypto = {
   async checkSigEd25519(sig, message, pubKey) {
     const cryptoKey = await crypto.subtle.importKey("raw", pubKey, "ED25519", true, ["verify"]);
     return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
   },
 };
+
+import { decodeAsync, encode, decode } from "@msgpack/msgpack";
+
+const msgpack: IMsgpackCodec = {
+  encode,
+  decode,
+  decodeAsync,
+}
+
+// TODO: impelement IStorage interface on D1 and R2.
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {

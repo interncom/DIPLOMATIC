@@ -1,6 +1,6 @@
 import { DiplomaticServer } from "../../shared/server.ts";
 import memStorage from "../../deno/src/storage/memory.ts";
-import denoMempack from "../../deno/src/codec.ts";
+import denoMsgpack from "../../deno/src/codec.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";
 
 const hostID = Deno.env.get("DIPLOMATIC_HOST_ID");
@@ -19,7 +19,7 @@ if (!regToken) {
 const args = Deno.args;
 const useHttps = args.includes("--https");
 
-const server = new DiplomaticServer(hostID, regToken, memStorage, denoMempack, libsodiumCrypto);
+const server = new DiplomaticServer(hostID, regToken, memStorage, denoMsgpack, libsodiumCrypto);
 
 if (useHttps) {
   const cert = Deno.readTextFileSync("certs/localhost.pem");

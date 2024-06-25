@@ -1,11 +1,11 @@
-import type { ICrypto, IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
+import type { ICrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
 import { btoh } from "./lib.ts";
 
 export default class DiplomaticClient {
   hostURL: URL;
-  codec: IMempackCodec;
+  codec: IMsgpackCodec;
   crypto: ICrypto;
-  constructor(hostURL: URL, codec: IMempackCodec, crypto: ICrypto) {
+  constructor(hostURL: URL, codec: IMsgpackCodec, crypto: ICrypto) {
     this.hostURL = hostURL;
     this.codec = codec;
     this.crypto = crypto;

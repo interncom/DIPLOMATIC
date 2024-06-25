@@ -1,5 +1,4 @@
-import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, IStorage } from "../../shared/types.ts";
+import type { IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "../../shared/types.ts";
 import { btoh, htob } from "../../shared/lib.ts";
 import libsodiumCrypto from "./crypto.ts";
 
@@ -30,10 +29,12 @@ export class DiplomaticServer {
   hostID: string;
   regToken: string;
   storage: IStorage;
-  constructor(hostID: string, regToken: string, storage: IStorage) {
+  codec: IMempackCodec;
+  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMempackCodec) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;
+    this.codec = codec;
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -63,7 +64,7 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await decodeAsync(request.body) as IRegistrationRequest;
+        const req = await this.codec.decodeAsync(request.body) as IRegistrationRequest;
         if (req.token === undefined || req.pubKey === undefined) {
           return new Response("Invalid request", { status: 400 });
         }
@@ -86,7 +87,7 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await decodeAsync(request.body) as IOperationRequest;
+        const req = await this.codec.decodeAsync(request.body) as IOperationRequest;
         if (req.cipher === undefined) {
           return new Response("Invalid request", { status: 400 });
         }
@@ -154,7 +155,7 @@ export class DiplomaticServer {
           return new Response("Not found", { status: 404 });
         }
 
-        const respPack = encode({ cipher });
+        const respPack = this.codec.encode({ cipher });
         return new Response(respPack, { status: 200 });
       } catch {
         return new Response("Processing request", { status: 500 });
@@ -195,7 +196,7 @@ export class DiplomaticServer {
           paths: userOpPaths,
           fetchedAt,
         }
-        const respPack = encode(resp);
+        const respPack = this.codec.encode(resp);
         return new Response(respPack, { status: 200 });
       } catch {
         return new Response("Processing request", { status: 500 });

@@ -4,6 +4,7 @@ import DiplomaticClient from "../src/client.ts";
 import { DiplomaticServer } from "../src/server.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
+import denoMempack from "../src/codec.ts";
 
 // Server config.
 const port = 3331;
@@ -15,7 +16,7 @@ const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(seed, hostID);
 
 Deno.test("server", async (t) => {
-  const server = new DiplomaticServer(hostID, registrationToken, memStorage);
+  const server = new DiplomaticServer(hostID, registrationToken, memStorage, denoMempack);
   const httpServer = Deno.serve({ port }, server.corsHandler);
 
   if (!server) {

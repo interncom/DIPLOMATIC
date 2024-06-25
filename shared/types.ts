@@ -58,3 +58,9 @@ export interface ICrypto {
   signEd25519: (message: Uint8Array | string, secKey: Uint8Array) => Promise<Uint8Array>;
   checkSigEd25519: (sig: Uint8Array, message: Uint8Array | string, pubKey: Uint8Array) => Promise<boolean>;
 }
+
+export interface IMempackCodec {
+  encode: (source: unknown) => Uint8Array;
+  decode: (packed: ArrayBuffer | Uint8Array) => unknown;
+  decodeAsync: (stream: ReadableStream<Uint8Array>) => Promise<unknown>;
+}

@@ -1,5 +1,6 @@
 import { DiplomaticServer } from "../../cli/src/server.ts";
 import memStorage from "../../cli/src/storage/memory.ts";
+import denoMempack from "../../cli/src/codec.ts";
 
 const hostID = Deno.env.get("DIPLOMATIC_HOST_ID");
 const port = Number.parseInt(Deno.env.get("DIPLOMATIC_HOST_PORT"));
@@ -17,7 +18,7 @@ if (!regToken) {
 const args = Deno.args;
 const useHttps = args.includes("--https");
 
-const server = new DiplomaticServer(hostID, regToken, memStorage);
+const server = new DiplomaticServer(hostID, regToken, memStorage, denoMempack);
 
 if (useHttps) {
   const cert = Deno.readTextFileSync("certs/localhost.pem");

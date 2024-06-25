@@ -73,8 +73,7 @@ export async function getDelta(hostURL: string | URL, opPath: string, keyPair: K
   if (resp.cipher === undefined) {
     throw "Missing cipher";
   }
-  // NOTE: resp.cipher was coming back as just an array of ints, hence the explicit cast to Uint8Array.
-  return new Uint8Array(resp.cipher);
+  return resp.cipher;
 }
 
 export async function getDeltaPaths(hostURL: string | URL, begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {

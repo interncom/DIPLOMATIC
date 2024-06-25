@@ -13,6 +13,6 @@ export default function useClient(store: IClientStateStore, applier: Applier): [
   const reset = useCallback(() => {
     setClient(new DiplomaticClient(store, applier));
     setState(initialState);
-  }, []);
+  }, [store, applier]);
   return [client, state, reset];
 }

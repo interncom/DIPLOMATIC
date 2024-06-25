@@ -1,9 +1,8 @@
-import { decode } from "@msgpack/msgpack";
-import type { IOp } from "../../../cli/src/types.ts";
-import { decrypt, deriveEncryptionKey, encrypt, serialize } from "./crypto.ts";
+import { decode, encode } from "@msgpack/msgpack";
+import type { IOp, KeyPair } from "../../../shared/types.ts";
 import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
-import { type KeyPair, deriveAuthKeyPair } from "./auth.ts";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
+import libsodiumCrypto from "./crypto.ts";
 
 export default class DiplomaticClient {
   store: IClientStateStore;
@@ -35,13 +34,13 @@ export default class DiplomaticClient {
     if (seed) {
       // TODO: check validity.
       this.seed = seed;
-      this.encKey = deriveEncryptionKey(seed);
+      this.encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
     }
   }
 
-  setSeed(seed: Uint8Array) {
+  async setSeed(seed: Uint8Array) {
     this.seed = seed;
-    this.encKey = deriveEncryptionKey(seed);
+    this.encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
     this.store.setSeed(seed);
     this.listener?.(this.state);
   }
@@ -56,7 +55,7 @@ export default class DiplomaticClient {
       return;
     }
     this.hostURL = new URL(hostURL);
-    this.hostKeyPair = deriveAuthKeyPair(hostID, this.seed);
+    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
   }
 
   // TODO: dedupe with loadHost.
@@ -66,7 +65,7 @@ export default class DiplomaticClient {
     }
     this.hostURL = new URL(hostURL);
     const hostID = await getHostID(hostURL);
-    this.hostKeyPair = deriveAuthKeyPair(hostID, this.seed);
+    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
     await register(hostURL, this.hostKeyPair.publicKey, "tok123");
 
     await this.store.setHostURL(hostURL);
@@ -89,8 +88,8 @@ export default class DiplomaticClient {
     if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
       return [];
     }
-    const packed = serialize(delta);
-    const cipherOp = encrypt(packed, this.encKey);
+    const packed = encode(delta);
+    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
     await putDelta(this.hostURL, cipherOp, this.hostKeyPair);
   }
 
@@ -105,7 +104,7 @@ export default class DiplomaticClient {
     const deltas: IOp[] = [];
     for (const path of paths) {
       const cipher = await getDelta(this.hostURL, path, this.hostKeyPair);
-      const deltaPack = decrypt(cipher, this.encKey)
+      const deltaPack = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
       const delta = decode(deltaPack) as IOp;
       deltas.push(delta);
     }

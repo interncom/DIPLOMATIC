@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import DiplomaticClient from "../lib/client";
+import type DiplomaticClient from "../lib/client";
 import { usePollingSync } from "../lib/sync";
 import { genOp } from "../ops/status";
 import { useStatus } from "../models/status";
@@ -18,7 +18,7 @@ export default function Status({ client, onLogout }: IProps) {
     client.apply(op)
       .then(refresh);
     evt.preventDefault();
-  }, [statusField]);
+  }, [statusField, client, refresh]);
 
   return (
     <>

@@ -1,7 +1,7 @@
 import { useState, useCallback, type FormEvent } from "react";
 import { btoh, htob } from "../../../shared/lib";
-import { generateSeed } from "../lib/auth";
 import type DiplomaticClient from "../lib/client";
+import libsodiumCrypto from "../lib/crypto";
 
 interface IProps {
   client: DiplomaticClient;
@@ -10,8 +10,8 @@ export default function SeedConfig({ client }: IProps) {
   const [seedString, setSeedString] = useState("");
   const [username, setUsername] = useState("default");
 
-  const genSeed = useCallback(() => {
-    const seed = generateSeed();
+  const genSeed = useCallback(async () => {
+    const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const seedStr = btoh(seed);
     setSeedString(seedStr);
   }, []);

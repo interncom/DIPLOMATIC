@@ -1,7 +1,7 @@
 import { encode, decode } from "@msgpack/msgpack";
 import { btoh } from "../../../shared/lib";
-import type { IRegistrationRequest, IOperationRequest, IGetDeltaPathsResponse } from "../../../cli/src/types";
-import { type KeyPair, sign } from "./auth";
+import type { IRegistrationRequest, IOperationRequest, IGetDeltaPathsResponse, KeyPair } from "../../../shared/types";
+import libsodiumCrypto from "./crypto";
 
 export async function getHostID(hostURL: string | URL): Promise<string> {
   const url = new URL(hostURL)
@@ -35,7 +35,7 @@ export async function putDelta(hostURL: string | URL, cipherOp: Uint8Array, keyP
   };
   const reqPack = encode(req);
 
-  const sig = sign(req.cipher, keyPair);
+  const sig = await libsodiumCrypto.signEd25519(req.cipher, keyPair.privateKey);
   const sigHex = btoh(sig);
   const keyHex = btoh(keyPair.publicKey);
 
@@ -56,7 +56,7 @@ export async function getDelta(hostURL: string | URL, opPath: string, keyPair: K
   const url = new URL(hostURL)
   url.pathname = `/ops/${opPath}`;
 
-  const sig = sign(opPath, keyPair);
+  const sig = await libsodiumCrypto.signEd25519(opPath, keyPair.privateKey);
   const sigHex = btoh(sig);
   const keyHex = btoh(keyPair.publicKey);
   const response = await fetch(url, {
@@ -83,7 +83,7 @@ export async function getDeltaPaths(hostURL: string | URL, begin: Date, keyPair:
   url.pathname = path;
 
   const sigPath = `/ops%3Fbegin=${t}`;
-  const sig = sign(sigPath, keyPair);
+  const sig = await libsodiumCrypto.signEd25519(sigPath, keyPair.privateKey);
   const sigHex = btoh(sig);
   const keyHex = btoh(keyPair.publicKey);
   const response = await fetch(url, {

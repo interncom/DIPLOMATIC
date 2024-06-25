@@ -22,6 +22,6 @@ jobs:
           deno-version: v1.x
 
       - name: Run tests
+        working-directory: deno
         run: |
-          cd cli
           deno test tests --allow-run --allow-net | sed -r "s:\x1B\[[0-9;]*[mK]::g" >> $GITHUB_STEP_SUMMARY

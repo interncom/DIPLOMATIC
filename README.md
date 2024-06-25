@@ -23,4 +23,4 @@ See also `web/README.md`.
 
 ### Server
 
-`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read hosts/deno-cli/server.ts --https`
+`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read hosts/deno/server.ts --https`

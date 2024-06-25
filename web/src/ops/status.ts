@@ -1,4 +1,4 @@
-import { IOp, Verb } from "../../../cli/src/types";
+import { type IOp, Verb } from "../../../shared/types";
 import { load, store } from "../models/status";
 
 interface IStatusOp extends IOp {

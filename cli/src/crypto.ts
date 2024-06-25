@@ -1,9 +1,4 @@
-import { encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import * as sodium from "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js";
-
-export function serialize(data: unknown): Uint8Array {
-  return encode(data);
-}
 
 export function encrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
   const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES) as Uint8Array;

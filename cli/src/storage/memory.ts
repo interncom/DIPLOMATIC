@@ -1,4 +1,4 @@
-import type { IStorage } from "../types.ts";
+import type { IStorage } from "../../../shared/types.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;

@@ -1,5 +1,5 @@
 import { encode, decode } from "@msgpack/msgpack";
-import { btoh } from "../../../cli/src/lib";
+import { btoh } from "../../../shared/lib";
 import type { IRegistrationRequest, IOperationRequest, IGetDeltaPathsResponse } from "../../../cli/src/types";
 import { type KeyPair, sign } from "./auth";
 

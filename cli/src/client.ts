@@ -1,12 +1,13 @@
-import { decode, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, KeyPair } from "../../shared/types.ts";
+import type { IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "../../shared/types.ts";
 import { btoh } from "../../shared/lib.ts";
 import libsodiumCrypto from "./crypto.ts";
 
 export default class DiplomaticClient {
   hostURL: URL;
-  constructor(hostURL: URL) {
+  codec: IMempackCodec;
+  constructor(hostURL: URL, codec: IMempackCodec) {
     this.hostURL = hostURL;
+    this.codec = codec;
   }
 
   async getHostID(): Promise<string> {
@@ -27,7 +28,7 @@ export default class DiplomaticClient {
       token,
       pubKey, // TODO: check for valid pubKey length, server-side.
     };
-    const reqPack = encode(req);
+    const reqPack = this.codec.encode(req);
     const response = await fetch(url, { method: "POST", body: reqPack });
     await response.body?.cancel()
   }
@@ -39,7 +40,7 @@ export default class DiplomaticClient {
     const req: IOperationRequest = {
       cipher: cipherOp,
     };
-    const reqPack = encode(req);
+    const reqPack = this.codec.encode(req);
 
     const sig = await libsodiumCrypto.signEd25519(req.cipher, keyPair.privateKey);
     const sigHex = btoh(sig);
@@ -75,7 +76,7 @@ export default class DiplomaticClient {
       throw "Uh oh";
     }
     const respBuf = await response.arrayBuffer();
-    const resp = decode(respBuf) as { cipher: Uint8Array };
+    const resp = this.codec.decode(respBuf) as { cipher: Uint8Array };
     if (resp.cipher === undefined) {
       throw "Missing cipher";
     }
@@ -102,7 +103,7 @@ export default class DiplomaticClient {
       throw "Uh oh";
     }
     const respBuf = await response.arrayBuffer();
-    const resp = decode(respBuf) as IGetDeltaPathsResponse;
+    const resp = this.codec.decode(respBuf) as IGetDeltaPathsResponse;
     return resp;
   }
 }

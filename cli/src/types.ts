@@ -36,6 +36,9 @@ export interface IGetDeltaPathsResponse {
 }
 
 export interface IStorage {
-  users: Set<string>;
-  ops: Map<string, Uint8Array>;
+  addUser: (pubKeyHex: string) => Promise<void>;
+  hasUser: (pubKeyHex: string) => Promise<boolean>;
+  setOp: (path: string, op: Uint8Array) => Promise<void>;
+  getOp: (path: string) => Promise<Uint8Array | undefined>;
+  listOps: (pubKeyHex: string, begin: string, end: string) => Promise<string[]>;
 }

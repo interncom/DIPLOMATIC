@@ -34,3 +34,8 @@ export interface IGetDeltaPathsResponse {
   paths: string[];
   fetchedAt: string;
 }
+
+export interface IStorage {
+  users: Set<string>;
+  ops: Map<string, Uint8Array>;
+}

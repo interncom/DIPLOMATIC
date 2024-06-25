@@ -2,57 +2,26 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { deriveAuthKeyPair, generateSeed } from "../src/auth.ts";
 import DiplomaticClient from "../src/client.ts";
-
-function extractUrl(str: string): string | null {
-  const urlRegex = /(https?:\/\/[^\s]+)/;
-  const matches = str.match(urlRegex);
-  return matches?.[0] ?? null;
-}
+import { DiplomaticServer } from "../src/server.ts";
+import memStorage from "../src/storage/memory.ts";
 
 // Server config.
+const port = 3331;
 const hostID = "id123";
-const port = "3331";
 const registrationToken = "tok123";
 
 // Client config.
 const seed = generateSeed();
 const keyPair = deriveAuthKeyPair(hostID, seed);
 
-async function startServer(): Promise<{ proc: Deno.Process, url: URL } | undefined> {
-  // NOTE: must run from cli dir.
-  const p = Deno.run({
-    cmd: ["deno", "run", "--allow-env", "--allow-net", "src/server.ts"],
-    env: {
-      DIPLOMATIC_HOST_ID: hostID,
-      DIPLOMATIC_HOST_PORT: port,
-      DIPLOMATIC_REG_TOKEN: registrationToken,
-    },
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  // Wait for the server to print its ready message
-  const reader = p.stdout.readable.getReader();
-  const decoder = new TextDecoder();
-  let output = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    output += decoder.decode(value);
-    const url = extractUrl(output);
-    if (url) {
-      reader.releaseLock();
-      return { proc: p, url: new URL(url) }
-    }
-  }
-}
-
 Deno.test("server", async (t) => {
-  const server = await startServer();
+  const server = new DiplomaticServer(hostID, registrationToken, memStorage);
+  const httpServer = Deno.serve({ port }, server.corsHandler);
+
   if (!server) {
     throw "a fit";
   }
-  const url = server.url;
+  const url = new URL(`http://localhost:${port}`);
 
   const client = new DiplomaticClient(url);
 
@@ -90,7 +59,5 @@ Deno.test("server", async (t) => {
     assertNotEquals(resp.fetchedAt, undefined);
   });
 
-  server.proc.close();
-  server.proc.stdout?.close();
-  server.proc.stderr?.close();
+  await httpServer.shutdown();
 });

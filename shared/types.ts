@@ -38,8 +38,8 @@ export interface IGetDeltaPathsResponse {
 export interface IStorage {
   addUser: (pubKeyHex: string) => Promise<void>;
   hasUser: (pubKeyHex: string) => Promise<boolean>;
-  setOp: (path: string, op: Uint8Array) => Promise<void>;
-  getOp: (path: string) => Promise<Uint8Array | undefined>;
+  setOp: (pubKeyHex: string, path: string, op: Uint8Array) => Promise<void>;
+  getOp: (pubKeyHex: string, path: string) => Promise<Uint8Array | undefined>;
   listOps: (pubKeyHex: string, begin: string, end: string) => Promise<string[]>;
 }
 
@@ -50,7 +50,7 @@ export interface KeyPair {
 }
 
 export interface IHostCrypto {
-  checkSigEd25519: (sig: Uint8Array, message: Uint8Array, pubKey: Uint8Array) => Promise<boolean>;
+  checkSigEd25519: (sig: Uint8Array, message: Uint8Array | string, pubKey: Uint8Array) => Promise<boolean>;
 }
 
 export interface ICrypto extends IHostCrypto {

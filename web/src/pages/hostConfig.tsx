@@ -6,7 +6,7 @@ interface IProps {
 }
 export default function HostConfig({ client }: IProps) {
   // Could make this configurable.
-  const hostURL = "https://localhost:3311";
+  const hostURL = "http://localhost:8787";
 
   const [err, setErr] = useState<Error>();
   const register = useCallback(() => {

@@ -16,12 +16,14 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setOp(path, op) {
-    this.ops.set(path, op);
+  async setOp(pubKeyHex, path, op) {
+    const fullPath = [pubKeyHex, path].join('/');
+    this.ops.set(fullPath, op);
   },
 
-  async getOp(path) {
-    return this.ops.get(path);
+  async getOp(pubKeyHex, path) {
+    const fullPath = [pubKeyHex, path].join('/');
+    return this.ops.get(fullPath);
   },
 
   async listOps(pubKeyHex, begin, end) {

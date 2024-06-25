@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { IStatus } from "../App";
+import type { IStatus } from "../App";
 
 export function store(status: IStatus) {
   localStorage.setItem("status", status.status);

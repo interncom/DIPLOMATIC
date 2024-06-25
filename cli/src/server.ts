@@ -1,7 +1,7 @@
 import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
+import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, IStorage } from "../../shared/types.ts";
 import { checkSig } from "./auth.ts";
-import { btoh, htob } from "./lib.ts";
+import { btoh, htob } from "../../shared/lib.ts";
 
 function opPath(storedAt: Date): string {
   return storedAt.toISOString();

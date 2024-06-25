@@ -1,5 +1,5 @@
-import { useState, useCallback, FormEvent } from "react";
-import { btoh, htob } from "../../../cli/src/lib";
+import { useState, useCallback, type FormEvent } from "react";
+import { btoh, htob } from "../../../shared/lib";
 import { generateSeed } from "../lib/auth";
 import type DiplomaticClient from "../lib/client";
 

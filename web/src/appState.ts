@@ -1,4 +1,4 @@
-import { type IOp } from "../../cli/src/types";
+import type { IOp } from "../../shared/types";
 import * as Status from "./ops/status";
 
 // Applier MUST transactionally ignore deltas upserting entities modified after the delta timestamp.

@@ -1,7 +1,7 @@
 import { decodeAsync, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
 import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, IStorage } from "../../shared/types.ts";
-import { checkSig } from "./auth.ts";
 import { btoh, htob } from "../../shared/lib.ts";
+import libsodiumCrypto from "./crypto.ts";
 
 function opPath(storedAt: Date): string {
   return storedAt.toISOString();
@@ -107,7 +107,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = checkSig(sig, req.cipher, pubKey);
+        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, req.cipher, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -142,7 +142,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = checkSig(sig, path, pubKey);
+        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, path, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -180,7 +180,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = checkSig(sig, url.pathname, pubKey);
+        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, url.pathname, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }

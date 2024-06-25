@@ -1,7 +1,7 @@
 import { type IOp, Verb } from "../../../shared/types";
 import { load, store } from "../models/status";
 
-interface IStatusOp extends IOp {
+export interface IStatusOp extends IOp {
   type: "status";
   ver: 0;
   body: string;

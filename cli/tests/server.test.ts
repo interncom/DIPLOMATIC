@@ -1,9 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { deriveAuthKeyPair, generateSeed } from "../src/auth.ts";
 import DiplomaticClient from "../src/client.ts";
 import { DiplomaticServer } from "../src/server.ts";
 import memStorage from "../src/storage/memory.ts";
+import libsodiumCrypto from "../src/crypto.ts";
 
 // Server config.
 const port = 3331;
@@ -11,8 +11,8 @@ const hostID = "id123";
 const registrationToken = "tok123";
 
 // Client config.
-const seed = generateSeed();
-const keyPair = deriveAuthKeyPair(hostID, seed);
+const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
+const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(seed, hostID);
 
 Deno.test("server", async (t) => {
   const server = new DiplomaticServer(hostID, registrationToken, memStorage);

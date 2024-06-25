@@ -1,7 +1,7 @@
 import { decode, encode } from "https://deno.land/x/msgpack@v1.4/mod.ts";
-import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest } from "../../shared/types.ts";
-import { type KeyPair, sign } from "./auth.ts";
+import type { IGetDeltaPathsResponse, IOperationRequest, IRegistrationRequest, KeyPair } from "../../shared/types.ts";
 import { btoh } from "../../shared/lib.ts";
+import libsodiumCrypto from "./crypto.ts";
 
 export default class DiplomaticClient {
   hostURL: URL;
@@ -41,7 +41,7 @@ export default class DiplomaticClient {
     };
     const reqPack = encode(req);
 
-    const sig = sign(req.cipher, keyPair);
+    const sig = await libsodiumCrypto.signEd25519(req.cipher, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
 
@@ -62,7 +62,7 @@ export default class DiplomaticClient {
     const url = new URL(this.hostURL)
     url.pathname = `/ops/${opPath}`;
 
-    const sig = sign(opPath, keyPair);
+    const sig = await libsodiumCrypto.signEd25519(opPath, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {
@@ -89,7 +89,7 @@ export default class DiplomaticClient {
     url.pathname = path;
 
     const sigPath = `/ops%3Fbegin=${t}`;
-    const sig = sign(sigPath, keyPair);
+    const sig = await libsodiumCrypto.signEd25519(sigPath, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {

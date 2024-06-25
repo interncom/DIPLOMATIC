@@ -24,7 +24,7 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const client = new DiplomaticClient(url);
+  const client = new DiplomaticClient(url, denoMempack);
 
   const cipherOp = new Uint8Array([0xFE, 0xFE]);
 

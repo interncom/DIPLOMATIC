@@ -20,8 +20,8 @@ const useHttps = args.includes("--https");
 const server = new DiplomaticServer(hostID, regToken, memStorage);
 
 if (useHttps) {
-  const cert = Deno.readTextFileSync("../../certs/localhost.pem");
-  const key = Deno.readTextFileSync("../../certs/localhost-key.pem");
+  const cert = Deno.readTextFileSync("certs/localhost.pem");
+  const key = Deno.readTextFileSync("certs/localhost-key.pem");
   console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on https://localhost:${port}`);
   Deno.serve({ port, cert, key }, server.corsHandler);
 } else {

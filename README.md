@@ -12,14 +12,14 @@ DIPLOMATIC is a secure sync protocol for single-user distributed applications.
 
 ## Development
 
-From `cli` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
+From `deno` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Client
 
-1. `cd client`
+1. `cd web`
 1. `npm run dev`
 
-See also `client/README.md`.
+See also `web/README.md`.
 
 ### Server
 

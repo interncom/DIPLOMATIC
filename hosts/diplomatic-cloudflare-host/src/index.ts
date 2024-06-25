@@ -11,8 +11,17 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+// Implement IHostCrypto interface
+import type { IHostCrypto } from "../../../shared/types";
+const cloudflareCrypto: IHostCrypto = {
+  async checkSigEd25519(sig, message, pubKey) {
+    const cryptoKey = await crypto.subtle.importKey("raw", pubKey, "ED25519", true, ["verify"]);
+    return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
+  },
+};
+
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+  async fetch(request, env, ctx): Promise<Response> {
+    return new Response("Hi");
+  },
 } satisfies ExportedHandler<Env>;

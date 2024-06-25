@@ -1,4 +1,4 @@
-import type { ICrypto, IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
+import type { IHostCrypto, IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
@@ -29,8 +29,8 @@ export class DiplomaticServer {
   regToken: string;
   storage: IStorage;
   codec: IMempackCodec;
-  crypto: ICrypto;
-  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMempackCodec, crypto: ICrypto) {
+  crypto: IHostCrypto;
+  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMempackCodec, crypto: IHostCrypto) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;

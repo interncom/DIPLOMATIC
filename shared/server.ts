@@ -76,7 +76,8 @@ export class DiplomaticServer {
         const pubKeyHex = btoh(req.pubKey);
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
-      } catch {
+      } catch (err) {
+        console.error(err);
         return new Response("Processing request", { status: 500 });
       }
     }
@@ -115,8 +116,7 @@ export class DiplomaticServer {
         }
 
         const path = opPath(now);
-        const fullPath = [pubKeyHex, path].join('/');
-        await this.storage.setOp(fullPath, req.cipher);
+        await this.storage.setOp(pubKeyHex, path, req.cipher);
 
         return new Response(path, { status: 200 });
       } catch {
@@ -150,14 +150,13 @@ export class DiplomaticServer {
         }
 
         // Retrieve op.
-        const fullPath = [pubKeyHex, path].join('/');
-        const cipher = await this.storage.getOp(fullPath);
+        const cipher = await this.storage.getOp(pubKeyHex, path);
         if (cipher === undefined) {
           return new Response("Not found", { status: 404 });
         }
 
         const respPack = this.codec.encode({ cipher });
-        return new Response(respPack, { status: 200 });
+        return new Response(respPack, { status: 200, headers: { "Content-Type": "application/octet-stream" } });
       } catch {
         return new Response("Processing request", { status: 500 });
       }
@@ -199,7 +198,8 @@ export class DiplomaticServer {
         }
         const respPack = this.codec.encode(resp);
         return new Response(respPack, { status: 200 });
-      } catch {
+      } catch (err) {
+        console.error(err);
         return new Response("Processing request", { status: 500 });
       }
     }

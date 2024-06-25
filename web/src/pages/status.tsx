@@ -14,10 +14,10 @@ export default function Status({ client, onLogout }: IProps) {
 
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
+    evt.preventDefault();
     const op = genOp(statusField);
     client.apply(op)
       .then(refresh);
-    evt.preventDefault();
   }, [statusField, client, refresh]);
 
   return (

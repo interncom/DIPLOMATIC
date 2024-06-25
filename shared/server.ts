@@ -1,6 +1,5 @@
-import type { IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "../../shared/types.ts";
-import { btoh, htob } from "../../shared/lib.ts";
-import libsodiumCrypto from "./crypto.ts";
+import type { ICrypto, IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
+import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
   return storedAt.toISOString();
@@ -30,11 +29,13 @@ export class DiplomaticServer {
   regToken: string;
   storage: IStorage;
   codec: IMempackCodec;
-  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMempackCodec) {
+  crypto: ICrypto;
+  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMempackCodec, crypto: ICrypto) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;
     this.codec = codec;
+    this.crypto = crypto;
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -108,7 +109,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, req.cipher, pubKey);
+        const sigValid = await this.crypto.checkSigEd25519(sig, req.cipher, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -143,7 +144,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, path, pubKey);
+        const sigValid = await this.crypto.checkSigEd25519(sig, path, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -181,7 +182,7 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = await libsodiumCrypto.checkSigEd25519(sig, url.pathname, pubKey);
+        const sigValid = await this.crypto.checkSigEd25519(sig, url.pathname, pubKey);
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }

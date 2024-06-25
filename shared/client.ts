@@ -1,13 +1,14 @@
-import type { IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "../../shared/types.ts";
-import { btoh } from "../../shared/lib.ts";
-import libsodiumCrypto from "./crypto.ts";
+import type { ICrypto, IGetDeltaPathsResponse, IMempackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
+import { btoh } from "./lib.ts";
 
 export default class DiplomaticClient {
   hostURL: URL;
   codec: IMempackCodec;
-  constructor(hostURL: URL, codec: IMempackCodec) {
+  crypto: ICrypto;
+  constructor(hostURL: URL, codec: IMempackCodec, crypto: ICrypto) {
     this.hostURL = hostURL;
     this.codec = codec;
+    this.crypto = crypto;
   }
 
   async getHostID(): Promise<string> {
@@ -42,7 +43,7 @@ export default class DiplomaticClient {
     };
     const reqPack = this.codec.encode(req);
 
-    const sig = await libsodiumCrypto.signEd25519(req.cipher, keyPair.privateKey);
+    const sig = await this.crypto.signEd25519(req.cipher, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
 
@@ -63,7 +64,7 @@ export default class DiplomaticClient {
     const url = new URL(this.hostURL)
     url.pathname = `/ops/${opPath}`;
 
-    const sig = await libsodiumCrypto.signEd25519(opPath, keyPair.privateKey);
+    const sig = await this.crypto.signEd25519(opPath, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {
@@ -90,7 +91,7 @@ export default class DiplomaticClient {
     url.pathname = path;
 
     const sigPath = `/ops%3Fbegin=${t}`;
-    const sig = await libsodiumCrypto.signEd25519(sigPath, keyPair.privateKey);
+    const sig = await this.crypto.signEd25519(sigPath, keyPair.privateKey);
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {

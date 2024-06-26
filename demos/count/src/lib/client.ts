@@ -39,12 +39,15 @@ export default class DiplomaticClient {
       const bytes = typeof params.seed === "string" ? htob(params.seed) : params.seed;
       await this.store.setSeed(bytes);
     }
+    await this.loadSeed();
     if (params.hostID && params.hostURL) {
       await this.store.setHostID(params.hostID);
       await this.store.setHostURL(params.hostURL);
+    } else if (params.hostURL) {
+      await this.register(params.hostURL);
+    } else {
+      await this.loadHost();
     }
-    await this.loadSeed();
-    await this.loadHost();
     this.listener?.(this.state);
   }
 

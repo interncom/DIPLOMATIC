@@ -5,11 +5,12 @@ import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.
 import libsodiumCrypto from "./crypto.ts";
 import type { StateManager } from "./state.ts";
 import { genUpsertOp } from "./ops.ts";
+import { htob } from "../../../../shared/lib.ts";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
   stateManager: StateManager;
-  seed?: Uint8Array;
+  seed?: string | Uint8Array;
   hostURL?: URL;
   hostID?: string;
 }
@@ -35,7 +36,8 @@ export default class DiplomaticClient {
   async init(params: IDiplomaticClientParams) {
     await this.store.init?.();
     if (params.seed) {
-      await this.store.setSeed(params.seed);
+      const bytes = typeof params.seed === "string" ? htob(params.seed) : params.seed;
+      await this.store.setSeed(bytes);
     }
     if (params.hostID && params.hostURL) {
       await this.store.setHostID(params.hostID);

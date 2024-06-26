@@ -1,5 +1,5 @@
 import { decode, encode } from "@msgpack/msgpack";
-import type { IOp, KeyPair } from "../../../shared/types.ts";
+import type { IOp, KeyPair } from "../../../../shared/types.ts";
 import webClientAPI from "./api.ts";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
 import libsodiumCrypto from "./crypto.ts";

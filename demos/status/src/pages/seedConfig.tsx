@@ -1,5 +1,5 @@
 import { useState, useCallback, type FormEvent } from "react";
-import { btoh, htob } from "../../../shared/lib";
+import { btoh, htob } from "../../../../shared/lib";
 import type DiplomaticClient from "../lib/client";
 import libsodiumCrypto from "../lib/crypto";
 

@@ -6,7 +6,8 @@ interface IProps {
 }
 export default function HostConfig({ client }: IProps) {
   // Could make this configurable.
-  const hostURL = "http://localhost:8787";
+  // const hostURL = "http://localhost:8787";
+  const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
 
   const [err, setErr] = useState<Error>();
   const register = useCallback(() => {

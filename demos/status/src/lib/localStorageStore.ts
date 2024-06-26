@@ -1,4 +1,4 @@
-import { htob, btoh } from "../../../shared/lib";
+import { htob, btoh } from "../../../../shared/lib";
 import type { IClientStateStore } from "./types";
 
 const seedKey = "seedHex";

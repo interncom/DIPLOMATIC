@@ -1,4 +1,4 @@
-import type { IOp } from "../../shared/types";
+import type { IOp } from "../../../shared/types";
 import * as Status from "./ops/status";
 import type { IStatusOp } from "./ops/status";
 

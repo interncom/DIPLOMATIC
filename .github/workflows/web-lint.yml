@@ -23,8 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        working-directory: web
+        working-directory: demos/status
 
       - name: Run lint
         run: npm run lint
-        working-directory: web
+        working-directory: demos/status

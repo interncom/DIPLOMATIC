@@ -1,5 +1,6 @@
 import type { ICrypto, KeyPair } from "../types.ts";
 
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 type Libsodium = any;
 export class LibsodiumCrypto implements ICrypto {
   sodium: Libsodium;
@@ -71,5 +72,11 @@ export class LibsodiumCrypto implements ICrypto {
     // Separate the sig for easier interop with other implementations, e.g. Noble or WebCrypto.
     const valid = this.sodium.crypto_sign_verify_detached(sig, message, pubKey);
     return valid;
+  }
+
+  async sha256Hash(data: Uint8Array): Promise<Uint8Array> {
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    const arr = new Uint8Array(buf);
+    return arr;
   }
 }

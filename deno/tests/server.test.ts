@@ -1,10 +1,10 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import DiplomaticClient from "../../shared/client.ts";
 import { DiplomaticServer } from "../../shared/server.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
+import DiplomaticClientAPI from "../../shared/client.ts";
 
 // Server config.
 const port = 3331;
@@ -24,37 +24,37 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const client = new DiplomaticClient(url, denoMsgpack, libsodiumCrypto);
+  const client = new DiplomaticClientAPI(denoMsgpack, libsodiumCrypto);
 
   const cipherOp = new Uint8Array([0xFE, 0xFE]);
 
   await t.step("GET /id", async () => {
-    const id = await client.getHostID();
+    const id = await client.getHostID(url);
     assertEquals(id, hostID);
   });
 
   const pubKey = keyPair.publicKey;
 
   await t.step("POST /users", async () => {
-    await client.register(pubKey, registrationToken);
+    await client.register(url, pubKey, registrationToken);
   });
 
   let opPath: string;
 
   await t.step("POST /ops", async () => {
-    opPath = await client.putDelta(cipherOp, keyPair);
+    opPath = await client.putDelta(url, cipherOp, keyPair);
     assertNotEquals(opPath.length, 0);
   });
 
   await t.step("GET /ops/:path", async () => {
-    const respCipher = await client.getDelta(opPath, keyPair);
+    const respCipher = await client.getDelta(url, opPath, keyPair);
     assertEquals(respCipher, cipherOp);
   });
 
   await t.step("GET /ops?begin=", async () => {
     // Fetch ops in open-ended range.
     const t0 = new Date(0);
-    const resp = await client.getDeltaPaths(t0, keyPair);
+    const resp = await client.getDeltaPaths(url, t0, keyPair);
     assertEquals(resp.paths.length, 1);
     assertEquals(resp.paths[0], opPath);
     assertNotEquals(resp.fetchedAt, undefined);

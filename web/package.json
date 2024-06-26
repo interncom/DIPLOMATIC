@@ -1,0 +1,20 @@
+{
+  "name": "diplomatic",
+  "version": "0.0.0",
+  "description": "Secure sync layer",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "author": "The Internet Committee",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "typescript": "^5.5.2"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.0.0-beta2",
+    "react": "^18.3.1"
+  }
+}

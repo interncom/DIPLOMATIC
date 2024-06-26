@@ -1,9 +1,8 @@
 import './App.css'
-import useClient from './lib/useClient'
-import { StateManager, useStateWatcher } from './lib/state'
+import { useClient, StateManager, useStateWatcher } from 'diplomatic'
 
 const appState = { count: 0 };
-const stateMgr = new StateManager((op) => {
+const stateMgr = new StateManager(async (op) => {
   if (op.type === "count" && typeof op.body === "number") {
     appState.count = op.body;
   }

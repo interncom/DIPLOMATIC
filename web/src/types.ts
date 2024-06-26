@@ -1,4 +1,4 @@
-import type { IOp } from "../../../../shared/types";
+import type { IOp } from "./shared/types";
 
 export interface IClientStateStore {
   init?: () => Promise<void>;

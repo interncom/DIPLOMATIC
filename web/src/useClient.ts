@@ -5,7 +5,7 @@ import { usePollingSync } from "./sync";
 import { localStorageStore } from "./localStorageStore";
 
 const initialState: DiplomaticClientState = "loading";
-interface IClientHookParams extends IDiplomaticClientParams {
+interface IClientHookParams extends Omit<IDiplomaticClientParams, "store"> {
   refreshInterval?: number;
   store?: IClientStateStore;
 }
@@ -17,7 +17,7 @@ export default function useClient(params: IClientHookParams): [DiplomaticClient,
     client.listener = setState;
   }, [client]);
   const reset = useCallback(() => {
-    setClient(new DiplomaticClient(params));
+    setClient(new DiplomaticClient({ store: localStorageStore, ...params }));
     setState(initialState);
   }, [params]);
   usePollingSync(client, params.refreshInterval ?? 1000)

@@ -1,17 +1,17 @@
 import { decode, encode } from "@msgpack/msgpack";
-import type { IOp, KeyPair } from "../../../../shared/types.ts";
-import webClientAPI from "./api.ts";
-import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
-import libsodiumCrypto from "./crypto.ts";
-import type { StateManager } from "./state.ts";
-import { genUpsertOp } from "./ops.ts";
-import { htob } from "../../../../shared/lib.ts";
+import type { IOp, KeyPair } from "./shared/types";
+import { htob } from "./shared/lib";
+import webClientAPI from "./api";
+import type { IClientStateStore, DiplomaticClientState, Applier } from "./types";
+import libsodiumCrypto from "./crypto";
+import type { StateManager } from "./state";
+import { genUpsertOp } from "./ops";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
   stateManager: StateManager;
   seed?: string | Uint8Array;
-  hostURL?: URL;
+  hostURL?: string;
   hostID?: string;
 }
 
@@ -120,13 +120,14 @@ export default class DiplomaticClient {
       return [];
     }
     const begin = new Date(this.lastFetchedAt ?? 0);
-    const pathResp = await webClientAPI.getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
+    const { hostURL, hostKeyPair, encKey } = this;
+    const pathResp = await webClientAPI.getDeltaPaths(hostURL, begin, hostKeyPair);
     const paths = pathResp.paths;
     this.lastFetchedAt = pathResp.fetchedAt;
     // console.time("getting")
     const deltas = await Promise.all(paths.map(async (path) => {
-      const cipher = await webClientAPI.getDelta(this.hostURL, path, this.hostKeyPair);
-      const deltaPack = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
+      const cipher = await webClientAPI.getDelta(hostURL, path, hostKeyPair);
+      const deltaPack = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
       const delta = decode(deltaPack) as IOp;
       return delta;
     }))
@@ -155,11 +156,15 @@ export default class DiplomaticClient {
 
   async pushQueuedOps() {
     for (const sha256 of await this.store.listUploadQueue()) {
-      await this.pushQueuedOp(sha256);
+      const bytes = htob(sha256);
+      await this.pushQueuedOp(bytes);
     }
   }
 
   async apply(op: IOp) {
+    if (!this.encKey) {
+      throw "No encryption key";
+    }
     // NOTE: DIPLOMATIC *must* ensure the delta is queued before locally executing it.
     // This has the potential to cause lag before UI updates, but the greater evil is to update local state first but fail to queue the delta for sync, causing remote state to never match local.
     const packed = encode(op);

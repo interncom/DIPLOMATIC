@@ -1,5 +1,5 @@
 import './App.css'
-import { useClient, StateManager, useStateWatcher } from 'diplomatic'
+import { useClient, StateManager, useStateWatcher } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
 const stateMgr = new StateManager(async (op) => {

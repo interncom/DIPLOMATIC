@@ -1,6 +1,5 @@
 import './App.css'
 import useClient from './lib/useClient'
-import { htob } from '../../../shared/lib'
 import { StateManager, useStateWatcher } from './lib/state'
 
 const appState = { count: 0 };
@@ -12,7 +11,7 @@ const stateMgr = new StateManager((op) => {
 
 export default function App() {
   const [client] = useClient({
-    seed: htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"),
+    seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
     hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
     hostID: "cfhost",
     refreshInterval: 1000,

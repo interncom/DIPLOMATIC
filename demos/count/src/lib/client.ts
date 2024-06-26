@@ -3,10 +3,12 @@ import type { IOp, KeyPair } from "../../../../shared/types.ts";
 import webClientAPI from "./api.ts";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
 import libsodiumCrypto from "./crypto.ts";
+import type { StateManager } from "./state.ts";
+import { genUpsertOp } from "./ops.ts";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
-  applier: Applier;
+  stateManager: StateManager;
   seed?: Uint8Array;
   hostURL?: URL;
   hostID?: string;
@@ -26,7 +28,7 @@ export default class DiplomaticClient {
 
   constructor(params: IDiplomaticClientParams) {
     this.store = params.store;
-    this.applier = params.applier;
+    this.applier = params.stateManager.apply;
     this.init(params);
   }
 
@@ -99,9 +101,9 @@ export default class DiplomaticClient {
     return "ready";
   }
 
-  async putDelta(delta: IOp) {
+  private async putDelta(delta: IOp) {
     if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
-      return [];
+      return;
     }
     const packed = encode(delta);
     const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
@@ -116,13 +118,14 @@ export default class DiplomaticClient {
     const pathResp = await webClientAPI.getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
     const paths = pathResp.paths;
     this.lastFetchedAt = pathResp.fetchedAt;
-    const deltas: IOp[] = [];
-    for (const path of paths) {
+    // console.time("getting")
+    const deltas = await Promise.all(paths.map(async (path) => {
       const cipher = await webClientAPI.getDelta(this.hostURL, path, this.hostKeyPair);
       const deltaPack = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
       const delta = decode(deltaPack) as IOp;
-      deltas.push(delta);
-    }
+      return delta;
+    }))
+    // console.timeEnd("getting")
 
     return deltas;
   }
@@ -134,20 +137,44 @@ export default class DiplomaticClient {
     }
   }
 
-  async apply(delta: IOp) {
-    // TODO: just enqueue it--doesn't need to be put yet.
+  private async pushQueuedOp(sha256: Uint8Array) {
+    if (!this.hostURL || !this.hostKeyPair) {
+      return;
+    }
+    const cipherOp = await this.store.peekUpload(sha256);
+    if (cipherOp) {
+      await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
+    }
+    await this.store.dequeueUpload(sha256);
+  }
+
+  async pushQueuedOps() {
+    for (const sha256 of await this.store.listUploadQueue()) {
+      await this.pushQueuedOp(sha256);
+    }
+  }
+
+  async apply(op: IOp) {
     // NOTE: DIPLOMATIC *must* ensure the delta is queued before locally executing it.
     // This has the potential to cause lag before UI updates, but the greater evil is to update local state first but fail to queue the delta for sync, causing remote state to never match local.
-    await this.putDelta(delta);
+    const packed = encode(op);
+    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
+    const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
+    await this.store.enqueueUpload(sha256, cipherOp);
 
     try {
-      await this.applier(delta);
-
-      // TODO: push delta.
-      // await this.putDelta(delta);
+      await this.applier(op);
     } catch {
-      // TODO: if delta fails to apply, delete queued delta.
-      // Therefore, never push deltas until delta application succeeds.
+      // If op can't be applied locally, don't burden anyone else with it.
+      await this.store.dequeueUpload(sha256);
     }
+
+    await this.pushQueuedOp(sha256);
+    // If this fails, it will remain in the queue to be retried later.
+  }
+
+  async upsert<T>(type: string, body: T, version = 0) {
+    const op = genUpsertOp<T>(type, body, version);
+    return this.apply(op);
   }
 }

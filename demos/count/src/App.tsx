@@ -1,40 +1,31 @@
-import { useState, useCallback } from 'react'
 import './App.css'
 import useClient from './lib/useClient'
-import { localStorageStore } from './lib/localStorageStore'
-import { type IOp, Verb } from '../../../shared/types'
 import { htob } from '../../../shared/lib'
+import { StateManager, useStateWatcher } from './lib/state'
+
+const appState = { count: 0 };
+const stateMgr = new StateManager((op) => {
+  if (op.type === "count" && typeof op.body === "number") {
+    appState.count = op.body;
+  }
+})
 
 export default function App() {
-  const [count, setCount] = useState(0);
-  const applier = useCallback((op: IOp) => {
-    if (op.type === "count" && typeof op.body === "number") {
-      setCount(op.body)
-    }
-  }, [])
   const [client] = useClient({
-    store: localStorageStore,
-    applier,
     seed: htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"),
     hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
     hostID: "cfhost",
-    refreshInterval: 100,
+    refreshInterval: 1000,
+    stateManager: stateMgr,
   })
-  const countUp = useCallback(() => {
-    client.apply({
-      ts: new Date().toISOString(),
-      type: "count",
-      verb: Verb.UPSERT,
-      ver: 0,
-      body: count + 1,
-    })
-  }, [client, count])
+  const count = useStateWatcher(stateMgr, "count", () => appState.count)
+  const inc = () => client.upsert("count", count + 1)
 
   return (
     <>
       <h1>COUNT</h1>
       <h2>{count}</h2>
-      <button type="button" onClick={countUp}>+1</button>
+      <button type="button" onClick={inc}>+1</button>
     </>
   )
 }

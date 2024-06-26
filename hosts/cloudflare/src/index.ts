@@ -25,6 +25,12 @@ const cloudflareCrypto: IHostCrypto = {
     }
     return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
   },
+
+  async sha256Hash(data) {
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    const arr = new Uint8Array(buf);
+    return arr;
+  },
 };
 
 const msgpack: IMsgpackCodec = {

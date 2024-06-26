@@ -5,6 +5,9 @@
   "description": "Secure sync layer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "tsc": "tsc",
     "build": "node esbuild.mjs"

@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "diplomatic": "file:../../web",
+    "@interncom/diplomatic": "file:../../web",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

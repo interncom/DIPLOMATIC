@@ -13,7 +13,6 @@ export default function App() {
   const [client] = useClient({
     seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
     hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-    refreshInterval: 1000,
     stateManager: stateMgr,
   })
   const count = useStateWatcher(stateMgr, "count", () => appState.count)

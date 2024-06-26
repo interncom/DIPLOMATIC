@@ -20,6 +20,6 @@ export default function useClient(params: IClientHookParams): [DiplomaticClient,
     setClient(new DiplomaticClient(params));
     setState(initialState);
   }, [params]);
-  usePollingSync(client, params.refreshInterval ?? -1)
+  usePollingSync(client, params.refreshInterval ?? 1000)
   return [client, state, reset];
 }

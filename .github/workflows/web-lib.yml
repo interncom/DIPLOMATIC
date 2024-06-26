@@ -1,4 +1,4 @@
-name: Lint Web App
+name: Build Web Library
 
 on:
   push:
@@ -23,8 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        working-directory: demos/count
+        working-directory: web
 
-      - name: Run lint
-        run: npm run lint
-        working-directory: demos/count
+      - name: Run build
+        run: npm run build
+        working-directory: web

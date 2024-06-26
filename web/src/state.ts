@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { EventEmitter } from "./eventEmitter";
 import type { Applier } from "./types";
+import type { IOp } from "./shared/types";
 
 export class StateManager {
   emitter: EventEmitter = new EventEmitter();

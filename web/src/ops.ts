@@ -1,4 +1,4 @@
-import { type IOp, Verb } from '../../../../shared/types'
+import { type IOp, Verb } from './shared/types'
 
 export function genUpsertOp<T>(type: string, body: T, version = 0): IOp {
   return {

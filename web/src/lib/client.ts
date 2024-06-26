@@ -1,6 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 import type { IOp, KeyPair } from "../../../shared/types.ts";
-import { getHostID, register, putDelta, getDeltaPaths, getDelta } from "./api.ts";
+import webClientAPI from "./api.ts";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types.ts";
 import libsodiumCrypto from "./crypto.ts";
 
@@ -64,9 +64,9 @@ export default class DiplomaticClient {
       return;
     }
     this.hostURL = new URL(hostURL);
-    const hostID = await getHostID(hostURL);
+    const hostID = await webClientAPI.getHostID(this.hostURL);
     this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
-    await register(hostURL, this.hostKeyPair.publicKey, "tok123");
+    await webClientAPI.register(this.hostURL, this.hostKeyPair.publicKey, "tok123");
 
     await this.store.setHostURL(hostURL);
     await this.store.setHostID(hostID);
@@ -90,7 +90,7 @@ export default class DiplomaticClient {
     }
     const packed = encode(delta);
     const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
-    await putDelta(this.hostURL, cipherOp, this.hostKeyPair);
+    await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
   }
 
   async getDeltas(): Promise<IOp[]> {
@@ -98,12 +98,12 @@ export default class DiplomaticClient {
       return [];
     }
     const begin = new Date(this.lastFetchedAt ?? 0);
-    const pathResp = await getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
+    const pathResp = await webClientAPI.getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
     const paths = pathResp.paths;
     this.lastFetchedAt = pathResp.fetchedAt;
     const deltas: IOp[] = [];
     for (const path of paths) {
-      const cipher = await getDelta(this.hostURL, path, this.hostKeyPair);
+      const cipher = await webClientAPI.getDelta(this.hostURL, path, this.hostKeyPair);
       const deltaPack = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
       const delta = decode(deltaPack) as IOp;
       deltas.push(delta);

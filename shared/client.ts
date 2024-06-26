@@ -1,18 +1,16 @@
 import type { ICrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
 import { btoh } from "./lib.ts";
 
-export default class DiplomaticClient {
-  hostURL: URL;
+export default class DiplomaticClientAPI {
   codec: IMsgpackCodec;
   crypto: ICrypto;
-  constructor(hostURL: URL, codec: IMsgpackCodec, crypto: ICrypto) {
-    this.hostURL = hostURL;
+  constructor(codec: IMsgpackCodec, crypto: ICrypto) {
     this.codec = codec;
     this.crypto = crypto;
   }
 
-  async getHostID(): Promise<string> {
-    const url = new URL(this.hostURL)
+  async getHostID(hostURL: URL): Promise<string> {
+    const url = new URL(hostURL)
     url.pathname = "/id";
     const response = await fetch(url, { method: "GET" });
     if (!response.ok) {
@@ -22,8 +20,8 @@ export default class DiplomaticClient {
     return id;
   }
 
-  async register(pubKey: Uint8Array, token: string): Promise<void> {
-    const url = new URL(this.hostURL)
+  async register(hostURL: URL, pubKey: Uint8Array, token: string): Promise<void> {
+    const url = new URL(hostURL)
     url.pathname = "/users";
     const req: IRegistrationRequest = {
       token,
@@ -34,8 +32,8 @@ export default class DiplomaticClient {
     await response.body?.cancel()
   }
 
-  async putDelta(cipherOp: Uint8Array, keyPair: KeyPair): Promise<string> {
-    const url = new URL(this.hostURL)
+  async putDelta(hostURL: URL, cipherOp: Uint8Array, keyPair: KeyPair): Promise<string> {
+    const url = new URL(hostURL)
     url.pathname = "/ops";
 
     const req: IOperationRequest = {
@@ -60,8 +58,8 @@ export default class DiplomaticClient {
     return opPath;
   }
 
-  async getDelta(opPath: string, keyPair: KeyPair): Promise<Uint8Array> {
-    const url = new URL(this.hostURL)
+  async getDelta(hostURL: URL, opPath: string, keyPair: KeyPair): Promise<Uint8Array> {
+    const url = new URL(hostURL)
     url.pathname = `/ops/${opPath}`;
 
     const sig = await this.crypto.signEd25519(opPath, keyPair.privateKey);
@@ -84,10 +82,10 @@ export default class DiplomaticClient {
     return resp.cipher;
   }
 
-  async getDeltaPaths(begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {
+  async getDeltaPaths(hostURL: URL, begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {
     const t = begin.toISOString();
     const path = `/ops?begin=${t}`;
-    const url = new URL(this.hostURL)
+    const url = new URL(hostURL)
     url.pathname = path;
 
     const sigPath = `/ops%3Fbegin=${t}`;

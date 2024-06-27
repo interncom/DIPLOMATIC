@@ -1,4 +1,3 @@
-import './App.css'
 import { useClient, StateManager, useStateWatcher } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
@@ -18,10 +17,10 @@ export default function App() {
   const inc = () => client.upsert("count", count + 1)
 
   return (
-    <>
+    <div style={{ width: "100vw", textAlign: "center" }}>
       <h1>COUNT</h1>
       <h2>{count}</h2>
       <button type="button" onClick={inc}>+1</button>
-    </>
+    </div>
   )
 }

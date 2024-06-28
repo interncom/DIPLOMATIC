@@ -1,6 +1,6 @@
 {
   "ts": "2024-06-28T02:30:03.971Z",
-  "verb": "UPSERT",
+  "verb": 1,
   "ver": 0,
   "type": "count",
   "body": 42

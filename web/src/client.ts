@@ -5,7 +5,7 @@ import webClientAPI from "./api";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types";
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
-import { genUpsertOp } from "./ops";
+import { genUpsertOp } from "./shared/ops";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;

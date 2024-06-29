@@ -1,4 +1,4 @@
-import type { IHostCrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
+import type { IHostCrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage, IWebsocketNotifier } from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
@@ -30,55 +30,19 @@ export class DiplomaticServer {
   storage: IStorage;
   codec: IMsgpackCodec;
   crypto: IHostCrypto;
-  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMsgpackCodec, crypto: IHostCrypto) {
+  notifier: IWebsocketNotifier;
+  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMsgpackCodec, crypto: IHostCrypto, notifier: IWebsocketNotifier) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;
     this.codec = codec;
     this.crypto = crypto;
-  }
-
-  sockets: Map<string, Set<WebSocket>> = new Map(); // pubKeyHex => sockets.
-  websocketHandler = async (request: Request): Promise<Response> => {
-    const url = new URL(request.url);
-    const pubKeyHex = url.searchParams.get("key");
-    if (!pubKeyHex) {
-      return new Response("Missing pubkey", { status: 401 });
-    }
-    if (!await this.storage.hasUser(pubKeyHex)) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    console.log("WebSocket connection established");
-    const { socket, response } = Deno.upgradeWebSocket(request);
-    if (!this.sockets.has(pubKeyHex)) {
-      this.sockets.set(pubKeyHex, new Set());
-    }
-
-    // NEXT:
-    // 1. store reference to this socket on the server,
-    // 2. send message down this socket when new op push comes through
-    // 3. Refactor so the websocket implementation can be plugged in
-    // 4. Support cloudflare durable objects/workers websockets
-    socket.onopen = () => {
-      console.log("CONNECTED");
-      this.sockets.get(pubKeyHex)?.add(socket);
-    };
-    socket.onmessage = (event) => {
-      console.log(`RECEIVED: ${event.data}`);
-    };
-    socket.onclose = () => {
-      console.log("DISCONNECTED")
-      this.sockets.get(pubKeyHex)?.delete(socket);
-    };
-    socket.onerror = (error) => console.error("ERROR:", error);
-
-    return response;
+    this.notifier = notifier;
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
-      return this.websocketHandler(request);
+      return this.notifier.handler(request, this.storage.hasUser.bind(this.storage));
     }
 
     if (request.method === "OPTIONS") {
@@ -161,12 +125,7 @@ export class DiplomaticServer {
         await this.storage.setOp(pubKeyHex, path, req.cipher);
 
         // Notify listeners.
-        const listeners = this.sockets.get(pubKeyHex);
-        if (listeners) {
-          for (const socket of listeners) {
-            socket.send("NEW OP");
-          }
-        }
+        this.notifier.notify(pubKeyHex);
 
         return new Response(path, { status: 200 });
       } catch (err) {

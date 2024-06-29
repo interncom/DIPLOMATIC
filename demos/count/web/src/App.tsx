@@ -9,8 +9,9 @@ const stateMgr = new StateManager(async (op) => {
 
 const client = new DiplomaticClient({
   seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-  // hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-  hostURL: "http://localhost:3311",
+  hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
+  // hostURL: "http://localhost:3311",
+  // hostURL: "http://localhost:8787",
   stateManager: stateMgr,
   store: localStorageStore,
 });

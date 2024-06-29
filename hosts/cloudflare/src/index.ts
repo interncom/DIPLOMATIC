@@ -11,9 +11,10 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import type { IHostCrypto, IMsgpackCodec, IStorage } from "../../../shared/types";
+import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier } from "../../../shared/types";
 import { DiplomaticServer } from "../../../shared/server";
 import { decodeAsync, encode, decode } from "@msgpack/msgpack";
+import { DurableObject } from "cloudflare:workers";
 
 const cloudflareCrypto: IHostCrypto = {
   async checkSigEd25519(sig, message, pubKey) {
@@ -39,11 +40,34 @@ const msgpack: IMsgpackCodec = {
   decodeAsync,
 }
 
+export class WebSocketServer extends DurableObject {
+  async fetch(request: Request): Promise<Response> {
+    console.info("websocket", request);
+    const webSocketPair = new WebSocketPair();
+    const [client, server] = Object.values(webSocketPair);
+
+    this.ctx.acceptWebSocket(server);
+
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+    });
+  }
+
+  async notify() {
+    const sockets = this.ctx.getWebSockets();
+    for (const socket of sockets) {
+      socket.send("NEW OP");
+    }
+  }
+}
+
 const hostID = "cfhost";
 const regToken = "tok123";
 
 interface Env {
   DIP_DB: D1Database;
+  WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServer>;
 }
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -76,7 +100,36 @@ export default {
       },
     }
 
-    const server = new DiplomaticServer(hostID, regToken, d1Storage, msgpack, cloudflareCrypto);
+    const notifier: IWebsocketNotifier = {
+      handler: async (request, hasUser) => {
+        const url = new URL(request.url);
+        const pubKeyHex = url.searchParams.get("key");
+        if (!pubKeyHex) {
+          return new Response("Missing pubkey", { status: 401 });
+        }
+        if (!await hasUser(pubKeyHex)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
+        const stub = env.WEBSOCKET_SERVER.get(id);
+        const resp = await stub.fetch(request);
+        return resp;
+      },
+      notify: async (pubKeyHex) => {
+        const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
+        const stub = env.WEBSOCKET_SERVER.get(id);
+        stub.notify();
+      },
+    }
+
+    const server = new DiplomaticServer(
+      hostID,
+      regToken,
+      d1Storage,
+      msgpack,
+      cloudflareCrypto,
+      notifier,
+    );
 
     return server.corsHandler(request);
   },

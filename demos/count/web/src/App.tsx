@@ -1,4 +1,4 @@
-import { useClient, StateManager, useStateWatcher } from '@interncom/diplomatic'
+import { StateManager, useStateWatcher, localStorageStore, DiplomaticClient } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
 const stateMgr = new StateManager(async (op) => {
@@ -7,12 +7,16 @@ const stateMgr = new StateManager(async (op) => {
   }
 })
 
+const client = new DiplomaticClient({
+  seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+  hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
+  // hostURL: "http://localhost:3311",
+  // hostURL: "http://localhost:8787",
+  stateManager: stateMgr,
+  store: localStorageStore,
+});
+
 export default function App() {
-  const [client] = useClient({
-    seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-    hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-    stateManager: stateMgr,
-  })
   const count = useStateWatcher(stateMgr, "count", () => appState.count)
   const inc = () => client.upsert("count", count + 1)
 

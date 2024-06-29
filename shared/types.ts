@@ -68,3 +68,8 @@ export interface IMsgpackCodec {
   decode: (packed: ArrayBuffer | Uint8Array) => unknown;
   decodeAsync: (stream: ReadableStream<Uint8Array>) => Promise<unknown>;
 }
+
+export interface IWebsocketNotifier {
+  handler: (request: Request, hasUser: (pubKeyHex: string) => Promise<boolean>) => Promise<Response>;
+  notify: (pubKeyHex: string) => Promise<void>;
+}

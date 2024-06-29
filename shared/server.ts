@@ -1,4 +1,4 @@
-import type { IHostCrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage } from "./types.ts";
+import type { IHostCrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage, IWebsocketNotifier } from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
@@ -30,15 +30,21 @@ export class DiplomaticServer {
   storage: IStorage;
   codec: IMsgpackCodec;
   crypto: IHostCrypto;
-  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMsgpackCodec, crypto: IHostCrypto) {
+  notifier: IWebsocketNotifier;
+  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMsgpackCodec, crypto: IHostCrypto, notifier: IWebsocketNotifier) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;
     this.codec = codec;
     this.crypto = crypto;
+    this.notifier = notifier;
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
+    if (request.headers.get("upgrade") === "websocket") {
+      return this.notifier.handler(request, this.storage.hasUser.bind(this.storage));
+    }
+
     if (request.method === "OPTIONS") {
       // Handle CORS preflight request
       return cors(new Response(null));
@@ -118,8 +124,12 @@ export class DiplomaticServer {
         const path = opPath(now);
         await this.storage.setOp(pubKeyHex, path, req.cipher);
 
+        // Notify listeners.
+        await this.notifier.notify(pubKeyHex);
+
         return new Response(path, { status: 200 });
-      } catch {
+      } catch (err) {
+        console.error(err);
         return new Response("Processing request", { status: 500 });
       }
     }

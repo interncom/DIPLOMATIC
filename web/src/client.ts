@@ -1,6 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 import type { IOp, KeyPair } from "./shared/types";
-import { htob } from "./shared/lib";
+import { btoh, htob } from "./shared/lib";
 import webClientAPI from "./api";
 import type { IClientStateStore, DiplomaticClientState, Applier } from "./types";
 import libsodiumCrypto from "./crypto";
@@ -33,6 +33,37 @@ export default class DiplomaticClient {
     this.init(params);
   }
 
+  websocket?: WebSocket;
+  connect = async (hostURL: URL) => {
+    if (!this.hostKeyPair) {
+      return;
+    }
+
+    const url = new URL(hostURL);
+    url.protocol = "ws";
+    // TODO: sign something (current timestamp).
+    const keyHex = btoh(this.hostKeyPair?.publicKey);
+    url.searchParams.set("key", keyHex);
+    this.websocket = new WebSocket(url);
+
+    this.websocket.onopen = (e) => {
+      console.log("CONNECTED");
+    };
+
+    this.websocket.onclose = (e) => {
+      console.log("DISCONNECTED");
+    };
+
+    this.websocket.onmessage = (e) => {
+      console.log(`RECEIVED: ${e.data}`);
+      this.processDeltas();
+    };
+
+    this.websocket.onerror = (e) => {
+      console.log(`ERROR: ${e}`);
+    };
+  }
+
   async init(params: IDiplomaticClientParams) {
     await this.store.init?.();
     if (params.seed) {
@@ -48,6 +79,13 @@ export default class DiplomaticClient {
     } else {
       await this.loadHost();
     }
+
+    if (this.hostURL) {
+      await this.connect(this.hostURL);
+    }
+
+    await this.processDeltas();
+
     this.listener?.(this.state);
   }
 

@@ -38,7 +38,49 @@ export class DiplomaticServer {
     this.crypto = crypto;
   }
 
+  sockets: Map<string, Set<WebSocket>> = new Map(); // pubKeyHex => sockets.
+  websocketHandler = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const pubKeyHex = url.searchParams.get("key");
+    if (!pubKeyHex) {
+      return new Response("Missing pubkey", { status: 401 });
+    }
+    if (!await this.storage.hasUser(pubKeyHex)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    console.log("WebSocket connection established");
+    const { socket, response } = Deno.upgradeWebSocket(request);
+    if (!this.sockets.has(pubKeyHex)) {
+      this.sockets.set(pubKeyHex, new Set());
+    }
+
+    // NEXT:
+    // 1. store reference to this socket on the server,
+    // 2. send message down this socket when new op push comes through
+    // 3. Refactor so the websocket implementation can be plugged in
+    // 4. Support cloudflare durable objects/workers websockets
+    socket.onopen = () => {
+      console.log("CONNECTED");
+      this.sockets.get(pubKeyHex)?.add(socket);
+    };
+    socket.onmessage = (event) => {
+      console.log(`RECEIVED: ${event.data}`);
+    };
+    socket.onclose = () => {
+      console.log("DISCONNECTED")
+      this.sockets.get(pubKeyHex)?.delete(socket);
+    };
+    socket.onerror = (error) => console.error("ERROR:", error);
+
+    return response;
+  }
+
   corsHandler = async (request: Request): Promise<Response> => {
+    if (request.headers.get("upgrade") === "websocket") {
+      return this.websocketHandler(request);
+    }
+
     if (request.method === "OPTIONS") {
       // Handle CORS preflight request
       return cors(new Response(null));
@@ -118,8 +160,17 @@ export class DiplomaticServer {
         const path = opPath(now);
         await this.storage.setOp(pubKeyHex, path, req.cipher);
 
+        // Notify listeners.
+        const listeners = this.sockets.get(pubKeyHex);
+        if (listeners) {
+          for (const socket of listeners) {
+            socket.send("NEW OP");
+          }
+        }
+
         return new Response(path, { status: 200 });
-      } catch {
+      } catch (err) {
+        console.error(err);
         return new Response("Processing request", { status: 500 });
       }
     }

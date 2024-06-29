@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import DiplomaticClient, { type IDiplomaticClientParams } from "./client";
 import type { DiplomaticClientState, IClientStateStore } from "./types";
 import { usePollingSync } from "./sync";
@@ -12,14 +12,18 @@ interface IClientHookParams extends Omit<IDiplomaticClientParams, "store"> {
 
 export default function useClient(params: IClientHookParams): [DiplomaticClient, DiplomaticClientState, () => void] {
   const [state, setState] = useState<DiplomaticClientState>(initialState);
-  const [client, setClient] = useState(new DiplomaticClient({ store: localStorageStore, ...params }));
+  console.log("rendering useClient")
+  const fullParams = useMemo(() => ({ store: localStorageStore, ...params }),
+    [params],
+  );
+  const [client, setClient] = useState(new DiplomaticClient(fullParams));
   useEffect(() => {
     client.listener = setState;
   }, [client]);
   const reset = useCallback(() => {
-    setClient(new DiplomaticClient({ store: localStorageStore, ...params }));
+    setClient(new DiplomaticClient(fullParams));
     setState(initialState);
-  }, [params]);
+  }, [fullParams]);
   usePollingSync(client, params.refreshInterval ?? 1000)
   return [client, state, reset];
 }

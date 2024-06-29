@@ -42,23 +42,34 @@ const msgpack: IMsgpackCodec = {
 
 export class WebSocketServer extends DurableObject {
   async fetch(request: Request): Promise<Response> {
-    console.info("websocket", request);
-    const webSocketPair = new WebSocketPair();
-    const [client, server] = Object.values(webSocketPair);
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (upgradeHeader === 'websocket') {
+      const webSocketPair = new WebSocketPair();
+      const [client, server] = Object.values(webSocketPair);
 
-    this.ctx.acceptWebSocket(server);
+      this.ctx.acceptWebSocket(server);
+
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      });
+    }
+
+    if (request.url.endsWith("/notify")) {
+      const sockets = this.ctx.getWebSockets();
+      for (const socket of sockets) {
+        socket.send("NEW OP");
+      }
+      return new Response(null, { status: 200 });
+    }
 
     return new Response(null, {
-      status: 101,
-      webSocket: client,
+      status: 400,
+      statusText: 'Bad Request',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
     });
-  }
-
-  async notify() {
-    const sockets = this.ctx.getWebSockets();
-    for (const socket of sockets) {
-      socket.send("NEW OP");
-    }
   }
 }
 
@@ -118,7 +129,8 @@ export default {
       notify: async (pubKeyHex) => {
         const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
         const stub = env.WEBSOCKET_SERVER.get(id);
-        stub.notify();
+        const request = new Request("http://durableobject/notify", { method: "POST" });
+        await stub.fetch(request);
       },
     }
 

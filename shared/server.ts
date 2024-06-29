@@ -125,7 +125,7 @@ export class DiplomaticServer {
         await this.storage.setOp(pubKeyHex, path, req.cipher);
 
         // Notify listeners.
-        this.notifier.notify(pubKeyHex);
+        await this.notifier.notify(pubKeyHex);
 
         return new Response(path, { status: 200 });
       } catch (err) {

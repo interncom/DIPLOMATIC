@@ -52,6 +52,7 @@ export default class DiplomaticClient {
 
     this.websocket.onclose = (e) => {
       console.log("DISCONNECTED");
+      this.connect(hostURL);
     };
 
     this.websocket.onmessage = (e) => {

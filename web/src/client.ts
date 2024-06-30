@@ -40,7 +40,12 @@ export default class DiplomaticClient {
     }
 
     const url = new URL(hostURL);
-    url.protocol = "ws";
+    if (window.location.protocol === "https:") {
+      url.protocol = "wss";
+    } else {
+      url.protocol = "ws";
+    }
+
     // TODO: sign something (current timestamp).
     const keyHex = btoh(this.hostKeyPair?.publicKey);
     url.searchParams.set("key", keyHex);

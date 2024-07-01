@@ -1,5 +1,6 @@
+import { Queue } from "./queue";
 import { htob, btoh } from "./shared/lib";
-import type { IClientStateStore } from "./types";
+import type { IClientStateStore, IQueue } from "./types";
 
 const seedKey = "seedHex";
 const hostURLKey = "hostURL";
@@ -35,32 +36,8 @@ class LocalStorageStore implements IClientStateStore {
     return localStorage.setItem(hostIDKey, id);
   }
 
-  uploadQueue = new Map<string, Uint8Array>();
-  enqueueUpload: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void> = async (sha256, cipherOp) => {
-    const hex = btoh(sha256);
-    this.uploadQueue.set(hex, cipherOp);
-  }
-
-  dequeueUpload: (sha256: Uint8Array) => Promise<void> = async (sha256) => {
-    const hex = btoh(sha256);
-    this.uploadQueue.delete(hex);
-  }
-
-  peekUpload: (sha256: Uint8Array) => Promise<Uint8Array | undefined> = async (sha256) => {
-    const hex = btoh(sha256);
-    return this.uploadQueue.get(hex);
-  }
-
-  async listUploadQueue() {
-    return Array.from(this.uploadQueue.keys());
-  }
-  downloadQueue = new Set<string>();
-  enqueueDownload: (path: string) => Promise<void> = async (path) => {
-    this.downloadQueue.add(path);
-  }
-  dequeueDownload: (path: string) => Promise<void> = async (path) => {
-    this.downloadQueue.delete(path);
-  }
+  pushQueue = new Queue<string, Uint8Array>();
+  pullQueue = new Queue<string, null>();
 }
 
 export const localStorageStore = new LocalStorageStore();

@@ -1,4 +1,39 @@
-import type { IOp } from "./shared/types";
+import type { IOp, IStorage } from "./shared/types";
+
+export interface IQueue<K, V> {
+  /**
+   * Adds an entry to the queue.
+   * @param key - The key of the entry.
+   * @param value - The value of the entry.
+   */
+  enqueue(key: K, value: V): Promise<void>;
+
+  /**
+   * Returns the value of the entry with the specified key without removing it.
+   * @param key - The key of the entry.
+   * @returns The value of the entry if found, or undefined if the key does not exist.
+   */
+  peek(key: K): Promise<V | undefined>;
+
+  /**
+   * Returns an iterator for the queue, allowing iteration over all entries.
+   * @returns An iterator of entries in the queue.
+   */
+  entries(): Promise<Iterable<[K, V]>>;
+
+  /**
+   * Removes the entry with the specified key from the queue.
+   * @param key - The key of the entry.
+   * @returns The value of the removed entry if found, or undefined if the key does not exist.
+   */
+  dequeue(key: K): Promise<V | undefined>;
+
+  /**
+   * Returns the number of entries in the queue.
+   * @returns The size of the queue.
+   */
+  size(): Promise<number>;
+}
 
 export interface IClientStateStore {
   init?: () => Promise<void>;
@@ -8,12 +43,9 @@ export interface IClientStateStore {
   setHostURL: (url: string) => Promise<void>;
   getHostID: () => Promise<string | undefined>;
   setHostID: (id: string) => Promise<void>;
-  enqueueUpload: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
-  dequeueUpload: (sha256: Uint8Array) => Promise<void>;
-  peekUpload: (sha256: Uint8Array) => Promise<Uint8Array | undefined>;
-  listUploadQueue: () => Promise<string[]>;
-  enqueueDownload: (path: string) => Promise<void>;
-  dequeueDownload: (path: string) => Promise<void>;
+  pushQueue: IQueue<string, Uint8Array>; // sha256 -> cipherOp
+  pullQueue: IQueue<string, null>; // path
+  // execQueue: IQueue<IOp, null>; // op
 }
 
 export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";

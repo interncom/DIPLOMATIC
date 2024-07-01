@@ -8,8 +8,7 @@ export function usePollingSync(client: DiplomaticClient, intervalMillis: number)
     }
     async function poll() {
       console.log("Polling")
-      await client.processDeltas();
-      await client.pushQueuedOps();
+      await client.sync();
     }
 
     poll();

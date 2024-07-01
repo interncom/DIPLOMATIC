@@ -1,5 +1,4 @@
-import { StateManager } from "@interncom/diplomatic";
-import type { IOp } from "../../../shared/types";
+import { StateManager, type IOp } from "@interncom/diplomatic";
 import * as Status from "./ops/status";
 import type { IStatusOp } from "./ops/status";
 

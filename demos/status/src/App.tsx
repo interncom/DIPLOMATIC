@@ -2,21 +2,33 @@ import './App.css'
 import SeedConfig from './pages/seedConfig';
 import Status from './pages/status';
 import HostConfig from './pages/hostConfig';
-import useClient from './lib/useClient';
-import { localStorageStore } from './lib/localStorageStore';
-import { apply } from './appState';
+import { DiplomaticClient, localStorageStore } from '@interncom/diplomatic'
+import { stateMgr } from './appState';
+import { useCallback, useState } from 'react';
+import { useClientState } from '@interncom/diplomatic';
 
 export interface IStatus {
   status: string;
   updatedAt: string;
 }
 
+const initClient = new DiplomaticClient({
+  store: localStorageStore,
+  stateManager: stateMgr,
+});
 export default function App() {
-  const [client, state, resetClient] = useClient(localStorageStore, apply);
-
-  function handleLogout() {
+  const [client, setClient] = useState(initClient);
+  const state = useClientState(client);
+  const handleLogout = useCallback(() => {
     localStorage.clear();
-    resetClient();
+    setClient(new DiplomaticClient({
+      store: localStorageStore,
+      stateManager: stateMgr,
+    }));
+  }, []);
+
+  if (!client) {
+    return null;
   }
 
   switch (state) {

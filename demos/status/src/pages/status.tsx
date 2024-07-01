@@ -1,24 +1,22 @@
 import { useState, useCallback } from "react";
-import type DiplomaticClient from "../lib/client";
-import { usePollingSync } from "../lib/sync";
 import { genOp } from "../ops/status";
-import { useStatus } from "../models/status";
+import { load } from "../models/status";
+import { useStateWatcher, type DiplomaticClient } from "@interncom/diplomatic";
+import { stateMgr } from "../appState";
 
 interface IProps {
   client: DiplomaticClient;
   onLogout: () => void;
 }
 export default function Status({ client, onLogout }: IProps) {
-  const [status, refresh] = useStatus();
-  usePollingSync(client, 1000);
+  const status = useStateWatcher(stateMgr, "status", () => load())
 
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     evt.preventDefault();
     const op = genOp(statusField);
     client.apply(op)
-      .then(refresh);
-  }, [statusField, client, refresh]);
+  }, [statusField, client]);
 
   return (
     <>

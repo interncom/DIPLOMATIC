@@ -1,5 +1,5 @@
+import type { DiplomaticClient } from "@interncom/diplomatic";
 import { useCallback, useEffect, useState } from "react";
-import type DiplomaticClient from "../lib/client";
 
 interface IProps {
   client: DiplomaticClient;
@@ -12,6 +12,7 @@ export default function HostConfig({ client }: IProps) {
   const [err, setErr] = useState<Error>();
   const register = useCallback(() => {
     client.register(hostURL)
+      .then(() => client.connect(new URL(hostURL)))
       // .then(() => console.info("registered"))
       .catch(err => { setErr(err) });
   }, [client]);

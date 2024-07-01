@@ -1,3 +1,4 @@
+import { StateManager } from "@interncom/diplomatic";
 import type { IOp } from "../../../shared/types";
 import * as Status from "./ops/status";
 import type { IStatusOp } from "./ops/status";
@@ -23,3 +24,10 @@ const appliers: Record<string, IApplier<IStatusOp>> = {
     applier: Status.apply,
   }
 };
+
+export const stateMgr = new StateManager(async (op) => {
+  const apl = appliers[op.type];
+  if (apl?.typeChecks(op)) {
+    await apl.applier(op);
+  }
+})

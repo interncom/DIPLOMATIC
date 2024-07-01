@@ -30,6 +30,7 @@ export default class DiplomaticClient {
   constructor(params: IDiplomaticClientParams) {
     this.store = params.store;
     this.applier = params.stateManager.apply;
+    console.log("constructing")
     this.init(params);
   }
 

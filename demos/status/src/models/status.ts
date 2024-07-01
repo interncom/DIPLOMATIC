@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from "react";
 import type { IStatus } from "../App";
 
 export function store(status: IStatus) {
@@ -13,15 +12,4 @@ export function load(): IStatus | undefined {
     return undefined;
   }
   return { status, updatedAt };
-}
-
-export function useStatus(): [IStatus | undefined, () => void] {
-  const [status, setStatus] = useState<IStatus>();
-  useEffect(() => {
-    setStatus(load());
-  }, []);
-  const refresh = useCallback(() => {
-    setStatus(load());
-  }, [])
-  return [status, refresh];
 }

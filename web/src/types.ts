@@ -43,9 +43,15 @@ export interface IClientStateStore {
   setHostURL: (url: string) => Promise<void>;
   getHostID: () => Promise<string | undefined>;
   setHostID: (id: string) => Promise<void>;
-  pushQueue: IQueue<string, Uint8Array>; // sha256 -> cipherOp
-  pullQueue: IQueue<string, null>; // path
-  // execQueue: IQueue<IOp, null>; // op
+
+  enqueueUpload: (sha256: string, cipherOp: Uint8Array) => Promise<void>;
+  dequeueUpload: (sha256: string) => Promise<void>;
+  peekUpload: (sha256: string) => Promise<Uint8Array | undefined>;
+  listUploads: () => Promise<string[]>;
+
+  enqueueDownload: (path: string) => Promise<void>;
+  dequeueDownload: (path: string) => Promise<void>;
+  listDownloads: () => Promise<string[]>;
 }
 
 export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";

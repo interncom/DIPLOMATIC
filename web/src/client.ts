@@ -164,7 +164,7 @@ export default class DiplomaticClient {
     const pathResp = await webClientAPI.getDeltaPaths(hostURL, begin, hostKeyPair);
     const paths = pathResp.paths;
     for (const path of paths) {
-      await this.store.pullQueue.enqueue(path, null);
+      await this.store.enqueueDownload(path);
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
     // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
@@ -177,8 +177,7 @@ export default class DiplomaticClient {
     }
     const { hostURL, hostKeyPair, encKey } = this;
     // TODO: parallelize in web worker.
-    const entries = await this.store.pullQueue.entries();
-    const paths = entries.map(([path]) => path);
+    const paths = await this.store.listDownloads();
     paths.sort((p1, p2) => p2.localeCompare(p1)); // Sort descending.
     for (const path of paths) {
       const cipher = await webClientAPI.getDelta(hostURL, path, hostKeyPair);
@@ -186,12 +185,12 @@ export default class DiplomaticClient {
       const op = decode(packed) as IOp;
       try {
         await this.applier(op);
-        this.store.pullQueue.dequeue(path);
+        await this.store.dequeueDownload(path);
       } catch {
         // TODO: distinguish transient vs permanent failures.
         const transient = true
         if (!transient) {
-          this.store.pullQueue.dequeue(path);
+          await this.store.dequeueDownload(path);
           // Also put it on a "dead" queue to record the permanent failure?
         }
       }
@@ -202,15 +201,15 @@ export default class DiplomaticClient {
     if (!this.hostURL || !this.hostKeyPair) {
       return;
     }
-    const cipherOp = await this.store.pushQueue.peek(sha256);
+    const cipherOp = await this.store.peekUpload(sha256);
     if (cipherOp) {
       await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
     }
-    await this.store.pushQueue.dequeue(sha256);
+    await this.store.dequeueUpload(sha256);
   }
 
   async pushQueuedOps() {
-    for (const [sha256] of await this.store.pushQueue.entries()) {
+    for (const sha256 of await this.store.listUploads()) {
       await this.pushQueuedOp(sha256);
     }
   }
@@ -230,13 +229,13 @@ export default class DiplomaticClient {
     const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
     const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
     const shaHex = btoh(sha256);
-    await this.store.pushQueue.enqueue(shaHex, cipherOp);
+    await this.store.enqueueUpload(shaHex, cipherOp);
 
     try {
       await this.applier(op);
     } catch {
       // If op can't be applied locally, don't burden anyone else with it.
-      await this.store.pushQueue.dequeue(shaHex);
+      await this.store.dequeueUpload(shaHex);
     }
 
     await this.pushQueuedOp(shaHex);

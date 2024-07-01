@@ -1,4 +1,3 @@
-import { Queue } from "./queue";
 import { htob, btoh } from "./shared/lib";
 import type { IClientStateStore, IQueue } from "./types";
 
@@ -36,8 +35,30 @@ class LocalStorageStore implements IClientStateStore {
     return localStorage.setItem(hostIDKey, id);
   }
 
-  pushQueue = new Queue<string, Uint8Array>();
-  pullQueue = new Queue<string, null>();
+  uploadQueue = new Map<string, Uint8Array>();
+  enqueueUpload = async (sha256: string, cipherOp: Uint8Array) => {
+    this.uploadQueue.set(sha256, cipherOp);
+  }
+  dequeueUpload = async (sha256: string) => {
+    this.uploadQueue.delete(sha256);
+  }
+  peekUpload = async (sha256: string) => {
+    return this.uploadQueue.get(sha256);
+  };
+  listUploads = async () => {
+    return Array.from(this.uploadQueue.keys());
+  };
+
+  downloadQueue = new Set<string>();
+  enqueueDownload = async (path: string) => {
+    this.downloadQueue.add(path);
+  }
+  dequeueDownload = async (path: string) => {
+    this.downloadQueue.delete(path);
+  }
+  listDownloads = async () => {
+    return Array.from(this.downloadQueue.keys());
+  }
 }
 
 export const localStorageStore = new LocalStorageStore();

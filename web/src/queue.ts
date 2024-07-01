@@ -15,8 +15,8 @@ export class Queue<K, V> implements IQueue<K, V> {
     return this.map.get(key);
   }
 
-  async entries(): Promise<Iterable<[K, V]>> {
-    return this.map.entries();
+  async entries(): Promise<Array<[K, V]>> {
+    return Array.from(this.map.entries());
   }
 
   async dequeue(key: K): Promise<V | undefined> {

@@ -16,10 +16,10 @@ export interface IQueue<K, V> {
   peek(key: K): Promise<V | undefined>;
 
   /**
-   * Returns an iterator for the queue, allowing iteration over all entries.
-   * @returns An iterator of entries in the queue.
+   * Returns an array of entries in the queue, allowing sorting and iteration over all entries.
+   * @returns An array of entries in the queue.
    */
-  entries(): Promise<Iterable<[K, V]>>;
+  entries(): Promise<Array<[K, V]>>;
 
   /**
    * Removes the entry with the specified key from the queue.

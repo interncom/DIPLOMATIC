@@ -20,7 +20,7 @@ From `deno` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Demo Client (status app)
 
-1. `cd demos/status`
+1. `cd demos/status/web`
 1. `npm run dev`
 
-See also `demos/status/README.md`.
+See also `demos/status/web/README.md`.

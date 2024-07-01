@@ -4,7 +4,7 @@ import { localStorageStore } from "./localStorageStore";
 import DiplomaticClient from "./client";
 import libsodiumCrypto from "./crypto";
 import { btoh, htob } from "./shared/lib";
-import type { IOp, Verb } from "./shared/types";
+import { type IOp, Verb } from "./shared/types";
 
 export {
   useClientState,
@@ -15,9 +15,9 @@ export {
   libsodiumCrypto,
   btoh,
   htob,
+  Verb,
 };
 
 export type {
   IOp,
-  Verb,
 };

@@ -12,7 +12,10 @@ export default function HostConfig({ client }: IProps) {
   const [err, setErr] = useState<Error>();
   const register = useCallback(() => {
     client.register(hostURL)
-      .then(() => client.connect(new URL(hostURL)))
+      .then(async () => {
+        await client.connect(new URL(hostURL));
+        await client.sync();
+      })
       // .then(() => console.info("registered"))
       .catch(err => { setErr(err) });
   }, [client]);

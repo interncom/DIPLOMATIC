@@ -43,12 +43,12 @@ export default function App() {
           </form>
           {
             state.hasHost ? (
-              <button type="button" onClick={client.disconnect}>unlink</button>
+              <button type="button" onClick={client.disconnect}>UNLINK</button>
             ) : (
-              <button type="button" onClick={link}>link</button>
+              <button type="button" onClick={link}>LINK</button>
             )
           }
-          <button type="button" onClick={client.wipe}>logout</button>
+          <button type="button" onClick={client.wipe}>EXIT</button>
         </>
       ) : (
         <SeedConfig client={client} />

@@ -1,4 +1,7 @@
-import type { IStatus } from "../App";
+interface IStatus {
+  status: string;
+  updatedAt: string;
+}
 
 export function store(status: IStatus) {
   localStorage.setItem("status", status.status);

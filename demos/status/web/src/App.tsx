@@ -47,10 +47,9 @@ const applier = opMapApplier<{ status: IStatusOp }>({
   }
 });
 const stateManager = new StateManager(applier, statusStore.clear)
+const client = new DiplomaticClient({ store: idbStore, stateManager });
 
 const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
-const store = idbStore;
-const client = new DiplomaticClient({ store, stateManager });
 
 export default function App() {
   useSyncOnResume(client);

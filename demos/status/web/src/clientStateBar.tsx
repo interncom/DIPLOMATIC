@@ -24,7 +24,7 @@ export default function ClientStateBar({ state }: IProps) {
       style={{
         marginTop: 16,
         borderRadius: 8,
-        padding: 8,
+        padding: "8px 16px",
         border: '1px solid grey',
         display: 'flex',
         flexDirection: 'row',

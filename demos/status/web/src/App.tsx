@@ -4,12 +4,24 @@ import Status from './pages/status';
 import HostConfig from './pages/hostConfig';
 import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useClientState } from '@interncom/diplomatic';
 
 export interface IStatus {
   status: string;
   updatedAt: string;
+}
+
+function useSyncOnResume(client: DiplomaticClient) {
+  useEffect(() => {
+    function handleOnline() {
+      client.sync();
+    }
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    }
+  }, [client]);
 }
 
 const initClient = new DiplomaticClient({
@@ -19,6 +31,7 @@ const initClient = new DiplomaticClient({
 export default function App() {
   const [client, setClient] = useState(initClient);
   const state = useClientState(client);
+  useSyncOnResume(client);
   const handleLogout = useCallback(async () => {
     await client.store.wipe();
     setClient(new DiplomaticClient({

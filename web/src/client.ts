@@ -33,7 +33,7 @@ export default class DiplomaticClient {
     this.init(params);
   }
 
-  async wipe() {
+  wipe = async () => {
     this.seed = undefined;
     this.encKey = undefined;
     this.hostURL = undefined;

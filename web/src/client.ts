@@ -215,7 +215,8 @@ export default class DiplomaticClient {
     const { hostURL, hostKeyPair, encKey } = this;
     // TODO: parallelize in web worker.
     const paths = await this.store.listDownloads();
-    paths.sort((p1, p2) => p2.localeCompare(p1)); // Sort descending.
+    // paths.sort((p1, p2) => p2.localeCompare(p1)); // Sort descending.
+    paths.sort((p1, p2) => p1.localeCompare(p2)); // Sort ascending.
     for (const path of paths) {
       const cipher = await webClientAPI.getDelta(hostURL, path, hostKeyPair);
       const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);

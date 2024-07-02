@@ -155,6 +155,12 @@ export default class DiplomaticClient {
     this.emitUpdate();
   }
 
+  async registerAndConnect(hostURL: string) {
+    await this.register(hostURL);
+    await this.connect(new URL(hostURL));
+    await this.sync();
+  }
+
   async emitUpdate() {
     const state = await this.getState();
     this.listener?.(state);

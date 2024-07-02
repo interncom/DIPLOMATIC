@@ -14,29 +14,21 @@ export interface IStatus {
 
 const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
 
-const initClient = new DiplomaticClient({
-  store: idbStore,
-  stateManager: stateMgr,
-});
+const store = idbStore;
+const stateManager = stateMgr;
+const initClient = new DiplomaticClient({ store, stateManager });
 export default function App() {
   const [client, setClient] = useState(initClient);
   const state = useClientState(client);
   useSyncOnResume(client);
   const logout = useCallback(async () => {
     await client.wipe();
-    const newClient = new DiplomaticClient({
-      store: idbStore,
-      stateManager: stateMgr,
-    });
+    const newClient = new DiplomaticClient({ store, stateManager });
     setClient(newClient);
   }, [client]);
 
   const register = useCallback(() => {
-    client.register(hostURL)
-      .then(async () => {
-        await client.connect(new URL(hostURL));
-        await client.sync();
-      })
+    client.registerAndConnect(hostURL);
   }, [client]);
 
 
@@ -58,13 +50,9 @@ export default function App() {
       <Status client={client} />
       <ClientStateBar state={state} />
       {state.hasHost ? undefined : (
-        <div>
-          <button type="button" onClick={register}>connect</button>
-        </div>
+        <button type="button" onClick={register}>connect</button>
       )}
-      <div>
-        <button type="button" onClick={logout}>logout</button>
-      </div>
+      <button type="button" onClick={logout}>logout</button>
     </>
   );
 }

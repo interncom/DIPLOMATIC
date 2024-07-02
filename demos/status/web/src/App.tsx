@@ -1,11 +1,12 @@
 import './App.css'
 import SeedConfig from './pages/seedConfig';
-import Status from './pages/status';
-import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
+import { DiplomaticClient, idbStore, useStateWatcher } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import ClientStateBar from './clientStateBar';
+import { load } from './models/status';
+import { genOp } from './ops/status';
 
 const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
 const store = idbStore;
@@ -17,29 +18,42 @@ export default function App() {
   const state = useClientState(client);
   const link = useCallback(() => { client.registerAndConnect(hostURL) }, []);
 
+  const status = useStateWatcher(stateMgr, "status", () => load())
+  const [statusField, setStatusField] = useState("");
+  const handleSubmit = useCallback((evt: React.FormEvent) => {
+    evt.preventDefault();
+    const op = genOp(statusField);
+    client.apply(op)
+  }, [statusField]);
+
   if (!client || !state) {
     return null;
   }
 
-  if (!state.hasSeed) {
-    return (
-      <>
-        <SeedConfig client={client} />
-        <ClientStateBar state={state} />
-      </>
-    );
-  }
-
   return (
     <>
-      <Status client={client} />
       <ClientStateBar state={state} />
-      {state.hasHost ? (
-        <button type="button" onClick={client.disconnect}>unlink</button>
+      {state.hasSeed ? (
+        <>
+          <h1>STATUS</h1>
+          <div id="status-message">{status?.status}</div>
+          <div id="status-timestamp">{status?.updatedAt}</div>
+          <form onSubmit={handleSubmit}>
+            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} />
+          </form>
+          {
+            state.hasHost ? (
+              <button type="button" onClick={client.disconnect}>unlink</button>
+            ) : (
+              <button type="button" onClick={link}>link</button>
+            )
+          }
+          <button type="button" onClick={client.wipe}>logout</button>
+          )
+        </>
       ) : (
-        <button type="button" onClick={link}>link</button>
+        <SeedConfig client={client} />
       )}
-      <button type="button" onClick={client.wipe}>logout</button>
     </>
   );
 }

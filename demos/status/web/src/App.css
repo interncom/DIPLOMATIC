@@ -4,3 +4,19 @@
   padding: 2rem;
   text-align: center;
 }
+
+input#status-input {
+  padding: 6px;
+  border-radius: 8px;
+  margin: 8px;
+  width: 240px;
+  margin-bottom: 36px;
+}
+
+#status-message {
+  font-size: 32px;
+}
+
+#status-timestamp {
+  font-size: 14px;
+}

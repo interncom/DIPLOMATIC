@@ -155,6 +155,14 @@ export default class DiplomaticClient {
     this.emitUpdate();
   }
 
+  disconnect = () => {
+    this.hostURL = undefined;
+    this.hostKeyPair = undefined;
+    this.websocket?.close();
+    this.websocket = undefined;
+    this.emitUpdate();
+  }
+
   async registerAndConnect(hostURL: string) {
     await this.register(hostURL);
     await this.connect(new URL(hostURL));

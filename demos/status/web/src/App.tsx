@@ -19,13 +19,13 @@ const initClient = new DiplomaticClient({
 export default function App() {
   const [client, setClient] = useState(initClient);
   const state = useClientState(client);
-  const handleLogout = useCallback(() => {
-    localStorage.clear();
+  const handleLogout = useCallback(async () => {
+    await client.store.wipe();
     setClient(new DiplomaticClient({
       store: idbStore,
       stateManager: stateMgr,
     }));
-  }, []);
+  }, [client]);
 
   if (!client) {
     return null;

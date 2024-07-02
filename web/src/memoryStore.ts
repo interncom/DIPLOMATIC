@@ -5,6 +5,14 @@ class MemoryStore implements IClientStateStore {
   hostURL?: string;
   hostID?: string;
 
+  async wipe() {
+    this.seed = undefined;
+    this.hostID = undefined;
+    this.hostURL = undefined;
+    this.uploadQueue = new Map<string, Uint8Array>();
+    this.downloadQueue = new Set<string>();
+  }
+
   async getSeed() {
     return this.seed;
   }

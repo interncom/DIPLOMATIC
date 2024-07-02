@@ -39,7 +39,7 @@ export default function App() {
           <div id="status-message">{status?.status}</div>
           <div id="status-timestamp">{status?.updatedAt}</div>
           <form onSubmit={handleSubmit}>
-            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} />
+            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a status message" />
           </form>
           {
             state.hasHost ? (

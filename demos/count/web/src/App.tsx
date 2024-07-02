@@ -1,4 +1,4 @@
-import { StateManager, useStateWatcher, localStorageStore, DiplomaticClient } from '@interncom/diplomatic'
+import { StateManager, useStateWatcher, idbStore, DiplomaticClient } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
 const stateMgr = new StateManager(async (op) => {
@@ -13,7 +13,7 @@ const client = new DiplomaticClient({
   // hostURL: "http://localhost:3311",
   // hostURL: "http://localhost:8787",
   stateManager: stateMgr,
-  store: localStorageStore,
+  store: idbStore,
 });
 
 export default function App() {

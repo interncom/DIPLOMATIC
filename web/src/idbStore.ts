@@ -1,32 +1,56 @@
+import { btoh, htob } from "./shared/lib";
 import type { IClientStateStore } from "./types";
+import { openDB, type DBSchema } from 'idb';
 
-class MemoryStore implements IClientStateStore {
+interface ClientStoreDB extends DBSchema {
+  metaKV: {
+    key: string;
+    value: string;
+  },
+}
+
+const dbPromise = openDB<ClientStoreDB>('client-store-db', 1, {
+  upgrade(db) {
+    db.createObjectStore('metaKV');
+  },
+});
+
+class IDBStore implements IClientStateStore {
   seed?: Uint8Array;
   hostURL?: string;
   hostID?: string;
 
   async getSeed() {
-    return this.seed;
+    const hex = await (await dbPromise).get('metaKV', 'seed');
+    if (!hex) {
+      return;
+    }
+    const bytes = htob(hex);
+    return bytes;
   }
 
   async setSeed(seed: Uint8Array) {
+    const hex = btoh(seed);
+    (await dbPromise).put('metaKV', hex, 'seed');
     this.seed = seed;
   }
 
   async getHostURL() {
-    return this.hostURL;
+    const url = await (await dbPromise).get('metaKV', 'hostURL');
+    return url;
   }
 
   async setHostURL(url: string) {
-    this.hostURL = url;
+    (await dbPromise).put('metaKV', url, 'hostURL');
   }
 
   async getHostID() {
-    return this.hostID;
+    const id = await (await dbPromise).get('metaKV', 'hostID');
+    return id;
   }
 
   async setHostID(id: string) {
-    this.hostID = id;
+    (await dbPromise).put('metaKV', id, 'hostID');
   }
 
   uploadQueue = new Map<string, Uint8Array>();
@@ -55,4 +79,4 @@ class MemoryStore implements IClientStateStore {
   }
 }
 
-export const memoryStore = new MemoryStore();
+export const idbStore = new IDBStore();

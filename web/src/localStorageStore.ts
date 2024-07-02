@@ -1,5 +1,5 @@
 import { htob, btoh } from "./shared/lib";
-import type { IClientStateStore, IQueue } from "./types";
+import type { IClientStateStore } from "./types";
 
 const seedKey = "seedHex";
 const hostURLKey = "hostURL";

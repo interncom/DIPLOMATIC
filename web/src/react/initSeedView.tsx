@@ -1,12 +1,15 @@
-import { btoh, type DiplomaticClient, htob, libsodiumCrypto } from "@interncom/diplomatic";
 import { useState, useCallback, type FormEvent } from "react";
+import type DiplomaticClient from "../client";
+import libsodiumCrypto from "../crypto";
+import { btoh, htob } from "../shared/lib";
 
 interface IProps {
   client: DiplomaticClient;
+  path: string; // Where to navigate after setting seed.
 }
-export default function SeedConfig({ client }: IProps) {
+export default function InitSeedView({ client, path }: IProps) {
   const [seedString, setSeedString] = useState("");
-  const [username, setUsername] = useState();
+  const [username, setUsername] = useState("");
 
   const genSeed = useCallback(async () => {
     const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
@@ -21,8 +24,8 @@ export default function SeedConfig({ client }: IProps) {
     await client.setSeed(seed);
 
     // Trigger password save prompt.
-    window.location.replace("/");
-  }, [seedString, client]);
+    window.location.replace(path);
+  }, [seedString, client, path]);
 
   return (
     <div>

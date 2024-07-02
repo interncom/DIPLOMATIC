@@ -1,4 +1,4 @@
-import type { IDiplomaticClientState } from "@interncom/diplomatic";
+import type { IDiplomaticClientState } from "../types";
 
 function GlowingDot({ on }: { on: boolean }) {
   const color = on ? "#01FF70" : "#AAAAAA";
@@ -18,7 +18,7 @@ function DotLabel({ on, label }: { on: boolean, label: string }) {
 interface IProps {
   state: IDiplomaticClientState;
 }
-export default function ClientStateBar({ state }: IProps) {
+export default function ClientStatusBar({ state }: IProps) {
   return (
     <div
       style={{

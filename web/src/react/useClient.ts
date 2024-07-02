@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import type { IDiplomaticClientParams } from "./client";
-import type { IDiplomaticClientState, IClientStateStore } from "./types";
-import type DiplomaticClient from "./client";
+import type { IDiplomaticClientParams } from "../client";
+import type { IDiplomaticClientState, IClientStateStore } from "../types";
+import type DiplomaticClient from "../client";
 
 interface IClientHookParams extends Omit<IDiplomaticClientParams, "store"> {
   refreshInterval?: number;

@@ -6,7 +6,7 @@ interface IProps {
 }
 export default function SeedConfig({ client }: IProps) {
   const [seedString, setSeedString] = useState("");
-  const [username, setUsername] = useState("default");
+  const [username, setUsername] = useState();
 
   const genSeed = useCallback(async () => {
     const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
@@ -31,7 +31,7 @@ export default function SeedConfig({ client }: IProps) {
         <button type="button" onClick={genSeed}>Generate</button>
         <input name="password" type="password" autoComplete="new-password" placeholder="Push generate to pick a seed" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
         <input name="username" type="text" autoComplete="username" placeholder="Choose an account name (not shared)" onChange={(e) => setUsername(e.target.value)} required />
-        <button type="submit" disabled={!seedString || !username}>Store</button>
+        <button type="submit" disabled={!seedString || !username}>INIT</button>
       </form>
     </div>
   )

@@ -26,8 +26,11 @@ export function useClientState(client: DiplomaticClient) {
 
 export function useSyncOnResume(client: DiplomaticClient) {
   useEffect(() => {
-    function handleOnline() {
-      client.sync();
+    async function handleOnline() {
+      if (client.hostURL) {
+        await client.connect(client.hostURL);
+      }
+      await client.sync();
     }
     window.addEventListener('online', handleOnline);
     return () => {

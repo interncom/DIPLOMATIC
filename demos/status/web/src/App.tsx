@@ -2,7 +2,7 @@ import './App.css'
 import SeedConfig from './pages/seedConfig';
 import Status from './pages/status';
 import HostConfig from './pages/hostConfig';
-import { DiplomaticClient, localStorageStore } from '@interncom/diplomatic'
+import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
 import { useCallback, useState } from 'react';
 import { useClientState } from '@interncom/diplomatic';
@@ -13,7 +13,7 @@ export interface IStatus {
 }
 
 const initClient = new DiplomaticClient({
-  store: localStorageStore,
+  store: idbStore,
   stateManager: stateMgr,
 });
 export default function App() {
@@ -22,7 +22,7 @@ export default function App() {
   const handleLogout = useCallback(() => {
     localStorage.clear();
     setClient(new DiplomaticClient({
-      store: localStorageStore,
+      store: idbStore,
       stateManager: stateMgr,
     }));
   }, []);

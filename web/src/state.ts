@@ -6,7 +6,7 @@ import type { IOp } from "./shared/types";
 export class StateManager {
   emitter: EventEmitter = new EventEmitter();
   applier: Applier;
-  clear: () => void;
+  clear: () => Promise<void>;
   constructor(applier: Applier, clear: () => Promise<void>) {
     this.applier = applier;
     this.clear = clear;

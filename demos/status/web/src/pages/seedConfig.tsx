@@ -27,11 +27,11 @@ export default function SeedConfig({ client }: IProps) {
   return (
     <div>
       <h1>Initialize</h1>
-      <form action="/" method="get" onSubmit={handleInitFormSubmit} style={{ display: "flex", flexDirection: "column" }}>
-        <input name="username" type="text" autoComplete="username" placeholder={username} onChange={(e) => setUsername(e.target.value)} required />
-        <input name="password" type="password" autoComplete="new-password" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
-        <button type="submit">Store</button>
+      <form id="seed" action="/" method="get" onSubmit={handleInitFormSubmit} style={{ display: "flex", flexDirection: "column" }}>
         <button type="button" onClick={genSeed}>Generate</button>
+        <input name="password" type="password" autoComplete="new-password" placeholder="Push generate to pick a seed" value={seedString} onChange={(e) => setSeedString(e.target.value)} />
+        <input name="username" type="text" autoComplete="username" placeholder="Choose an account name (not shared)" onChange={(e) => setUsername(e.target.value)} required />
+        <button type="submit" disabled={!seedString || !username}>Store</button>
       </form>
     </div>
   )

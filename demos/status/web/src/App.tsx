@@ -1,8 +1,7 @@
 import './App.css'
-import SeedConfig from './pages/seedConfig';
-import { DiplomaticClient, idbStore, useStateWatcher, useClientState, useSyncOnResume, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
 import { useCallback, useState } from 'react';
-import ClientStateBar from './clientStateBar';
+import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
+import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
 
 interface IStatus {
   status: string;
@@ -70,7 +69,7 @@ export default function App() {
 
   return (
     <>
-      <ClientStateBar state={state} />
+      <ClientStatusBar state={state} />
       {state.hasSeed ? (
         <>
           <h1>STATUS</h1>
@@ -80,16 +79,14 @@ export default function App() {
             <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a message ↵" />
           </form>
           {
-            state.hasHost ? (
-              <button type="button" onClick={client.disconnect}>UNLINK</button>
-            ) : (
-              <button type="button" onClick={link}>LINK</button>
-            )
+            state.hasHost
+              ? <button type="button" onClick={client.disconnect}>UNLINK</button>
+              : <button type="button" onClick={link}>LINK</button>
           }
           <button type="button" onClick={client.wipe}>EXIT</button>
         </>
       ) : (
-        <SeedConfig client={client} />
+        <InitSeedView client={client} path="/" />
       )}
     </>
   );

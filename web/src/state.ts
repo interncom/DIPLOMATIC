@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { EventEmitter } from "./eventEmitter";
 import type { Applier } from "./types";
 import type { IOp } from "./shared/types";
@@ -24,21 +23,6 @@ export class StateManager {
   off = (opType: string, listener: () => void) => {
     this.emitter.off(opType, listener);
   }
-}
-
-export function useStateWatcher<T>(mgr: StateManager, opType: string, callback: () => T): T {
-  const [val, setVal] = useState(callback());
-  useEffect(() => {
-    function update() {
-      const newVal = callback();
-      setVal(newVal);
-    }
-    mgr.on(opType, update);
-    return () => {
-      mgr.off(opType, update);
-    }
-  }, [mgr, opType, callback]);
-  return val;
 }
 
 interface IApplier<T extends IOp> {

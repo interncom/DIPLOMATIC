@@ -17,7 +17,7 @@ export interface IDiplomaticClientParams {
 
 export default class DiplomaticClient {
   store: IClientStateStore;
-  applier: Applier;
+  stateManager: StateManager;
 
   listener?: (state: IDiplomaticClientState) => void;
 
@@ -29,7 +29,7 @@ export default class DiplomaticClient {
 
   constructor(params: IDiplomaticClientParams) {
     this.store = params.store;
-    this.applier = params.stateManager.apply;
+    this.stateManager = params.stateManager;
     this.init(params);
   }
 
@@ -41,6 +41,7 @@ export default class DiplomaticClient {
     this.lastFetchedAt = undefined;
     this.websocket?.close();
     this.websocket = undefined;
+    await this.stateManager.clear();
     await this.store.wipe();
     this.emitUpdate();
   }
@@ -220,7 +221,7 @@ export default class DiplomaticClient {
       const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
       const op = decode(packed) as IOp;
       try {
-        await this.applier(op);
+        await this.stateManager.apply(op);
         await this.store.dequeueDownload(path);
         this.emitUpdate();
       } catch {
@@ -272,7 +273,7 @@ export default class DiplomaticClient {
     this.emitUpdate();
 
     try {
-      await this.applier(op);
+      await this.stateManager.apply(op);
     } catch {
       // If op can't be applied locally, don't burden anyone else with it.
       await this.store.dequeueUpload(shaHex);

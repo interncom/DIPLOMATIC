@@ -5,7 +5,7 @@ const stateMgr = new StateManager(async (op) => {
   if (op.type === "count" && typeof op.body === "number") {
     appState.count = op.body;
   }
-})
+}, async () => { appState.count = 0 })
 
 const client = new DiplomaticClient({
   seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",

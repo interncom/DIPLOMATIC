@@ -29,4 +29,6 @@ export const stateMgr = new StateManager(async (op) => {
   if (apl?.typeChecks(op)) {
     await apl.applier(op);
   }
+}, async () => {
+  localStorage.removeItem("status");
 })

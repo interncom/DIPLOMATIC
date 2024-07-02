@@ -14,14 +14,14 @@ export default function SeedConfig({ client }: IProps) {
     setSeedString(seedStr);
   }, []);
 
-  const handleInitFormSubmit = useCallback((e: FormEvent) => {
+  const handleInitFormSubmit = useCallback(async (e: FormEvent) => {
+    e.preventDefault();
+
     const seed = htob(seedString);
-    client.setSeed(seed);
+    await client.setSeed(seed);
 
     // Trigger password save prompt.
     window.location.replace("/");
-
-    e.preventDefault();
   }, [seedString, client]);
 
   return (

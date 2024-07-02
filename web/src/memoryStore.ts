@@ -50,6 +50,9 @@ class MemoryStore implements IClientStateStore {
   listUploads = async () => {
     return Array.from(this.uploadQueue.keys());
   };
+  numUploads = async () => {
+    return this.uploadQueue.size;
+  }
 
   downloadQueue = new Set<string>();
   enqueueDownload = async (path: string) => {
@@ -60,6 +63,9 @@ class MemoryStore implements IClientStateStore {
   }
   listDownloads = async () => {
     return Array.from(this.downloadQueue.keys());
+  }
+  numDownloads = async () => {
+    return this.downloadQueue.size;
   }
 }
 

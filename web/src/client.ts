@@ -2,7 +2,7 @@ import { decode, encode } from "@msgpack/msgpack";
 import type { IOp, KeyPair } from "./shared/types";
 import { btoh, htob } from "./shared/lib";
 import webClientAPI from "./api";
-import type { IClientStateStore, DiplomaticClientState, Applier } from "./types";
+import type { IClientStateStore, Applier, IDiplomaticClientState } from "./types";
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
 import { genUpsertOp } from "./shared/ops";
@@ -19,7 +19,7 @@ export default class DiplomaticClient {
   store: IClientStateStore;
   applier: Applier;
 
-  listener?: (state: DiplomaticClientState) => void;
+  listener?: (state: IDiplomaticClientState) => void;
 
   seed?: Uint8Array;
   encKey?: Uint8Array;
@@ -53,11 +53,13 @@ export default class DiplomaticClient {
 
     this.websocket.onopen = (e) => {
       console.log("CONNECTED");
+      this.emitUpdate();
     };
 
     this.websocket.onclose = (e) => {
       console.log("DISCONNECTED");
       this.connect(hostURL);
+      this.emitUpdate();
     };
 
     this.websocket.onmessage = (e) => {
@@ -91,7 +93,7 @@ export default class DiplomaticClient {
 
     await this.sync();
 
-    this.listener?.(this.state);
+    this.emitUpdate();
   }
 
   async loadSeed() {
@@ -107,7 +109,7 @@ export default class DiplomaticClient {
     this.seed = seed;
     this.encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
     await this.store.setSeed(seed);
-    this.listener?.(this.state);
+    this.emitUpdate();
   }
 
   async loadHost() {
@@ -136,17 +138,22 @@ export default class DiplomaticClient {
     await this.store.setHostURL(hostURL);
     await this.store.setHostID(hostID);
 
-    this.listener?.(this.state);
+    this.emitUpdate();
   }
 
-  get state(): DiplomaticClientState {
-    if (!this.seed || !this.encKey) {
-      return "seedless";
-    }
-    if (!this.hostURL || !this.hostKeyPair) {
-      return "hostless";
-    }
-    return "ready";
+  async emitUpdate() {
+    const state = await this.getState();
+    this.listener?.(state);
+  }
+
+  async getState(): Promise<IDiplomaticClientState> {
+    return {
+      hasSeed: this.seed !== undefined && this.encKey !== undefined,
+      hasHost: this.hostURL !== undefined && this.hostKeyPair !== undefined,
+      connected: this.websocket?.readyState === WebSocket.OPEN,
+      numUploads: await this.store.numUploads(),
+      numDownloads: await this.store.numDownloads(),
+    };
   }
 
   async processOps() {
@@ -164,6 +171,7 @@ export default class DiplomaticClient {
     const paths = pathResp.paths;
     for (const path of paths) {
       await this.store.enqueueDownload(path);
+      this.emitUpdate();
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
     // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
@@ -185,11 +193,13 @@ export default class DiplomaticClient {
       try {
         await this.applier(op);
         await this.store.dequeueDownload(path);
+        this.emitUpdate();
       } catch {
         // TODO: distinguish transient vs permanent failures.
         const transient = true
         if (!transient) {
           await this.store.dequeueDownload(path);
+          this.emitUpdate();
           // Also put it on a "dead" queue to record the permanent failure?
         }
       }
@@ -205,6 +215,7 @@ export default class DiplomaticClient {
       await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
     }
     await this.store.dequeueUpload(sha256);
+    this.emitUpdate();
   }
 
   async pushQueuedOps() {
@@ -229,16 +240,22 @@ export default class DiplomaticClient {
     const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
     const shaHex = btoh(sha256);
     await this.store.enqueueUpload(shaHex, cipherOp);
+    this.emitUpdate();
 
     try {
       await this.applier(op);
     } catch {
       // If op can't be applied locally, don't burden anyone else with it.
       await this.store.dequeueUpload(shaHex);
+      this.emitUpdate();
     }
 
-    await this.pushQueuedOp(shaHex);
-    // If this fails, it will remain in the queue to be retried later.
+    try {
+      await this.pushQueuedOp(shaHex);
+    } catch (err) {
+      // If this fails, it will remain in the queue to be retried later.
+      console.info("failed to push");
+    }
   }
 
   async upsert<T>(type: string, body: T, version = 0) {

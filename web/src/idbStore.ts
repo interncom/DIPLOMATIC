@@ -101,6 +101,10 @@ class IDBStore implements IClientStateStore {
     const sha256s = await db.getAllKeys('uploadQueue');
     return sha256s;
   };
+  numUploads = async () => {
+    const db = await dbPromise;
+    return db.count('uploadQueue');
+  }
 
   downloadQueue = new Set<string>();
   enqueueDownload = async (path: string) => {
@@ -115,6 +119,10 @@ class IDBStore implements IClientStateStore {
     const db = await dbPromise;
     const paths = await db.getAllKeys('downloadQueue');
     return paths;
+  }
+  numDownloads = async () => {
+    const db = await dbPromise;
+    return db.count('downloadQueue');
   }
 }
 

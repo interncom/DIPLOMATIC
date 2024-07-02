@@ -6,6 +6,7 @@ import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
 import { useCallback, useState } from 'react';
 import { useClientState, useSyncOnResume } from '@interncom/diplomatic';
+import ClientStateBar from './clientStateBar';
 
 export interface IStatus {
   status: string;
@@ -32,14 +33,34 @@ export default function App() {
     return null;
   }
 
-  switch (state) {
-    case "loading":
-      return null;
-    case "seedless":
-      return <SeedConfig client={client} />;
-    case "hostless":
-      return <HostConfig client={client} />;
-    case "ready":
-      return <Status client={client} onLogout={handleLogout} />;
+  if (state === undefined) {
+    return null;
+  }
+
+  if (!state.hasSeed) {
+    return (
+      <>
+        <SeedConfig client={client} />
+        <ClientStateBar state={state} />
+      </>
+    );
+  }
+
+  if (!state.hasHost) {
+    return (
+      <>
+        <HostConfig client={client} />
+        <ClientStateBar state={state} />
+      </>
+    );
+  }
+
+  if (state.hasHost && state.hasSeed) {
+    return (
+      <>
+        <Status client={client} onLogout={handleLogout} />
+        <ClientStateBar state={state} />
+      </>
+    );
   }
 }

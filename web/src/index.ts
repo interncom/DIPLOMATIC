@@ -2,6 +2,7 @@ import { useClientState, useSyncOnResume } from "./useClient";
 import { StateManager, useStateWatcher } from './state';
 import { localStorageStore } from "./localStorageStore";
 import { idbStore } from "./idbStore";
+import type { IDiplomaticClientState } from "./types";
 import DiplomaticClient from "./client";
 import libsodiumCrypto from "./crypto";
 import { btoh, htob } from "./shared/lib";
@@ -23,4 +24,5 @@ export {
 
 export type {
   IOp,
+  IDiplomaticClientState,
 };

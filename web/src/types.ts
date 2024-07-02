@@ -13,12 +13,20 @@ export interface IClientStateStore {
   dequeueUpload: (sha256: string) => Promise<void>;
   peekUpload: (sha256: string) => Promise<Uint8Array | undefined>;
   listUploads: () => Promise<string[]>;
+  numUploads: () => Promise<number>;
 
   enqueueDownload: (path: string) => Promise<void>;
   dequeueDownload: (path: string) => Promise<void>;
   listDownloads: () => Promise<string[]>;
+  numDownloads: () => Promise<number>;
 }
 
-export type DiplomaticClientState = "loading" | "seedless" | "hostless" | "ready";
+export interface IDiplomaticClientState {
+  hasSeed: boolean;
+  hasHost: boolean;
+  connected: boolean;
+  numUploads: number;
+  numDownloads: number;
+}
 
 export type Applier = (op: IOp) => Promise<void>;

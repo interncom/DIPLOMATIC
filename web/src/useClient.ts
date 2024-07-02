@@ -48,3 +48,15 @@ export function useClientState(client: DiplomaticClient) {
   }, [client]);
   return state;
 }
+
+export function useSyncOnResume(client: DiplomaticClient) {
+  useEffect(() => {
+    function handleOnline() {
+      client.sync();
+    }
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    }
+  }, [client]);
+}

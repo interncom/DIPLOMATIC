@@ -1,4 +1,4 @@
-import { useClientState } from "./useClient";
+import { useClientState, useSyncOnResume } from "./useClient";
 import { StateManager, useStateWatcher } from './state';
 import { localStorageStore } from "./localStorageStore";
 import { idbStore } from "./idbStore";
@@ -9,6 +9,7 @@ import { type IOp, Verb } from "./shared/types";
 
 export {
   useClientState,
+  useSyncOnResume,
   StateManager,
   useStateWatcher,
   localStorageStore,

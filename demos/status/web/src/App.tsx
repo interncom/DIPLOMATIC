@@ -49,7 +49,9 @@ export default function App() {
     <>
       <Status client={client} />
       <ClientStateBar state={state} />
-      {state.hasHost ? undefined : (
+      {state.hasHost ? (
+        <button type="button" onClick={client.disconnect}>disconnect</button>
+      ) : (
         <button type="button" onClick={register}>connect</button>
       )}
       <button type="button" onClick={logout}>logout</button>

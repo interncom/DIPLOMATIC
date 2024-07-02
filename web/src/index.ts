@@ -1,5 +1,5 @@
 import { useClientState, useSyncOnResume } from "./useClient";
-import { StateManager, useStateWatcher } from './state';
+import { StateManager, useStateWatcher, opMapApplier } from './state';
 import { localStorageStore } from "./localStorageStore";
 import { idbStore } from "./idbStore";
 import type { IDiplomaticClientState } from "./types";
@@ -13,6 +13,7 @@ export {
   useSyncOnResume,
   StateManager,
   useStateWatcher,
+  opMapApplier,
   localStorageStore,
   idbStore,
   DiplomaticClient,

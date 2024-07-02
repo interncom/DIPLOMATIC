@@ -6,6 +6,10 @@ const hostURLKey = "hostURL";
 const hostIDKey = "hostID";
 
 class LocalStorageStore implements IClientStateStore {
+  async wipe() {
+    localStorage.clear();
+  }
+
   async getSeed() {
     const storedSeed = localStorage.getItem(seedKey);
     if (storedSeed) {

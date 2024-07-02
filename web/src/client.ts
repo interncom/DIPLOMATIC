@@ -71,7 +71,6 @@ export default class DiplomaticClient {
   }
 
   async init(params: IDiplomaticClientParams) {
-    await this.store.init?.();
     if (params.seed) {
       const bytes = typeof params.seed === "string" ? htob(params.seed) : params.seed;
       await this.store.setSeed(bytes);

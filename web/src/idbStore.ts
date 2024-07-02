@@ -1,17 +1,36 @@
 import { btoh, htob } from "./shared/lib";
 import type { IClientStateStore } from "./types";
-import { openDB, type DBSchema } from 'idb';
+import { openDB, deleteDB, type DBSchema } from 'idb';
 
 interface ClientStoreDB extends DBSchema {
   metaKV: {
     key: string;
     value: string;
   },
+  uploadQueue: {
+    value: {
+      cipherOp: Uint8Array;
+      sha256: string;
+    };
+    key: string;
+  }
+  downloadQueue: {
+    value: {
+      path: string;
+    };
+    key: string;
+  }
 }
 
 const dbPromise = openDB<ClientStoreDB>('client-store-db', 1, {
   upgrade(db) {
     db.createObjectStore('metaKV');
+    db.createObjectStore('uploadQueue', {
+      keyPath: 'sha256',
+    });
+    db.createObjectStore('downloadQueue', {
+      keyPath: 'path',
+    });
   },
 });
 
@@ -20,8 +39,13 @@ class IDBStore implements IClientStateStore {
   hostURL?: string;
   hostID?: string;
 
+  async wipe() {
+    await deleteDB('client-store-db');
+  }
+
   async getSeed() {
-    const hex = await (await dbPromise).get('metaKV', 'seed');
+    const db = await dbPromise;
+    const hex = await db.get('metaKV', 'seed');
     if (!hex) {
       return;
     }
@@ -31,51 +55,66 @@ class IDBStore implements IClientStateStore {
 
   async setSeed(seed: Uint8Array) {
     const hex = btoh(seed);
-    (await dbPromise).put('metaKV', hex, 'seed');
+    const db = await dbPromise;
+    await db.put('metaKV', hex, 'seed');
     this.seed = seed;
   }
 
   async getHostURL() {
-    const url = await (await dbPromise).get('metaKV', 'hostURL');
+    const db = await dbPromise;
+    const url = await db.get('metaKV', 'hostURL');
     return url;
   }
 
   async setHostURL(url: string) {
-    (await dbPromise).put('metaKV', url, 'hostURL');
+    const db = await dbPromise;
+    db.put('metaKV', url, 'hostURL');
   }
 
   async getHostID() {
-    const id = await (await dbPromise).get('metaKV', 'hostID');
+    const db = await dbPromise;
+    const id = await db.get('metaKV', 'hostID');
     return id;
   }
 
   async setHostID(id: string) {
-    (await dbPromise).put('metaKV', id, 'hostID');
+    const db = await dbPromise;
+    await db.put('metaKV', id, 'hostID');
   }
 
   uploadQueue = new Map<string, Uint8Array>();
   enqueueUpload = async (sha256: string, cipherOp: Uint8Array) => {
-    this.uploadQueue.set(sha256, cipherOp);
+    const db = await dbPromise;
+    await db.put('uploadQueue', { sha256, cipherOp });
   }
   dequeueUpload = async (sha256: string) => {
-    this.uploadQueue.delete(sha256);
+    const db = await dbPromise;
+    await db.delete('uploadQueue', sha256);
   }
   peekUpload = async (sha256: string) => {
-    return this.uploadQueue.get(sha256);
+    const db = await dbPromise;
+    const row = await db.get('uploadQueue', sha256);
+    return row?.cipherOp;
   };
   listUploads = async () => {
-    return Array.from(this.uploadQueue.keys());
+    const db = await dbPromise;
+    const sha256s = await db.getAllKeys('uploadQueue');
+    return sha256s;
   };
 
   downloadQueue = new Set<string>();
   enqueueDownload = async (path: string) => {
-    this.downloadQueue.add(path);
+    const db = await dbPromise;
+    await db.put('downloadQueue', { path });
   }
   dequeueDownload = async (path: string) => {
-    this.downloadQueue.delete(path);
+    const db = await dbPromise;
+    await db.delete('downloadQueue', path);
   }
   listDownloads = async () => {
-    return Array.from(this.downloadQueue.keys());
+    const db = await dbPromise;
+    const paths = await db.getAllKeys('downloadQueue');
+    return paths;
   }
 }
 

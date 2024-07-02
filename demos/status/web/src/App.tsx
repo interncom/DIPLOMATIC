@@ -1,15 +1,55 @@
 import './App.css'
 import SeedConfig from './pages/seedConfig';
-import { DiplomaticClient, idbStore, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic'
-import { stateMgr } from './appState';
+import { DiplomaticClient, idbStore, useStateWatcher, useClientState, useSyncOnResume, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
 import { useCallback, useState } from 'react';
 import ClientStateBar from './clientStateBar';
-import { load } from './models/status';
-import { genOp } from './ops/status';
+
+interface IStatus {
+  status: string;
+  updatedAt: string;
+}
+
+const statusStore = {
+  store(status: IStatus) {
+    localStorage.setItem("status", status.status);
+    localStorage.setItem("updatedAt", status.updatedAt);
+  },
+  load(): IStatus | undefined {
+    const status = localStorage.getItem("status") ?? undefined;
+    const updatedAt = localStorage.getItem("updatedAt") ?? undefined;
+    if (!status || !updatedAt) {
+      return undefined;
+    }
+    return { status, updatedAt };
+  },
+  async clear() {
+    localStorage.removeItem("status");
+  }
+}
+
+export interface IStatusOp extends IOp {
+  type: "status";
+  body: string;
+}
+
+const applier = opMapApplier<{ status: IStatusOp }>({
+  "status": {
+    check: (op: IOp): op is IStatusOp => {
+      return op.type === "status" && typeof op.body === "string";
+    },
+    apply: async (op: IStatusOp) => {
+      const curr = statusStore.load();
+      if (!curr?.updatedAt || op.ts > curr.updatedAt) {
+        const status = op.body;
+        statusStore.store({ status, updatedAt: op.ts });
+      }
+    }
+  }
+});
+const stateManager = new StateManager(applier, statusStore.clear)
 
 const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
 const store = idbStore;
-const stateManager = stateMgr;
 const client = new DiplomaticClient({ store, stateManager });
 
 export default function App() {
@@ -17,12 +57,11 @@ export default function App() {
   const state = useClientState(client);
   const link = useCallback(() => { client.registerAndConnect(hostURL) }, []);
 
-  const status = useStateWatcher(stateMgr, "status", () => load())
+  const status = useStateWatcher(stateManager, "status", statusStore.load);
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     evt.preventDefault();
-    const op = genOp(statusField);
-    client.apply(op);
+    client.upsert("status", statusField);
     setStatusField("");
   }, [statusField]);
 

@@ -150,7 +150,7 @@ export default class DiplomaticClient {
     return {
       hasSeed: this.seed !== undefined && this.encKey !== undefined,
       hasHost: this.hostURL !== undefined && this.hostKeyPair !== undefined,
-      connected: this.websocket?.readyState === WebSocket.OPEN,
+      connected: this.websocket === undefined ? false : this.websocket.readyState === this.websocket.OPEN,
       numUploads: await this.store.numUploads(),
       numDownloads: await this.store.numDownloads(),
     };

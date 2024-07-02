@@ -49,7 +49,6 @@ export default function App() {
             )
           }
           <button type="button" onClick={client.wipe}>logout</button>
-          )
         </>
       ) : (
         <SeedConfig client={client} />

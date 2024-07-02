@@ -1,6 +1,6 @@
 import { btoh, htob } from "./shared/lib";
 import type { IClientStateStore } from "./types";
-import { openDB, deleteDB, type DBSchema } from 'idb';
+import { openDB, type DBSchema } from 'idb';
 
 interface ClientStoreDB extends DBSchema {
   metaKV: {
@@ -22,7 +22,8 @@ interface ClientStoreDB extends DBSchema {
   }
 }
 
-const dbPromise = openDB<ClientStoreDB>('client-store-db', 1, {
+
+const db = await openDB<ClientStoreDB>('client-store-db', 2, {
   upgrade(db) {
     db.createObjectStore('metaKV');
     db.createObjectStore('uploadQueue', {
@@ -40,11 +41,12 @@ class IDBStore implements IClientStateStore {
   hostID?: string;
 
   async wipe() {
-    await deleteDB('client-store-db');
+    await db.clear('metaKV');
+    await db.clear('uploadQueue');
+    await db.clear('downloadQueue');
   }
 
   async getSeed() {
-    const db = await dbPromise;
     const hex = await db.get('metaKV', 'seed');
     if (!hex) {
       return;
@@ -55,74 +57,62 @@ class IDBStore implements IClientStateStore {
 
   async setSeed(seed: Uint8Array) {
     const hex = btoh(seed);
-    const db = await dbPromise;
     await db.put('metaKV', hex, 'seed');
     this.seed = seed;
   }
 
   async getHostURL() {
-    const db = await dbPromise;
     const url = await db.get('metaKV', 'hostURL');
     return url;
   }
 
   async setHostURL(url: string) {
-    const db = await dbPromise;
     db.put('metaKV', url, 'hostURL');
   }
 
   async getHostID() {
-    const db = await dbPromise;
     const id = await db.get('metaKV', 'hostID');
     return id;
   }
 
   async setHostID(id: string) {
-    const db = await dbPromise;
     await db.put('metaKV', id, 'hostID');
   }
 
   uploadQueue = new Map<string, Uint8Array>();
   enqueueUpload = async (sha256: string, cipherOp: Uint8Array) => {
-    const db = await dbPromise;
     await db.put('uploadQueue', { sha256, cipherOp });
   }
   dequeueUpload = async (sha256: string) => {
-    const db = await dbPromise;
     await db.delete('uploadQueue', sha256);
   }
   peekUpload = async (sha256: string) => {
-    const db = await dbPromise;
     const row = await db.get('uploadQueue', sha256);
     return row?.cipherOp;
   };
   listUploads = async () => {
-    const db = await dbPromise;
     const sha256s = await db.getAllKeys('uploadQueue');
     return sha256s;
   };
   numUploads = async () => {
-    const db = await dbPromise;
-    return db.count('uploadQueue');
+    const num = await db.count('uploadQueue');
+    return num;
   }
 
   downloadQueue = new Set<string>();
   enqueueDownload = async (path: string) => {
-    const db = await dbPromise;
     await db.put('downloadQueue', { path });
   }
   dequeueDownload = async (path: string) => {
-    const db = await dbPromise;
     await db.delete('downloadQueue', path);
   }
   listDownloads = async () => {
-    const db = await dbPromise;
     const paths = await db.getAllKeys('downloadQueue');
     return paths;
   }
   numDownloads = async () => {
-    const db = await dbPromise;
-    return db.count('downloadQueue');
+    const num = await db.count('downloadQueue');
+    return num;
   }
 }
 

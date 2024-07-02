@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "ES2022",
     "target": "ES2022",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
+    "moduleResolution": "node",
     "declaration": true,
     "emitDeclarationOnly": true,
     "allowImportingTsExtensions": true

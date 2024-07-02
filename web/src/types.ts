@@ -1,6 +1,7 @@
 import type { IOp } from "./shared/types";
 
 export interface IClientStateStore {
+  init?: () => Promise<void>;
   getSeed: () => Promise<Uint8Array | undefined>;
   setSeed: (seed: Uint8Array) => Promise<void>;
   getHostURL: () => Promise<string | undefined>;

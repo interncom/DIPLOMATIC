@@ -1,7 +1,6 @@
 import './App.css'
 import SeedConfig from './pages/seedConfig';
 import Status from './pages/status';
-import HostConfig from './pages/hostConfig';
 import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
 import { useCallback, useState } from 'react';
@@ -13,6 +12,8 @@ export interface IStatus {
   updatedAt: string;
 }
 
+const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
+
 const initClient = new DiplomaticClient({
   store: idbStore,
   stateManager: stateMgr,
@@ -21,19 +22,25 @@ export default function App() {
   const [client, setClient] = useState(initClient);
   const state = useClientState(client);
   useSyncOnResume(client);
-  const handleLogout = useCallback(async () => {
-    await client.store.wipe();
-    setClient(new DiplomaticClient({
+  const logout = useCallback(async () => {
+    await client.wipe();
+    const newClient = new DiplomaticClient({
       store: idbStore,
       stateManager: stateMgr,
-    }));
+    });
+    setClient(newClient);
   }, [client]);
 
-  if (!client) {
-    return null;
-  }
+  const register = useCallback(() => {
+    client.register(hostURL)
+      .then(async () => {
+        await client.connect(new URL(hostURL));
+        await client.sync();
+      })
+  }, [client]);
 
-  if (state === undefined) {
+
+  if (!client || !state) {
     return null;
   }
 
@@ -46,21 +53,18 @@ export default function App() {
     );
   }
 
-  if (!state.hasHost) {
-    return (
-      <>
-        <HostConfig client={client} />
-        <ClientStateBar state={state} />
-      </>
-    );
-  }
-
-  if (state.hasHost && state.hasSeed) {
-    return (
-      <>
-        <Status client={client} onLogout={handleLogout} />
-        <ClientStateBar state={state} />
-      </>
-    );
-  }
+  return (
+    <>
+      <Status client={client} />
+      <ClientStateBar state={state} />
+      {state.hasHost ? undefined : (
+        <div>
+          <button type="button" onClick={register}>connect</button>
+        </div>
+      )}
+      <div>
+        <button type="button" onClick={logout}>logout</button>
+      </div>
+    </>
+  );
 }

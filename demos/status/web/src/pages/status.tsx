@@ -6,9 +6,8 @@ import { stateMgr } from "../appState";
 
 interface IProps {
   client: DiplomaticClient;
-  onLogout: () => void;
 }
-export default function Status({ client, onLogout }: IProps) {
+export default function Status({ client }: IProps) {
   const status = useStateWatcher(stateMgr, "status", () => load())
 
   const [statusField, setStatusField] = useState("");
@@ -25,9 +24,6 @@ export default function Status({ client, onLogout }: IProps) {
       <form onSubmit={handleSubmit}>
         <input type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} />
       </form>
-      <div>
-        <button type="button" onClick={onLogout}>logout</button>
-      </div>
     </>
   )
 }

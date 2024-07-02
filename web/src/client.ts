@@ -33,6 +33,18 @@ export default class DiplomaticClient {
     this.init(params);
   }
 
+  async wipe() {
+    this.seed = undefined;
+    this.encKey = undefined;
+    this.hostURL = undefined;
+    this.hostKeyPair = undefined;
+    this.lastFetchedAt = undefined;
+    this.websocket?.close();
+    this.websocket = undefined;
+    await this.store.wipe();
+    this.emitUpdate();
+  }
+
   websocket?: WebSocket;
   connect = async (hostURL: URL) => {
     if (!this.hostKeyPair) {
@@ -73,6 +85,8 @@ export default class DiplomaticClient {
   }
 
   async init(params: IDiplomaticClientParams) {
+    await this.store.init?.();
+
     if (params.seed) {
       const bytes = typeof params.seed === "string" ? htob(params.seed) : params.seed;
       await this.store.setSeed(bytes);
@@ -147,13 +161,12 @@ export default class DiplomaticClient {
   }
 
   async getState(): Promise<IDiplomaticClientState> {
-    return {
-      hasSeed: this.seed !== undefined && this.encKey !== undefined,
-      hasHost: this.hostURL !== undefined && this.hostKeyPair !== undefined,
-      connected: this.websocket === undefined ? false : this.websocket.readyState === this.websocket.OPEN,
-      numUploads: await this.store.numUploads(),
-      numDownloads: await this.store.numDownloads(),
-    };
+    const hasSeed = this.seed !== undefined && this.encKey !== undefined;
+    const hasHost = this.hostURL !== undefined && this.hostKeyPair !== undefined;
+    const connected = this.websocket === undefined ? false : this.websocket.readyState === this.websocket.OPEN;
+    const numUploads = await this.store.numUploads();
+    const numDownloads = await this.store.numDownloads();
+    return { hasSeed, hasHost, connected, numDownloads, numUploads };
   }
 
   async processOps() {

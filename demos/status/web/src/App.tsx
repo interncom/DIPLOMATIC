@@ -1,9 +1,8 @@
 import './App.css'
 import SeedConfig from './pages/seedConfig';
-import { DiplomaticClient, idbStore, useStateWatcher } from '@interncom/diplomatic'
+import { DiplomaticClient, idbStore, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic'
 import { stateMgr } from './appState';
 import { useCallback, useState } from 'react';
-import { useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import ClientStateBar from './clientStateBar';
 import { load } from './models/status';
 import { genOp } from './ops/status';
@@ -23,7 +22,8 @@ export default function App() {
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     evt.preventDefault();
     const op = genOp(statusField);
-    client.apply(op)
+    client.apply(op);
+    setStatusField("");
   }, [statusField]);
 
   if (!client || !state) {
@@ -39,7 +39,7 @@ export default function App() {
           <div id="status-message">{status?.status}</div>
           <div id="status-timestamp">{status?.updatedAt}</div>
           <form onSubmit={handleSubmit}>
-            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a status message" />
+            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a message ↵" />
           </form>
           {
             state.hasHost ? (

@@ -15,7 +15,7 @@ hero:
       link: /docs/demo/
 
 features:
-  - title: Offline-first
+  - title: Offline-First
     details: Apps are fully-functional offline. DIPLOMATIC queues changes made while offline, then syncs them opporuntistically when back online.
   - title: Real-Time Sync
     details: DIPLOMATIC uses WebSockets to sync app data immediately across all online devices.

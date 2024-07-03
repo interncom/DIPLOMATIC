@@ -4,8 +4,11 @@ layout: home
 
 hero:
   name: "DIPLOMATIC"
-  text: "Data sync framework"
+  text: "Data sync\nframework"
   tagline: "ALPHA: Technology Preview"
+  image:
+      src: /count-demo-src.png
+      alt: Source code of a demo app using DIPLOMATIC
   actions:
     - theme: brand
       text: Docs

@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "DIPLOMATIC"
   text: "Data sync framework"
-  tagline: FOR YOUR APPS ONLY
+  tagline: "**** FOR YOUR APPS ONLY ****"
   actions:
     - theme: brand
       text: Docs
@@ -16,9 +16,11 @@ hero:
 
 features:
   - title: Offline-First
-    details: Apps are fully-functional offline. DIPLOMATIC queues changes made while offline, then syncs them opporuntistically when back online.
+    details: Apps are fully-functional offline. Queues offline changes, then syncs when back online.
   - title: Real-Time Sync
-    details: DIPLOMATIC uses WebSockets to sync app data immediately across all online devices.
+    details: Online devices receive updates immediately via WebSockets.
   - title: E2E Encrypted
     details: User data never leaves the device unencrypted. Store data on untrusted hosts with confidence.
+  - title: Simple
+    details: Build an app with all these features in <30 LOC.
 ---

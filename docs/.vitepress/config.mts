@@ -9,7 +9,6 @@ export default defineConfig({
 
     // https://vitepress.dev/reference/default-theme-config
     nav: [
-      { text: 'Home', link: '/' },
       { text: 'Docs', link: '/docs/' }
     ],
 
@@ -73,5 +72,10 @@ export default defineConfig({
     search: {
       provider: 'local'
     },
+
+    footer: {
+      message: 'A product of <a href="https://interncom.org">The Internet Committee</a>.',
+      copyright: ''
+    }
   },
 })

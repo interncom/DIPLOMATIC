@@ -76,7 +76,6 @@ export default function App() {
 Here is a line-by-line breakdown of that code.
 
 ```tsx
-import { DiplomaticClient, StateManager, useStateWatcher, localStorageStore } from '@interncom/diplomatic'
 import { DiplomaticClient, StateManager, useStateWatcher, idbStorageStore } from '@interncom/diplomatic'
 ```
 

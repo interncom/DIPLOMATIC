@@ -1,5 +1,7 @@
 # DIPLOMATIC
 
+<video src="https://pub-baf63544dce04e12a9502ae4f58bdc2b.r2.dev/diplomatic-status-demo-720.mov" controls />
+
 ## What
 
 DIPLOMATIC is a framework for building single-user apps that work offline and sync multiple devices, all while end-to-end encrypting their data.

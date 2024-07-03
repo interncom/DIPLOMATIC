@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "DIPLOMATIC",
-  description: "A secure sync protocol",
+  description: "Sync framework",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [

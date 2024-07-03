@@ -29,7 +29,7 @@ export default defineConfig({
 1. Then, change your `App.tsx` to this.
 
 ```tsx
-import { StateManager, useStateWatcher, localStorageStore, DiplomaticClient } from '@interncom/diplomatic'
+import { StateManager, useStateWatcher, idbStore, DiplomaticClient } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
 const stateMgr = new StateManager(async (op) => {
@@ -42,7 +42,7 @@ const client = new DiplomaticClient({
   seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
   hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
   stateManager: stateMgr,
-  store: localStorageStore,
+  store: idbStore,
 });
 
 export default function App() {
@@ -77,6 +77,7 @@ Here is a line-by-line breakdown of that code.
 
 ```tsx
 import { DiplomaticClient, StateManager, useStateWatcher, localStorageStore } from '@interncom/diplomatic'
+import { DiplomaticClient, StateManager, useStateWatcher, idbStorageStore } from '@interncom/diplomatic'
 ```
 
 Import the application components of the DIPLOMATIC protocol: the DSL, the op handler, and a hook to notify view code when an op has been handled (suggesting there’s fresh data to render). Also, a pluggable storage module the DSL uses to store its internal state.
@@ -102,7 +103,7 @@ const client = new DiplomaticClient({
   seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
   hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
   stateManager: stateMgr,
-  store: localStorageStore,
+  store: idbStorageStore,
 });
 ```
 

@@ -5,6 +5,8 @@ export default defineConfig({
   title: "DIPLOMATIC",
   description: "Sync framework",
   themeConfig: {
+    logo: '/d-logo-sans-crossbar.png',
+
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },

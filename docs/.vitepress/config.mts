@@ -9,7 +9,8 @@ export default defineConfig({
 
     // https://vitepress.dev/reference/default-theme-config
     nav: [
-      { text: 'Docs', link: '/docs/' }
+      { text: 'Docs', link: '/docs/' },
+      { text: 'Demos', link: '/docs/demos/status' },
     ],
 
     sidebar: [
@@ -34,8 +35,8 @@ export default defineConfig({
       {
         text: 'Demos',
         items: [
-          { text: 'COUNT', link: '/docs/demo/count' },
-          { text: 'STATUS', link: '/docs/demo/status' },
+          { text: 'COUNT', link: '/docs/demos/count' },
+          { text: 'STATUS', link: '/docs/demos/status' },
         ],
         collapsed: false,
       },

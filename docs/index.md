@@ -5,14 +5,14 @@ layout: home
 hero:
   name: "DIPLOMATIC"
   text: "Data sync framework"
-  tagline: "**** FOR YOUR APPS ONLY ****"
+  tagline: "ALPHA: Technology Preview"
   actions:
     - theme: brand
       text: Docs
       link: /docs/
     - theme: alt
       text: Demos
-      link: /docs/demo/
+      link: /docs/demos/status
 
 features:
   - title: Offline-First

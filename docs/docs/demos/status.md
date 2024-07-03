@@ -1,5 +1,7 @@
 # STATUS
 
+<video src="https://pub-baf63544dce04e12a9502ae4f58bdc2b.r2.dev/diplomatic-status-demo-720.mov" controls />
+
 ## Demo
 
 Visit [https://diplomatic-status.replit.app](https://diplomatic-status.replit.app/) for a live demo. Open in multiple tabs or on multiple devices and note the status messages sync in real-time.

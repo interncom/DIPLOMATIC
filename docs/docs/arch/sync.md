@@ -1,5 +1,7 @@
 # Sync Architecture
 
+![System diagram](./system-diagram.jpg)
+
 Quick sketch. Will document in more detail later.
 
 The DIPLOMATIC protocol achieves eventual consistency.

@@ -1,6 +1,15 @@
 # System Architecture
 
-![System diagram](./system-diagram.jpg)
+```mermaid
+flowchart LR
+  A1(View) -->|Op| B1(DSL)
+  B1 <-->|🔒OP| H(Host)
+  H <-->|🔒OP| S[(Storage)]
+  B1 --> |Op| C1(Handler)
+  C1 --> |Op| D1[(State)]
+  D1 --> E1(Hook)
+  E1 -->|Update| A1
+```
 
 1. In the DIPLOMATIC protocol, when a user performs a state-altering action in a client application, the app generates a change descriptor called an **operation**, or **op** for short.
 2. The app sends that op into the **DSL** (DIPLOMATIC Sync Layer), which then passes the op to the client’s op handler, which makes the appropriate alteration to client state (e.g. modifies a client database).

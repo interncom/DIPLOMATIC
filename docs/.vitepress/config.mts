@@ -1,7 +1,9 @@
-import { defineConfig } from 'vitepress'
+// See https://emersonbottero.github.io/vitepress-plugin-mermaid/guide/getting-started.html.
+import { withMermaid } from "vitepress-plugin-mermaid";
+// import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
-export default defineConfig({
+export default withMermaid({
   title: "DIPLOMATIC",
   description: "Sync framework",
   themeConfig: {

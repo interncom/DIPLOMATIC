@@ -11,8 +11,8 @@ hero:
       alt: Source code of a demo app using DIPLOMATIC
   actions:
     - theme: brand
-      text: Docs
-      link: /docs/
+      text: Get Started
+      link: /docs/#quickstart
     - theme: alt
       text: Demos
       link: /docs/demos/status

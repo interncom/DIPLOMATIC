@@ -35,14 +35,6 @@ export default withMermaid({
         collapsed: false,
       },
       {
-        text: 'Demos',
-        items: [
-          { text: 'COUNT', link: '/docs/demos/count' },
-          { text: 'STATUS', link: '/docs/demos/status' },
-        ],
-        collapsed: false,
-      },
-      {
         text: 'Host',
         items: [
           { text: 'Deno', link: '/docs/host/deno' },
@@ -56,7 +48,7 @@ export default withMermaid({
           { text: 'Client', link: '/docs/api/client' },
           { text: 'Host', link: '/docs/api/host' },
         ],
-        collapsed: false,
+        collapsed: true,
       },
       {
         text: 'CLI',
@@ -64,7 +56,15 @@ export default withMermaid({
           { text: 'diplog', link: '/docs/cli/diplog' },
           { text: 'dipcat', link: '/docs/cli/dipcat' },
         ],
-        collapsed: false,
+        collapsed: true,
+      },
+      {
+        text: 'Demos',
+        items: [
+          { text: 'COUNT', link: '/docs/demos/count' },
+          { text: 'STATUS', link: '/docs/demos/status' },
+        ],
+        collapsed: true,
       },
     ],
 

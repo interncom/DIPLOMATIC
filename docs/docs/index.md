@@ -14,57 +14,59 @@ DIPLOMATIC is an implementation of the Event Sourcing architecture. It models ea
 
 ## Quickstart
 
+### Initialize App
+
 ```shell
-npm install --save @interncom/diplomatic
+npm create @interncom/diplomatic
 ```
 
-DIPLOMATIC requires [ES Modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules) support. If you're using [Vite](https://vitejs.dev), you'll need these lines in your `defineConfig` object:
+`cd` into the directory that creates.
 
-```javascript
-build: {
-  target: 'es2022',
-},
-optimizeDeps: { esbuildOptions: { target: 'es2022' } },
+```shell
+npm install
+npm run dev
 ```
 
-Create a `StateManager`:
+### Customize
+
+Edit the `src/App.tsx` in the directory that creates. You'll want to change the operation type name `"custom"` to something that describes the type of data your application operates on. You may have multiple operation types.
+
+### StateManager
+
+Edit the `applier` to update your application state in response to operations of whatever types your app needs. Change the `check` and `apply` functions to suit your application logic. `check` verifies that an `IOp` is of a more-specific operation type. `apply` takes an operation of that more-specific type and updates the application state appropriately based on the operation's `body`.
 
 ```typescript
-import { StateManager } from '@interncom/diplomatic'
-const database = { /* ... */ };
-const stateMgr = new StateManager(
-  async (op) => {
-    // Update app database based upon op.type and op.body.
-  },
-  async () => {
-    // Clear app database.
-  },
-)
+const applier = opMapApplier<{ status: ICustomOp }>({
+  "custom": {
+    check: (op: IOp): op is ICustomOp => {
+      return op.type === "custom" && typeof op.body === "string";
+    },
+    apply: async (op: ICustomOp) => {
+      const curr = appStore.load();
+      if (!curr?.updatedAt || op.ts > curr.updatedAt) {
+        const val = op.body;
+        appStore.store({ val, updatedAt: op.ts });
+      }
+    }
+  }
+});
 ```
 
-Initialize a `DiplomaticClient`, with a 64-char hex seed string, a host URL (this one is a demo server, but you can host your own), the state manager you just defined, and `idbStore`:
+### UI
 
-```typescript
-import { DiplomaticClient, idbStore } from '@interncom/diplomatic'
-const client = new DiplomaticClient({
-  seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-  hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-  stateManager: stateMgr,
-  store: idbStore,
-})
-```
-
-Observe state changes in response to operations of a particular type with the `useStateWatcher` hook, and modify app state by calling the client's `upsert` method.
+Observe state changes in response to operations of a particular type with the `useStateWatcher` hook, and modify app state by calling the client's `upsert` method, which generates a mutation operation (an `UPSERT` rather than a `DELETE`—the only two operation "verbs").
 
 ```typescript
 import { useStateWatcher } from '@interncom/diplomatic'
 export default function App() {
-  const data = useStateWatcher(stateMgr, "op-type", () => database.data)
-  const update = (newData) => client.upsert("op-type", newData)
+  const data = useStateWatcher(stateMgr, "custom", () => database.data)
+  const update = (newData) => client.upsert("custom", newData)
 
   // ...
 }
 ```
+
+Build an application UI that visualizes the application state and provides the user control mechanisms which trigger `client.upsert` calls to alter the database via operation objects. DIPLOMATIC handles relaying these operations between clients via a cloud host, and also calls the local `applier` defined above with them, to keep all clients in sync.
 
 ## Core Features
 

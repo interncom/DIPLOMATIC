@@ -11,7 +11,7 @@
 
 DIPLOMATIC keeps a full copy of the data needed to reconstruct the latest application state on all of a user's devices and hosts.
 
-## Host Snooping
+## Honest-but-Curious Host
 
 ### Threats
 

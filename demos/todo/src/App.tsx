@@ -1,7 +1,7 @@
 import './App.css'
 import consts from './consts.json';
 import { useCallback, useState } from 'react';
-import { DiplomaticClient, htob, idbStore, EntityDB } from '@interncom/diplomatic'
+import { DiplomaticClient, htob, idbStore, EntityDB, btoh } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import Todo from './Todo';
 
@@ -55,7 +55,8 @@ export default function App() {
           <h1>TODO</h1>
           {todos?.map((ent) => {
             const todo = ent.body as ITodo;
-            return <Todo key={ent.eid} eid={ent.eid} todo={todo} onChange={handleChange} onDelete={handleDelete} />;
+            const hex = btoh(ent.eid);
+            return <Todo key={hex} eid={hex} todo={todo} onChange={handleChange} onDelete={handleDelete} />;
           })}
           <form onSubmit={handleSubmit}>
             <input id="value-input" type="text" value={valueField} onChange={(evt) => setValueField(evt.target.value)} placeholder="Type a todo ↵" style={{ width: "100%", boxSizing: 'border-box', padding: 4 }} />

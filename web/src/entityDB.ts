@@ -1,6 +1,5 @@
 import { openDB, type DBSchema } from 'idb';
 import { Applier } from './types';
-import { btoh } from './shared/lib';
 import { IOp, Verb } from './shared/types';
 import { StateManager } from './state';
 
@@ -9,9 +8,9 @@ export const typeIndexName = 'entity_type';
 
 interface IEntityDB extends DBSchema {
   entities: {
-    key: string; // TODO: try Uint8Array;
+    key: Uint8Array; // TODO: try Uint8Array;
     value: {
-      eid: string;
+      eid: Uint8Array;
       type: string;
       updatedAt: Date;
       body: unknown;
@@ -22,7 +21,7 @@ interface IEntityDB extends DBSchema {
   }
 }
 
-export const db = await openDB<IEntityDB>('db', 3, {
+export const db = await openDB<IEntityDB>('db', 4, {
   upgrade(db) {
     const store = db.createObjectStore('entities', { keyPath: 'eid', autoIncrement: false });
     store.createIndex('entity_type', 'type');
@@ -30,17 +29,16 @@ export const db = await openDB<IEntityDB>('db', 3, {
 });
 
 export const applier: Applier = async (op: IOp) => {
-  const hex = btoh(op.eid);
   switch (op.verb) {
     case Verb.UPSERT: {
-      const curr = await db.get('entities', hex);
+      const curr = await db.get('entities', op.eid);
       if (new Date(op.ts) > (curr?.updatedAt ?? "")) {
-        await db.put('entities', { eid: hex, type: op.type, updatedAt: new Date(op.ts), body: op.body });
+        await db.put('entities', { eid: op.eid, type: op.type, updatedAt: new Date(op.ts), body: op.body });
       }
       break;
     }
     case Verb.DELETE: {
-      await db.delete('entities', hex);
+      await db.delete('entities', op.eid);
       break;
     }
   }

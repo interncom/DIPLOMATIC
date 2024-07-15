@@ -6,13 +6,23 @@ export enum Verb {
 // Body types are application-specific.
 type Timestamp = string
 
-export interface IOp {
+export interface IBaseOp {
+  eid: Uint8Array; // Entity ID
   ts: Timestamp; // UTC unix timestamp
   type: string;
-  verb: Verb;
   ver: number; // Version number, application-specific not about the protocol;
+}
+
+export interface IUpsertOp extends IBaseOp {
+  verb: Verb.UPSERT;
   body: unknown;
 }
+
+export interface IDeleteOp extends IBaseOp {
+  verb: Verb.DELETE;
+}
+
+export type IOp = IUpsertOp | IDeleteOp;
 
 export type CipherOp = Uint8Array // encrypted serialized IOp
 
@@ -55,6 +65,7 @@ export interface IHostCrypto {
 }
 
 export interface ICrypto extends IHostCrypto {
+  gen128BitRandomID: () => Promise<Uint8Array>;
   gen256BitSecureRandomSeed: () => Promise<Uint8Array>;
   deriveXSalsa20Poly1305Key: (seed: Uint8Array, derivationIndex: number) => Promise<Uint8Array>;
   encryptXSalsa20Poly1305Combined: (plaintext: Uint8Array, key: Uint8Array) => Promise<Uint8Array>;

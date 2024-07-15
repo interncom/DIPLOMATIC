@@ -10,6 +10,7 @@ import { type IOp, Verb } from "./shared/types";
 import useStateWatcher from "./react/useStateWatcher";
 import InitSeedView from "./react/initSeedView";
 import ClientStatusBar from "./react/statusBar";
+import * as EntityDB from "./entityDB";
 
 export {
   useClientState,
@@ -26,6 +27,7 @@ export {
   Verb,
   InitSeedView,
   ClientStatusBar,
+  EntityDB,
 };
 
 export type {

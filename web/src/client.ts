@@ -5,7 +5,7 @@ import webClientAPI from "./api";
 import type { IClientStateStore, Applier, IDiplomaticClientState } from "./types";
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
-import { genUpsertOp } from "./shared/ops";
+import { genDeleteOp, genUpsertOp } from "./shared/ops";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
@@ -275,7 +275,7 @@ export default class DiplomaticClient {
 
     try {
       await this.stateManager.apply(op);
-    } catch {
+    } catch (err) {
       // If op can't be applied locally, don't burden anyone else with it.
       await this.store.dequeueUpload(shaHex);
       this.emitUpdate();
@@ -289,8 +289,14 @@ export default class DiplomaticClient {
     }
   }
 
-  async upsert<T>(type: string, body: T, version = 0) {
-    const op = genUpsertOp<T>(type, body, version);
+  async upsert<T>(type: string, body: T, eid?: Uint8Array, version = 0) {
+    const id = eid ?? await libsodiumCrypto.gen128BitRandomID()
+    const op = genUpsertOp<T>(id, type, body, version);
+    return this.apply(op);
+  }
+
+  async delete<T>(type: string, eid: Uint8Array, version = 0) {
+    const op = genDeleteOp<T>(eid, type, version);
     return this.apply(op);
   }
 }

@@ -1,12 +1,23 @@
-import { type IOp, Verb } from './types.ts'
+import { IDeleteOp, type IOp, IUpsertOp, Verb } from './types.ts'
 
-export function genUpsertOp<T>(type: string, body: T, version = 0): IOp {
+export function genUpsertOp<T>(eid: Uint8Array, type: string, body: T, version = 0): IUpsertOp {
   return {
+    eid,
     ts: new Date().toISOString(),
     type,
     verb: Verb.UPSERT,
     ver: version,
     body,
+  }
+}
+
+export function genDeleteOp<T>(eid: Uint8Array, type: string, version = 0): IDeleteOp {
+  return {
+    eid,
+    ts: new Date().toISOString(),
+    type,
+    verb: Verb.DELETE,
+    ver: version,
   }
 }
 

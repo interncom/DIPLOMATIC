@@ -9,11 +9,11 @@ interface IStatus {
 }
 
 const statusStore = {
-  store(status: IStatus) {
+  async store(status: IStatus) {
     localStorage.setItem("status", status.status);
     localStorage.setItem("updatedAt", status.updatedAt);
   },
-  load(): IStatus | undefined {
+  async load(): Promise<IStatus | undefined> {
     const status = localStorage.getItem("status") ?? undefined;
     const updatedAt = localStorage.getItem("updatedAt") ?? undefined;
     if (!status || !updatedAt) {
@@ -37,7 +37,7 @@ const applier = opMapApplier<{ status: IStatusOp }>({
       return op.type === "status" && typeof op.body === "string";
     },
     apply: async (op: IStatusOp) => {
-      const curr = statusStore.load();
+      const curr = await statusStore.load();
       if (!curr?.updatedAt || op.ts > curr.updatedAt) {
         const status = op.body;
         statusStore.store({ status, updatedAt: op.ts });

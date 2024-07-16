@@ -8,6 +8,8 @@ export interface IClientStateStore {
   setHostURL: (url: string) => Promise<void>;
   getHostID: () => Promise<string | undefined>;
   setHostID: (id: string) => Promise<void>;
+  setLastFetchedAt: (ts: Date) => Promise<void>;
+  getLastFetchedAt: () => Promise<Date | undefined>;
   wipe: () => Promise<void>;
 
   enqueueUpload: (sha256: string, cipherOp: Uint8Array) => Promise<void>;

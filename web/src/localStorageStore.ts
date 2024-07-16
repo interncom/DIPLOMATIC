@@ -4,6 +4,7 @@ import type { IClientStateStore } from "./types";
 const seedKey = "seedHex";
 const hostURLKey = "hostURL";
 const hostIDKey = "hostID";
+const lastFetchedAtKey = "lastFetchedAt";
 
 class LocalStorageStore implements IClientStateStore {
   async wipe() {
@@ -37,6 +38,19 @@ class LocalStorageStore implements IClientStateStore {
 
   async setHostID(id: string) {
     return localStorage.setItem(hostIDKey, id);
+  }
+
+  async getLastFetchedAt() {
+    const res = localStorage.getItem(lastFetchedAtKey);
+    if (!res) {
+      return;
+    }
+    return new Date(res);
+  }
+
+  async setLastFetchedAt(ts: Date) {
+    const str = ts.toISOString();
+    localStorage.setItem(lastFetchedAtKey, str);
   }
 
   uploadQueue = new Map<string, Uint8Array>();

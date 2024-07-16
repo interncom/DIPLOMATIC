@@ -58,7 +58,7 @@ export default function App() {
             const hex = btoh(ent.eid);
             return <Todo key={hex} eid={hex} todo={todo} onChange={handleChange} onDelete={handleDelete} />;
           })}
-          <form onSubmit={handleSubmit} style={{ marginBottom: 48 }}>
+          <form onSubmit={handleSubmit} style={{ marginBottom: 48, marginTop: 18 }}>
             <input id="value-input" type="text" value={valueField} onChange={(evt) => setValueField(evt.target.value)} placeholder="Type a todo ↵" style={{ width: "100%", boxSizing: 'border-box', padding: 4 }} />
           </form>
           {

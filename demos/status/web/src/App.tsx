@@ -2,7 +2,7 @@ import './App.css'
 import { useCallback, useState } from 'react';
 import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
-import { IUpsertOp, Verb } from '@interncom/diplomatic/dist/shared/types';
+import { IUpsertOp, Verb } from '@interncom/diplomatic';
 
 interface IStatus {
   status: string;
@@ -60,7 +60,7 @@ export default function App() {
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     evt.preventDefault();
-    client.upsert("status", statusField);
+    client.upsert("status", statusField, new Uint8Array());
     setStatusField("");
   }, [statusField]);
 

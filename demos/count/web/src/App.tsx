@@ -1,8 +1,8 @@
-import { StateManager, useStateWatcher, idbStore, DiplomaticClient } from '@interncom/diplomatic'
+import { StateManager, useStateWatcher, idbStore, DiplomaticClient, Verb } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
 const stateMgr = new StateManager(async (op) => {
-  if (op.type === "count" && typeof op.body === "number") {
+  if (op.type === "count" && op.verb === Verb.UPSERT && typeof op.body === "number") {
     appState.count = op.body;
   }
 }, async () => { appState.count = 0 })

@@ -2,6 +2,7 @@ import './App.css'
 import { useCallback, useState } from 'react';
 import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
+import { IUpsertOp, Verb } from '@interncom/diplomatic/dist/shared/types';
 
 interface IStatus {
   status: string;
@@ -26,7 +27,7 @@ const statusStore = {
   }
 }
 
-export interface IStatusOp extends IOp {
+export interface IStatusOp extends IUpsertOp {
   type: "status";
   body: string;
 }
@@ -34,7 +35,7 @@ export interface IStatusOp extends IOp {
 const applier = opMapApplier<{ status: IStatusOp }>({
   "status": {
     check: (op: IOp): op is IStatusOp => {
-      return op.type === "status" && typeof op.body === "string";
+      return op.type === "status" && op.verb === Verb.UPSERT && typeof op.body === "string";
     },
     apply: async (op: IStatusOp) => {
       const curr = await statusStore.load();

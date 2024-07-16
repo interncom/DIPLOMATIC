@@ -63,6 +63,7 @@ export default withMermaid({
         items: [
           { text: 'COUNT', link: '/docs/demos/count' },
           { text: 'STATUS', link: '/docs/demos/status' },
+          { text: 'TODO', link: '/docs/demos/todo' },
         ],
         collapsed: true,
       },

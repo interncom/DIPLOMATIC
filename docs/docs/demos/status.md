@@ -334,18 +334,6 @@ This is what the status bar looks like. For convenience, the DIPLOMATIC client l
 If the DSL has a seed loaded, present the main UI, including the status message and its timestamp, a text field to update the message, and controls to link/unlink from the host as well as clear the DSL’s seed (ensure you’ve saved it first!)
 
 ```tsx
-return (
-  <div style={{ width: "100vw", textAlign: "center" }}>
-    <h1>COUNT</h1>
-    <h2>{count}</h2>
-    <button onClick={inc}>+1</button>
-  </div>
-)
-```
-
-Create the view: a container with a title, the current count, and a button that triggers the increment function when pressed.
-
-```tsx
 <InitSeedView client={client} path="/" />
 ```
 

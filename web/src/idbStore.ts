@@ -39,6 +39,7 @@ class IDBStore implements IClientStateStore {
   seed?: Uint8Array;
   hostURL?: string;
   hostID?: string;
+  lastFetchedAt?: Date;
 
   async wipe() {
     await db.clear('metaKV');
@@ -77,6 +78,19 @@ class IDBStore implements IClientStateStore {
 
   async setHostID(id: string) {
     await db.put('metaKV', id, 'hostID');
+  }
+
+  async getLastFetchedAt() {
+    const res = await db.get('metaKV', 'lastFetchedAt');
+    if (!res) {
+      return;
+    }
+    return new Date(res);
+  }
+
+  async setLastFetchedAt(ts: Date) {
+    const str = ts.toISOString();
+    await db.put('metaKV', str, 'lastFetchedAt');
   }
 
   uploadQueue = new Map<string, Uint8Array>();

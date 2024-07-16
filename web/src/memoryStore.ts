@@ -4,6 +4,7 @@ class MemoryStore implements IClientStateStore {
   seed?: Uint8Array;
   hostURL?: string;
   hostID?: string;
+  lastFetchedAt?: Date;
 
   async wipe() {
     this.seed = undefined;
@@ -35,6 +36,14 @@ class MemoryStore implements IClientStateStore {
 
   async setHostID(id: string) {
     this.hostID = id;
+  }
+
+  async getLastFetchedAt() {
+    return this.lastFetchedAt;
+  }
+
+  async setLastFetchedAt(ts: Date) {
+    this.lastFetchedAt = ts;
   }
 
   uploadQueue = new Map<string, Uint8Array>();

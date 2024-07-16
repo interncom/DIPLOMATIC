@@ -25,7 +25,6 @@ export default class DiplomaticClient {
   encKey?: Uint8Array;
   hostURL?: URL;
   hostKeyPair?: KeyPair;
-  lastFetchedAt?: string;
 
   constructor(params: IDiplomaticClientParams) {
     this.store = params.store;
@@ -38,7 +37,6 @@ export default class DiplomaticClient {
     this.encKey = undefined;
     this.hostURL = undefined;
     this.hostKeyPair = undefined;
-    this.lastFetchedAt = undefined;
     this.websocket?.close();
     this.websocket = undefined;
     await this.stateManager.clear();
@@ -195,7 +193,8 @@ export default class DiplomaticClient {
     if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
       return [];
     }
-    const begin = new Date(this.lastFetchedAt ?? 0);
+    const lastFetchedAt = await this.store.getLastFetchedAt();
+    const begin = lastFetchedAt ?? new Date(0);
     const { hostURL, hostKeyPair } = this;
     const pathResp = await webClientAPI.getDeltaPaths(hostURL, begin, hostKeyPair);
     const paths = pathResp.paths;
@@ -205,7 +204,7 @@ export default class DiplomaticClient {
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
     // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
-    this.lastFetchedAt = pathResp.fetchedAt;
+    await this.store.setLastFetchedAt(new Date(pathResp.fetchedAt))
   }
 
   async fetchAndExecQueuedOps() {

@@ -1,6 +1,6 @@
 {
   "name": "@interncom/create-diplomatic",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "description": "Initializer for DIPLOMATIC-based apps",
   "main": "index.js",

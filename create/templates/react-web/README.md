@@ -1,7 +1,3 @@
-# DIPLOMATIC-based App
+# TODO app
 
-## Usage
-
-1. `npm install`
-1. `npm run dev`
-1. Edit `src/App.tsx` to make your app.
+Demo of DIPLOMATIC sync protocol.

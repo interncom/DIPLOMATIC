@@ -1,8 +1,10 @@
-import type { IStorage } from "../../../shared/types.ts";
+import { btoh } from "../../../shared/lib.ts";
+import type { IDeltaListItem, IStorage } from "../../../shared/types.ts";
+import libsodiumCrypto from "../crypto.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
-  ops: Map<string, Uint8Array>;
+  ops: Map<string, { cipherOp: Uint8Array, recordedAt: Date, pubKeyHex: string }>;
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
@@ -16,25 +18,30 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setOp(pubKeyHex, path, op) {
-    const fullPath = [pubKeyHex, path].join('/');
-    this.ops.set(fullPath, op);
+  async setOp(pubKeyHex, recordedAt, op) {
+    const sha256 = await libsodiumCrypto.sha256Hash(op);
+    const hex = btoh(sha256);
+    this.ops.set(hex, { pubKeyHex, cipherOp: op, recordedAt });
   },
 
-  async getOp(pubKeyHex, path) {
-    const fullPath = [pubKeyHex, path].join('/');
-    return this.ops.get(fullPath);
+  async getOp(pubKeyHex, sha256Hex) {
+    const op = this.ops.get(sha256Hex);
+    if (op?.pubKeyHex !== pubKeyHex) {
+      return;
+    }
+    return op.cipherOp;
   },
 
   async listOps(pubKeyHex, begin, end) {
-    const paths: string[] = [];
-    for (const [key, _] of this.ops) {
-      const [pkh, ts] = key.split('/');
-      if (pkh === pubKeyHex && ts >= begin && ts < end) {
-        paths.push(ts);
+    const list: IDeltaListItem[] = [];
+    for (const op of this.ops.values()) {
+      const ts = op.recordedAt.toISOString();
+      if (op.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
+        const sha256 = await libsodiumCrypto.sha256Hash(op.cipherOp);
+        list.push({ sha256, recordedAt: op.recordedAt });
       }
     }
-    return paths;
+    return list;
   },
 }
 

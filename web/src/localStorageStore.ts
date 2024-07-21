@@ -54,34 +54,53 @@ class LocalStorageStore implements IClientStateStore {
   }
 
   uploadQueue = new Map<string, Uint8Array>();
-  enqueueUpload = async (sha256: string, cipherOp: Uint8Array) => {
-    this.uploadQueue.set(sha256, cipherOp);
+  enqueueUpload = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
+    const hex = btoh(sha256);
+    this.uploadQueue.set(hex, cipherOp);
   }
-  dequeueUpload = async (sha256: string) => {
-    this.uploadQueue.delete(sha256);
+  dequeueUpload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    this.uploadQueue.delete(hex);
   }
-  peekUpload = async (sha256: string) => {
-    return this.uploadQueue.get(sha256);
+  peekUpload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    return this.uploadQueue.get(hex);
   };
   listUploads = async () => {
-    return Array.from(this.uploadQueue.keys());
+    const hexes = Array.from(this.uploadQueue.keys());
+    return hexes.map(htob);
   };
   numUploads = async () => {
     return this.uploadQueue.size;
   }
 
-  downloadQueue = new Set<string>();
-  enqueueDownload = async (path: string) => {
-    this.downloadQueue.add(path);
+  downloadQueue = new Map<string, Date>();
+  enqueueDownload = async (sha256: Uint8Array, recordedAt: Date) => {
+    const hex = btoh(sha256);
+    this.downloadQueue.set(hex, recordedAt);
   }
-  dequeueDownload = async (path: string) => {
-    this.downloadQueue.delete(path);
+  dequeueDownload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    this.downloadQueue.delete(hex);
   }
   listDownloads = async () => {
-    return Array.from(this.downloadQueue.keys());
+    const list = Array.from(this.downloadQueue.entries());
+    return list.map(([hex, recordedAt]) => {
+      return { sha256: htob(hex), recordedAt };
+    });
   }
   numDownloads = async () => {
     return this.downloadQueue.size;
+  }
+
+  ops = new Map<string, Uint8Array>();
+  storeOp = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
+    const hex = btoh(sha256);
+    this.ops.set(hex, cipherOp);
+  }
+  clearOp = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    this.ops.delete(hex);
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ICrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
+import type { ICrypto, IListDeltasResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
 import { btoh } from "./lib.ts";
 
 export default class DiplomaticClientAPI {
@@ -58,8 +58,9 @@ export default class DiplomaticClientAPI {
     return opPath;
   }
 
-  async getDelta(hostURL: URL, opPath: string, keyPair: KeyPair): Promise<Uint8Array> {
+  async getDelta(hostURL: URL, sha256: Uint8Array, keyPair: KeyPair): Promise<Uint8Array> {
     const url = new URL(hostURL)
+    const opPath = btoh(sha256);
     url.pathname = `/ops/${opPath}`;
 
     const sig = await this.crypto.signEd25519(opPath, keyPair.privateKey);
@@ -82,7 +83,7 @@ export default class DiplomaticClientAPI {
     return resp.cipher;
   }
 
-  async getDeltaPaths(hostURL: URL, begin: Date, keyPair: KeyPair): Promise<IGetDeltaPathsResponse> {
+  async listDeltas(hostURL: URL, begin: Date, keyPair: KeyPair): Promise<IListDeltasResponse> {
     const t = begin.toISOString();
     const path = `/ops?begin=${t}`;
     const url = new URL(hostURL)
@@ -102,7 +103,7 @@ export default class DiplomaticClientAPI {
       throw "Uh oh";
     }
     const respBuf = await response.arrayBuffer();
-    const resp = this.codec.decode(respBuf) as IGetDeltaPathsResponse;
+    const resp = this.codec.decode(respBuf) as IListDeltasResponse;
     return resp;
   }
 }

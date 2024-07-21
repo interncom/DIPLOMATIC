@@ -1,4 +1,4 @@
-import type { IOp } from "./shared/types";
+import type { IDeltaListItem, IOp } from "./shared/types";
 
 export interface IClientStateStore {
   init?: () => Promise<void>;
@@ -12,16 +12,19 @@ export interface IClientStateStore {
   getLastFetchedAt: () => Promise<Date | undefined>;
   wipe: () => Promise<void>;
 
-  enqueueUpload: (sha256: string, cipherOp: Uint8Array) => Promise<void>;
-  dequeueUpload: (sha256: string) => Promise<void>;
-  peekUpload: (sha256: string) => Promise<Uint8Array | undefined>;
-  listUploads: () => Promise<string[]>;
+  enqueueUpload: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
+  dequeueUpload: (sha256: Uint8Array) => Promise<void>;
+  peekUpload: (sha256: Uint8Array) => Promise<Uint8Array | undefined>;
+  listUploads: () => Promise<Uint8Array[]>;
   numUploads: () => Promise<number>;
 
-  enqueueDownload: (path: string) => Promise<void>;
-  dequeueDownload: (path: string) => Promise<void>;
-  listDownloads: () => Promise<string[]>;
+  enqueueDownload: (sha256: Uint8Array, recordedAt: Date) => Promise<void>;
+  dequeueDownload: (sha256: Uint8Array) => Promise<void>;
+  listDownloads: () => Promise<IDeltaListItem[]>;
   numDownloads: () => Promise<number>;
+
+  storeOp: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
+  clearOp: (sha256: Uint8Array) => Promise<void>;
 }
 
 export interface IDiplomaticClientState {

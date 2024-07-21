@@ -106,8 +106,8 @@ export default {
       },
 
       async listOps(pubKeyHex: string, begin: string, end: string) {
-        const rows = await env.DIP_DB.prepare("SELECT recordedAt FROM ops WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?").bind(pubKeyHex, begin, end).all<{ recordedAt: string }>();
-        return rows.results?.map(row => row.recordedAt);
+        const rows = await env.DIP_DB.prepare("SELECT sha256 FROM ops WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?").bind(pubKeyHex, begin, end).all<{ sha256: string }>();
+        return rows.results?.map(row => ({ sha256: row.sha256 }));
       },
     }
 

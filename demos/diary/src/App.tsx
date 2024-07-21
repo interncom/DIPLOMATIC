@@ -6,7 +6,6 @@ import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSync
 import Entry from './Entry';
 
 export interface IEntry {
-  createdAt: Date;
   text: string;
 }
 const opType = 'entry';
@@ -17,7 +16,8 @@ const client = new DiplomaticClient({ store: idbStore, stateManager });
 const hostURL = consts.hostURL;
 
 async function getEntries() {
-  return EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  const entries = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  return entries.sort((ent1, ent2) => new Date(ent1.createdAt).getTime() - new Date(ent2.createdAt).getTime());
 }
 
 export default function App() {
@@ -29,8 +29,7 @@ export default function App() {
   const [valueField, setValueField] = useState("");
   const handleSubmit = useCallback(async (evt: React.FormEvent) => {
     evt.preventDefault();
-    const createdAt = new Date();
-    const entry: IEntry = { text: valueField, createdAt };
+    const entry: IEntry = { text: valueField };
     client.upsert<IEntry>(opType, entry);
     setValueField("");
   }, [valueField]);
@@ -54,9 +53,8 @@ export default function App() {
         <>
           <h1>DIARY</h1>
           {entries?.map((ent) => {
-            const entry = ent.body as IEntry;
             const hex = btoh(ent.eid);
-            return <Entry key={hex} eid={hex} entry={entry} onChange={handleChange} onDelete={handleDelete} />;
+            return <Entry key={hex} entity={ent as EntityDB.IEntity<IEntry>} onChange={handleChange} onDelete={handleDelete} />;
           })}
           <form onSubmit={handleSubmit} style={{ marginBottom: 48, marginTop: 18 }}>
             <input id="value-input" type="text" value={valueField} onChange={(evt) => setValueField(evt.target.value)} placeholder="Type a new entry ↵" style={{ width: "100%", boxSizing: 'border-box', padding: 4 }} />

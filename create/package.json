@@ -1,6 +1,6 @@
 {
   "name": "@interncom/create-diplomatic",
-  "version": "0.0.6",
+  "version": "0.0.9",
   "type": "module",
   "description": "Initializer for DIPLOMATIC-based apps",
   "main": "index.js",
@@ -8,8 +8,12 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "create-diplomatic": "./index.js"
+    "@interncom/create-diplomatic": "./index.js"
   },
+  "files": [
+    "templates",
+    "index.js"
+  ],
   "author": "The Internet Committee",
   "license": "ISC",
   "publishConfig": {

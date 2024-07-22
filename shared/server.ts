@@ -1,4 +1,4 @@
-import type { IHostCrypto, IGetDeltaPathsResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage, IWebsocketNotifier } from "./types.ts";
+import type { IHostCrypto, IListDeltasResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage, IWebsocketNotifier } from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
@@ -121,13 +121,14 @@ export class DiplomaticServer {
           return new Response("Invalid signature", { status: 401 });
         }
 
-        const path = opPath(now);
-        await this.storage.setOp(pubKeyHex, path, req.cipher);
+        await this.storage.setOp(pubKeyHex, now, req.cipher);
 
         // Notify listeners.
         await this.notifier.notify(pubKeyHex);
 
-        return new Response(path, { status: 200 });
+        const opHash = await this.crypto.sha256Hash(req.cipher);
+        const hex = btoh(opHash);
+        return new Response(hex, { status: 200 });
       } catch (err) {
         console.error(err);
         return new Response("Processing request", { status: 500 });
@@ -204,10 +205,10 @@ export class DiplomaticServer {
         const fetchedAt = now.toISOString();
         const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
         const begin = decodeURIComponent(beginComponent);
-        const userOpPaths = await this.storage.listOps(pubKeyHex, begin, fetchedAt);
+        const userOpsList = await this.storage.listOps(pubKeyHex, begin, fetchedAt);
 
-        const resp: IGetDeltaPathsResponse = {
-          paths: userOpPaths,
+        const resp: IListDeltasResponse = {
+          deltas: userOpsList,
           fetchedAt,
         }
         const respPack = this.codec.encode(resp);

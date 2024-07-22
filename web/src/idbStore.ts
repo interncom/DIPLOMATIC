@@ -7,6 +7,13 @@ interface ClientStoreDB extends DBSchema {
     key: string;
     value: string;
   },
+  ops: {
+    value: {
+      cipherOp: Uint8Array;
+      sha256: string;
+    };
+    key: string;
+  }
   uploadQueue: {
     value: {
       cipherOp: Uint8Array;
@@ -16,21 +23,25 @@ interface ClientStoreDB extends DBSchema {
   }
   downloadQueue: {
     value: {
-      path: string;
+      sha256: string;
+      recordedAt: Date;
     };
     key: string;
   }
 }
 
 
-const db = await openDB<ClientStoreDB>('client-store-db', 2, {
+const db = await openDB<ClientStoreDB>('client-store-db', 5, {
   upgrade(db) {
     db.createObjectStore('metaKV');
+    db.createObjectStore('ops', {
+      keyPath: 'sha256',
+    });
     db.createObjectStore('uploadQueue', {
       keyPath: 'sha256',
     });
     db.createObjectStore('downloadQueue', {
-      keyPath: 'path',
+      keyPath: 'sha256',
     });
   },
 });
@@ -93,20 +104,22 @@ class IDBStore implements IClientStateStore {
     await db.put('metaKV', str, 'lastFetchedAt');
   }
 
-  uploadQueue = new Map<string, Uint8Array>();
-  enqueueUpload = async (sha256: string, cipherOp: Uint8Array) => {
-    await db.put('uploadQueue', { sha256, cipherOp });
+  enqueueUpload = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
+    const hex = btoh(sha256);
+    await db.put('uploadQueue', { sha256: hex, cipherOp });
   }
-  dequeueUpload = async (sha256: string) => {
-    await db.delete('uploadQueue', sha256);
+  dequeueUpload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    await db.delete('uploadQueue', hex);
   }
-  peekUpload = async (sha256: string) => {
-    const row = await db.get('uploadQueue', sha256);
+  peekUpload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    const row = await db.get('uploadQueue', hex);
     return row?.cipherOp;
   };
   listUploads = async () => {
-    const sha256s = await db.getAllKeys('uploadQueue');
-    return sha256s;
+    const hexes = await db.getAllKeys('uploadQueue');
+    return hexes.map(htob);
   };
   numUploads = async () => {
     const num = await db.count('uploadQueue');
@@ -114,19 +127,35 @@ class IDBStore implements IClientStateStore {
   }
 
   downloadQueue = new Set<string>();
-  enqueueDownload = async (path: string) => {
-    await db.put('downloadQueue', { path });
+  enqueueDownload = async (sha256: Uint8Array, recordedAt: Date) => {
+    const hex = btoh(sha256);
+    await db.put('downloadQueue', { sha256: hex, recordedAt });
   }
-  dequeueDownload = async (path: string) => {
-    await db.delete('downloadQueue', path);
+  dequeueDownload = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    await db.delete('downloadQueue', hex);
   }
   listDownloads = async () => {
-    const paths = await db.getAllKeys('downloadQueue');
-    return paths;
+    const list = await db.getAll('downloadQueue');
+    return list.map(item => ({ sha256: htob(item.sha256), recordedAt: item.recordedAt }));
   }
   numDownloads = async () => {
     const num = await db.count('downloadQueue');
     return num;
+  }
+
+  storeOp = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
+    const hex = btoh(sha256);
+    await db.put('ops', { sha256: hex, cipherOp });
+  }
+  clearOp = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    await db.delete('ops', hex);
+  }
+  hasOp = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    const op = await db.get('ops', hex);
+    return op !== undefined;
   }
 }
 

@@ -40,17 +40,22 @@ export interface IOperationRequest {
   cipher: Uint8Array;
 }
 
-export interface IGetDeltaPathsResponse {
-  paths: string[];
+export interface IDeltaListItem {
+  sha256: Uint8Array;
+  recordedAt: Date;
+}
+
+export interface IListDeltasResponse {
+  deltas: IDeltaListItem[];
   fetchedAt: string;
 }
 
 export interface IStorage {
   addUser: (pubKeyHex: string) => Promise<void>;
   hasUser: (pubKeyHex: string) => Promise<boolean>;
-  setOp: (pubKeyHex: string, path: string, op: Uint8Array) => Promise<void>;
-  getOp: (pubKeyHex: string, path: string) => Promise<Uint8Array | undefined>;
-  listOps: (pubKeyHex: string, begin: string, end: string) => Promise<string[]>;
+  setOp: (pubKeyHex: string, recordedAt: Date, op: Uint8Array) => Promise<void>;
+  getOp: (pubKeyHex: string, sha256Hex: string) => Promise<Uint8Array | undefined>;
+  listOps: (pubKeyHex: string, begin: string, end: string) => Promise<IDeltaListItem[]>;
 }
 
 export interface KeyPair {

@@ -152,6 +152,11 @@ class IDBStore implements IClientStateStore {
     const hex = btoh(sha256);
     await db.delete('ops', hex);
   }
+  hasOp = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    const op = await db.get('ops', hex);
+    return op !== undefined;
+  }
 }
 
 export const idbStore = new IDBStore();

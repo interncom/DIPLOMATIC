@@ -25,6 +25,7 @@ export interface IClientStateStore {
 
   storeOp: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
   clearOp: (sha256: Uint8Array) => Promise<void>;
+  hasOp: (sha256: Uint8Array) => Promise<boolean>;
 }
 
 export interface IDiplomaticClientState {

@@ -194,7 +194,8 @@ export default class DiplomaticClient {
       return [];
     }
     const lastFetchedAt = await this.store.getLastFetchedAt();
-    const begin = lastFetchedAt ?? new Date(0);
+    const begin = new Date(0);
+    // const begin = lastFetchedAt ?? new Date(0);
     const { hostURL, hostKeyPair } = this;
     const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);
     for (const item of resp.deltas) {
@@ -216,13 +217,19 @@ export default class DiplomaticClient {
     // paths.sort((p1, p2) => p2.localeCompare(p1)); // Sort descending.
     items.sort((i1, i2) => i1.recordedAt.getTime() - i2.recordedAt.getTime()); // Sort ascending.
     for (const item of items) {
-      const cipher = await webClientAPI.getDelta(hostURL, item.sha256, hostKeyPair);
-      const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
-      const op = decode(packed) as IOp;
+      if (await this.store.hasOp(item.sha256)) {
+        // Skip.
+        await this.store.dequeueDownload(item.sha256);
+        this.emitUpdate();
+        continue;
+      }
       try {
+        const cipher = await webClientAPI.getDelta(hostURL, item.sha256, hostKeyPair);
+        const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
+        const op = decode(packed) as IOp;
         const sha256 = await libsodiumCrypto.sha256Hash(cipher);
-        await this.store.storeOp(sha256, cipher);
         await this.stateManager.apply(op);
+        await this.store.storeOp(sha256, cipher);
         await this.store.dequeueDownload(sha256);
         this.emitUpdate();
       } catch {
@@ -269,12 +276,13 @@ export default class DiplomaticClient {
     const packed = encode(op);
     const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
     const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
-    await this.store.storeOp(sha256, cipherOp);
     await this.store.enqueueUpload(sha256, cipherOp);
     this.emitUpdate();
 
     try {
       await this.stateManager.apply(op);
+      // TODO: just combine this with enqueing an upload.
+      await this.store.storeOp(sha256, cipherOp);
     } catch (err) {
       // If op can't be applied locally, don't burden anyone else with it.
       await this.store.dequeueUpload(sha256);

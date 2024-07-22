@@ -96,6 +96,10 @@ class MemoryStore implements IClientStateStore {
     const hex = btoh(sha256);
     this.ops.delete(hex);
   }
+  hasOp = async (sha256: Uint8Array) => {
+    const hex = btoh(sha256);
+    return this.ops.has(hex);
+  }
 }
 
 export const memoryStore = new MemoryStore();

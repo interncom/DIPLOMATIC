@@ -15,6 +15,7 @@ import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier } from ".
 import { DiplomaticServer } from "../../../shared/server";
 import { decodeAsync, encode, decode } from "@msgpack/msgpack";
 import { DurableObject } from "cloudflare:workers";
+import { htob } from "../../../shared/lib";
 
 const cloudflareCrypto: IHostCrypto = {
   async checkSigEd25519(sig, message, pubKey) {
@@ -92,12 +93,15 @@ export default {
         return has ?? false;
       },
 
-      async setOp(pubKeyHex: string, path: string, op: Uint8Array) {
-        await env.DIP_DB.prepare("INSERT INTO ops (userPubKey, recordedAt, op, size) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").bind(pubKeyHex, path, op, op.byteLength).run();
+      async setOp(pubKeyHex: string, recordedAt: Date, op: Uint8Array) {
+        const recAtStr = recordedAt.toISOString();
+        const sha256 = await cloudflareCrypto.sha256Hash(op);
+        await env.DIP_DB.prepare("INSERT INTO ops (sha256, userPubKey, recordedAt, op, size) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING").bind(sha256, pubKeyHex, recAtStr, op, op.byteLength).run();
       },
 
-      async getOp(pubKeyHex: string, path: string) {
-        const row = await env.DIP_DB.prepare("SELECT op, size FROM ops WHERE userPubKey = ? AND recordedAt = ?").bind(pubKeyHex, path).first<{ op: Uint8Array, size: number }>();
+      async getOp(pubKeyHex: string, sha256Hex: string) {
+        const sha256 = htob(sha256Hex);
+        const row = await env.DIP_DB.prepare("SELECT op, size FROM ops WHERE userPubKey = ? AND sha256 = ?").bind(pubKeyHex, sha256).first<{ op: Uint8Array, size: number }>();
         if (!row) {
           return undefined;
         }
@@ -106,8 +110,8 @@ export default {
       },
 
       async listOps(pubKeyHex: string, begin: string, end: string) {
-        const rows = await env.DIP_DB.prepare("SELECT sha256 FROM ops WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?").bind(pubKeyHex, begin, end).all<{ sha256: string }>();
-        return rows.results?.map(row => ({ sha256: row.sha256 }));
+        const rows = await env.DIP_DB.prepare("SELECT sha256, recordedAt FROM ops WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?").bind(pubKeyHex, begin, end).all<{ sha256: Uint8Array, recordedAt: string }>();
+        return rows.results?.map(row => ({ sha256: row.sha256, recordedAt: new Date(row.recordedAt) }));
       },
     }
 

@@ -7,7 +7,10 @@ export default withMermaid({
   title: "DIPLOMATIC",
   description: "Sync framework",
   themeConfig: {
-    logo: '/d-logo-sans-crossbar.png',
+    logo: {
+      dark: '/d-logo-sans-crossbar.png',
+      light: '/d-logo-sans-crossbar-light.png',
+    },
 
     // https://vitepress.dev/reference/default-theme-config
     nav: [
@@ -64,6 +67,7 @@ export default withMermaid({
           { text: 'COUNT', link: '/docs/demos/count' },
           { text: 'STATUS', link: '/docs/demos/status' },
           { text: 'TODO', link: '/docs/demos/todo' },
+          { text: 'DIARY', link: '/docs/demos/diary' },
         ],
         collapsed: true,
       },

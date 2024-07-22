@@ -6,6 +6,8 @@ import type { IClientStateStore, Applier, IDiplomaticClientState } from "./types
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
 import { genDeleteOp, genUpsertOp } from "./shared/ops";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
@@ -295,6 +297,46 @@ export default class DiplomaticClient {
       // If this fails, it will remain in the queue to be retried later.
       console.info("failed to push");
     }
+  }
+
+  async export(filename: string, extension = 'dip') {
+    const ops = await this.store.listOps();
+
+    const zip = new JSZip();
+    for (const op of ops) {
+      zip.file(`${op.sha256}.op`, op.cipherOp);
+    }
+    const blob = await zip.generateAsync({ compression: 'STORE', type: 'blob' });
+    return saveAs(blob, `${filename}.${extension}`);
+  }
+
+  import = async (file: File) => {
+    if (!this.encKey) {
+      return;
+    }
+    const { encKey } = this;
+    const zip = await JSZip.loadAsync(file);
+    const fileMap = new Map<string, string>();
+    for (const opFileName of Object.keys(zip.files)) {
+      const hex = opFileName.split('.')[0];
+      const zipSha256 = htob(hex);
+      if (await this.store.hasOp(zipSha256)) {
+        continue;
+      }
+      const cipher = await zip.files[opFileName].async('uint8array');
+      const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
+      const op = decode(packed) as IOp;
+      const sha256 = await libsodiumCrypto.sha256Hash(cipher);
+      await this.stateManager.apply(op);
+      await this.store.storeOp(sha256, cipher);
+      this.emitUpdate();
+    }
+    await Promise.all(
+      Object.keys(zip.files).map(async (filename) => {
+        const content = await zip.files[filename].async('string');
+        fileMap.set(filename, content);
+      })
+    );
   }
 
   async upsert<T>(type: string, body: T, eid?: Uint8Array, version = 0) {

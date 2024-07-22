@@ -56,6 +56,7 @@ class IDBStore implements IClientStateStore {
     await db.clear('metaKV');
     await db.clear('uploadQueue');
     await db.clear('downloadQueue');
+    await db.clear('ops');
   }
 
   async getSeed() {
@@ -151,6 +152,10 @@ class IDBStore implements IClientStateStore {
   clearOp = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
     await db.delete('ops', hex);
+  }
+  listOps = async () => {
+    const list = await db.getAll('ops');
+    return list.map(item => ({ sha256: item.sha256, cipherOp: item.cipherOp }));
   }
   hasOp = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);

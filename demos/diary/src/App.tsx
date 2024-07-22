@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { DiplomaticClient, htob, idbStore, EntityDB, btoh } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import Entry from './Entry';
+import FilePicker from './FilePicker';
 
 export interface IEntry {
   text: string;
@@ -59,6 +60,8 @@ export default function App() {
           <form onSubmit={handleSubmit} style={{ marginBottom: 48, marginTop: 18 }}>
             <input id="value-input" type="text" value={valueField} onChange={(evt) => setValueField(evt.target.value)} placeholder="Type a new entry ↵" style={{ width: "100%", boxSizing: 'border-box', padding: 4 }} />
           </form>
+          <button type="button" onClick={() => client.export('diary')}>EXPORT</button>
+          <FilePicker onPick={client.import} />
           {
             state.hasHost
               ? <button type="button" onClick={client.disconnect}>UNLINK</button>

@@ -61,7 +61,7 @@ export default function FilePicker({ onPick }: IProps) {
 }
 ```
 
-All of the real work happens in the two client methods `import` and `export`.
+All of the real work happens in the two client methods [`import` and `export`](../api/client#import-export).
 
 ## Summary
 

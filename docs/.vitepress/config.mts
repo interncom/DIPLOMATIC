@@ -6,6 +6,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 export default withMermaid({
   title: "DIPLOMATIC",
   description: "Sync framework",
+  head: [['link', { rel: 'icon', type: 'image/png', sizes: "128x128", href: '/favicon.png' }]],
   themeConfig: {
     logo: {
       dark: '/d-logo-sans-crossbar.png',

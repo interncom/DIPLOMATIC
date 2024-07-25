@@ -10,7 +10,7 @@ export default function Auth() {
           <IonButtons slot="start">
             <IonBackButton />
           </IonButtons>
-          <IonTitle>Auth</IonTitle>
+          <IonTitle>TODO</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding" color="light">

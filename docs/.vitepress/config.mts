@@ -69,6 +69,7 @@ export default withMermaid({
           { text: 'STATUS', link: '/docs/demos/status' },
           { text: 'TODO', link: '/docs/demos/todo' },
           { text: 'DIARY', link: '/docs/demos/diary' },
+          { text: 'IONIC', link: '/docs/demos/ionic' },
         ],
         collapsed: true,
       },

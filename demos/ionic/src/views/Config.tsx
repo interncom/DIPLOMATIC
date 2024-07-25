@@ -6,6 +6,7 @@ import { useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import '../App.css'
 import { client } from "../client";
 import ClientStatusBar from "./StatusBar";
+import FilePicker from "./FilePicker";
 
 export default function Config() {
   useSyncOnResume(client);
@@ -15,7 +16,7 @@ export default function Config() {
   const [numOps, setNumOps] = useState<number>();
   useEffect(() => {
     idbStore.listOps().then(ops => setNumOps(ops.length));
-  }, []);
+  }, [state]);
 
   return (
     <IonPage>
@@ -64,7 +65,7 @@ export default function Config() {
             </IonItem>
             {state?.hasSeed ? (
               <>
-                <IonItem button detail={false} onClick={() => alert('hi')}>Import</IonItem>
+                <FilePicker onPick={client.import} />
                 <IonItem button detail={false} onClick={() => client.export('todo')}>Export</IonItem>
               </>
             ) : undefined}

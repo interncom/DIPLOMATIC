@@ -2,6 +2,7 @@ import { DiplomaticClient, libsodiumCrypto, btoh, htob } from "@interncom/diplom
 import { IonButton, IonIcon, IonInput, IonItem, IonList } from "@ionic/react";
 import { useState, useCallback, type FormEvent } from "react";
 import { keyOutline, personOutline } from "ionicons/icons";
+import consts from '../consts.json';
 
 interface IProps {
   client: DiplomaticClient;
@@ -22,6 +23,7 @@ export default function InitSeedView({ client, path }: IProps) {
 
     const seed = htob(seedString);
     await client.setSeed(seed);
+    await client.registerAndConnect(consts.hostURL);
 
     // Trigger password save prompt.
     window.location.replace(path);

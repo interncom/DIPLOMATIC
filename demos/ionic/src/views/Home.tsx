@@ -74,7 +74,9 @@ export default function Home() {
               </form>
             </IonList>
           </>
-        ) : undefined}
+        ) : (
+          <IonButton size="large" routerLink="/auth">Login</IonButton>
+        )}
       </IonContent>
     </IonPage>
   );

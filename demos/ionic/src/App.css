@@ -1,0 +1,38 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+input#status-input {
+  padding: 6px;
+  border-radius: 8px;
+  margin: 8px;
+  width: 240px;
+  margin-bottom: 36px;
+  font-size: 22px;
+}
+
+#status-message {
+  font-size: 32px;
+}
+
+#status-timestamp {
+  font-size: 14px;
+}
+
+form#seed input {
+  padding: 6px;
+  margin: 4px 0;
+}
+
+form#seed button {
+  margin: 4px 0;
+}
+
+button {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+}

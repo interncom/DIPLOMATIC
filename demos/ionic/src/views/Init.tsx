@@ -31,7 +31,7 @@ export default function InitSeedView({ client, path }: IProps) {
     <form id="seed" action="/" method="get" onSubmit={handleInitFormSubmit} style={{ display: "flex", flexDirection: "column" }}>
       <IonList inset>
         <IonItem>
-          <IonButton fill="clear" expand="full" style={{ width: "100%" }} type="button" onClick={genSeed}>Generate</IonButton>
+          <IonButton fill="clear" expand="full" style={{ width: "100%" }} size="large" onClick={genSeed}>Generate Seed</IonButton>
         </IonItem>
       </IonList>
       <IonList inset style={{ marginTop: 24 }}>
@@ -44,7 +44,7 @@ export default function InitSeedView({ client, path }: IProps) {
           <IonInput name="username" type="text" autocomplete="username" placeholder="Choose an account name (not shared)" onIonInput={(e) => setUsername(e.target.value as string)} required />
         </IonItem>
         <IonItem>
-          <IonButton fill="clear" expand="full" style={{ width: "100%" }} type="submit" disabled={!seedString || !username}>INIT</IonButton>
+          <IonButton fill="clear" expand="full" style={{ width: "100%" }} type="submit" size="large" disabled={!seedString || !username}>Login</IonButton>
         </IonItem>
       </IonList>
     </form>

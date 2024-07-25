@@ -20,7 +20,8 @@ const result = await prompts([
     name: 'appType',
     message: reset('App type:'),
     choices: [
-      { title: 'React Web App w/ Vite', value: 'react-web-app' },
+      { title: 'React Web App w/ Vite', value: 'react-web' },
+      { title: 'Ionic (React) Web App w/ Vite', value: 'ionic-web' },
     ],
   },
   {
@@ -36,7 +37,7 @@ import path from 'path'
 import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const sourceDir = path.join(__dirname, './templates/react-web')
+const sourceDir = path.join(__dirname, `./templates/${result.appType}`)
 const targetDir = result.appName
 
 async function editJsonFile(filePath, modifyCallback) {

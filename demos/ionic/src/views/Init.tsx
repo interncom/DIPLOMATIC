@@ -1,5 +1,5 @@
 import { DiplomaticClient, libsodiumCrypto, btoh, htob } from "@interncom/diplomatic";
-import { IonButton, IonIcon, IonInput, IonItem, IonLabel, IonList, IonListHeader } from "@ionic/react";
+import { IonButton, IonIcon, IonInput, IonItem, IonList } from "@ionic/react";
 import { useState, useCallback, type FormEvent } from "react";
 import { keyOutline, personOutline } from "ionicons/icons";
 

@@ -1,4 +1,4 @@
-import type { IDiplomaticClientState } from "../types";
+import type { IDiplomaticClientState } from "@interncom/diplomatic";
 
 function GlowingDot({ on }: { on: boolean }) {
   const color = on ? "#01FF70" : "#AAAAAA";

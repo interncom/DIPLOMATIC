@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@interncom/diplomatic": "^0.0.39",
+    "@interncom/diplomatic": "file://../../web",
     "@ionic/react": "^8.2.5",
     "@ionic/react-router": "^8.2.5",
     "idb": "^8.0.0",

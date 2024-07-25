@@ -316,7 +316,6 @@ export default class DiplomaticClient {
     }
     const { encKey } = this;
     const zip = await JSZip.loadAsync(file);
-    const fileMap = new Map<string, string>();
     for (const opFileName of Object.keys(zip.files)) {
       const hex = opFileName.split('.')[0];
       const zipSha256 = htob(hex);
@@ -331,12 +330,6 @@ export default class DiplomaticClient {
       await this.store.storeOp(sha256, cipher);
       this.emitUpdate();
     }
-    await Promise.all(
-      Object.keys(zip.files).map(async (filename) => {
-        const content = await zip.files[filename].async('string');
-        fileMap.set(filename, content);
-      })
-    );
   }
 
   async upsert<T>(type: string, body: T, eid?: Uint8Array, version = 0) {

@@ -15,7 +15,9 @@ export interface ITodo {
 export const opType = 'todo';
 
 async function getTodos() {
-  return EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  const todos = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  todos.sort((t1, t2) => t1.createdAt.getTime() - t2.createdAt.getTime());
+  return todos;
 }
 
 export default function Home() {

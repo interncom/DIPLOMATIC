@@ -8,6 +8,7 @@ export const typeIndexName = 'entity_type';
 
 export interface IEntity<T> {
   eid: Uint8Array;
+  pid?: Uint8Array; // Parent entity ID. Not necessarily of same type.
   type: string;
   updatedAt: Date;
   createdAt: Date;
@@ -19,15 +20,15 @@ interface IEntityDB extends DBSchema {
     key: Uint8Array; // TODO: try Uint8Array;
     value: IEntity<unknown>;
     indexes: {
-      "entity_type": "string",
+      "entity_type_created_at": [string, Date],
     };
   }
 }
 
-export const db = await openDB<IEntityDB>('db', 5, {
+export const db = await openDB<IEntityDB>('db', 6, {
   upgrade(db) {
     const store = db.createObjectStore('entities', { keyPath: 'eid', autoIncrement: false });
-    store.createIndex('entity_type', 'type');
+    store.createIndex('entity_type_created_at', ['type', 'createdAt'], { unique: false });
   }
 });
 

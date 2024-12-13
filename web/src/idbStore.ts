@@ -1,48 +1,55 @@
 import { btoh, htob } from "./shared/lib";
 import type { IClientStateStore } from "./types";
-import { openDB, type DBSchema } from 'idb';
+import { type DBSchema, openDB } from "idb";
 
 interface ClientStoreDB extends DBSchema {
   metaKV: {
     key: string;
     value: string;
-  },
+  };
   ops: {
     value: {
       cipherOp: Uint8Array;
       sha256: string;
     };
     key: string;
-  }
+  };
   uploadQueue: {
     value: {
       cipherOp: Uint8Array;
       sha256: string;
     };
     key: string;
-  }
+  };
   downloadQueue: {
     value: {
       sha256: string;
       recordedAt: Date;
     };
     key: string;
-  }
+  };
 }
 
-
-const db = await openDB<ClientStoreDB>('client-store-db', 5, {
+const db = await openDB<ClientStoreDB>("client-store-db", 6, {
   upgrade(db) {
-    db.createObjectStore('metaKV');
-    db.createObjectStore('ops', {
-      keyPath: 'sha256',
-    });
-    db.createObjectStore('uploadQueue', {
-      keyPath: 'sha256',
-    });
-    db.createObjectStore('downloadQueue', {
-      keyPath: 'sha256',
-    });
+    if (!db.objectStoreNames.contains("metaKV")) {
+      db.createObjectStore("metaKV");
+    }
+    if (!db.objectStoreNames.contains("ops")) {
+      db.createObjectStore("ops", {
+        keyPath: "sha256",
+      });
+    }
+    if (!db.objectStoreNames.contains("uploadQueue")) {
+      db.createObjectStore("uploadQueue", {
+        keyPath: "sha256",
+      });
+    }
+    if (!db.objectStoreNames.contains("downloadQueue")) {
+      db.createObjectStore("downloadQueue", {
+        keyPath: "sha256",
+      });
+    }
   },
 });
 
@@ -53,14 +60,14 @@ class IDBStore implements IClientStateStore {
   lastFetchedAt?: Date;
 
   async wipe() {
-    await db.clear('metaKV');
-    await db.clear('uploadQueue');
-    await db.clear('downloadQueue');
-    await db.clear('ops');
+    await db.clear("metaKV");
+    await db.clear("uploadQueue");
+    await db.clear("downloadQueue");
+    await db.clear("ops");
   }
 
   async getSeed() {
-    const hex = await db.get('metaKV', 'seed');
+    const hex = await db.get("metaKV", "seed");
     if (!hex) {
       return;
     }
@@ -70,30 +77,30 @@ class IDBStore implements IClientStateStore {
 
   async setSeed(seed: Uint8Array) {
     const hex = btoh(seed);
-    await db.put('metaKV', hex, 'seed');
+    await db.put("metaKV", hex, "seed");
     this.seed = seed;
   }
 
   async getHostURL() {
-    const url = await db.get('metaKV', 'hostURL');
+    const url = await db.get("metaKV", "hostURL");
     return url;
   }
 
   async setHostURL(url: string) {
-    db.put('metaKV', url, 'hostURL');
+    db.put("metaKV", url, "hostURL");
   }
 
   async getHostID() {
-    const id = await db.get('metaKV', 'hostID');
+    const id = await db.get("metaKV", "hostID");
     return id;
   }
 
   async setHostID(id: string) {
-    await db.put('metaKV', id, 'hostID');
+    await db.put("metaKV", id, "hostID");
   }
 
   async getLastFetchedAt() {
-    const res = await db.get('metaKV', 'lastFetchedAt');
+    const res = await db.get("metaKV", "lastFetchedAt");
     if (!res) {
       return;
     }
@@ -102,66 +109,72 @@ class IDBStore implements IClientStateStore {
 
   async setLastFetchedAt(ts: Date) {
     const str = ts.toISOString();
-    await db.put('metaKV', str, 'lastFetchedAt');
+    await db.put("metaKV", str, "lastFetchedAt");
   }
 
   enqueueUpload = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
     const hex = btoh(sha256);
-    await db.put('uploadQueue', { sha256: hex, cipherOp });
-  }
+    await db.put("uploadQueue", { sha256: hex, cipherOp });
+  };
   dequeueUpload = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
-    await db.delete('uploadQueue', hex);
-  }
+    await db.delete("uploadQueue", hex);
+  };
   peekUpload = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
-    const row = await db.get('uploadQueue', hex);
+    const row = await db.get("uploadQueue", hex);
     return row?.cipherOp;
   };
   listUploads = async () => {
-    const hexes = await db.getAllKeys('uploadQueue');
+    const hexes = await db.getAllKeys("uploadQueue");
     return hexes.map(htob);
   };
   numUploads = async () => {
-    const num = await db.count('uploadQueue');
+    const num = await db.count("uploadQueue");
     return num;
-  }
+  };
 
   downloadQueue = new Set<string>();
   enqueueDownload = async (sha256: Uint8Array, recordedAt: Date) => {
     const hex = btoh(sha256);
-    await db.put('downloadQueue', { sha256: hex, recordedAt });
-  }
+    await db.put("downloadQueue", { sha256: hex, recordedAt });
+  };
   dequeueDownload = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
-    await db.delete('downloadQueue', hex);
-  }
+    await db.delete("downloadQueue", hex);
+  };
   listDownloads = async () => {
-    const list = await db.getAll('downloadQueue');
-    return list.map(item => ({ sha256: htob(item.sha256), recordedAt: item.recordedAt }));
-  }
+    const list = await db.getAll("downloadQueue");
+    return list.map((item) => ({
+      sha256: htob(item.sha256),
+      recordedAt: item.recordedAt,
+    }));
+  };
   numDownloads = async () => {
-    const num = await db.count('downloadQueue');
+    const num = await db.count("downloadQueue");
     return num;
-  }
+  };
 
   storeOp = async (sha256: Uint8Array, cipherOp: Uint8Array) => {
     const hex = btoh(sha256);
-    await db.put('ops', { sha256: hex, cipherOp });
-  }
+    await db.put("ops", { sha256: hex, cipherOp });
+  };
   clearOp = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
-    await db.delete('ops', hex);
-  }
+    await db.delete("ops", hex);
+  };
   listOps = async () => {
-    const list = await db.getAll('ops');
-    return list.map(item => ({ sha256: item.sha256, cipherOp: item.cipherOp }));
-  }
+    const list = await db.getAll("ops");
+    return list.map((item) => ({
+      sha256: item.sha256,
+      cipherOp: item.cipherOp,
+    }));
+  };
   hasOp = async (sha256: Uint8Array) => {
     const hex = btoh(sha256);
-    const op = await db.get('ops', hex);
+    const op = await db.get("ops", hex);
     return op !== undefined;
-  }
+  };
 }
 
 export const idbStore = new IDBStore();

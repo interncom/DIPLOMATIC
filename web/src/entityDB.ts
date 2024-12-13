@@ -26,11 +26,14 @@ interface IEntityDB extends DBSchema {
 }
 
 export const db = await openDB<IEntityDB>("db", 6, {
-  upgrade(db) {
-    const store = db.createObjectStore("entities", {
-      keyPath: "eid",
-      autoIncrement: false,
-    });
+  upgrade(db, prevVersion, currVersion, tx) {
+    if (!db.objectStoreNames.contains(entityTableName)) {
+      const store = db.createObjectStore(entityTableName, {
+        keyPath: "eid",
+        autoIncrement: false,
+      });
+    }
+    const store = tx.objectStore(entityTableName);
     store.createIndex("entity_type_created_at", ["type", "createdAt"], {
       unique: false,
     });

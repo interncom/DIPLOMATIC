@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.0.46",
+  "version": "0.0.48",
   "type": "module",
   "description": "Secure sync layer",
   "main": "dist/index.mjs",

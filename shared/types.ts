@@ -4,10 +4,12 @@ export enum Verb {
 }
 
 // Body types are application-specific.
-type Timestamp = string
+type Timestamp = string;
+export type GroupID = Uint8Array | string;
 
 export interface IBaseOp {
   eid: Uint8Array; // Entity ID
+  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   ts: Timestamp; // UTC unix timestamp
   type: string;
   ver: number; // Version number, application-specific not about the protocol;
@@ -24,11 +26,11 @@ export interface IDeleteOp extends IBaseOp {
 
 export type IOp = IUpsertOp | IDeleteOp;
 
-export type CipherOp = Uint8Array // encrypted serialized IOp
+export type CipherOp = Uint8Array; // encrypted serialized IOp
 
 export interface ISyncRequest {
-  ops: CipherOp[],
-  begin: Timestamp,
+  ops: CipherOp[];
+  begin: Timestamp;
 }
 
 export interface IRegistrationRequest {
@@ -54,8 +56,15 @@ export interface IStorage {
   addUser: (pubKeyHex: string) => Promise<void>;
   hasUser: (pubKeyHex: string) => Promise<boolean>;
   setOp: (pubKeyHex: string, recordedAt: Date, op: Uint8Array) => Promise<void>;
-  getOp: (pubKeyHex: string, sha256Hex: string) => Promise<Uint8Array | undefined>;
-  listOps: (pubKeyHex: string, begin: string, end: string) => Promise<IDeltaListItem[]>;
+  getOp: (
+    pubKeyHex: string,
+    sha256Hex: string,
+  ) => Promise<Uint8Array | undefined>;
+  listOps: (
+    pubKeyHex: string,
+    begin: string,
+    end: string,
+  ) => Promise<IDeltaListItem[]>;
 }
 
 export interface KeyPair {
@@ -65,18 +74,38 @@ export interface KeyPair {
 }
 
 export interface IHostCrypto {
-  checkSigEd25519: (sig: Uint8Array, message: Uint8Array | string, pubKey: Uint8Array) => Promise<boolean>;
+  checkSigEd25519: (
+    sig: Uint8Array,
+    message: Uint8Array | string,
+    pubKey: Uint8Array,
+  ) => Promise<boolean>;
   sha256Hash: (data: Uint8Array) => Promise<Uint8Array>;
 }
 
 export interface ICrypto extends IHostCrypto {
   gen128BitRandomID: () => Promise<Uint8Array>;
   gen256BitSecureRandomSeed: () => Promise<Uint8Array>;
-  deriveXSalsa20Poly1305Key: (seed: Uint8Array, derivationIndex: number) => Promise<Uint8Array>;
-  encryptXSalsa20Poly1305Combined: (plaintext: Uint8Array, key: Uint8Array) => Promise<Uint8Array>;
-  decryptXSalsa20Poly1305Combined: (headerAndCipher: Uint8Array, key: Uint8Array) => Promise<Uint8Array>;
-  deriveEd25519KeyPair: (seed: Uint8Array, hostID: string, derivationIndex: number) => Promise<KeyPair>;
-  signEd25519: (message: Uint8Array | string, secKey: Uint8Array) => Promise<Uint8Array>;
+  deriveXSalsa20Poly1305Key: (
+    seed: Uint8Array,
+    derivationIndex: number,
+  ) => Promise<Uint8Array>;
+  encryptXSalsa20Poly1305Combined: (
+    plaintext: Uint8Array,
+    key: Uint8Array,
+  ) => Promise<Uint8Array>;
+  decryptXSalsa20Poly1305Combined: (
+    headerAndCipher: Uint8Array,
+    key: Uint8Array,
+  ) => Promise<Uint8Array>;
+  deriveEd25519KeyPair: (
+    seed: Uint8Array,
+    hostID: string,
+    derivationIndex: number,
+  ) => Promise<KeyPair>;
+  signEd25519: (
+    message: Uint8Array | string,
+    secKey: Uint8Array,
+  ) => Promise<Uint8Array>;
 }
 
 export interface IMsgpackCodec {
@@ -86,6 +115,9 @@ export interface IMsgpackCodec {
 }
 
 export interface IWebsocketNotifier {
-  handler: (request: Request, hasUser: (pubKeyHex: string) => Promise<boolean>) => Promise<Response>;
+  handler: (
+    request: Request,
+    hasUser: (pubKeyHex: string) => Promise<boolean>,
+  ) => Promise<Response>;
   notify: (pubKeyHex: string) => Promise<void>;
 }

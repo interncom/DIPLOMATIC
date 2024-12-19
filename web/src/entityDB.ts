@@ -1,13 +1,15 @@
 import { type DBSchema, openDB } from "idb";
 import { Applier } from "./types";
-import { IOp, Verb } from "./shared/types";
+import { GroupID, IOp, Verb } from "./shared/types";
 import { StateManager } from "./state";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
+export const typeGroupIndexName = "entity_type_group_id";
 
 export interface IEntity<T> {
   eid: Uint8Array;
+  gid?: GroupID;
   pid?: Uint8Array; // Parent entity ID. Not necessarily of same type.
   type: string;
   updatedAt: Date;
@@ -21,11 +23,12 @@ interface IEntityDB extends DBSchema {
     value: IEntity<unknown>;
     indexes: {
       "entity_type_created_at": [string, Date];
+      "entity_type_group_id": [string, GroupID];
     };
   };
 }
 
-export const db = await openDB<IEntityDB>("db", 6, {
+export const db = await openDB<IEntityDB>("db", 7, {
   upgrade(db, prevVersion, currVersion, tx) {
     if (!db.objectStoreNames.contains(entityTableName)) {
       const store = db.createObjectStore(entityTableName, {
@@ -34,9 +37,16 @@ export const db = await openDB<IEntityDB>("db", 6, {
       });
     }
     const store = tx.objectStore(entityTableName);
-    store.createIndex("entity_type_created_at", ["type", "createdAt"], {
-      unique: false,
-    });
+    if (!store.indexNames.contains(typeIndexName)) {
+      store.createIndex(typeIndexName, ["type", "createdAt"], {
+        unique: false,
+      });
+    }
+    if (!store.indexNames.contains(typeGroupIndexName)) {
+      store.createIndex(typeGroupIndexName, ["type", "gid"], {
+        unique: false,
+      });
+    }
   },
 });
 

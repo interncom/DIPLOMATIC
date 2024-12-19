@@ -1,8 +1,12 @@
 import { decode, encode } from "@msgpack/msgpack";
-import type { IOp, KeyPair } from "./shared/types";
+import type { GroupID, IOp, KeyPair } from "./shared/types";
 import { btoh, htob } from "./shared/lib";
 import webClientAPI from "./api";
-import type { IClientStateStore, Applier, IDiplomaticClientState } from "./types";
+import type {
+  Applier,
+  IClientStateStore,
+  IDiplomaticClientState,
+} from "./types";
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
 import { genDeleteOp, genUpsertOp } from "./shared/ops";
@@ -44,7 +48,7 @@ export default class DiplomaticClient {
     await this.stateManager.clear();
     await this.store.wipe();
     this.emitUpdate();
-  }
+  };
 
   websocket?: WebSocket;
   connect = async (hostURL: URL) => {
@@ -85,13 +89,15 @@ export default class DiplomaticClient {
     this.websocket.onerror = (e) => {
       console.log(`ERROR: ${e}`);
     };
-  }
+  };
 
   async init(params: IDiplomaticClientParams) {
     await this.store.init?.();
 
     if (params.seed) {
-      const bytes = typeof params.seed === "string" ? htob(params.seed) : params.seed;
+      const bytes = typeof params.seed === "string"
+        ? htob(params.seed)
+        : params.seed;
       await this.store.setSeed(bytes);
     }
     await this.loadSeed();
@@ -139,7 +145,10 @@ export default class DiplomaticClient {
       return;
     }
     this.hostURL = new URL(hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
+    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+      this.seed,
+      hostID,
+    );
   }
 
   // TODO: dedupe with loadHost.
@@ -149,8 +158,15 @@ export default class DiplomaticClient {
     }
     this.hostURL = new URL(hostURL);
     const hostID = await webClientAPI.getHostID(this.hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
-    await webClientAPI.register(this.hostURL, this.hostKeyPair.publicKey, "tok123");
+    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+      this.seed,
+      hostID,
+    );
+    await webClientAPI.register(
+      this.hostURL,
+      this.hostKeyPair.publicKey,
+      "tok123",
+    );
 
     await this.store.setHostURL(hostURL);
     await this.store.setHostID(hostID);
@@ -164,7 +180,7 @@ export default class DiplomaticClient {
     this.websocket?.close();
     this.websocket = undefined;
     this.emitUpdate();
-  }
+  };
 
   async registerAndConnect(hostURL: string) {
     await this.register(hostURL);
@@ -179,8 +195,11 @@ export default class DiplomaticClient {
 
   async getState(): Promise<IDiplomaticClientState> {
     const hasSeed = this.seed !== undefined && this.encKey !== undefined;
-    const hasHost = this.hostURL !== undefined && this.hostKeyPair !== undefined;
-    const connected = this.websocket === undefined ? false : this.websocket.readyState === this.websocket.OPEN;
+    const hasHost = this.hostURL !== undefined &&
+      this.hostKeyPair !== undefined;
+    const connected = this.websocket === undefined
+      ? false
+      : this.websocket.readyState === this.websocket.OPEN;
     const numUploads = await this.store.numUploads();
     const numDownloads = await this.store.numDownloads();
     return { hasSeed, hasHost, connected, numDownloads, numUploads };
@@ -206,7 +225,7 @@ export default class DiplomaticClient {
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
     // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
-    await this.store.setLastFetchedAt(new Date(resp.fetchedAt))
+    await this.store.setLastFetchedAt(new Date(resp.fetchedAt));
   }
 
   async fetchAndExecQueuedOps() {
@@ -226,8 +245,15 @@ export default class DiplomaticClient {
         continue;
       }
       try {
-        const cipher = await webClientAPI.getDelta(hostURL, item.sha256, hostKeyPair);
-        const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
+        const cipher = await webClientAPI.getDelta(
+          hostURL,
+          item.sha256,
+          hostKeyPair,
+        );
+        const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
+          cipher,
+          encKey,
+        );
         const op = decode(packed) as IOp;
         const sha256 = await libsodiumCrypto.sha256Hash(cipher);
         await this.stateManager.apply(op);
@@ -236,7 +262,7 @@ export default class DiplomaticClient {
         this.emitUpdate();
       } catch {
         // TODO: distinguish transient vs permanent failures.
-        const transient = true
+        const transient = true;
         if (!transient) {
           await this.store.dequeueDownload(item.sha256);
           this.emitUpdate();
@@ -276,7 +302,10 @@ export default class DiplomaticClient {
     // NOTE: DIPLOMATIC *must* ensure the delta is queued before locally executing it.
     // This has the potential to cause lag before UI updates, but the greater evil is to update local state first but fail to queue the delta for sync, causing remote state to never match local.
     const packed = encode(op);
-    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
+    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(
+      packed,
+      this.encKey,
+    );
     const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
     await this.store.enqueueUpload(sha256, cipherOp);
     this.emitUpdate();
@@ -299,14 +328,17 @@ export default class DiplomaticClient {
     }
   }
 
-  async export(filename: string, extension = 'dip') {
+  async export(filename: string, extension = "dip") {
     const ops = await this.store.listOps();
 
     const zip = new JSZip();
     for (const op of ops) {
       zip.file(`${op.sha256}.op`, op.cipherOp);
     }
-    const blob = await zip.generateAsync({ compression: 'STORE', type: 'blob' });
+    const blob = await zip.generateAsync({
+      compression: "STORE",
+      type: "blob",
+    });
     return saveAs(blob, `${filename}.${extension}`);
   }
 
@@ -317,24 +349,35 @@ export default class DiplomaticClient {
     const { encKey } = this;
     const zip = await JSZip.loadAsync(file);
     for (const opFileName of Object.keys(zip.files)) {
-      const hex = opFileName.split('.')[0];
+      const hex = opFileName.split(".")[0];
       const zipSha256 = htob(hex);
       if (await this.store.hasOp(zipSha256)) {
         continue;
       }
-      const cipher = await zip.files[opFileName].async('uint8array');
-      const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, encKey);
+      const cipher = await zip.files[opFileName].async("uint8array");
+      const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
+        cipher,
+        encKey,
+      );
       const op = decode(packed) as IOp;
       const sha256 = await libsodiumCrypto.sha256Hash(cipher);
       await this.stateManager.apply(op);
       await this.store.storeOp(sha256, cipher);
       this.emitUpdate();
     }
-  }
+  };
 
-  async upsert<T>(type: string, body: T, eid?: Uint8Array, version = 0) {
-    const id = eid ?? await libsodiumCrypto.gen128BitRandomID()
-    const op = genUpsertOp<T>(id, type, body, version);
+  async upsert<T>(
+    { type, body, eid, gid, version = 0 }: {
+      type: string;
+      body: T;
+      eid?: Uint8Array;
+      gid?: GroupID;
+      version?: number;
+    },
+  ) {
+    const id = eid ?? await libsodiumCrypto.gen128BitRandomID();
+    const op = genUpsertOp<T>(id, type, body, version, gid);
     return this.apply(op);
   }
 

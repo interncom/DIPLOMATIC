@@ -1,6 +1,6 @@
 import { type DBSchema, openDB } from "idb";
-import { Applier } from "./types";
-import { GroupID, IOp, Verb } from "./shared/types";
+import type { Applier } from "./types";
+import { type GroupID, type IOp, Verb } from "./shared/types";
 import { StateManager } from "./state";
 
 export const entityTableName = "entities";
@@ -57,6 +57,7 @@ export const applier: Applier = async (op: IOp) => {
       if (new Date(op.ts) > (curr?.updatedAt ?? "")) {
         await db.put("entities", {
           eid: op.eid,
+          gid: op.gid,
           type: op.type,
           createdAt: curr?.createdAt ?? new Date(),
           updatedAt: new Date(op.ts),

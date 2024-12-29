@@ -1,6 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { IDiplomaticClientParams } from "../client";
-import type { IDiplomaticClientState, IClientStateStore } from "../types";
+import type {
+  IClientStateStore,
+  IDiplomaticClientState,
+  IDiplomaticClientXferState,
+} from "../types";
 import type DiplomaticClient from "../client";
 
 interface IClientHookParams extends Omit<IDiplomaticClientParams, "store"> {
@@ -19,7 +23,23 @@ export function useClientState(client: DiplomaticClient) {
     updateState();
     return () => {
       client.listener = undefined;
+    };
+  }, [client]);
+  return state;
+}
+
+export function useClientXferState(client: DiplomaticClient) {
+  const [state, setState] = useState<IDiplomaticClientXferState>();
+  useEffect(() => {
+    async function updateState() {
+      const state = await client.getXferState();
+      setState(state);
     }
+    client.xferListener = updateState;
+    updateState();
+    return () => {
+      client.xferListener = undefined;
+    };
   }, [client]);
   return state;
 }
@@ -32,9 +52,9 @@ export function useSyncOnResume(client: DiplomaticClient) {
       }
       await client.sync();
     }
-    window.addEventListener('online', handleOnline);
+    window.addEventListener("online", handleOnline);
     return () => {
-      window.removeEventListener('online', handleOnline);
-    }
+      window.removeEventListener("online", handleOnline);
+    };
   }, [client]);
 }

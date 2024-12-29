@@ -1,4 +1,4 @@
-import type { IDiplomaticClientState } from "../types";
+import type { IDiplomaticClientState, IDiplomaticClientXferState } from "../types";
 
 function GlowingDot({ on }: { on: boolean }) {
   const color = on ? "#01FF70" : "#AAAAAA";
@@ -17,8 +17,9 @@ function DotLabel({ on, label }: { on: boolean, label: string }) {
 
 interface IProps {
   state: IDiplomaticClientState;
+  xferState: IDiplomaticClientXferState;
 }
-export default function ClientStatusBar({ state }: IProps) {
+export default function ClientStatusBar({ state, xferState }: IProps) {
   return (
     <div
       style={{
@@ -35,10 +36,10 @@ export default function ClientStatusBar({ state }: IProps) {
       <DotLabel on={state.hasHost} label="HOST" />
       <DotLabel on={state.connected} label="LINK" />
       <div style={{ marginRight: 16 }}>
-        ⇑ {state.numUploads}
+        ⇑ {xferState.numUploads}
       </div>
       <div>
-        ⇓ {state.numDownloads}
+        ⇓ {xferState.numDownloads}
       </div>
     </div >
   );

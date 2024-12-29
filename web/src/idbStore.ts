@@ -1,6 +1,6 @@
 import { btoh, htob } from "./shared/lib";
 import type { IClientStateStore } from "./types";
-import { type DBSchema, openDB } from "idb";
+import { type DBSchema, deleteDB, openDB } from "idb";
 
 interface ClientStoreDB extends DBSchema {
   metaKV: {

@@ -6,6 +6,7 @@ import type {
   Applier,
   IClientStateStore,
   IDiplomaticClientState,
+  IDiplomaticClientXferState,
 } from "./types";
 import libsodiumCrypto from "./crypto";
 import type { StateManager } from "./state";
@@ -26,6 +27,7 @@ export default class DiplomaticClient {
   stateManager: StateManager;
 
   listener?: (state: IDiplomaticClientState) => void;
+  xferListener?: (state: IDiplomaticClientXferState) => void;
 
   seed?: Uint8Array;
   encKey?: Uint8Array;
@@ -101,6 +103,7 @@ export default class DiplomaticClient {
       await this.store.setSeed(bytes);
     }
     await this.loadSeed();
+    this.emitUpdate();
     if (params.hostID && params.hostURL) {
       await this.store.setHostID(params.hostID);
       await this.store.setHostURL(params.hostURL);
@@ -109,14 +112,15 @@ export default class DiplomaticClient {
     } else {
       await this.loadHost();
     }
+    this.emitUpdate();
 
     if (this.hostURL) {
       await this.connect(this.hostURL);
+      this.emitUpdate();
     }
 
     await this.sync();
-
-    this.emitUpdate();
+    this.emitXferUpdate();
   }
 
   async loadSeed() {
@@ -193,6 +197,11 @@ export default class DiplomaticClient {
     this.listener?.(state);
   }
 
+  async emitXferUpdate() {
+    const state = await this.getXferState();
+    this.xferListener?.(state);
+  }
+
   async getState(): Promise<IDiplomaticClientState> {
     const hasSeed = this.seed !== undefined && this.encKey !== undefined;
     const hasHost = this.hostURL !== undefined &&
@@ -200,9 +209,13 @@ export default class DiplomaticClient {
     const connected = this.websocket === undefined
       ? false
       : this.websocket.readyState === this.websocket.OPEN;
+    return { hasSeed, hasHost, connected };
+  }
+
+  async getXferState(): Promise<IDiplomaticClientXferState> {
     const numUploads = await this.store.numUploads();
     const numDownloads = await this.store.numDownloads();
-    return { hasSeed, hasHost, connected, numDownloads, numUploads };
+    return { numDownloads, numUploads };
   }
 
   async processOps() {
@@ -221,7 +234,7 @@ export default class DiplomaticClient {
     const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);
     for (const item of resp.deltas) {
       await this.store.enqueueDownload(item.sha256, item.recordedAt);
-      this.emitUpdate();
+      this.emitXferUpdate();
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
     // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
@@ -241,7 +254,7 @@ export default class DiplomaticClient {
       if (await this.store.hasOp(item.sha256)) {
         // Skip.
         await this.store.dequeueDownload(item.sha256);
-        this.emitUpdate();
+        this.emitXferUpdate();
         continue;
       }
       try {
@@ -259,13 +272,13 @@ export default class DiplomaticClient {
         await this.stateManager.apply(op);
         await this.store.storeOp(sha256, cipher);
         await this.store.dequeueDownload(sha256);
-        this.emitUpdate();
+        this.emitXferUpdate();
       } catch {
         // TODO: distinguish transient vs permanent failures.
         const transient = true;
         if (!transient) {
           await this.store.dequeueDownload(item.sha256);
-          this.emitUpdate();
+          this.emitXferUpdate();
           // Also put it on a "dead" queue to record the permanent failure?
         }
       }
@@ -281,7 +294,7 @@ export default class DiplomaticClient {
       await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
     }
     await this.store.dequeueUpload(sha256);
-    this.emitUpdate();
+    this.emitXferUpdate();
   }
 
   async pushQueuedOps() {
@@ -308,7 +321,7 @@ export default class DiplomaticClient {
     );
     const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
     await this.store.enqueueUpload(sha256, cipherOp);
-    this.emitUpdate();
+    this.emitXferUpdate();
 
     try {
       await this.stateManager.apply(op);
@@ -317,7 +330,7 @@ export default class DiplomaticClient {
     } catch (err) {
       // If op can't be applied locally, don't burden anyone else with it.
       await this.store.dequeueUpload(sha256);
-      this.emitUpdate();
+      this.emitXferUpdate();
     }
 
     try {
@@ -363,7 +376,7 @@ export default class DiplomaticClient {
       const sha256 = await libsodiumCrypto.sha256Hash(cipher);
       await this.stateManager.apply(op);
       await this.store.storeOp(sha256, cipher);
-      this.emitUpdate();
+      this.emitXferUpdate();
     }
   };
 

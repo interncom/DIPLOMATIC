@@ -25,10 +25,12 @@ export interface IClientStateStore {
 
   storeOp: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
   clearOp: (sha256: Uint8Array) => Promise<void>;
-  listOps: () => Promise<Array<{
-    cipherOp: Uint8Array;
-    sha256: string;
-  }>>;
+  listOps: () => Promise<
+    Array<{
+      cipherOp: Uint8Array;
+      sha256: string;
+    }>
+  >;
   hasOp: (sha256: Uint8Array) => Promise<boolean>;
 }
 
@@ -36,6 +38,9 @@ export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;
   connected: boolean;
+}
+
+export interface IDiplomaticClientXferState {
   numUploads: number;
   numDownloads: number;
 }

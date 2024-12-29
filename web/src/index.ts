@@ -1,5 +1,9 @@
-import { useClientState, useSyncOnResume } from "./react/useClient";
-import { StateManager, opMapApplier } from './state';
+import {
+  useClientState,
+  useClientXferState,
+  useSyncOnResume,
+} from "./react/useClient";
+import { opMapApplier, StateManager } from "./state";
 import { localStorageStore } from "./localStorageStore";
 import { idbStore } from "./idbStore";
 import type { IDiplomaticClientState } from "./types";
@@ -13,25 +17,22 @@ import ClientStatusBar from "./react/statusBar";
 import * as EntityDB from "./entityDB";
 
 export {
-  useClientState,
-  useSyncOnResume,
-  StateManager,
-  useStateWatcher,
-  opMapApplier,
-  localStorageStore,
-  idbStore,
-  DiplomaticClient,
-  libsodiumCrypto,
   btoh,
-  htob,
-  Verb,
-  InitSeedView,
   ClientStatusBar,
+  DiplomaticClient,
   EntityDB,
+  htob,
+  idbStore,
+  InitSeedView,
+  libsodiumCrypto,
+  localStorageStore,
+  opMapApplier,
+  StateManager,
+  useClientState,
+  useClientXferState,
+  useStateWatcher,
+  useSyncOnResume,
+  Verb,
 };
 
-export type {
-  IOp,
-  IUpsertOp,
-  IDiplomaticClientState,
-};
+export type { IDiplomaticClientState, IOp, IUpsertOp };

@@ -227,7 +227,7 @@ export default class DiplomaticClient {
       return [];
     }
     const lastFetchedAt = await this.store.getLastFetchedAt();
-    const begin = new Date(0);
+    const begin = lastFetchedAt ?? new Date(0);
     // const begin = lastFetchedAt ?? new Date(0);
     const { hostURL, hostKeyPair } = this;
     const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);

@@ -232,6 +232,9 @@ export default class DiplomaticClient {
     const { hostURL, hostKeyPair } = this;
     const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);
     for (const item of resp.deltas) {
+      if (await this.store.hasOp(item.sha256)) {
+        continue;
+      }
       await this.store.enqueueDownload(item.sha256, item.recordedAt);
       this.emitXferUpdate();
     }

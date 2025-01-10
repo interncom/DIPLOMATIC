@@ -6,16 +6,18 @@ export enum Verb {
 // Body types are application-specific.
 type Timestamp = string;
 export type GroupID = Uint8Array | string;
+export type EntityID = Uint8Array;
 
 export interface IBaseOp {
-  eid: Uint8Array; // Entity ID
-  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
+  eid: EntityID;
   ts: Timestamp; // UTC unix timestamp
   type: string;
   ver: number; // Version number, application-specific not about the protocol;
 }
 
 export interface IUpsertOp extends IBaseOp {
+  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
+  pid?: EntityID; // Optional parent ID to support hierarchical structure.
   verb: Verb.UPSERT;
   body: unknown;
 }

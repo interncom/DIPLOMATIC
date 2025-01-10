@@ -1,16 +1,17 @@
 import { type DBSchema, openDB } from "idb";
 import type { Applier } from "./types";
-import { type GroupID, type IOp, Verb } from "./shared/types";
+import { type EntityID, type GroupID, type IOp, Verb } from "./shared/types";
 import { StateManager } from "./state";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
 export const typeGroupIndexName = "entity_type_group_id";
+export const typeParentIndexName = "entity_type_parent_id";
 
 export interface IEntity<T> {
-  eid: Uint8Array;
+  eid: EntityID;
   gid?: GroupID;
-  pid?: Uint8Array; // Parent entity ID. Not necessarily of same type.
+  pid?: EntityID; // Parent entity ID. Not necessarily of same type.
   type: string;
   updatedAt: Date;
   createdAt: Date;
@@ -22,13 +23,14 @@ interface IEntityDB extends DBSchema {
     key: Uint8Array; // TODO: try Uint8Array;
     value: IEntity<unknown>;
     indexes: {
-      "entity_type_created_at": [string, Date];
-      "entity_type_group_id": [string, GroupID];
+      [typeIndexName]: [string, Date];
+      [typeGroupIndexName]: [string, GroupID];
+      [typeParentIndexName]: [string, EntityID];
     };
   };
 }
 
-export const db = await openDB<IEntityDB>("db", 7, {
+export const db = await openDB<IEntityDB>("db", 9, {
   upgrade(db, prevVersion, currVersion, tx) {
     if (!db.objectStoreNames.contains(entityTableName)) {
       const store = db.createObjectStore(entityTableName, {
@@ -47,6 +49,11 @@ export const db = await openDB<IEntityDB>("db", 7, {
         unique: false,
       });
     }
+    if (!store.indexNames.contains(typeParentIndexName)) {
+      store.createIndex(typeParentIndexName, ["type", "pid"], {
+        unique: false,
+      });
+    }
   },
 });
 
@@ -58,6 +65,7 @@ export const applier: Applier = async (op: IOp) => {
         await db.put("entities", {
           eid: op.eid,
           gid: op.gid,
+          pid: op.pid,
           type: op.type,
           createdAt: curr?.createdAt ?? new Date(),
           updatedAt: new Date(op.ts),

@@ -1,9 +1,8 @@
 import { decode, encode } from "@msgpack/msgpack";
-import type { GroupID, IOp, KeyPair } from "./shared/types";
+import type { EntityID, GroupID, IOp, KeyPair } from "./shared/types";
 import { btoh, htob } from "./shared/lib";
 import webClientAPI from "./api";
 import type {
-  Applier,
   IClientStateStore,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
@@ -381,16 +380,17 @@ export default class DiplomaticClient {
   };
 
   async upsert<T>(
-    { type, body, eid, gid, version = 0 }: {
+    { type, body, eid, gid, pid, version = 0 }: {
       type: string;
       body: T;
-      eid?: Uint8Array;
+      eid?: EntityID;
       gid?: GroupID;
+      pid?: EntityID;
       version?: number;
     },
   ) {
     const id = eid ?? await libsodiumCrypto.gen128BitRandomID();
-    const op = genUpsertOp<T>(id, type, body, version, gid);
+    const op = genUpsertOp<T>(id, type, body, version, gid, pid);
     return this.apply(op);
   }
 

@@ -1,4 +1,5 @@
 import {
+  type EntityID,
   type GroupID,
   type IDeleteOp,
   type IOp,
@@ -7,15 +8,17 @@ import {
 } from "./types.ts";
 
 export function genUpsertOp<T>(
-  eid: Uint8Array,
+  eid: EntityID,
   type: string,
   body: T,
   version = 0,
   gid?: GroupID,
+  pid?: EntityID,
 ): IUpsertOp {
   return {
     eid,
     gid,
+    pid,
     ts: new Date().toISOString(),
     type,
     verb: Verb.UPSERT,

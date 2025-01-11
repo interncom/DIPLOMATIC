@@ -5,6 +5,7 @@ import { StateManager } from "./state";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
+export const typeUpdatedAtIndexName = "entity_type_updated_at";
 export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
 
@@ -24,13 +25,14 @@ interface IEntityDB extends DBSchema {
     value: IEntity<unknown>;
     indexes: {
       [typeIndexName]: [string, Date];
+      [typeUpdatedAtIndexName]: [string, Date];
       [typeGroupIndexName]: [string, GroupID];
       [typeParentIndexName]: [string, EntityID];
     };
   };
 }
 
-export const db = await openDB<IEntityDB>("db", 9, {
+export const db = await openDB<IEntityDB>("db", 10, {
   upgrade(db, prevVersion, currVersion, tx) {
     if (!db.objectStoreNames.contains(entityTableName)) {
       const store = db.createObjectStore(entityTableName, {
@@ -41,6 +43,11 @@ export const db = await openDB<IEntityDB>("db", 9, {
     const store = tx.objectStore(entityTableName);
     if (!store.indexNames.contains(typeIndexName)) {
       store.createIndex(typeIndexName, ["type", "createdAt"], {
+        unique: false,
+      });
+    }
+    if (!store.indexNames.contains(typeUpdatedAtIndexName)) {
+      store.createIndex(typeUpdatedAtIndexName, ["type", "updatedAt"], {
         unique: false,
       });
     }

@@ -1,7 +1,7 @@
 import { IonPage, IonContent, IonHeader, IonTitle, IonToolbar, IonBackButton, IonButtons, IonList, IonItem, IonLabel, IonInput, IonNote, IonFooter } from "@ionic/react";
 import consts from '../consts.json';
 import { useCallback, useEffect, useState } from 'react';
-import { idbStore } from '@interncom/diplomatic'
+import { idbStore, useClientXferState } from '@interncom/diplomatic'
 import { useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import '../App.css'
 import { client } from "../client";
@@ -11,6 +11,7 @@ import FilePicker from "./FilePicker";
 export default function Config() {
   useSyncOnResume(client);
   const state = useClientState(client);
+  const xferState = useClientXferState(client);
   const link = useCallback(() => { client.registerAndConnect(consts.hostURL) }, []);
 
   const [numOps, setNumOps] = useState<number>();
@@ -57,11 +58,11 @@ export default function Config() {
             </IonItem>
             <IonItem>
               <IonLabel>Uploads</IonLabel>
-              <IonNote>{state?.numUploads}</IonNote>
+              <IonNote>{xferState?.numUploads}</IonNote>
             </IonItem>
             <IonItem>
               <IonLabel>Downloads</IonLabel>
-              <IonNote>{state?.numDownloads}</IonNote>
+              <IonNote>{xferState?.numDownloads}</IonNote>
             </IonItem>
             {state?.hasSeed ? (
               <>

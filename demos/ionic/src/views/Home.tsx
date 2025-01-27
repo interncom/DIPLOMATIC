@@ -15,7 +15,8 @@ export interface ITodo {
 export const opType = 'todo';
 
 async function getTodos() {
-  const todos = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  const todos = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.bound([opType], [opType, []]));
+  console.log(todos)
   todos.sort((t1, t2) => t1.createdAt.getTime() - t2.createdAt.getTime());
   return todos;
 }
@@ -29,13 +30,13 @@ export default function Home() {
   const handleSubmit = useCallback(async (evt: React.FormEvent) => {
     evt.preventDefault();
     const todo: ITodo = { text: valueField };
-    client.upsert<ITodo>(opType, todo);
+    client.upsert<ITodo>({ type: opType, body: todo });
     setValueField("");
   }, [valueField]);
 
   const handleChange = useCallback(async (eid: string, text: string, done: boolean) => {
     const todo: ITodo = { text, done };
-    client.upsert<ITodo>(opType, todo, htob(eid));
+    client.upsert<ITodo>({ type: opType, body: todo, eid: htob(eid) });
   }, []);
 
   const handleDelete = useCallback(async (eid: string) => {

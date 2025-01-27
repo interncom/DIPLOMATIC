@@ -1,7 +1,7 @@
 import './App.css'
 import consts from './consts.json';
 import { useCallback, useState } from 'react';
-import { DiplomaticClient, htob, idbStore, EntityDB, btoh } from '@interncom/diplomatic'
+import { DiplomaticClient, htob, idbStore, EntityDB, btoh, useClientXferState } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import Entry from './Entry';
 import FilePicker from './FilePicker';
@@ -17,13 +17,14 @@ const client = new DiplomaticClient({ store: idbStore, stateManager });
 const hostURL = consts.hostURL;
 
 async function getEntries() {
-  const entries = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.only(opType));
+  const entries = await EntityDB.db.getAllFromIndex(EntityDB.entityTableName, EntityDB.typeIndexName, IDBKeyRange.bound([opType], [opType, []]));
   return entries.sort((ent1, ent2) => new Date(ent1.createdAt).getTime() - new Date(ent2.createdAt).getTime());
 }
 
 export default function App() {
   useSyncOnResume(client);
   const state = useClientState(client);
+  const xferState = useClientXferState(client);
   const link = useCallback(() => { client.registerAndConnect(hostURL) }, []);
 
   const entries = useStateWatcher(stateManager, opType, getEntries);
@@ -31,12 +32,12 @@ export default function App() {
   const handleSubmit = useCallback(async (evt: React.FormEvent) => {
     evt.preventDefault();
     const entry: IEntry = { text: valueField };
-    client.upsert<IEntry>(opType, entry);
+    client.upsert<IEntry>({ type: opType, body: entry });
     setValueField("");
   }, [valueField]);
 
   const handleChange = useCallback(async (eid: string, entry: IEntry) => {
-    client.upsert<IEntry>(opType, entry, htob(eid));
+    client.upsert<IEntry>({ type: opType, body: entry, eid: htob(eid) });
   }, []);
 
   const handleDelete = useCallback(async (eid: string) => {
@@ -49,7 +50,7 @@ export default function App() {
 
   return (
     <>
-      <ClientStatusBar state={state} />
+      {xferState ? <ClientStatusBar state={state} xferState={xferState} /> : undefined}
       {state.hasSeed ? (
         <>
           <h1>DIARY</h1>

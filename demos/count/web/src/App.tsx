@@ -9,8 +9,8 @@ const stateMgr = new StateManager(async (op) => {
 
 const client = new DiplomaticClient({
   seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-  hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-  // hostURL: "http://localhost:3311",
+  // hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
+  hostURL: "https://localhost:3311",
   // hostURL: "http://localhost:8787",
   stateManager: stateMgr,
   store: idbStore,
@@ -18,7 +18,7 @@ const client = new DiplomaticClient({
 
 export default function App() {
   const count = useStateWatcher(stateMgr, "count", async () => appState.count)
-  const inc = () => client.upsert("count", (count ?? 0) + 1, new Uint8Array())
+  const inc = () => client.upsert({ type: "count", body: (count ?? 0) + 1, eid: new Uint8Array() })
 
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>

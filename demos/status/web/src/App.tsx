@@ -1,6 +1,6 @@
 import './App.css'
 import { useCallback, useState } from 'react';
-import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager } from '@interncom/diplomatic'
+import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager, useClientXferState } from '@interncom/diplomatic'
 import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
 import { IUpsertOp, Verb } from '@interncom/diplomatic';
 
@@ -49,18 +49,20 @@ const applier = opMapApplier<{ status: IStatusOp }>({
 const stateManager = new StateManager(applier, statusStore.clear)
 const client = new DiplomaticClient({ store: idbStore, stateManager });
 
-const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
+// const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
+const hostURL = "https://localhost:3311";
 
 export default function App() {
   useSyncOnResume(client);
   const state = useClientState(client);
+  const xferState = useClientXferState(client);
   const link = useCallback(() => { client.registerAndConnect(hostURL) }, []);
 
   const status = useStateWatcher(stateManager, "status", statusStore.load);
   const [statusField, setStatusField] = useState("");
   const handleSubmit = useCallback((evt: React.FormEvent) => {
     evt.preventDefault();
-    client.upsert("status", statusField, new Uint8Array());
+    client.upsert({ type: "status", body: statusField, eid: new Uint8Array() });
     setStatusField("");
   }, [statusField]);
 
@@ -70,7 +72,7 @@ export default function App() {
 
   return (
     <>
-      <ClientStatusBar state={state} />
+      {xferState ? <ClientStatusBar state={state} xferState={xferState} /> : undefined}
       {state.hasSeed ? (
         <>
           <h1>STATUS</h1>

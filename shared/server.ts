@@ -1,4 +1,12 @@
-import type { IHostCrypto, IListDeltasResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, IStorage, IWebsocketNotifier } from "./types.ts";
+import type {
+  IHostCrypto,
+  IListDeltasResponse,
+  IMsgpackCodec,
+  IOperationRequest,
+  IRegistrationRequest,
+  IStorage,
+  IWebsocketNotifier,
+} from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
 function opPath(storedAt: Date): string {
@@ -31,7 +39,14 @@ export class DiplomaticServer {
   codec: IMsgpackCodec;
   crypto: IHostCrypto;
   notifier: IWebsocketNotifier;
-  constructor(hostID: string, regToken: string, storage: IStorage, codec: IMsgpackCodec, crypto: IHostCrypto, notifier: IWebsocketNotifier) {
+  constructor(
+    hostID: string,
+    regToken: string,
+    storage: IStorage,
+    codec: IMsgpackCodec,
+    crypto: IHostCrypto,
+    notifier: IWebsocketNotifier,
+  ) {
     this.hostID = hostID;
     this.regToken = regToken;
     this.storage = storage;
@@ -42,7 +57,10 @@ export class DiplomaticServer {
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
-      return this.notifier.handler(request, this.storage.hasUser.bind(this.storage));
+      return this.notifier.handler(
+        request,
+        this.storage.hasUser.bind(this.storage),
+      );
     }
 
     if (request.method === "OPTIONS") {
@@ -54,7 +72,7 @@ export class DiplomaticServer {
     console.log(`[${resp.status}] ${request.method} ${request.url}`);
 
     return cors(resp);
-  }
+  };
 
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -71,7 +89,9 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await this.codec.decodeAsync(request.body) as IRegistrationRequest;
+        const req = await this.codec.decodeAsync(
+          request.body,
+        ) as IRegistrationRequest;
         if (req.token === undefined || req.pubKey === undefined) {
           return new Response("Invalid request", { status: 400 });
         }
@@ -95,7 +115,9 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await this.codec.decodeAsync(request.body) as IOperationRequest;
+        const req = await this.codec.decodeAsync(
+          request.body,
+        ) as IOperationRequest;
         if (req.cipher === undefined) {
           return new Response("Invalid request", { status: 400 });
         }
@@ -116,7 +138,11 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = await this.crypto.checkSigEd25519(sig, req.cipher, pubKey);
+        const sigValid = await this.crypto.checkSigEd25519(
+          sig,
+          req.cipher,
+          pubKey,
+        );
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -196,7 +222,11 @@ export class DiplomaticServer {
         }
         const pubKey = htob(pubKeyHex);
         const sig = htob(sigHex);
-        const sigValid = await this.crypto.checkSigEd25519(sig, url.pathname, pubKey);
+        const sigValid = await this.crypto.checkSigEd25519(
+          sig,
+          url.pathname,
+          pubKey,
+        );
         if (!sigValid) {
           return new Response("Invalid signature", { status: 401 });
         }
@@ -205,12 +235,16 @@ export class DiplomaticServer {
         const fetchedAt = now.toISOString();
         const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
         const begin = decodeURIComponent(beginComponent);
-        const userOpsList = await this.storage.listOps(pubKeyHex, begin, fetchedAt);
+        const userOpsList = await this.storage.listOps(
+          pubKeyHex,
+          begin,
+          fetchedAt,
+        );
 
         const resp: IListDeltasResponse = {
           deltas: userOpsList,
           fetchedAt,
-        }
+        };
         const respPack = this.codec.encode(resp);
         return new Response(respPack, { status: 200 });
       } catch (err) {

@@ -16,7 +16,7 @@ From `deno` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Server
 
-`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read hosts/deno/server.ts --https`
+`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read --allow-write hosts/deno/server.ts --https`
 
 ### Demo Client (status app)
 

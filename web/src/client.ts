@@ -239,11 +239,11 @@ export default class DiplomaticClient {
     const { hostURL, hostKeyPair } = this;
     const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);
     for (const item of resp.deltas) {
+      await this.store.dequeueUpload(item.sha256); // In case e.g. user did a local file import.
       if (await this.store.hasOp(item.sha256)) {
         continue;
       }
       await this.store.enqueueDownload(item.sha256, item.recordedAt);
-      await this.store.dequeueUpload(item.sha256); // In case e.g. user did a local file import.
       this.emitXferUpdate();
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.

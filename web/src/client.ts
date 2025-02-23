@@ -171,6 +171,7 @@ export default class DiplomaticClient {
       "tok123",
     );
 
+    await this.store.setLastFetchedAt(new Date(0));
     await this.store.setHostURL(hostURL);
     await this.store.setHostID(hostID);
 

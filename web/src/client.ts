@@ -188,7 +188,14 @@ export default class DiplomaticClient {
   async registerAndConnect(hostURL: string) {
     await this.register(hostURL);
     await this.connect(new URL(hostURL));
+    await this.requeueAllOpsForUpload();
     await this.sync();
+  }
+
+  async requeueAllOpsForUpload() {
+    for (const op of await this.store.listOps()) {
+      await this.store.enqueueUpload(htob(op.sha256), op.cipherOp);
+    }
   }
 
   async emitUpdate() {
@@ -236,6 +243,7 @@ export default class DiplomaticClient {
         continue;
       }
       await this.store.enqueueDownload(item.sha256, item.recordedAt);
+      await this.store.dequeueUpload(item.sha256); // In case e.g. user did a local file import.
       this.emitXferUpdate();
     }
     // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.

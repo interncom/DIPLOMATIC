@@ -19,10 +19,10 @@ export function useClientState(client: DiplomaticClient) {
       const state = await client.getState();
       setState(state);
     }
-    client.listener = updateState;
+    const unsubscribe = client.addEventListener(updateState);
     updateState();
     return () => {
-      client.listener = undefined;
+      unsubscribe();
     };
   }, [client]);
   return state;
@@ -35,10 +35,10 @@ export function useClientXferState(client: DiplomaticClient) {
       const state = await client.getXferState();
       setState(state);
     }
-    client.xferListener = updateState;
+    const unsubscribe = client.addXferEventListener(updateState);
     updateState();
     return () => {
-      client.xferListener = undefined;
+      unsubscribe();
     };
   }, [client]);
   return state;

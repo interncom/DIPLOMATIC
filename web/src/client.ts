@@ -12,6 +12,7 @@ import type { StateManager } from "./state";
 import { genDeleteOp, genUpsertOp } from "./shared/ops";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import TypedEventEmitter from "./typedEventEmitter";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
@@ -25,8 +26,8 @@ export default class DiplomaticClient {
   store: IClientStateStore;
   stateManager: StateManager;
 
-  listener?: (state: IDiplomaticClientState) => void;
-  xferListener?: (state: IDiplomaticClientXferState) => void;
+  stateEmitter: TypedEventEmitter<IDiplomaticClientState>;
+  xferStateEmitter: TypedEventEmitter<IDiplomaticClientXferState>;
 
   seed?: Uint8Array;
   encKey?: Uint8Array;
@@ -34,9 +35,19 @@ export default class DiplomaticClient {
   hostKeyPair?: KeyPair;
 
   constructor(params: IDiplomaticClientParams) {
+    this.stateEmitter = new TypedEventEmitter();
+    this.xferStateEmitter = new TypedEventEmitter();
     this.store = params.store;
     this.stateManager = params.stateManager;
     this.init(params);
+  }
+
+  addEventListener(func: (state: IDiplomaticClientState) => void) {
+    return this.stateEmitter.addEventListener("update", func);
+  }
+
+  addXferEventListener(func: (state: IDiplomaticClientXferState) => void) {
+    return this.xferStateEmitter.addEventListener("update", func);
   }
 
   wipe = async () => {
@@ -201,12 +212,12 @@ export default class DiplomaticClient {
 
   async emitUpdate() {
     const state = await this.getState();
-    this.listener?.(state);
+    this.stateEmitter.emit("update", state);
   }
 
   async emitXferUpdate() {
     const state = await this.getXferState();
-    this.xferListener?.(state);
+    this.xferStateEmitter.emit("update", state);
   }
 
   async getState(): Promise<IDiplomaticClientState> {

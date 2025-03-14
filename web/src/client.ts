@@ -295,7 +295,8 @@ export default class DiplomaticClient {
         await this.store.storeOp(sha256, cipher);
         await this.store.dequeueDownload(sha256);
         this.emitXferUpdate();
-      } catch {
+      } catch (err) {
+        console.error("Processing download", err, item);
         // TODO: distinguish transient vs permanent failures.
         const transient = true;
         if (!transient) {

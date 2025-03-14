@@ -297,8 +297,17 @@ export default class DiplomaticClient {
         this.emitXferUpdate();
       } catch (err) {
         console.error("Processing download", err, item);
-        // TODO: distinguish transient vs permanent failures.
-        const transient = true;
+
+        let transient = true;
+        if (
+          err instanceof Error &&
+          err.message === "wrong secret key for the given ciphertext"
+        ) {
+          // No coming back from this one.
+          // Display to user somehow?
+          transient = false;
+        }
+
         if (!transient) {
           await this.store.dequeueDownload(item.sha256);
           this.emitXferUpdate();

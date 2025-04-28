@@ -11,7 +11,9 @@ import DiplomaticClient from "./client";
 import libsodiumCrypto from "./crypto";
 import { btoh, htob } from "./shared/lib";
 import { type IOp, type IUpsertOp, Verb } from "./shared/types";
-import useStateWatcher from "./react/useStateWatcher";
+import useStateWatcher, {
+  useStateWatcherSuspense,
+} from "./react/useStateWatcher";
 import InitSeedView from "./react/initSeedView";
 import ClientStatusBar from "./react/statusBar";
 import * as EntityDB from "./entityDB";
@@ -31,6 +33,7 @@ export {
   useClientState,
   useClientXferState,
   useStateWatcher,
+  useStateWatcherSuspense,
   useSyncOnResume,
   Verb,
 };

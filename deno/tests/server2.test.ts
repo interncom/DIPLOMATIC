@@ -3,7 +3,7 @@ import { DiplomaticServer } from "../../shared/server2.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI from "../../shared/client2.ts";
 import { IWebsocketNotifier } from "../../shared/types.ts";
 
 // Server config.
@@ -13,7 +13,16 @@ const registrationToken = "tok123";
 
 // Client config.
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(seed, hostID);
+
+// Derivation index for host key pair.
+// Increments as part of host keypair rotation.
+const hostIdx = 0;
+
+const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+  seed,
+  hostID,
+  hostIdx,
+);
 
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
@@ -46,6 +55,11 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /users", async () => {
     await client.register(url, pubKey, registrationToken);
+  });
+
+  // Test PUSH
+  const ops = [];
+  await t.step("POST /ops", async () => {
   });
 
   await httpServer.shutdown();

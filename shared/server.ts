@@ -193,7 +193,7 @@ export class DiplomaticServer {
         }
 
         const respPack = this.codec.encode({ cipher });
-        return new Response(respPack, {
+        return new Response(respPack.slice(0), {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },
         });
@@ -246,7 +246,7 @@ export class DiplomaticServer {
           fetchedAt,
         };
         const respPack = this.codec.encode(resp);
-        return new Response(respPack, { status: 200 });
+        return new Response(respPack.slice(0), { status: 200 });
       } catch (err) {
         console.error(err);
         return new Response("Processing request", { status: 500 });

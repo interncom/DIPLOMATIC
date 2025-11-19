@@ -1,4 +1,11 @@
-import type { ICrypto, IListDeltasResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
+import type {
+  ICrypto,
+  IListDeltasResponse,
+  IMsgpackCodec,
+  IOperationRequest,
+  IRegistrationRequest,
+  KeyPair,
+} from "./types.ts";
 import { btoh } from "./lib.ts";
 
 export default class DiplomaticClientAPI {
@@ -10,7 +17,7 @@ export default class DiplomaticClientAPI {
   }
 
   async getHostID(hostURL: URL): Promise<string> {
-    const url = new URL(hostURL)
+    const url = new URL(hostURL);
     url.pathname = "/id";
     const response = await fetch(url, { method: "GET" });
     if (!response.ok) {
@@ -20,20 +27,31 @@ export default class DiplomaticClientAPI {
     return id;
   }
 
-  async register(hostURL: URL, pubKey: Uint8Array, token: string): Promise<void> {
-    const url = new URL(hostURL)
+  async register(
+    hostURL: URL,
+    pubKey: Uint8Array,
+    token: string,
+  ): Promise<void> {
+    const url = new URL(hostURL);
     url.pathname = "/users";
     const req: IRegistrationRequest = {
       token,
       pubKey, // TODO: check for valid pubKey length, server-side.
     };
     const reqPack = this.codec.encode(req);
-    const response = await fetch(url, { method: "POST", body: reqPack });
-    await response.body?.cancel()
+    const response = await fetch(url, {
+      method: "POST",
+      body: reqPack.slice(0),
+    });
+    await response.body?.cancel();
   }
 
-  async putDelta(hostURL: URL, cipherOp: Uint8Array, keyPair: KeyPair): Promise<string> {
-    const url = new URL(hostURL)
+  async putDelta(
+    hostURL: URL,
+    cipherOp: Uint8Array,
+    keyPair: KeyPair,
+  ): Promise<string> {
+    const url = new URL(hostURL);
     url.pathname = "/ops";
 
     const req: IOperationRequest = {
@@ -46,10 +64,12 @@ export default class DiplomaticClientAPI {
     const keyHex = btoh(keyPair.publicKey);
 
     const response = await fetch(url, {
-      method: "POST", body: reqPack, headers: {
+      method: "POST",
+      body: reqPack.slice(0),
+      headers: {
         "X-DIPLOMATIC-SIG": sigHex,
         "X-DIPLOMATIC-KEY": keyHex,
-      }
+      },
     });
     if (!response.ok) {
       throw "Uh oh";
@@ -58,8 +78,12 @@ export default class DiplomaticClientAPI {
     return opPath;
   }
 
-  async getDelta(hostURL: URL, sha256: Uint8Array, keyPair: KeyPair): Promise<Uint8Array> {
-    const url = new URL(hostURL)
+  async getDelta(
+    hostURL: URL,
+    sha256: Uint8Array,
+    keyPair: KeyPair,
+  ): Promise<Uint8Array> {
+    const url = new URL(hostURL);
     const opPath = btoh(sha256);
     url.pathname = `/ops/${opPath}`;
 
@@ -67,10 +91,11 @@ export default class DiplomaticClientAPI {
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {
-      method: "GET", headers: {
+      method: "GET",
+      headers: {
         "X-DIPLOMATIC-SIG": sigHex,
         "X-DIPLOMATIC-KEY": keyHex,
-      }
+      },
     });
     if (!response.ok) {
       throw "Uh oh";
@@ -83,10 +108,14 @@ export default class DiplomaticClientAPI {
     return resp.cipher;
   }
 
-  async listDeltas(hostURL: URL, begin: Date, keyPair: KeyPair): Promise<IListDeltasResponse> {
+  async listDeltas(
+    hostURL: URL,
+    begin: Date,
+    keyPair: KeyPair,
+  ): Promise<IListDeltasResponse> {
     const t = begin.toISOString();
     const path = `/ops?begin=${t}`;
-    const url = new URL(hostURL)
+    const url = new URL(hostURL);
     url.pathname = path;
 
     const sigPath = `/ops%3Fbegin=${t}`;
@@ -94,10 +123,11 @@ export default class DiplomaticClientAPI {
     const sigHex = btoh(sig);
     const keyHex = btoh(keyPair.publicKey);
     const response = await fetch(url, {
-      method: "GET", headers: {
+      method: "GET",
+      headers: {
         "X-DIPLOMATIC-SIG": sigHex,
         "X-DIPLOMATIC-KEY": keyHex,
-      }
+      },
     });
     if (!response.ok) {
       throw "Uh oh";

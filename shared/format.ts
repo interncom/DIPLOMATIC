@@ -119,3 +119,46 @@ export async function encryptOp(
   cipher.set(op.body, eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes);
   return cipher;
 }
+
+export async function decryptOp(
+  cipherOp: EncryptedOp,
+  crypto: ICrypto,
+): Promise<IProtoOpMinimal> {
+  const view = new DataView(cipherOp.buffer, cipherOp.byteOffset);
+  const eid = cipherOp.slice(0, eidBytes);
+  const clkTime = view.getBigUint64(eidBytes, false);
+  const clk = new Date(Number(clkTime));
+  const ctr = view.getUint32(eidBytes + clkBytes, false);
+  const sha = cipherOp.slice(
+    eidBytes + clkBytes + ctrBytes,
+    eidBytes + clkBytes + ctrBytes + shaBytes,
+  );
+  const len = Number(
+    view.getBigUint64(eidBytes + clkBytes + ctrBytes + shaBytes, false),
+  );
+  const body = cipherOp.slice(
+    eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes,
+    eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes + len,
+  );
+  // Verify SHA
+  const computedSha = await crypto.sha256Hash(body);
+  if (!sha.every((v, i) => v === computedSha[i])) {
+    throw new Error("SHA mismatch in decryptOp");
+  }
+  return { eid, clk, ctr, body };
+}
+
+export async function decodeOpForHost(
+  encoded: EncodedOp,
+): Promise<IProtoOpHost> {
+  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  // const idx = view.getUint32(0, false); // Not needed in IProtoOpHost
+  const sig = encoded.slice(idxBytes, idxBytes + sigBytes);
+  const hash = encoded.slice(
+    idxBytes + sigBytes,
+    idxBytes + sigBytes + shaBytes,
+  );
+  const len = Number(view.getBigUint64(idxBytes + sigBytes + shaBytes, false));
+  const cipherOp = encoded.slice(idxBytes + sigBytes + shaBytes + lenBytes);
+  return { sig, hash, len, cipherOp };
+}

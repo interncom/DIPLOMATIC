@@ -3,6 +3,8 @@ import {
   encodeOpForHost,
   formOpForHost,
   encryptOp,
+  decryptOp,
+  decodeOpForHost,
 } from "../../web/src/shared/format.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
@@ -112,5 +114,36 @@ Deno.test("format", async (t) => {
     view.setBigUint64(idxBytes + sigBytes + shaBytes, BigInt(op.len), false);
     expected.set(op.cipherOp, idxBytes + sigBytes + shaBytes + lenBytes);
     assertEquals(result, expected);
+  });
+
+  await t.step("decryptOp", async () => {
+    const op = {
+      eid: new Uint8Array(16).fill(0x11),
+      clk: new Date(1234567890000),
+      ctr: 42,
+      body: new Uint8Array([1, 2, 3]),
+    };
+    const encrypted = await encryptOp(op, crypto);
+    const decrypted = await decryptOp(encrypted, crypto);
+    assertEquals(decrypted.eid, op.eid);
+    assertEquals(decrypted.clk.getTime(), op.clk.getTime());
+    assertEquals(decrypted.ctr, op.ctr);
+    assertEquals(decrypted.body, op.body);
+  });
+
+  await t.step("decodeOpForHost", async () => {
+    const idx = 5;
+    const op = {
+      sig: new Uint8Array(64).fill(0x77),
+      hash: new Uint8Array(32).fill(0x88),
+      len: 99,
+      cipherOp: new Uint8Array([10, 11, 12]),
+    };
+    const encoded = await encodeOpForHost(idx, op);
+    const decoded = await decodeOpForHost(encoded);
+    assertEquals(decoded.sig, op.sig);
+    assertEquals(decoded.hash, op.hash);
+    assertEquals(decoded.len, op.len);
+    assertEquals(decoded.cipherOp, op.cipherOp);
   });
 });

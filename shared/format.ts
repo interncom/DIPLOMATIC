@@ -1,4 +1,4 @@
-import type { ICrypto } from "./types.ts";
+import type { ICrypto, KeyPair } from "./types.ts";
 
 // Op Layout:
 // === Plaintext Section [106 bytes] ===
@@ -57,10 +57,11 @@ export async function encodeOpForHost(
     idxBytes + sigBytes + shaBytes + lenBytes + op.cipherOp.length,
   );
 
-  encoded.set(idx, 0);
+  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  view.setUint32(0, idx, false);
   encoded.set(op.sig, idxBytes);
   encoded.set(op.hash, idxBytes + sigBytes);
-  encoded.set(op.len, idxBytes + sigBytes + shaBytes);
+  view.setBigUint64(idxBytes + sigBytes + shaBytes, BigInt(op.len), false);
   encoded.set(op.cipherOp, idxBytes + sigBytes + shaBytes + lenBytes);
   return encoded;
 }
@@ -70,7 +71,7 @@ export async function formOpForHost(
   cipherOp: EncryptedOp,
   crypto: ICrypto,
 ): Promise<IProtoOpHost> {
-  const keyPath = "";
+  const keyPath = new Uint8Array(8).fill(0);
   const len = keyPathBytes + cipherOp.length;
 
   const hashSrc = new Uint8Array(len);
@@ -78,7 +79,7 @@ export async function formOpForHost(
   hashSrc.set(cipherOp, keyPathBytes);
   const hash = await crypto.sha256Hash(hashSrc);
 
-  const sig = crypto.signEd25519(hash, keyPair.privateKey);
+  const sig = await crypto.signEd25519(hash, keyPair.privateKey);
   return {
     sig,
     hash,
@@ -102,14 +103,19 @@ export async function encryptOp(
   const sha = await crypto.sha256Hash(op.body);
 
   const cipher = new Uint8Array(
-    eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes,
+    eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes + len,
   );
 
+  const view = new DataView(cipher.buffer, cipher.byteOffset);
   cipher.set(op.eid, 0);
-  cipher.set(op.clk, eidBytes);
-  cipher.set(op.ctr, eidBytes + clkBytes);
+  view.setBigUint64(eidBytes, BigInt(op.clk.getTime()), false);
+  view.setUint32(eidBytes + clkBytes, op.ctr, false);
   cipher.set(sha, eidBytes + clkBytes + ctrBytes);
-  cipher.set(len, eidBytes + clkBytes + ctrBytes + shaBytes);
+  view.setBigUint64(
+    eidBytes + clkBytes + ctrBytes + shaBytes,
+    BigInt(len),
+    false,
+  );
   cipher.set(op.body, eidBytes + clkBytes + ctrBytes + shaBytes + lenBytes);
   return cipher;
 }

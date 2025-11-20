@@ -27,14 +27,14 @@ import type { ICrypto, KeyPair } from "./types.ts";
 // Rest of the data it can regenerate dynamically.
 
 // The minimal data necessary to encode an op.
-interface IProtoOpMinimal {
+export interface IProtoOpMinimal {
   eid: Uint8Array;
   clk: Date;
   ctr: number;
   body: Uint8Array;
 }
 
-interface IProtoOpHost {
+export interface IProtoOpHost {
   sig: Uint8Array;
   hash: Uint8Array;
   len: number;

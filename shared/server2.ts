@@ -9,10 +9,11 @@ import type {
 } from "./types.ts";
 import { btoh, htob } from "./lib.ts";
 
-const allowedHeaders = [
-  "X-DIPLOMATIC-KEY",
-  "X-DIPLOMATIC-SIG",
-];
+// A PUSH sends a batch of OPS.
+//
+interface IPushRequest {}
+
+const allowedHeaders = ["X-DIPLOMATIC-KEY", "X-DIPLOMATIC-SIG"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // Allow any origin
@@ -85,9 +86,9 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await this.codec.decodeAsync(
+        const req = (await this.codec.decodeAsync(
           request.body,
-        ) as IRegistrationRequest;
+        )) as IRegistrationRequest;
         if (req.token === undefined || req.pubKey === undefined) {
           return new Response("Invalid request", { status: 400 });
         }
@@ -106,4 +107,57 @@ export class DiplomaticServer {
 
     return new Response("Not Found", { status: 404 });
   };
+
+  // if (request.method === "POST" && url.pathname === "/ops") {
+  //   const now = new Date();
+
+  //   try {
+  //     if (!request.body) {
+  //       return new Response("Invalid request", { status: 400 });
+  //     }
+  //     const req = await this.codec.decodeAsync(
+  //       request.body,
+  //     ) as IOperationRequest;
+  //     if (req.cipher === undefined) {
+  //       return new Response("Invalid request", { status: 400 });
+  //     }
+
+  //     // Check user is registered.
+  //     const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
+  //     if (!pubKeyHex) {
+  //       return new Response("Missing pubkey", { status: 401 });
+  //     }
+  //     if (!await this.storage.hasUser(pubKeyHex)) {
+  //       return new Response("Unauthorized", { status: 401 });
+  //     }
+
+  //     // Check signature.
+  //     const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
+  //     if (!sigHex) {
+  //       return new Response("Missing signature", { status: 401 });
+  //     }
+  //     const pubKey = htob(pubKeyHex);
+  //     const sig = htob(sigHex);
+  //     const sigValid = await this.crypto.checkSigEd25519(
+  //       sig,
+  //       req.cipher,
+  //       pubKey,
+  //     );
+  //     if (!sigValid) {
+  //       return new Response("Invalid signature", { status: 401 });
+  //     }
+
+  //     await this.storage.setOp(pubKeyHex, now, req.cipher);
+
+  //     // Notify listeners.
+  //     await this.notifier.notify(pubKeyHex);
+
+  //     const opHash = await this.crypto.sha256Hash(req.cipher);
+  //     const hex = btoh(opHash);
+  //     return new Response(hex, { status: 200 });
+  //   } catch (err) {
+  //     console.error(err);
+  //     return new Response("Processing request", { status: 500 });
+  //   }
+  // }
 }

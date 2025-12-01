@@ -66,38 +66,32 @@ export const clkBytes = 8;
 export const ctrBytes = 4;
 export const lenBytes = 8;
 
-export async function encryptOp(
-  op: IMessage,
-  crypto: ICrypto,
-): Promise<EncryptedMessage> {
+export async function encodeOp(op: IMessage): Promise<EncodedMessage> {
   const len = op.bod?.length ?? 0;
 
-  const cipher = new Uint8Array(
+  const encoded = new Uint8Array(
     eidBytes + clkBytes + ctrBytes + lenBytes + len,
   );
 
-  const view = new DataView(cipher.buffer, cipher.byteOffset);
-  cipher.set(op.eid, 0);
+  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  encoded.set(op.eid, 0);
   view.setBigUint64(eidBytes, BigInt(op.clk.getTime()), false);
   view.setUint32(eidBytes + clkBytes, op.ctr, false);
   view.setBigUint64(eidBytes + clkBytes + ctrBytes, BigInt(len), false);
   if (op.bod) {
-    cipher.set(op.bod, eidBytes + clkBytes + ctrBytes + lenBytes);
+    encoded.set(op.bod, eidBytes + clkBytes + ctrBytes + lenBytes);
   }
-  return cipher;
+  return encoded;
 }
 
-export async function decryptOp(
-  cipherOp: EncryptedMessage,
-  crypto: ICrypto,
-): Promise<IMessage> {
-  const view = new DataView(cipherOp.buffer, cipherOp.byteOffset);
-  const eid = cipherOp.slice(0, eidBytes);
+export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
+  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  const eid = encoded.slice(0, eidBytes);
   const clkTime = view.getBigUint64(eidBytes, false);
   const clk = new Date(Number(clkTime));
   const ctr = view.getUint32(eidBytes + clkBytes, false);
   const len = Number(view.getBigUint64(eidBytes + clkBytes + ctrBytes, false));
-  const body = cipherOp.slice(
+  const body = encoded.slice(
     eidBytes + clkBytes + ctrBytes + lenBytes,
     eidBytes + clkBytes + ctrBytes + lenBytes + len,
   );

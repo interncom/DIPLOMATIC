@@ -7,6 +7,9 @@ import type {
   KeyPair,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
+import { makeEnvelope, encodeEnvelope } from "./envelope.ts";
+import { timestampAuthProof } from "./auth.ts";
+import { encodeOp, type IMessage } from "./message.ts";
 
 export default class DiplomaticClientAPI {
   codec: IMsgpackCodec;
@@ -46,31 +49,60 @@ export default class DiplomaticClientAPI {
     await response.body?.cancel();
   }
 
-  // async push(hostURL: URL, ops: Uint8Array, keyPair: KeyPair): Promise<string> {
-  //   const url = new URL(hostURL);
-  //   url.pathname = "/ops";
+  async push(
+    hostURL: URL,
+    ops: IMessage[],
+    seed: Uint8Array,
+    keyPath: string,
+    idx: number,
+    now: Date,
+  ): Promise<string> {
+    const url = new URL(hostURL);
+    url.pathname = "/ops";
 
-  //   const req: IOperationRequest = {
-  //     cipher: cipherOp,
-  //   };
-  //   const reqPack = this.codec.encode(req);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(
+      seed,
+      keyPath,
+      idx,
+    );
 
-  //   const sig = await this.crypto.signEd25519(req.cipher, keyPair.privateKey);
-  //   const sigHex = btoh(sig);
-  //   const keyHex = btoh(keyPair.publicKey);
+    // Form the authentication prefix (sigproof of timestamp).
+    // Server can reject for timestamp too far from its clock.
+    // In that case, signal to user that clock is out of sync.
+    // Clocks must be synchronized to ensure correct op order.
 
-  //   const response = await fetch(url, {
-  //     method: "POST",
-  //     body: reqPack,
-  //     headers: {
-  //       "X-DIPLOMATIC-SIG": sigHex,
-  //       "X-DIPLOMATIC-KEY": keyHex,
-  //     },
-  //   });
-  //   if (!response.ok) {
-  //     throw "Uh oh";
-  //   }
-  //   const opPath = await response.text();
-  //   return opPath;
-  // }
+    const tsAuth = await timestampAuthProof(seed, keyPath, idx, now);
+
+    // Derive encryption key
+    const encKey = await this.crypto.deriveXSalsa20Poly1305Key(seed, idx);
+
+    // Create a readable stream to stream the data
+    const stream = new ReadableStream({
+      async start(controller) {
+        // First, send the tsAuth data
+        const tsAuthEncoded = this.codec.encode(tsAuth);
+        controller.enqueue(tsAuthEncoded);
+
+        // Then, stream each envelope as it's generated
+        for (const op of ops) {
+          const encMsg = await encodeOp(op);
+          const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(encMsg, encKey);
+          const env = await makeEnvelope(idx, keyPair, ciphertxt, this.crypto);
+          const encEnv = await encodeEnvelope(env);
+          controller.enqueue(encEnv);
+        }
+        controller.close();
+      }.bind(this),
+    });
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: stream,
+    });
+    if (!response.ok) {
+      throw "Uh oh";
+    }
+    const resp = await response.text();
+    return resp;
+  }
 }

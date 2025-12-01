@@ -28,14 +28,25 @@
 
 import type { ICrypto, KeyPair } from "./types.ts";
 import { lenBytes, EncryptedMessage, EncodedMessage } from "./message.ts";
+import type { ISigProof } from "./sigProof.ts";
+import {
+  sigBytes,
+  shaBytes,
+  idxBytes,
+  pubKeyBytes,
+  keyPathBytes,
+} from "./consts.ts";
 
-const sigBytes = 64;
-const shaBytes = 32;
-const idxBytes = 4;
-const keyPathBytes = 8;
+// Offsets for encoding/decoding
+const keyPathOffset = 0;
+const idxOffset = keyPathOffset + keyPathBytes;
+const pubKeyOffset = idxOffset + idxBytes;
+const sigOffset = pubKeyOffset + pubKeyBytes;
+const hshOffset = sigOffset + sigBytes;
+const lenOffset = hshOffset + shaBytes;
+const msgOffset = lenOffset + lenBytes;
 
-export interface IEnvelope {
-  sig: Uint8Array;
+export interface IEnvelope extends ISigProof {
   hsh: Uint8Array;
   len: number;
   msg: EncryptedMessage;
@@ -43,38 +54,62 @@ export interface IEnvelope {
 
 type EncodedEnvelope = Uint8Array;
 
-export async function encodeEnvelope(
-  idx: number,
-  op: IEnvelope,
-): Promise<EncodedMessage> {
-  const encoded = new Uint8Array(
-    idxBytes + sigBytes + shaBytes + lenBytes + op.msg.length,
-  );
+const fixedBytes = msgOffset;
+
+export async function encodeEnvelope(op: IEnvelope): Promise<EncodedMessage> {
+  const encoded = new Uint8Array(fixedBytes + op.msg.length);
 
   const view = new DataView(encoded.buffer, encoded.byteOffset);
-  view.setUint32(0, idx, false);
-  encoded.set(op.sig, idxBytes);
-  encoded.set(op.hsh, idxBytes + sigBytes);
-  view.setBigUint64(idxBytes + sigBytes + shaBytes, BigInt(op.len), false);
-  encoded.set(op.msg, idxBytes + sigBytes + shaBytes + lenBytes);
+
+  // keyPath
+  const encoder = new TextEncoder();
+  const keyPathBytesData = encoder.encode(op.keyPath.slice(0, keyPathBytes));
+  for (let i = 0; i < keyPathBytes; i++) {
+    encoded[keyPathOffset + i] =
+      i < keyPathBytesData.length ? keyPathBytesData[i] : 0;
+  }
+
+  // idx
+  view.setBigUint64(idxOffset, BigInt(op.idx), false);
+
+  // pubKey
+  encoded.set(op.pubKey, pubKeyOffset);
+
+  // sig
+  encoded.set(op.sig, sigOffset);
+
+  // hsh
+  encoded.set(op.hsh, hshOffset);
+
+  // len
+  view.setBigUint64(lenOffset, BigInt(op.len), false);
+
+  // msg
+  encoded.set(op.msg, msgOffset);
+
   return encoded;
 }
 
 export async function makeEnvelope(
+  idx: number,
   keyPair: KeyPair, // Based on hostIdx (for rotation)
   cipherOp: EncryptedMessage,
   crypto: ICrypto,
 ): Promise<IEnvelope> {
-  const keyPath = new Uint8Array(8).fill(0);
+  const keyPath = "";
+  const keyPathBytesData = new TextEncoder().encode(keyPath.slice(0, 8));
   const len = keyPathBytes + cipherOp.length;
 
   const hashSrc = new Uint8Array(len);
-  hashSrc.set(keyPath, 0);
+  hashSrc.set(keyPathBytesData.slice(0, 8), 0);
   hashSrc.set(cipherOp, keyPathBytes);
   const hash = await crypto.sha256Hash(hashSrc);
 
   const sig = await crypto.signEd25519(hash, keyPair.privateKey);
   return {
+    keyPath,
+    idx,
+    pubKey: keyPair.publicKey,
     sig,
     hsh: hash,
     len,
@@ -82,17 +117,32 @@ export async function makeEnvelope(
   };
 }
 
-export async function decodeEnvelope(
-  encoded: EncodedEnvelope,
-): Promise<IEnvelope> {
+export function decodeEnvelope(encoded: EncodedEnvelope): IEnvelope {
   const view = new DataView(encoded.buffer, encoded.byteOffset);
-  // const idx = view.getUint32(0, false); // Not needed in IProtoOpHost
-  const sig = encoded.slice(idxBytes, idxBytes + sigBytes);
-  const hash = encoded.slice(
-    idxBytes + sigBytes,
-    idxBytes + sigBytes + shaBytes,
-  );
-  const len = Number(view.getBigUint64(idxBytes + sigBytes + shaBytes, false));
-  const cipherOp = encoded.slice(idxBytes + sigBytes + shaBytes + lenBytes);
-  return { sig, hsh: hash, len, msg: cipherOp };
+
+  // keyPath
+  const decoder = new TextDecoder();
+  let keyPath = decoder
+    .decode(encoded.slice(keyPathOffset, keyPathBytes))
+    .replace(/\0+$/, "");
+
+  // idx
+  const idx = Number(view.getBigUint64(idxOffset, false));
+
+  // pubKey
+  const pubKey = encoded.slice(pubKeyOffset, pubKeyOffset + pubKeyBytes);
+
+  // sig
+  const sig = encoded.slice(sigOffset, sigOffset + sigBytes);
+
+  // hsh
+  const hsh = encoded.slice(hshOffset, hshOffset + shaBytes);
+
+  // len
+  const len = Number(view.getBigUint64(lenOffset, false));
+
+  // msg
+  const msg = encoded.slice(msgOffset);
+
+  return { keyPath, idx, pubKey, sig, hsh, len, msg };
 }

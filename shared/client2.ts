@@ -62,6 +62,9 @@ export default class DiplomaticClientAPI {
 
     const keyPair = await this.crypto.deriveEd25519KeyPair(seed, keyPath, idx);
 
+    const hex = btoh(keyPair.publicKey);
+    console.log("pus pkh", hex, keyPath, idx);
+
     // Form the authentication prefix (sigproof of timestamp).
     // Server can reject for timestamp too far from its clock.
     // In that case, signal to user that clock is out of sync.
@@ -82,8 +85,7 @@ export default class DiplomaticClientAPI {
     const stream = new ReadableStream({
       start: async (controller) => {
         // First, send the tsAuth data
-        const tsAuthEncoded = this.codec.encode(tsAuth);
-        controller.enqueue(tsAuthEncoded);
+        controller.enqueue(tsAuth);
 
         // Then, stream each envelope as it's generated
         for (const op of ops) {
@@ -104,6 +106,7 @@ export default class DiplomaticClientAPI {
       method: "POST",
       body: stream,
     });
+    console.log("resp", response);
     if (!response.ok) {
       throw "Uh oh";
     }

@@ -94,16 +94,15 @@ export class DiplomaticServer {
     if (!uint8ArraysEqual(hash, envHeader.hsh)) {
       return 2; // Invalid hash
     }
-    // TODO: Debug - commented out for testing
-    // if (
-    //   !(await this.crypto.checkSigEd25519(
-    //     envHeader.sig,
-    //     envHeader.hsh,
-    //     envHeader.pubKey,
-    //   ))
-    // ) {
-    //   return 3; // Invalid envelope signature
-    // }
+    if (
+      !(await this.crypto.checkSigEd25519(
+        envHeader.sig,
+        envHeader.hsh,
+        envHeader.pubKey,
+      ))
+    ) {
+      return 3; // Invalid envelope signature
+    }
     await this.storage.setOp(pubKeyHex, now, msg);
     await this.notifier.notify(pubKeyHex);
     return 0; // Success
@@ -173,27 +172,25 @@ export class DiplomaticServer {
           );
           return new Response("Unauthorized", { status: 401 });
         }
-        // TODO: Debug 401 - commented out for testing
-        // const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
-        //   0,
-        //   false,
-        // );
-        // const currentTime = Date.now();
-        // const diff = Math.abs(currentTime - Number(timestampMs));
-        // if (diff > 30000) {
-        //   // 30 seconds tolerance
-        //   return new Response("Clock out of sync", { status: 400 });
-        // }
-        // TODO: Debug 401 - commented out for testing
-        // if (
-        //   !(await this.crypto.checkSigEd25519(
-        //     tsAuth.sig,
-        //     tsAuth.data,
-        //     tsAuth.pubKey,
-        //   ))
-        // ) {
-        //   return new Response("Invalid signature", { status: 401 });
-        // }
+        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
+          0,
+          false,
+        );
+        const currentTime = Date.now();
+        const diff = Math.abs(currentTime - Number(timestampMs));
+        if (diff > 30000) {
+          // 30 seconds tolerance
+          return new Response("Clock out of sync", { status: 400 });
+        }
+        if (
+          !(await this.crypto.checkSigEd25519(
+            tsAuth.sig,
+            tsAuth.data,
+            tsAuth.pubKey,
+          ))
+        ) {
+          return new Response("Invalid signature", { status: 401 });
+        }
 
         let count = 0;
         while (offset < bodyArrayBuffer.byteLength) {

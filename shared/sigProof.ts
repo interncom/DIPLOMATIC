@@ -14,6 +14,12 @@ import {
 // - pubkey (32 bytes)
 // - ed25519 signature (64 bytes)
 export type EncodedSigProvenData = Uint8Array;
+
+const keyPathOffset = 0;
+const idxOffset = keyPathOffset + keyPathBytes;
+const pubKeyOffset = idxOffset + idxBytes;
+const sigOffset = pubKeyOffset + pubKeyBytes;
+console.log({ keyPathOffset, idxOffset, pubKeyOffset, sigOffset });
 export interface ISigProof {
   keyPath: string;
   idx: number;
@@ -53,19 +59,22 @@ export function encodeSigProvenData(
 
   // First 8 bytes of keyPath string, padded with null bytes
   const encoder = new TextEncoder();
-  const keyPathBytes = encoder.encode(spdata.keyPath.slice(0, 8));
-  for (let i = 0; i < 8; i++) {
-    encoded[i] = i < keyPathBytes.length ? keyPathBytes[i] : 0;
+  const encodedKeyPath = encoder.encode(
+    spdata.keyPath.slice(keyPathOffset, keyPathOffset + keyPathBytes),
+  );
+  for (let i = 0; i < keyPathBytes; i++) {
+    encoded[keyPathOffset + i] =
+      i < encodedKeyPath.length ? encodedKeyPath[i] : 0;
   }
 
   // idx as an 8 byte integer
-  view.setBigUint64(8, BigInt(spdata.idx), false);
+  view.setBigUint64(idxOffset, BigInt(spdata.idx), false);
 
   // spdata.pubKey (32 bytes)
-  encoded.set(spdata.pubKey, 16);
+  encoded.set(spdata.pubKey, pubKeyOffset);
 
   // spdata.sig (64 bytes)
-  encoded.set(spdata.sig, 48);
+  encoded.set(spdata.sig, sigOffset);
 
   // spdata.data
   encoded.set(spdata.data, sigProofDataBytes);
@@ -80,24 +89,24 @@ export function decodeSigProvenData(
     throw new Error("Encoded data too short");
   }
 
-  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  const view = new DataView(encoded.buffer);
 
   // Decode keyPath: first 8 bytes as string, trim trailing nulls
   const decoder = new TextDecoder();
-  const keyPathBytes = encoded.slice(0, 8);
-  let keyPath = decoder.decode(keyPathBytes).replace(/\0+$/, ""); // Trim trailing nulls
+  const encodedKeyPath = encoded.slice(0, keyPathBytes);
+  let keyPath = decoder.decode(encodedKeyPath).replace(/\0+$/, ""); // Trim trailing nulls
 
   // Decode idx: 8 bytes starting at offset 8
-  const idx = Number(view.getBigUint64(8, false));
+  const idx = Number(view.getBigUint64(idxOffset, false));
 
   // Decode pubKey: 32 bytes starting at offset 16
-  const pubKey = encoded.slice(16, 48);
+  const pubKey = encoded.slice(pubKeyOffset, pubKeyOffset + pubKeyBytes);
 
   // Decode sig: 64 bytes starting at offset 48
-  const sig = encoded.slice(48, 112);
+  const sig = encoded.slice(sigOffset, sigOffset + sigBytes);
 
   // Decode data: remaining bytes after 112
-  const data = encoded.slice(112);
+  const data = encoded.slice(sigProofDataBytes);
 
   return {
     keyPath,

@@ -5,10 +5,11 @@ import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
 import DiplomaticClientAPI from "../../shared/client2.ts";
 import { IWebsocketNotifier } from "../../shared/types.ts";
+import { genInsert } from "../../shared/message.ts";
 
 // Server config.
 const port = 3331;
-const hostID = "id123";
+const hostID = "id123456";
 const registrationToken = "tok123";
 
 // Client config.
@@ -58,8 +59,20 @@ Deno.test("server", async (t) => {
   });
 
   // Test PUSH
-  const ops = [];
+  const content = denoMsgpack.encode("test operation data");
+  const op1 = await genInsert(new Date(), content, libsodiumCrypto);
+  const op2 = await genInsert(new Date(), content, libsodiumCrypto);
+  const ops = [op1, op2];
   await t.step("POST /ops", async () => {
+    const countStr = await client.push(
+      url,
+      ops,
+      seed,
+      hostID,
+      hostIdx,
+      new Date(),
+    );
+    assertEquals(countStr, "2"); // Should return the count of envelopes sent
   });
 
   await httpServer.shutdown();

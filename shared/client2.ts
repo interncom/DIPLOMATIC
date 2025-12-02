@@ -60,25 +60,27 @@ export default class DiplomaticClientAPI {
     const url = new URL(hostURL);
     url.pathname = "/ops";
 
-    const keyPair = await this.crypto.deriveEd25519KeyPair(
-      seed,
-      keyPath,
-      idx,
-    );
+    const keyPair = await this.crypto.deriveEd25519KeyPair(seed, keyPath, idx);
 
     // Form the authentication prefix (sigproof of timestamp).
     // Server can reject for timestamp too far from its clock.
     // In that case, signal to user that clock is out of sync.
     // Clocks must be synchronized to ensure correct op order.
 
-    const tsAuth = await timestampAuthProof(seed, keyPath, idx, now);
+    const tsAuth = await timestampAuthProof(
+      seed,
+      keyPath,
+      idx,
+      now,
+      this.crypto,
+    );
 
     // Derive encryption key
     const encKey = await this.crypto.deriveXSalsa20Poly1305Key(seed, idx);
 
     // Create a readable stream to stream the data
     const stream = new ReadableStream({
-      async start(controller) {
+      start: async (controller) => {
         // First, send the tsAuth data
         const tsAuthEncoded = this.codec.encode(tsAuth);
         controller.enqueue(tsAuthEncoded);
@@ -86,13 +88,16 @@ export default class DiplomaticClientAPI {
         // Then, stream each envelope as it's generated
         for (const op of ops) {
           const encMsg = await encodeOp(op);
-          const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(encMsg, encKey);
+          const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(
+            encMsg,
+            encKey,
+          );
           const env = await makeEnvelope(idx, keyPair, ciphertxt, this.crypto);
           const encEnv = await encodeEnvelope(env);
           controller.enqueue(encEnv);
         }
         controller.close();
-      }.bind(this),
+      },
     });
 
     const response = await fetch(url, {

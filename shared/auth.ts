@@ -1,5 +1,10 @@
 import type { ICrypto, KeyPair } from "./types.ts";
-import { sigProof, encodeSigProvenData, type ISigProof } from "./sigProof.ts";
+import {
+  sigProof,
+  encodeSigProvenData,
+  type ISigProof,
+  type EncodedSigProvenData,
+} from "./sigProof.ts";
 
 // timestampAuthProof authenticates with a sigproven timestamp.
 // The sigproof demonstrates control of the pubKey.

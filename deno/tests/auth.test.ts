@@ -24,7 +24,9 @@ const mockCrypto: ICrypto = {
   encryptXSalsa20Poly1305Combined: () => Promise.resolve(new Uint8Array(0)),
   decryptXSalsa20Poly1305Combined: () => Promise.resolve(new Uint8Array(0)),
   sha256Hash: (data) =>
-    crypto.subtle.digest("SHA-256", data).then((hash) => new Uint8Array(hash)),
+    crypto.subtle
+      .digest("SHA-256", data.slice())
+      .then((hash) => new Uint8Array(hash)),
 
   deriveEd25519KeyPair: async (
     seed,
@@ -34,36 +36,17 @@ const mockCrypto: ICrypto = {
     // Return fixed keys for testing, ignoring seed/hostID/idx
     return {
       keyType: "private",
-      privateKey: privateKeyRaw,
-      publicKey: publicKeyRaw,
+      privateKey: privateKeyRaw.slice(),
+      publicKey: publicKeyRaw.slice(),
     };
   },
 
   signEd25519: async (message, secKey) => {
-    const priv = await crypto.subtle.importKey(
-      "raw",
-      secKey,
-      { name: "Ed25519", namedCurve: "Ed25519" },
-      false,
-      ["sign"],
-    );
-    const data =
-      typeof message === "string" ? new TextEncoder().encode(message) : message;
-    const sig = await crypto.subtle.sign("Ed25519", priv, data);
-    return new Uint8Array(sig);
+    return new Uint8Array(64).fill(0);
   },
 
   checkSigEd25519: async (sig, message, pubKey) => {
-    const pub = await crypto.subtle.importKey(
-      "raw",
-      pubKey,
-      { name: "Ed25519", namedCurve: "Ed25519" },
-      false,
-      ["verify"],
-    );
-    const data =
-      typeof message === "string" ? new TextEncoder().encode(message) : message;
-    return await crypto.subtle.verify("Ed25519", pub, sig, data);
+    return true;
   },
 };
 

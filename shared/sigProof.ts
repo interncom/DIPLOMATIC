@@ -13,7 +13,7 @@ import {
 // - derivation index (8 bytes)
 // - pubkey (32 bytes)
 // - ed25519 signature (64 bytes)
-type EncodedSigProvenData = Uint8Array;
+export type EncodedSigProvenData = Uint8Array;
 export interface ISigProof {
   keyPath: string;
   idx: number;

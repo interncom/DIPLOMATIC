@@ -46,9 +46,12 @@ const hshOffset = sigOffset + sigBytes;
 const lenOffset = hshOffset + shaBytes;
 const msgOffset = lenOffset + lenBytes;
 
-export interface IEnvelope extends ISigProof {
+export interface IEnvelopeHeader extends ISigProof {
   hsh: Uint8Array;
   len: number;
+}
+
+export interface IEnvelope extends IEnvelopeHeader {
   msg: EncryptedMessage;
 }
 
@@ -117,32 +120,39 @@ export async function makeEnvelope(
   };
 }
 
-export function decodeEnvelope(encoded: EncodedEnvelope): IEnvelope {
-  const view = new DataView(encoded.buffer, encoded.byteOffset);
+export function decodeEnvelopeHeader(
+  encodedHeader: Uint8Array,
+): IEnvelopeHeader {
+  if (encodedHeader.length < msgOffset) {
+    throw new Error("Envelope header too short");
+  }
+
+  const view = new DataView(encodedHeader.buffer, encodedHeader.byteOffset);
 
   // keyPath
   const decoder = new TextDecoder();
   let keyPath = decoder
-    .decode(encoded.slice(keyPathOffset, keyPathBytes))
+    .decode(encodedHeader.slice(keyPathOffset, idxOffset))
     .replace(/\0+$/, "");
 
-  // idx
   const idx = Number(view.getBigUint64(idxOffset, false));
-
-  // pubKey
-  const pubKey = encoded.slice(pubKeyOffset, pubKeyOffset + pubKeyBytes);
-
-  // sig
-  const sig = encoded.slice(sigOffset, sigOffset + sigBytes);
-
-  // hsh
-  const hsh = encoded.slice(hshOffset, hshOffset + shaBytes);
-
-  // len
+  const pubKey = encodedHeader.slice(pubKeyOffset, sigOffset);
+  const sig = encodedHeader.slice(sigOffset, hshOffset);
+  const hsh = encodedHeader.slice(hshOffset, lenOffset);
   const len = Number(view.getBigUint64(lenOffset, false));
+
+  return { keyPath, idx, pubKey, sig, hsh, len };
+}
+
+export function decodeEnvelope(encoded: EncodedEnvelope): IEnvelope {
+  if (encoded.length < msgOffset) {
+    throw new Error("Envelope too short");
+  }
+
+  const header = decodeEnvelopeHeader(encoded.slice(0, msgOffset));
 
   // msg
   const msg = encoded.slice(msgOffset);
 
-  return { keyPath, idx, pubKey, sig, hsh, len, msg };
+  return { ...header, msg };
 }

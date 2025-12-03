@@ -64,7 +64,7 @@ Deno.test("server", async (t) => {
   const op2 = await genInsert(new Date(), content, libsodiumCrypto);
   const ops = [op1, op2];
   await t.step("POST /ops", async () => {
-    const countStr = await client.push(
+    const result = await client.push(
       url,
       ops,
       seed,
@@ -72,7 +72,11 @@ Deno.test("server", async (t) => {
       hostIdx,
       new Date(),
     );
-    assertEquals(countStr, "2"); // Should return the count of envelopes sent
+    assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
+    for (const res of result) {
+      assertEquals(res.status, 0);
+      assertEquals(res.hash.length, 32);
+    }
   });
 
   await httpServer.shutdown();

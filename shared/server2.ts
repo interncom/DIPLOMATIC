@@ -163,13 +163,6 @@ export class DiplomaticServer {
         const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
         const pubKeyHex = btoh(tsAuth.pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          console.log(
-            "pkh",
-            pubKeyHex,
-            tsAuth.keyPath,
-            tsAuth.idx,
-            this.storage,
-          );
           return new Response("Unauthorized", { status: 401 });
         }
         const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
@@ -192,7 +185,7 @@ export class DiplomaticServer {
           return new Response("Invalid signature", { status: 401 });
         }
 
-        let count = 0;
+        const results: { status: number; hsh: Uint8Array }[] = [];
         while (offset < bodyArrayBuffer.byteLength) {
           // Read envelope header (fixed 152 bytes)
           if (offset + 152 > bodyArrayBuffer.byteLength) {
@@ -223,12 +216,19 @@ export class DiplomaticServer {
             tsAuth.pubKey,
             now,
           );
-          if (status !== 0) {
-            return new Response(`Envelope error: ${status}`, { status: 400 });
-          }
-          count++;
+          results.push({ status, hsh: envHeader.hsh });
         }
-        return new Response(count.toString(), { status: 200 });
+        const buffer = new Uint8Array(results.length * (1 + 32));
+        let idx = 0;
+        for (const result of results) {
+          buffer[idx] = result.status;
+          buffer.set(result.hsh, idx + 1);
+          idx += 33;
+        }
+        return new Response(buffer, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        });
       } catch (err) {
         console.error(err);
         return new Response("Internal error", { status: 500 });

@@ -94,10 +94,6 @@ Deno.test(
     const encoded = encodeSigProvenData(spdata, libsodiumCrypto);
     const decoded = decodeSigProvenData(encoded);
 
-    const pkh1 = btoh(decoded.pubKey);
-    const pkh2 = btoh(spdata.pubKey);
-    console.log(pkh1, pkh2);
-
     assertEquals(decoded.keyPath, "short"); // trailing nulls trimmed
     assertEquals(decoded.idx, 0);
     assertEquals(uint8ArraysEqual(decoded.pubKey, spdata.pubKey), true);

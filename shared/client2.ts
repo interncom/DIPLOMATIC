@@ -56,14 +56,11 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<string> {
+  ): Promise<Array<{ status: number; hash: Uint8Array }>> {
     const url = new URL(hostURL);
     url.pathname = "/ops";
 
     const keyPair = await this.crypto.deriveEd25519KeyPair(seed, keyPath, idx);
-
-    const hex = btoh(keyPair.publicKey);
-    console.log("pus pkh", hex, keyPath, idx);
 
     // Form the authentication prefix (sigproof of timestamp).
     // Server can reject for timestamp too far from its clock.
@@ -106,11 +103,17 @@ export default class DiplomaticClientAPI {
       method: "POST",
       body: stream,
     });
-    console.log("resp", response);
     if (!response.ok) {
       throw "Uh oh";
     }
-    const resp = await response.text();
-    return resp;
+    const arrayBuffer = await response.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const results: { status: number; hash: Uint8Array }[] = [];
+    for (let i = 0; i < data.length; i += 33) {
+      const status = data[i];
+      const hash = data.slice(i + 1, i + 33);
+      results.push({ status, hash });
+    }
+    return results;
   }
 }

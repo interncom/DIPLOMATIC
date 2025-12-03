@@ -19,7 +19,6 @@ const keyPathOffset = 0;
 const idxOffset = keyPathOffset + keyPathBytes;
 const pubKeyOffset = idxOffset + idxBytes;
 const sigOffset = pubKeyOffset + pubKeyBytes;
-console.log({ keyPathOffset, idxOffset, pubKeyOffset, sigOffset });
 export interface ISigProof {
   keyPath: string;
   idx: number;

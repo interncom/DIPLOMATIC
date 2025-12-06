@@ -8,6 +8,14 @@ import type {
   IWebsocketNotifier,
 } from "./types.ts";
 import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
+import {
+  tsAuthSize,
+  envelopeHeaderSize,
+  hashSize,
+  responseItemSize,
+  clockToleranceMs,
+  keyPathBytes,
+} from "./consts.ts";
 import { decodeSigProvenData, type ISigProvenData } from "./sigProof.ts";
 import {
   decodeEnvelope,
@@ -80,16 +88,17 @@ export class DiplomaticServer {
     pubKeyHex: string,
     expectedPubKey: Uint8Array,
     now: Date,
+    envelope: Uint8Array,
   ): Promise<number> {
     if (!uint8ArraysEqual(envHeader.pubKey, expectedPubKey)) {
       return 1; // Pubkey mismatch
     }
     const hashSrc = new Uint8Array(envHeader.len);
     const keyPathBytesData = new TextEncoder().encode(
-      envHeader.keyPath.slice(0, 8),
+      envHeader.keyPath.slice(0, keyPathBytes),
     );
-    hashSrc.set(keyPathBytesData.slice(0, 8), 0);
-    hashSrc.set(msg, 8);
+    hashSrc.set(keyPathBytesData.slice(0, keyPathBytes), 0);
+    hashSrc.set(msg, keyPathBytes);
     const hash = await this.crypto.sha256Hash(hashSrc);
     if (!uint8ArraysEqual(hash, envHeader.hsh)) {
       return 2; // Invalid hash
@@ -103,7 +112,7 @@ export class DiplomaticServer {
     ) {
       return 3; // Invalid envelope signature
     }
-    await this.storage.setOp(pubKeyHex, now, msg);
+    await this.storage.setOp(pubKeyHex, now, envelope, btoh(envHeader.hsh));
     await this.notifier.notify(pubKeyHex);
     return 0; // Success
   }
@@ -152,14 +161,14 @@ export class DiplomaticServer {
       let offset = 0;
       const now = new Date();
       try {
-        // Read tsAuth (fixed 120 bytes)
-        if (offset + 120 > bodyArrayBuffer.byteLength) {
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
           return new Response("Incomplete tsAuth", { status: 400 });
         }
         const tsAuthBytes = new Uint8Array(
-          bodyArrayBuffer.slice(offset, offset + 120),
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
         );
-        offset += 120;
+        offset += tsAuthSize;
         const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
         const pubKeyHex = btoh(tsAuth.pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
@@ -171,8 +180,7 @@ export class DiplomaticServer {
         );
         const currentTime = Date.now();
         const diff = Math.abs(currentTime - Number(timestampMs));
-        if (diff > 30000) {
-          // 30 seconds tolerance
+        if (diff > clockToleranceMs) {
           return new Response("Clock out of sync", { status: 400 });
         }
         if (
@@ -187,20 +195,20 @@ export class DiplomaticServer {
 
         const results: { status: number; hsh: Uint8Array }[] = [];
         while (offset < bodyArrayBuffer.byteLength) {
-          // Read envelope header (fixed 152 bytes)
-          if (offset + 152 > bodyArrayBuffer.byteLength) {
+          // Read envelope header
+          if (offset + envelopeHeaderSize > bodyArrayBuffer.byteLength) {
             return new Response("Incomplete envelope header", { status: 400 });
           }
           const headerBytes = new Uint8Array(
-            bodyArrayBuffer.slice(offset, offset + 152),
+            bodyArrayBuffer.slice(offset, offset + envelopeHeaderSize),
           );
-          offset += 152;
+          offset += envelopeHeaderSize;
 
           // Decode header
           const envHeader = decodeEnvelopeHeader(headerBytes);
 
-          // Read envelope msg (len is total len for hashSrc, which is 8 + msgLen)
-          const msgLen = envHeader.len - 8;
+          // Read envelope msg
+          const msgLen = envHeader.len - keyPathBytes;
           if (offset + msgLen > bodyArrayBuffer.byteLength) {
             return new Response("Incomplete envelope", { status: 400 });
           }
@@ -209,23 +217,106 @@ export class DiplomaticServer {
           );
           offset += msgLen;
 
+          const envelope = new Uint8Array(envelopeHeaderSize + msgLen);
+          envelope.set(headerBytes, 0);
+          envelope.set(msgBytes, envelopeHeaderSize);
+          envelope.set(msgBytes, headerBytes.length);
+
           const status = await this.processEnvelope(
             envHeader,
             msgBytes,
             pubKeyHex,
             tsAuth.pubKey,
             now,
+            envelope,
           );
           results.push({ status, hsh: envHeader.hsh });
         }
-        const buffer = new Uint8Array(results.length * (1 + 32));
+        const buffer = new Uint8Array(results.length * responseItemSize);
         let idx = 0;
         for (const result of results) {
           buffer[idx] = result.status;
           buffer.set(result.hsh, idx + 1);
-          idx += 33;
+          idx += responseItemSize;
         }
         return new Response(buffer, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        });
+      } catch (err) {
+        console.error(err);
+        return new Response("Internal error", { status: 500 });
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/pull") {
+      const body = request.body;
+      if (!body) {
+        return new Response("Invalid request", { status: 400 });
+      }
+      const bodyArrayBuffer = await request.arrayBuffer();
+      const bodyView = new DataView(bodyArrayBuffer);
+      let offset = 0;
+      try {
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
+        }
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+        const pubKeyHex = btoh(tsAuth.pubKey);
+        if (!(await this.storage.hasUser(pubKeyHex))) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
+          0,
+          false,
+        );
+        const currentTime = Date.now();
+        const diff = Math.abs(currentTime - Number(timestampMs));
+        if (diff > 30000) {
+          return new Response("Clock out of sync", { status: 400 });
+        }
+        if (
+          !(await this.crypto.checkSigEd25519(
+            tsAuth.sig,
+            tsAuth.data,
+            tsAuth.pubKey,
+          ))
+        ) {
+          return new Response("Invalid signature", { status: 401 });
+        }
+
+        const hashes: Uint8Array[] = [];
+        while (offset < bodyArrayBuffer.byteLength) {
+          if (offset + hashSize > bodyArrayBuffer.byteLength) {
+            return new Response("Incomplete hash", { status: 400 });
+          }
+          const hash = new Uint8Array(
+            bodyArrayBuffer.slice(offset, offset + hashSize),
+          );
+          offset += hashSize;
+          hashes.push(hash);
+        }
+        const results: Uint8Array[] = [];
+        for (const hash of hashes) {
+          const envelope = await this.storage.getOp(pubKeyHex, btoh(hash));
+          if (envelope) {
+            results.push(envelope);
+          }
+        }
+        let totalLength = 0;
+        for (const env of results) totalLength += env.length;
+        const responseBody = new Uint8Array(totalLength);
+        let pos = 0;
+        for (const env of results) {
+          responseBody.set(env, pos);
+          pos += env.length;
+        }
+        return new Response(responseBody, {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
         });

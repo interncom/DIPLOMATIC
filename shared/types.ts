@@ -57,7 +57,12 @@ export interface IListDeltasResponse {
 export interface IStorage {
   addUser: (pubKeyHex: string) => Promise<void>;
   hasUser: (pubKeyHex: string) => Promise<boolean>;
-  setOp: (pubKeyHex: string, recordedAt: Date, op: Uint8Array) => Promise<void>;
+  setOp: (
+    pubKeyHex: string,
+    recordedAt: Date,
+    op: Uint8Array,
+    key?: string,
+  ) => Promise<void>;
   getOp: (
     pubKeyHex: string,
     sha256Hex: string,

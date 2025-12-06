@@ -16,8 +16,10 @@ export class LibsodiumCrypto implements ICrypto {
     return this.sodium.crypto_secretbox_keygen() as Uint8Array;
   }
 
-  async deriveXSalsa20Poly1305Key(seed: Uint8Array): Promise<Uint8Array> {
-    const derivationIndex = 0;
+  async deriveXSalsa20Poly1305Key(
+    seed: Uint8Array,
+    derivationIndex = 0,
+  ): Promise<Uint8Array> {
     const encKey = this.sodium.crypto_kdf_derive_from_key(
       this.sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES,
       derivationIndex,

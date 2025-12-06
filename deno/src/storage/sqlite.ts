@@ -22,10 +22,9 @@ db.query(`
 
 const sqliteStorage: IStorage = {
   async addUser(pubKeyHex: string) {
-    db.query(
-      "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
-      [pubKeyHex],
-    );
+    db.query("INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING", [
+      pubKeyHex,
+    ]);
   },
 
   async hasUser(pubKeyHex: string) {
@@ -38,9 +37,14 @@ const sqliteStorage: IStorage = {
     return has ?? false;
   },
 
-  async setOp(pubKeyHex: string, recordedAt: Date, op: Uint8Array) {
+  async setOp(
+    pubKeyHex: string,
+    recordedAt: Date,
+    op: Uint8Array,
+    key?: string,
+  ) {
     const recAtStr = recordedAt.toISOString();
-    const sha256 = await libsodiumCrypto.sha256Hash(op);
+    const sha256 = key ? htob(key) : await libsodiumCrypto.sha256Hash(op);
     db.query(
       "INSERT INTO ops (sha256, userPubKey, recordedAt, op, size) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
       [sha256, pubKeyHex, recAtStr, op, op.byteLength],

@@ -7,9 +7,22 @@ import type {
   KeyPair,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
-import { makeEnvelope, encodeEnvelope } from "./envelope.ts";
+import {
+  envelopeHeaderSize,
+  hashSize,
+  keyPathBytes,
+  responseItemSize,
+  tsAuthSize,
+} from "./consts.ts";
+import {
+  makeEnvelope,
+  encodeEnvelope,
+  decodeEnvelopeHeader,
+  decodeEnvelope,
+  type IEnvelope,
+} from "./envelope.ts";
 import { timestampAuthProof } from "./auth.ts";
-import { encodeOp, type IMessage } from "./message.ts";
+import { encodeOp, decodeOp, type IMessage } from "./message.ts";
 
 export default class DiplomaticClientAPI {
   codec: IMsgpackCodec;
@@ -109,11 +122,70 @@ export default class DiplomaticClientAPI {
     const arrayBuffer = await response.arrayBuffer();
     const data = new Uint8Array(arrayBuffer);
     const results: { status: number; hash: Uint8Array }[] = [];
-    for (let i = 0; i < data.length; i += 33) {
+    for (let i = 0; i < data.length; i += responseItemSize) {
       const status = data[i];
-      const hash = data.slice(i + 1, i + 33);
+      const hash = data.slice(i + 1, i + 1 + hashSize);
       results.push({ status, hash });
     }
     return results;
+  }
+
+  async pull(
+    hostURL: URL,
+    hashes: Uint8Array[],
+    seed: Uint8Array,
+    keyPath: string,
+    idx: number,
+    now: Date,
+  ): Promise<IEnvelope[]> {
+    const url = new URL(hostURL);
+    url.pathname = "/pull";
+
+    const tsAuth = await timestampAuthProof(
+      seed,
+      keyPath,
+      idx,
+      now,
+      this.crypto,
+    );
+
+    const stream = new ReadableStream({
+      start: (controller) => {
+        controller.enqueue(tsAuth);
+        for (const hash of hashes) {
+          controller.enqueue(hash);
+        }
+        controller.close();
+      },
+    });
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: stream,
+    });
+    if (!response.ok) {
+      throw "Uh oh";
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const envelopes: IEnvelope[] = [];
+    let offset = 0;
+
+    while (offset < data.length) {
+      if (offset + envelopeHeaderSize > data.length) break;
+      const headerBytes = data.slice(offset, offset + envelopeHeaderSize);
+      offset += envelopeHeaderSize;
+      const envHeader = decodeEnvelopeHeader(headerBytes);
+      const msgLen = envHeader.len - keyPathBytes;
+      if (offset + msgLen > data.length) break;
+      const msgBytes = data.slice(offset, offset + msgLen);
+      offset += msgLen;
+      const fullEnvelope = new Uint8Array(envelopeHeaderSize + msgLen);
+      fullEnvelope.set(headerBytes, 0);
+      fullEnvelope.set(msgBytes, envelopeHeaderSize);
+      const env = decodeEnvelope(fullEnvelope);
+      envelopes.push(env);
+    }
+    return envelopes;
   }
 }

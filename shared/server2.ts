@@ -326,6 +326,90 @@ export class DiplomaticServer {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/peek") {
+      const body = request.body;
+      if (!body) {
+        return new Response("Invalid request", { status: 400 });
+      }
+      const bodyArrayBuffer = await request.arrayBuffer();
+      let offset = 0;
+      try {
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
+        }
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        // No other body content
+        if (offset < bodyArrayBuffer.byteLength) {
+          return new Response("Extra body content", { status: 400 });
+        }
+        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+        const pubKeyHex = btoh(tsAuth.pubKey);
+        if (!(await this.storage.hasUser(pubKeyHex))) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
+          0,
+          false,
+        );
+        const currentTime = Date.now();
+        const diff = Math.abs(currentTime - Number(timestampMs));
+        if (diff > clockToleranceMs) {
+          return new Response("Clock out of sync", { status: 400 });
+        }
+        if (
+          !(await this.crypto.checkSigEd25519(
+            tsAuth.sig,
+            tsAuth.data,
+            tsAuth.pubKey,
+          ))
+        ) {
+          return new Response("Invalid signature", { status: 401 });
+        }
+        // Get 'from' param
+        const fromParam = url.searchParams.get("from");
+        if (!fromParam) {
+          return new Response("Missing from param", { status: 400 });
+        }
+        const fromMillis = parseInt(fromParam, 10);
+        if (isNaN(fromMillis)) {
+          return new Response("Invalid from param", { status: 400 });
+        }
+        const begin = new Date(fromMillis).toISOString();
+        const end = new Date().toISOString();
+        const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
+        const headers: Uint8Array[] = [];
+        for (const item of userOpsList) {
+          const envelope = await this.storage.getOp(
+            pubKeyHex,
+            btoh(item.sha256),
+          );
+          if (envelope) {
+            const header = envelope.slice(0, envelopeHeaderSize);
+            headers.push(header);
+          }
+        }
+        let totalLength = 0;
+        for (const h of headers) totalLength += h.length;
+        const responseBody = new Uint8Array(totalLength);
+        let pos = 0;
+        for (const h of headers) {
+          responseBody.set(h, pos);
+          pos += h.length;
+        }
+        return new Response(responseBody, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        });
+      } catch (err) {
+        console.error(err);
+        return new Response("Internal error", { status: 500 });
+      }
+    }
+
     return new Response("Not Found", { status: 404 });
   };
 }

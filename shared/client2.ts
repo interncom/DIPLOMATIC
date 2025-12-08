@@ -20,6 +20,7 @@ import {
   decodeEnvelopeHeader,
   decodeEnvelope,
   type IEnvelope,
+  type IEnvelopeHeader,
 } from "./envelope.ts";
 import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage } from "./message.ts";
@@ -187,5 +188,47 @@ export default class DiplomaticClientAPI {
       envelopes.push(env);
     }
     return envelopes;
+  }
+
+  async peek(
+    hostURL: URL,
+    fromMillis: number,
+    seed: Uint8Array,
+    keyPath: string,
+    idx: number,
+    now: Date,
+  ): Promise<IEnvelopeHeader[]> {
+    const url = new URL(hostURL);
+    url.pathname = "/peek";
+    url.searchParams.set("from", fromMillis.toString());
+
+    const tsAuth = await timestampAuthProof(
+      seed,
+      keyPath,
+      idx,
+      now,
+      this.crypto,
+    );
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: tsAuth.slice(0),
+    });
+    if (!response.ok) {
+      throw "Uh oh";
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const headers: IEnvelopeHeader[] = [];
+    let offset = 0;
+
+    while (offset < data.length) {
+      if (offset + envelopeHeaderSize > data.length) break;
+      const headerBytes = data.slice(offset, offset + envelopeHeaderSize);
+      offset += envelopeHeaderSize;
+      const envHeader = decodeEnvelopeHeader(headerBytes);
+      headers.push(envHeader);
+    }
+    return headers;
   }
 }

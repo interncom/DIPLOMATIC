@@ -114,5 +114,17 @@ Deno.test("server", async (t) => {
     }
   });
 
+  await t.step("POST /peek", async () => {
+    const peekedHeaders = await client.peek(url, 0, seed, hostID, hostIdx, now);
+    assertEquals(peekedHeaders.length, 2);
+    // Optionally, verify the headers match the pushed ops' hashes
+    for (let i = 0; i < peekedHeaders.length; i++) {
+      assertEquals(
+        uint8ArraysEqual(peekedHeaders[i].hsh, result[i].hash),
+        true,
+      );
+    }
+  });
+
   await httpServer.shutdown();
 });

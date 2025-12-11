@@ -58,7 +58,7 @@ Deno.test("envelope", async (t) => {
     hashSrc.set(new Uint8Array(8).fill(0), 0); // keyPath
     hashSrc.set(dkm, 8);
     hashSrc.set(cipherOp, 16);
-    const expectedHash = await crypto.sha256Hash(hashSrc);
+    const expectedHash = await crypto.blake3(hashSrc);
     const expectedSig = await crypto.signEd25519(
       expectedHash,
       keyPair.privateKey,

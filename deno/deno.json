@@ -1,4 +1,7 @@
 {
   "nodeModulesDir": "auto",
-  "vendor": false
+  "vendor": false,
+  "imports": {
+    "@noble/hashes": "jsr:@noble/hashes@^2.0.1"
+  }
 }

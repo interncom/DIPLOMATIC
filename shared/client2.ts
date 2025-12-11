@@ -23,7 +23,13 @@ import {
   type IEnvelopeHeader,
 } from "./envelope.ts";
 import { timestampAuthProof } from "./auth.ts";
-import { encodeOp, decodeOp, type IMessage } from "./message.ts";
+import {
+  encodeOp,
+  decodeOp,
+  type IMessage,
+  derivationKeyMaterial,
+  concat,
+} from "./message.ts";
 
 export default class DiplomaticClientAPI {
   codec: IMsgpackCodec;
@@ -89,9 +95,6 @@ export default class DiplomaticClientAPI {
       this.crypto,
     );
 
-    // Derive encryption key
-    const encKey = await this.crypto.deriveXSalsa20Poly1305Key(seed, idx);
-
     // Create a readable stream to stream the data
     const stream = new ReadableStream({
       start: async (controller) => {
@@ -100,13 +103,30 @@ export default class DiplomaticClientAPI {
 
         // Then, stream each envelope as it's generated
         for (const op of ops) {
-          const encMsg = await encodeOp(op);
+          // Encode message.
+          const [encMsg, msgHead] = await encodeOp(op);
+
+          // Derive encryption key.
+          const dkm = await derivationKeyMaterial(msgHead, this.crypto);
+          const encKey = await this.crypto.blake3(concat(seed, dkm));
+
+          // Encrypt message.
           const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(
             encMsg,
             encKey,
           );
-          const env = await makeEnvelope(idx, keyPair, ciphertxt, this.crypto);
+
+          // Wrap in envelope.
+          const env = await makeEnvelope(
+            idx,
+            keyPair,
+            ciphertxt,
+            dkm,
+            this.crypto,
+          );
           const encEnv = await encodeEnvelope(env);
+
+          // Upload.
           controller.enqueue(encEnv);
         }
         controller.close();

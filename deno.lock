@@ -1,14 +1,11 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@noble/hashes@^2.0.1": "2.0.1",
     "jsr:@std/assert@0.223.0": "0.223.0",
-    "jsr:@std/fmt@0.223": "0.223.0"
+    "jsr:@std/fmt@0.223": "0.223.0",
+    "npm:@noble/hashes@^1.8.0": "1.8.0"
   },
   "jsr": {
-    "@noble/hashes@2.0.1": {
-      "integrity": "e0e908292a0bf91099cf8ba0720a1647cef82ab38b588815b5e9535b4ff4d7bb"
-    },
     "@std/assert@0.223.0": {
       "integrity": "eb8d6d879d76e1cc431205bd346ed4d88dc051c6366365b1af47034b0670be24",
       "dependencies": [
@@ -19,6 +16,11 @@
       "integrity": "6deb37794127dfc7d7bded2586b9fc6f5d50e62a8134846608baf71ffc1a5208"
     }
   },
+  "npm": {
+    "@noble/hashes@1.8.0": {
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
+    }
+  },
   "redirects": {
     "https://deno.land/std/testing/asserts.ts": "https://deno.land/std@0.224.0/testing/asserts.ts"
   },
@@ -27,10 +29,6 @@
     "https://deno.land/std@0.177.0/testing/_diff.ts": "1a3c044aedf77647d6cac86b798c6417603361b66b54c53331b312caeb447aea",
     "https://deno.land/std@0.177.0/testing/_format.ts": "a69126e8a469009adf4cf2a50af889aca364c349797e63174884a52ff75cf4c7",
     "https://deno.land/std@0.177.0/testing/asserts.ts": "984ab0bfb3faeed92ffaa3a6b06536c66811185328c5dd146257c702c41b01ab",
-    "https://deno.land/std@0.219.0/bytes/concat.ts": "9cac3b4376afbef98ff03588eb3cf948e0d1eb6c27cfe81a7651ab6dd3adc54a",
-    "https://deno.land/std@0.219.0/msgpack/decode.ts": "cbf7c6afc74dd908e11e163420f1acf43a42e1e91687b9fcf6f995cf7799aea5",
-    "https://deno.land/std@0.219.0/msgpack/encode.ts": "4b73faa34abc20e0e663d133fc7f0ace33be51f75644a812751013499a1001a4",
-    "https://deno.land/std@0.219.0/msgpack/mod.ts": "ea70551fe1089d15064ee28bb671ef598786dfc611b51b2e5b0a9b40b9684e48",
     "https://deno.land/std@0.224.0/assert/_constants.ts": "a271e8ef5a573f1df8e822a6eb9d09df064ad66a4390f21b3e31f820a38e0975",
     "https://deno.land/std@0.224.0/assert/assert.ts": "09d30564c09de846855b7b071e62b5974b001bb72a4b797958fe0660e7849834",
     "https://deno.land/std@0.224.0/assert/assert_almost_equals.ts": "9e416114322012c9a21fa68e187637ce2d7df25bcbdbfd957cd639e65d3cf293",
@@ -86,7 +84,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@noble/hashes@^2.0.1"
+      "npm:@noble/hashes@^1.8.0"
     ]
   }
 }

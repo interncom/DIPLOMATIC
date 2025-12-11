@@ -113,6 +113,7 @@ export interface ICrypto extends IHostCrypto {
     message: Uint8Array | string,
     secKey: Uint8Array,
   ) => Promise<Uint8Array>;
+  blake3: (data: Uint8Array) => Promise<Uint8Array>;
 }
 
 export interface IMsgpackCodec {

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@noble/hashes": "npm:@noble/hashes@^1.8.0"
+  }
+}

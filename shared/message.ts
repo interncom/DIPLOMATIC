@@ -60,13 +60,22 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
 }
 
 // TODO: implement keyPath.
-// const keyPathBytes = 8;
+// The keyPath should be the truncated hash of the message header.
+// This prevents an attacker from reusing a compromised derived key.
+// The benefit of the keyPath per message is that with a proper HSM,
+// the seed never needs to be directly accessible in memory.
+// You just feed the keyPath into the HSM and get the derived key out.
+// Then symmetrically encrypt/decrypt using that derived key.
+export const keyPathBytes = 8;
 export const eidBytes = 16;
 export const clkBytes = 8;
 export const ctrBytes = 4;
 export const lenBytes = 8;
 
-export async function encodeOp(op: IMessage): Promise<EncodedMessage> {
+// Returns the full encoded message and also a slice of just the encoded header.
+export async function encodeOp(
+  op: IMessage,
+): Promise<[EncodedMessage, Uint8Array]> {
   const len = op.bod?.length ?? 0;
 
   const encoded = new Uint8Array(
@@ -78,10 +87,12 @@ export async function encodeOp(op: IMessage): Promise<EncodedMessage> {
   view.setBigUint64(eidBytes, BigInt(op.clk.getTime()), false);
   view.setUint32(eidBytes + clkBytes, op.ctr, false);
   view.setBigUint64(eidBytes + clkBytes + ctrBytes, BigInt(len), false);
+  const headerBytes = eidBytes + clkBytes + ctrBytes + lenBytes;
   if (op.bod) {
-    encoded.set(op.bod, eidBytes + clkBytes + ctrBytes + lenBytes);
+    encoded.set(op.bod, headerBytes);
   }
-  return encoded;
+  const header = encoded.slice(0, headerBytes);
+  return [encoded, header];
 }
 
 export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
@@ -96,4 +107,19 @@ export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
     eidBytes + clkBytes + ctrBytes + lenBytes + len,
   );
   return { eid, clk, ctr, len, bod: body };
+}
+
+export async function derivationKeyMaterial(
+  header: Uint8Array,
+  crypto: ICrypto,
+): Promise<Uint8Array> {
+  const hash = await crypto.blake3(header);
+  return hash.slice(0, keyPathBytes);
+}
+
+export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const res = new Uint8Array(a.length + b.length);
+  res.set(a, 0);
+  res.set(b, a.length);
+  return res;
 }

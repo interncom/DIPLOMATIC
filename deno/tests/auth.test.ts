@@ -23,6 +23,7 @@ const mockCrypto: ICrypto = {
   deriveXSalsa20Poly1305Key: () => Promise.resolve(new Uint8Array(32)),
   encryptXSalsa20Poly1305Combined: () => Promise.resolve(new Uint8Array(0)),
   decryptXSalsa20Poly1305Combined: () => Promise.resolve(new Uint8Array(0)),
+  blake3: (data) => Promise.resolve(data),
   sha256Hash: (data) =>
     crypto.subtle
       .digest("SHA-256", data.slice())

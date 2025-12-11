@@ -1,29 +1,34 @@
 // Envelope is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
 
-// Op Layout:
-// === Plaintext Section [106 bytes] ===
-// IDX - host keypair derivation index (0 until rotated) [2 bytes]
-// SIG - Ed25519 signature of HASH, using host-specific keypair (determined by IDX) [64 bytes]
-// HASH - SHA256 hash of LEN ++ PATH ++ CIPHERHEAD [32 bytes]
-// LEN - Byte length of KEYPATH + CIPHERHEAD + CIPHERTEXT [8 bytes]
-// === Encrypted Section [76 + LEN bytes] ===
-// KEYPATH - Derivation path for encryption key [8 bytes]
-// CIPHERHEAD [68 bytes]
-// CIPHERTEXT [LEN bytes]
+// === Implicit data (client identifies with host using pubkey, so it already knows this data is implicit in any response to that pubkey) ===
+// If relayed indirectly, this data must also be included with the envelope.
+// KEYPATH - host keypair derivation keypath [8 bytes]
+// IDX - host keypair derivation index (0 until rotated) [8 bytes]
+// PUBKEY - host keypair pubkey [32 bytes]
 
-// CIPHERHEAD Layout [68 bytes]
+// === Envelope Section [104 bytes] ===
+// SIG - Ed25519 signature of MSGHASH, using keypair implied by pubkey client authenticates to host with [64 bytes]
+// MSGHASH - SHA256 hash of MSGLEN ++ MSGKEYPATH ++ CIPHERHEAD [32 bytes]
+// MSGLEN - Byte length of KEYPATH + CIPHERHEAD + CIPHERTEXT [8 bytes]
+
+// The signed hash and sigproof allow an envelope to be trusted by the client
+// regardless of whether it was transmitted over a trusted channel. The envelope
+// itself contains its own bona fides.
+
+// === Message Section [44 + LEN bytes + 16 bytes encryption overhead] ===
+// MSGKEYPATH - Derivation path for encryption key (truncated SHA256 hash of EID ++ CLK ++ CTR ++ LEN) [8 bytes]
+// == Encrypted Section ==
 // EID - Entity ID [16 bytes]
 // CLK - Wall clock [8 bytes]
 // CTR - Counter (CLK ++ CTR form the Hybrid Logical Clock HLC) [4 bytes]
-// SHA - SHA256 hash of CIPHERBODY [32 bytes]
 // LEN - body size in bytes [8 bytes]
-// CIPHERBODY - MSGPACK-encoded application-specific representation of entity [LEN bytes]
+// BOD - MSGPACK-encoded, application-specific representation of entity [LEN bytes]
 
 // The plaintext header section is only for client/host communication.
 // It is host-specific (IDX and SIG).
 // The client discards it after downloading and successfully decrypting the op.
 
-// Client only needs to retain KEYPATH, EID, CLK, CTR [36 bytes].
+// Client only needs to retain EID, CLK, CTR, BOD [36 + LEN bytes].
 // Rest of the data it can regenerate dynamically.
 
 import type { ICrypto, KeyPair } from "./types.ts";
@@ -97,15 +102,19 @@ export async function makeEnvelope(
   idx: number,
   keyPair: KeyPair, // Based on hostIdx (for rotation)
   cipherOp: EncryptedMessage,
+  dkm: Uint8Array,
   crypto: ICrypto,
 ): Promise<IEnvelope> {
   const keyPath = "";
   const keyPathBytesData = new TextEncoder().encode(keyPath.slice(0, 8));
-  const len = keyPathBytes + cipherOp.length;
+  const msg = new Uint8Array(dkm.length + cipherOp.length);
+  msg.set(dkm, 0);
+  msg.set(cipherOp, dkm.length);
+  const len = keyPathBytes + msg.length;
 
   const hashSrc = new Uint8Array(len);
   hashSrc.set(keyPathBytesData.slice(0, 8), 0);
-  hashSrc.set(cipherOp, keyPathBytes);
+  hashSrc.set(msg, keyPathBytes);
   const hash = await crypto.sha256Hash(hashSrc);
 
   const sig = await crypto.signEd25519(hash, keyPair.privateKey);
@@ -116,7 +125,7 @@ export async function makeEnvelope(
     sig,
     hsh: hash,
     len,
-    msg: cipherOp,
+    msg,
   };
 }
 

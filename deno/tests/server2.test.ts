@@ -5,7 +5,7 @@ import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
 import DiplomaticClientAPI from "../../shared/client2.ts";
 import { IWebsocketNotifier } from "../../shared/types.ts";
-import { genInsert, decodeOp } from "../../shared/message.ts";
+import { genInsert, decodeOp, concat } from "../../shared/message.ts";
 import { decodeEnvelope, type IEnvelope } from "../../shared/envelope.ts";
 import { uint8ArraysEqual } from "../../shared/lib.ts";
 
@@ -91,15 +91,14 @@ Deno.test("server", async (t) => {
     assertEquals(pulledEnvelopes.length, 2);
 
     // Verify that pulled envelopes have the correct hashes and messages
-    const encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(
-      seed,
-      hostIdx,
-    );
     for (let i = 0; i < pulledEnvelopes.length; i++) {
       const env = pulledEnvelopes[i];
       assertEquals(uint8ArraysEqual(env.hsh, hashes[i]), true);
+      const dkm = env.msg.slice(0, 8);
+      const cipherOp = env.msg.slice(8);
+      const encKey = await libsodiumCrypto.blake3(concat(seed, dkm));
       const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-        env.msg,
+        cipherOp,
         encKey,
       );
       const pulledOp = await decodeOp(decrypted);

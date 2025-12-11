@@ -1,4 +1,5 @@
 import type { ICrypto, KeyPair } from "../types.ts";
+import { blake3 } from "@noble/hashes/blake3.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 type Libsodium = any;
@@ -100,6 +101,10 @@ export class LibsodiumCrypto implements ICrypto {
     // Separate the sig for easier interop with other implementations, e.g. Noble or WebCrypto.
     const valid = this.sodium.crypto_sign_verify_detached(sig, message, pubKey);
     return valid;
+  }
+
+  async blake3(data: Uint8Array): Promise<Uint8Array> {
+    return blake3(data);
   }
 
   async sha256Hash(data: Uint8Array): Promise<Uint8Array> {

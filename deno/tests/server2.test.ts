@@ -12,7 +12,6 @@ import { uint8ArraysEqual } from "../../shared/lib.ts";
 // Server config.
 const port = 3331;
 const hostID = "id123456";
-const registrationToken = "tok123";
 
 // Client config.
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
@@ -34,9 +33,7 @@ Deno.test("server", async (t) => {
   };
   const server = new DiplomaticServer(
     hostID,
-    registrationToken,
     memStorage,
-    denoMsgpack,
     libsodiumCrypto,
     websocketHandler,
   );
@@ -47,7 +44,7 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const client = new DiplomaticClientAPI(denoMsgpack, libsodiumCrypto);
+  const client = new DiplomaticClientAPI(libsodiumCrypto);
 
   await t.step("GET /id", async () => {
     const id = await client.getHostID(url);
@@ -56,12 +53,12 @@ Deno.test("server", async (t) => {
 
   const pubKey = keyPair.publicKey;
 
-  await t.step("POST /users", async () => {
-    await client.register(url, pubKey, registrationToken);
-  });
-
   // Use a consistent now Date for all operations and auth
   const now = new Date();
+
+  await t.step("POST /users", async () => {
+    await client.register(url, seed, hostID, hostIdx, now);
+  });
 
   // Test PUSH
   const content = denoMsgpack.encode("test operation data");

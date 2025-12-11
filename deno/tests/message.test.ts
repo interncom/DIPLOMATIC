@@ -45,7 +45,6 @@ Deno.test("message", async (t) => {
     const [result] = await encodeOp(op);
     // Build expected manually (assuming SHA is fixed for test)
     const expectedLen = op.bod.length;
-    const expectedSha = await crypto.sha256Hash(op.bod);
     const expectedMessage = new Uint8Array(
       eidBytes + clkBytes + ctrBytes + lenBytes + expectedLen,
     );

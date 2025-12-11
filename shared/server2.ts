@@ -99,7 +99,7 @@ export class DiplomaticServer {
     );
     hashSrc.set(keyPathBytesData.slice(0, keyPathBytes), 0);
     hashSrc.set(msg, keyPathBytes);
-    const hash = await this.crypto.sha256Hash(hashSrc);
+    const hash = await this.crypto.blake3(hashSrc);
     if (!uint8ArraysEqual(hash, envHeader.hsh)) {
       return 2; // Invalid hash
     }

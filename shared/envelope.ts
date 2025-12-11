@@ -115,7 +115,7 @@ export async function makeEnvelope(
   const hashSrc = new Uint8Array(len);
   hashSrc.set(keyPathBytesData.slice(0, 8), 0);
   hashSrc.set(msg, keyPathBytes);
-  const hash = await crypto.sha256Hash(hashSrc);
+  const hash = await crypto.blake3(hashSrc);
 
   const sig = await crypto.signEd25519(hash, keyPair.privateKey);
   return {

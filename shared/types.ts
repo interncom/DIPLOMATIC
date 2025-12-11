@@ -87,6 +87,7 @@ export interface IHostCrypto {
     pubKey: Uint8Array,
   ) => Promise<boolean>;
   sha256Hash: (data: Uint8Array) => Promise<Uint8Array>;
+  blake3: (data: Uint8Array) => Promise<Uint8Array>;
 }
 
 export interface ICrypto extends IHostCrypto {

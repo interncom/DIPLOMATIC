@@ -1,7 +1,6 @@
 import type {
   ICrypto,
   IListDeltasResponse,
-  IMsgpackCodec,
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
@@ -32,10 +31,8 @@ import {
 } from "./message.ts";
 
 export default class DiplomaticClientAPI {
-  codec: IMsgpackCodec;
   crypto: ICrypto;
-  constructor(codec: IMsgpackCodec, crypto: ICrypto) {
-    this.codec = codec;
+  constructor(crypto: ICrypto) {
     this.crypto = crypto;
   }
 
@@ -52,20 +49,32 @@ export default class DiplomaticClientAPI {
 
   async register(
     hostURL: URL,
-    pubKey: Uint8Array,
-    token: string,
+    seed: Uint8Array,
+    keyPath: string,
+    idx: number,
+    now: Date,
   ): Promise<void> {
+    // Form the authentication prefix (sigproof of timestamp).
+    // Server can reject for timestamp too far from its clock.
+    // In that case, signal to user that clock is out of sync.
+    // Clocks must be synchronized to ensure correct op order.
+    const tsAuth = await timestampAuthProof(
+      seed,
+      keyPath,
+      idx,
+      now,
+      this.crypto,
+    );
+
     const url = new URL(hostURL);
     url.pathname = "/users";
-    const req: IRegistrationRequest = {
-      token,
-      pubKey, // TODO: check for valid pubKey length, server-side.
-    };
-    const reqPack = this.codec.encode(req);
     const response = await fetch(url, {
       method: "POST",
-      body: reqPack.slice(0),
+      body: tsAuth.slice(0),
     });
+    if (!response.ok) {
+      throw "Uh oh";
+    }
     await response.body?.cancel();
   }
 

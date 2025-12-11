@@ -1,7 +1,6 @@
 import type {
   IHostCrypto,
   IListDeltasResponse,
-  IMsgpackCodec,
   IOperationRequest,
   IRegistrationRequest,
   IStorage,
@@ -42,23 +41,17 @@ function cors(resp: Response): Response {
 
 export class DiplomaticServer {
   hostID: string;
-  regToken: string;
   storage: IStorage;
-  codec: IMsgpackCodec;
   crypto: IHostCrypto;
   notifier: IWebsocketNotifier;
   constructor(
     hostID: string,
-    regToken: string,
     storage: IStorage,
-    codec: IMsgpackCodec,
     crypto: IHostCrypto,
     notifier: IWebsocketNotifier,
   ) {
     this.hostID = hostID;
-    this.regToken = regToken;
     this.storage = storage;
-    this.codec = codec;
     this.crypto = crypto;
     this.notifier = notifier;
   }
@@ -132,17 +125,41 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = (await this.codec.decodeAsync(
-          request.body,
-        )) as IRegistrationRequest;
-        if (req.token === undefined || req.pubKey === undefined) {
-          return new Response("Invalid request", { status: 400 });
+        const bodyArrayBuffer = await request.arrayBuffer();
+        let offset = 0;
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
         }
-        if (req.token !== this.regToken) {
-          return new Response("Unauthorized", { status: 401 });
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        // No more data expected
+        if (offset < bodyArrayBuffer.byteLength) {
+          return new Response("Extra body content", { status: 400 });
         }
-        // TODO: check pubKey length.
-        const pubKeyHex = btoh(req.pubKey);
+        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
+          0,
+          false,
+        );
+        const currentTime = Date.now();
+        const diff = Math.abs(currentTime - Number(timestampMs));
+        if (diff > clockToleranceMs) {
+          return new Response("Clock out of sync", { status: 400 });
+        }
+        if (
+          !(await this.crypto.checkSigEd25519(
+            tsAuth.sig,
+            tsAuth.data,
+            tsAuth.pubKey,
+          ))
+        ) {
+          return new Response("Invalid signature", { status: 401 });
+        }
+        // Register the public key
+        const pubKeyHex = btoh(tsAuth.pubKey);
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
       } catch (err) {

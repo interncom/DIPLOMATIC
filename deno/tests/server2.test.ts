@@ -107,6 +107,10 @@ Deno.test("server", async (t) => {
         ),
         true,
       );
+      // Additional checks to exercise var-int encoding for ctr, eid, len
+      assertEquals(pulledOp.ctr, ops[i].ctr);
+      assertEquals(pulledOp.len, ops[i].len);
+      assertEquals(uint8ArraysEqual(pulledOp.eid, ops[i].eid), true);
     }
   });
 

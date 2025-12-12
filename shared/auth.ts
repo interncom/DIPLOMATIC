@@ -1,8 +1,7 @@
-import type { ICrypto, KeyPair } from "./types.ts";
+import type { ICrypto } from "./types.ts";
 import {
   sigProof,
   encodeSigProvenData,
-  type ISigProof,
   type EncodedSigProvenData,
 } from "./sigProof.ts";
 

@@ -73,6 +73,7 @@ export default class DiplomaticClientAPI {
       body: tsAuth.slice(0),
     });
     if (!response.ok) {
+      console.error(response);
       throw "Uh oh";
     }
     await response.body?.cancel();
@@ -147,6 +148,7 @@ export default class DiplomaticClientAPI {
       body: stream,
     });
     if (!response.ok) {
+      console.error(response);
       throw "Uh oh";
     }
     const arrayBuffer = await response.arrayBuffer();

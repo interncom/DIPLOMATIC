@@ -1,4 +1,5 @@
 import type { ICrypto, KeyPair } from "./types.ts";
+import { encode_varint, decode_varint } from "./varint.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -59,7 +60,6 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
   };
 }
 
-// TODO: implement keyPath.
 // The keyPath should be the truncated hash of the message header.
 // This prevents an attacker from reusing a compromised derived key.
 // The benefit of the keyPath per message is that with a proper HSM,
@@ -69,44 +69,56 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
 export const keyPathBytes = 8;
 export const eidBytes = 16;
 export const clkBytes = 8;
-export const ctrBytes = 4;
-export const lenBytes = 8;
 
 // Returns the full encoded message and also a slice of just the encoded header.
 export async function encodeOp(
   op: IMessage,
 ): Promise<[EncodedMessage, Uint8Array]> {
-  const len = op.bod?.length ?? 0;
+  const eidBytes_arr = op.eid;
+  const clkBytes_arr = new Uint8Array(8);
+  const view = new DataView(clkBytes_arr.buffer);
+  view.setBigUint64(0, BigInt(op.clk.getTime()), false);
+  const ctrVarint = encode_varint(op.ctr);
+  const lenVarint = encode_varint(op.len);
 
-  const encoded = new Uint8Array(
-    eidBytes + clkBytes + ctrBytes + lenBytes + len,
+  const headerArrays = [eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint];
+  const header = headerArrays.reduce(
+    (acc, arr) => concat(acc, arr),
+    new Uint8Array(0),
   );
-
-  const view = new DataView(encoded.buffer, encoded.byteOffset);
-  encoded.set(op.eid, 0);
-  view.setBigUint64(eidBytes, BigInt(op.clk.getTime()), false);
-  view.setUint32(eidBytes + clkBytes, op.ctr, false);
-  view.setBigUint64(eidBytes + clkBytes + ctrBytes, BigInt(len), false);
-  const headerBytes = eidBytes + clkBytes + ctrBytes + lenBytes;
-  if (op.bod) {
-    encoded.set(op.bod, headerBytes);
-  }
-  const header = encoded.slice(0, headerBytes);
+  const body = op.bod || new Uint8Array(0);
+  const encoded = concat(header, body);
   return [encoded, header];
 }
 
 export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
-  const view = new DataView(encoded.buffer, encoded.byteOffset);
+  let offset = 0;
   const eid = encoded.slice(0, eidBytes);
-  const clkTime = view.getBigUint64(eidBytes, false);
+  offset += eidBytes;
+
+  const clkTime = new DataView(
+    encoded.buffer,
+    encoded.byteOffset + offset,
+  ).getBigUint64(0, false);
   const clk = new Date(Number(clkTime));
-  const ctr = view.getUint32(eidBytes + clkBytes, false);
-  const len = Number(view.getBigUint64(eidBytes + clkBytes + ctrBytes, false));
-  const body = encoded.slice(
-    eidBytes + clkBytes + ctrBytes + lenBytes,
-    eidBytes + clkBytes + ctrBytes + lenBytes + len,
-  );
-  return { eid, clk, ctr, len, bod: body };
+  offset += clkBytes;
+
+  const ctrDecode = decode_varint(encoded, offset);
+  const ctr =
+    typeof ctrDecode.value === "bigint"
+      ? Number(ctrDecode.value)
+      : ctrDecode.value;
+  offset += ctrDecode.bytesRead;
+
+  const lenDecode = decode_varint(encoded, offset);
+  const len =
+    typeof lenDecode.value === "bigint"
+      ? Number(lenDecode.value)
+      : lenDecode.value;
+  offset += lenDecode.bytesRead;
+
+  const body = encoded.slice(offset, offset + len);
+  return { eid, clk, ctr, len, bod: len > 0 ? body : undefined };
 }
 
 export async function derivationKeyMaterial(

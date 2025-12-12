@@ -32,12 +32,13 @@
 // Rest of the data it can regenerate dynamically.
 
 import type { ICrypto, KeyPair } from "./types.ts";
-import { lenBytes, EncryptedMessage, EncodedMessage } from "./message.ts";
+import { EncryptedMessage, EncodedMessage } from "./message.ts";
 import type { ISigProof } from "./sigProof.ts";
 import {
   sigBytes,
   shaBytes,
   idxBytes,
+  lenBytes,
   pubKeyBytes,
   keyPathBytes,
 } from "./consts.ts";

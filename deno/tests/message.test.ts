@@ -1,83 +1,101 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { encodeOp, decodeOp, IMessage } from "../../web/src/shared/message.ts";
+import {
+  encodeOp,
+  decodeOp,
+  IMessage,
+  genInsert,
+  genDelete,
+} from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
-const idxBytes = 4;
-const sigBytes = 64;
-const shaBytes = 32;
-const lenBytes = 8;
+// Constants that remain fixed
 const keyPathBytes = 8;
 const eidBytes = 16;
 const clkBytes = 8;
-const ctrBytes = 4;
 
-// Helper functions for converting to big-endian bytes
-function dateToBytes(date: Date): Uint8Array {
-  const buffer = new ArrayBuffer(8);
-  new DataView(buffer).setBigUint64(0, BigInt(date.getTime()), false);
-  return new Uint8Array(buffer);
+// Helper to create a Uint8Array of given length filled with a value
+function createFilledArray(length: number, value: number): Uint8Array {
+  return new Uint8Array(length).fill(value);
 }
 
-function numberTo4Bytes(num: number): Uint8Array {
-  const buffer = new ArrayBuffer(4);
-  new DataView(buffer).setUint32(0, num, false);
-  return new Uint8Array(buffer);
-}
-
-function numberTo8Bytes(num: number): Uint8Array {
-  const buffer = new ArrayBuffer(8);
-  new DataView(buffer).setBigUint64(0, BigInt(num), false);
-  return new Uint8Array(buffer);
-}
-
-Deno.test("message", async (t) => {
+Deno.test("message encoding/decoding with var-int", async (t) => {
   const crypto = libsodiumCrypto;
 
-  await t.step("encodeOp", async () => {
-    const bod = new Uint8Array([1, 2, 3]);
-    const op = {
-      eid: new Uint8Array(16).fill(0x11),
-      clk: new Date(1234567890000),
-      ctr: 42,
-      len: bod.length,
-      bod,
-    };
-    const [result] = await encodeOp(op);
-    // Build expected manually (assuming SHA is fixed for test)
-    const expectedLen = op.bod.length;
-    const expectedMessage = new Uint8Array(
-      eidBytes + clkBytes + ctrBytes + lenBytes + expectedLen,
-    );
-    const view = new DataView(
-      expectedMessage.buffer,
-      expectedMessage.byteOffset,
-    );
-    expectedMessage.set(op.eid, 0);
-    view.setBigUint64(eidBytes, BigInt(op.clk.getTime()), false);
-    view.setUint32(eidBytes + clkBytes, op.ctr, false);
-    view.setBigUint64(
-      eidBytes + clkBytes + ctrBytes,
-      BigInt(expectedLen),
-      false,
-    );
-    expectedMessage.set(op.bod, eidBytes + clkBytes + ctrBytes + lenBytes);
-    assertEquals(result, expectedMessage);
-  });
-
-  await t.step("decodeOp", async () => {
-    const bod = new Uint8Array([1, 2, 3]);
+  await t.step("small values round-trip", async () => {
+    const bod = createFilledArray(5, 0xaa); // Small body
     const op: IMessage = {
-      eid: new Uint8Array(16).fill(0x11),
+      eid: createFilledArray(16, 0x11),
       clk: new Date(1234567890000),
-      ctr: 42,
+      ctr: 0, // Small counter
       len: bod.length,
       bod,
     };
-    const [encoded] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
+    assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
+    // Header should be the prefix without body
+    assertEquals(header.length + (op.bod?.length ?? 0), encoded.length);
+  });
+
+  await t.step("large ctr and len round-trip", async () => {
+    const bod = createFilledArray(100000, 0xbb); // Large body
+    const op: IMessage = {
+      eid: createFilledArray(16, 0x22),
+      clk: new Date(9876543210000),
+      ctr: 123456789, // Large counter (fits in var-int)
+      len: bod.length,
+      bod,
+    };
+    const [encoded, header] = await encodeOp(op);
+    const decoded = await decodeOp(encoded);
+    assertEquals(decoded.eid, op.eid);
+    assertEquals(decoded.clk.getTime(), op.clk.getTime());
+    assertEquals(decoded.ctr, op.ctr);
+    assertEquals(decoded.len, op.len);
+    assertEquals(decoded.bod, op.bod);
+  });
+
+  await t.step("delete operation (len=0, no body)", async () => {
+    const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999);
+    const [encoded, header] = await encodeOp(op);
+    const decoded = await decodeOp(encoded);
+    assertEquals(decoded.eid, op.eid);
+    assertEquals(decoded.clk.getTime(), op.clk.getTime());
+    assertEquals(decoded.ctr, op.ctr);
+    assertEquals(decoded.len, op.len);
+    assertEquals(decoded.bod, undefined); // No body
+  });
+
+  await t.step("genInsert round-trip", async () => {
+    const content = createFilledArray(42, 0xcc);
+    const op = await genInsert(new Date(555555555000), content, crypto);
+    const [encoded, header] = await encodeOp(op);
+    const decoded = await decodeOp(encoded);
+    assertEquals(decoded.eid.length, eidBytes);
+    assertEquals(decoded.clk.getTime(), op.clk.getTime());
+    assertEquals(decoded.ctr, op.ctr);
+    assertEquals(decoded.len, op.len);
+    assertEquals(decoded.bod, op.bod);
+  });
+
+  await t.step("edge: empty body (upsert)", async () => {
+    const op: IMessage = {
+      eid: createFilledArray(16, 0x44),
+      clk: new Date(1111111110000),
+      ctr: 1,
+      len: 0,
+      bod: undefined,
+    };
+    const [encoded, header] = await encodeOp(op);
+    const decoded = await decodeOp(encoded);
+    assertEquals(decoded.eid, op.eid);
+    assertEquals(decoded.clk.getTime(), op.clk.getTime());
+    assertEquals(decoded.ctr, op.ctr);
+    assertEquals(decoded.len, op.len);
+    assertEquals(decoded.bod, undefined);
   });
 });

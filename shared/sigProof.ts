@@ -1,11 +1,5 @@
-import type { ICrypto, KeyPair } from "./types.ts";
-import {
-  sigBytes,
-  shaBytes,
-  idxBytes,
-  pubKeyBytes,
-  keyPathBytes,
-} from "./consts.ts";
+import type { ICrypto } from "./types.ts";
+import { sigBytes, idxBytes, pubKeyBytes, keyPathBytes } from "./consts.ts";
 
 // ISigProof is a signature and data necessary to verify it.
 // The layout is:
@@ -19,6 +13,7 @@ const keyPathOffset = 0;
 const idxOffset = keyPathOffset + keyPathBytes;
 const pubKeyOffset = idxOffset + idxBytes;
 const sigOffset = pubKeyOffset + pubKeyBytes;
+const dataOffset = sigOffset + sigBytes;
 export interface ISigProof {
   keyPath: string;
   idx: number;
@@ -76,7 +71,7 @@ export function encodeSigProvenData(
   encoded.set(spdata.sig, sigOffset);
 
   // spdata.data
-  encoded.set(spdata.data, sigProofDataBytes);
+  encoded.set(spdata.data, dataOffset);
 
   return encoded;
 }

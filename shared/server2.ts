@@ -56,6 +56,29 @@ export class DiplomaticServer {
     this.notifier = notifier;
   }
 
+  async validateTsAuth(
+    tsAuthBytes: Uint8Array,
+  ): Promise<{ pubKey: Uint8Array; pubKeyHex: string }> {
+    const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+    const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
+    const currentTime = Date.now();
+    const diff = Math.abs(currentTime - Number(timestampMs));
+    if (diff > clockToleranceMs) {
+      throw new Error("Clock out of sync");
+    }
+    if (
+      !(await this.crypto.checkSigEd25519(
+        tsAuth.sig,
+        tsAuth.data,
+        tsAuth.pubKey,
+      ))
+    ) {
+      throw new Error("Invalid signature");
+    }
+    const pubKeyHex = btoh(tsAuth.pubKey);
+    return { pubKey: tsAuth.pubKey, pubKeyHex };
+  }
+
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
       return this.notifier.handler(
@@ -139,30 +162,17 @@ export class DiplomaticServer {
         if (offset < bodyArrayBuffer.byteLength) {
           return new Response("Extra body content", { status: 400 });
         }
-        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
-        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
-          0,
-          false,
-        );
-        const currentTime = Date.now();
-        const diff = Math.abs(currentTime - Number(timestampMs));
-        if (diff > clockToleranceMs) {
-          return new Response("Clock out of sync", { status: 400 });
-        }
-        if (
-          !(await this.crypto.checkSigEd25519(
-            tsAuth.sig,
-            tsAuth.data,
-            tsAuth.pubKey,
-          ))
-        ) {
-          return new Response("Invalid signature", { status: 401 });
-        }
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
         // Register the public key
-        const pubKeyHex = btoh(tsAuth.pubKey);
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
         return new Response("Processing request", { status: 500 });
       }
@@ -186,28 +196,9 @@ export class DiplomaticServer {
           bodyArrayBuffer.slice(offset, offset + tsAuthSize),
         );
         offset += tsAuthSize;
-        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
-        const pubKeyHex = btoh(tsAuth.pubKey);
+        const { pubKey, pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
-        }
-        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
-          0,
-          false,
-        );
-        const currentTime = Date.now();
-        const diff = Math.abs(currentTime - Number(timestampMs));
-        if (diff > clockToleranceMs) {
-          return new Response("Clock out of sync", { status: 400 });
-        }
-        if (
-          !(await this.crypto.checkSigEd25519(
-            tsAuth.sig,
-            tsAuth.data,
-            tsAuth.pubKey,
-          ))
-        ) {
-          return new Response("Invalid signature", { status: 401 });
         }
 
         const results: { status: number; hsh: Uint8Array }[] = [];
@@ -243,7 +234,7 @@ export class DiplomaticServer {
             envHeader,
             msgBytes,
             pubKeyHex,
-            tsAuth.pubKey,
+            pubKey,
             now,
             envelope,
           );
@@ -261,6 +252,12 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
         return new Response("Internal error", { status: 500 });
       }
@@ -283,28 +280,9 @@ export class DiplomaticServer {
           bodyArrayBuffer.slice(offset, offset + tsAuthSize),
         );
         offset += tsAuthSize;
-        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
-        const pubKeyHex = btoh(tsAuth.pubKey);
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
-        }
-        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
-          0,
-          false,
-        );
-        const currentTime = Date.now();
-        const diff = Math.abs(currentTime - Number(timestampMs));
-        if (diff > 30000) {
-          return new Response("Clock out of sync", { status: 400 });
-        }
-        if (
-          !(await this.crypto.checkSigEd25519(
-            tsAuth.sig,
-            tsAuth.data,
-            tsAuth.pubKey,
-          ))
-        ) {
-          return new Response("Invalid signature", { status: 401 });
         }
 
         const hashes: Uint8Array[] = [];
@@ -338,6 +316,12 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
         return new Response("Internal error", { status: 500 });
       }
@@ -363,28 +347,9 @@ export class DiplomaticServer {
         if (offset < bodyArrayBuffer.byteLength) {
           return new Response("Extra body content", { status: 400 });
         }
-        const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
-        const pubKeyHex = btoh(tsAuth.pubKey);
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
-        }
-        const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(
-          0,
-          false,
-        );
-        const currentTime = Date.now();
-        const diff = Math.abs(currentTime - Number(timestampMs));
-        if (diff > clockToleranceMs) {
-          return new Response("Clock out of sync", { status: 400 });
-        }
-        if (
-          !(await this.crypto.checkSigEd25519(
-            tsAuth.sig,
-            tsAuth.data,
-            tsAuth.pubKey,
-          ))
-        ) {
-          return new Response("Invalid signature", { status: 401 });
         }
         // Get 'from' param
         const fromParam = url.searchParams.get("from");
@@ -422,6 +387,12 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
         return new Response("Internal error", { status: 500 });
       }

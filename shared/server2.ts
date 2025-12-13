@@ -105,9 +105,6 @@ export class DiplomaticServer {
     now: Date,
     envelope: Uint8Array,
   ): Promise<number> {
-    if (!uint8ArraysEqual(envHeader.pubKey, expectedPubKey)) {
-      return 1; // Pubkey mismatch
-    }
     const hash = await this.crypto.blake3(msg);
     if (!uint8ArraysEqual(hash, envHeader.hsh)) {
       return 2; // Invalid hash
@@ -116,7 +113,7 @@ export class DiplomaticServer {
       !(await this.crypto.checkSigEd25519(
         envHeader.sig,
         envHeader.hsh,
-        envHeader.pubKey,
+        expectedPubKey,
       ))
     ) {
       return 3; // Invalid envelope signature

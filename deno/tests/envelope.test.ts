@@ -1,8 +1,10 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
+  type IEnvelope,
   encodeEnvelope,
   makeEnvelope,
   decodeEnvelope,
+  decodeEnvelopeHeader,
 } from "../../shared/envelope.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
@@ -115,5 +117,65 @@ Deno.test("envelope", async (t) => {
     assertEquals(decoded.hsh, op.hsh);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.msg, op.msg);
+  });
+
+  await t.step("decodeEnvelopeHeader", async () => {
+    const op: IEnvelope = {
+      keyPath: "test",
+      idx: 123456789,
+      pubKey: new Uint8Array(32).fill(0xab),
+      sig: new Uint8Array(64).fill(0xcd),
+      hsh: new Uint8Array(32).fill(0xef),
+      len: 1000,
+    };
+    const encoded = await encodeEnvelope({
+      ...op,
+      msg: new Uint8Array(op.len - keyPathBytes),
+    });
+    const header = encoded.slice(0, fixedBytes);
+    const decodedHeader = decodeEnvelopeHeader(header);
+    assertEquals(decodedHeader.keyPath, op.keyPath.slice(0, 8));
+    assertEquals(decodedHeader.idx, op.idx);
+    assertEquals(decodedHeader.pubKey, op.pubKey);
+    assertEquals(decodedHeader.sig, op.sig);
+    assertEquals(decodedHeader.hsh, op.hsh);
+    assertEquals(decodedHeader.len, op.len);
+  });
+
+  await t.step("decodeEnvelopeHeader error on short input", () => {
+    const short = new Uint8Array(fixedBytes - 1);
+    try {
+      decodeEnvelopeHeader(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      assertEquals((e as Error).message, "Envelope header too short");
+    }
+  });
+
+  await t.step("decodeEnvelope error on short input", () => {
+    const short = new Uint8Array(fixedBytes - 1);
+    try {
+      decodeEnvelope(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      assertEquals((e as Error).message, "Envelope too short");
+    }
+  });
+
+  await t.step("encodeEnvelope with non-empty keyPath", async () => {
+    const op: IEnvelope = {
+      keyPath: "abcdefg",
+      idx: 42,
+      pubKey: new Uint8Array(32).fill(2),
+      sig: new Uint8Array(64).fill(0x55),
+      hsh: new Uint8Array(32).fill(0x66),
+      len: 50,
+      msg: new Uint8Array([1, 2, 3]),
+    };
+    const encoded = await encodeEnvelope(op);
+    const decoded = decodeEnvelope(encoded);
+    assertEquals(decoded.keyPath, op.keyPath.slice(0, 8));
+    assertEquals(decoded.idx, op.idx);
+    // Test truncation
   });
 });

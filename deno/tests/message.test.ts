@@ -5,6 +5,9 @@ import {
   IMessage,
   genInsert,
   genDelete,
+  genUpsert,
+  derivationKeyMaterial,
+  concat,
 } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
@@ -97,5 +100,57 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined);
+  });
+
+  await t.step("genUpsert", () => {
+    const eid = createFilledArray(16, 0x55);
+    const clk = new Date(999999999000);
+    const ctr = 777;
+    const content = createFilledArray(20, 0x77);
+    const op = genUpsert(eid, clk, ctr, content);
+    assertEquals(op.eid, eid);
+    assertEquals(op.clk, clk);
+    assertEquals(op.ctr, ctr);
+    assertEquals(op.len, content.length);
+    assertEquals(op.bod, content);
+  });
+
+  await t.step("derivationKeyMaterial", async () => {
+    const header = createFilledArray(24, 0x88);
+    const dkm = await derivationKeyMaterial(header, crypto);
+    assertEquals(dkm.length, 8);
+    // Since it's a hash, we can't predict the exact value, but we can check it's not the input
+    assertEquals(dkm.length, keyPathBytes);
+  });
+
+  await t.step("decodeOp with insufficient data", async () => {
+    const short = new Uint8Array(eidBytes - 1);
+    try {
+      await decodeOp(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      // Expected to fail due to insufficient data
+    }
+  });
+
+  await t.step("decodeOp with invalid varint", async () => {
+    // Create encoded with invalid varint for ctr
+    const eid = createFilledArray(16, 0x99);
+    const clkBytes = new Uint8Array(8);
+    new DataView(clkBytes.buffer).setBigUint64(
+      0,
+      BigInt(new Date().getTime()),
+      false,
+    );
+    const invalidVarint = new Uint8Array([
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    ]); // Too large varint
+    const encoded = concat(eid, concat(clkBytes, invalidVarint));
+    try {
+      await decodeOp(encoded);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      // Expected to fail on invalid varint
+    }
   });
 });

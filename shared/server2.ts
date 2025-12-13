@@ -13,7 +13,6 @@ import {
   hashSize,
   responseItemSize,
   clockToleranceMs,
-  keyPathBytes,
 } from "./consts.ts";
 import { decodeSigProvenData, type ISigProvenData } from "./sigProof.ts";
 import {
@@ -109,13 +108,7 @@ export class DiplomaticServer {
     if (!uint8ArraysEqual(envHeader.pubKey, expectedPubKey)) {
       return 1; // Pubkey mismatch
     }
-    const hashSrc = new Uint8Array(envHeader.len);
-    const keyPathBytesData = new TextEncoder().encode(
-      envHeader.keyPath.slice(0, keyPathBytes),
-    );
-    hashSrc.set(keyPathBytesData.slice(0, keyPathBytes), 0);
-    hashSrc.set(msg, keyPathBytes);
-    const hash = await this.crypto.blake3(hashSrc);
+    const hash = await this.crypto.blake3(msg);
     if (!uint8ArraysEqual(hash, envHeader.hsh)) {
       return 2; // Invalid hash
     }
@@ -216,7 +209,7 @@ export class DiplomaticServer {
           const envHeader = decodeEnvelopeHeader(headerBytes);
 
           // Read envelope msg
-          const msgLen = envHeader.len - keyPathBytes;
+          const msgLen = envHeader.len;
           if (offset + msgLen > bodyArrayBuffer.byteLength) {
             return new Response("Incomplete envelope", { status: 400 });
           }

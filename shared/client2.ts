@@ -9,7 +9,6 @@ import { btoh } from "./lib.ts";
 import {
   envelopeHeaderSize,
   hashSize,
-  keyPathBytes,
   responseItemSize,
   tsAuthSize,
 } from "./consts.ts";
@@ -127,13 +126,7 @@ export default class DiplomaticClientAPI {
           );
 
           // Wrap in envelope.
-          const env = await makeEnvelope(
-            idx,
-            keyPair,
-            ciphertxt,
-            dkm,
-            this.crypto,
-          );
+          const env = await makeEnvelope(keyPair, ciphertxt, dkm, this.crypto);
           const encEnv = await encodeEnvelope(env);
 
           // Upload.
@@ -208,7 +201,7 @@ export default class DiplomaticClientAPI {
       const headerBytes = data.slice(offset, offset + envelopeHeaderSize);
       offset += envelopeHeaderSize;
       const envHeader = decodeEnvelopeHeader(headerBytes);
-      const msgLen = envHeader.len - keyPathBytes;
+      const msgLen = envHeader.len;
       if (offset + msgLen > data.length) break;
       const msgBytes = data.slice(offset, offset + msgLen);
       offset += msgLen;

@@ -1,22 +1,16 @@
 import type { ICrypto } from "./types.ts";
-import { sigBytes, idxBytes, pubKeyBytes, keyPathBytes } from "./consts.ts";
+import { sigBytes, pubKeyBytes } from "./consts.ts";
 
 // ISigProof is a signature and data necessary to verify it.
 // The layout is:
-// - keypath (8 bytes)
-// - derivation index (8 bytes)
 // - pubkey (32 bytes)
 // - ed25519 signature (64 bytes)
 export type EncodedSigProvenData = Uint8Array;
 
-const keyPathOffset = 0;
-const idxOffset = keyPathOffset + keyPathBytes;
-const pubKeyOffset = idxOffset + idxBytes;
+const pubKeyOffset = 0;
 const sigOffset = pubKeyOffset + pubKeyBytes;
 const dataOffset = sigOffset + sigBytes;
 export interface ISigProof {
-  keyPath: string;
-  idx: number;
   pubKey: Uint8Array;
   sig: Uint8Array;
 }
@@ -34,35 +28,18 @@ export async function sigProof(
   const keyPair = await crypto.deriveEd25519KeyPair(seed, keyPath, idx);
   const sig = await crypto.signEd25519(data, keyPair.privateKey);
   return {
-    keyPath,
-    idx,
     pubKey: keyPair.publicKey,
     sig,
   };
 }
 
-const sigProofDataBytes = keyPathBytes + idxBytes + pubKeyBytes + sigBytes;
+const sigProofDataBytes = pubKeyBytes + sigBytes;
 
 export function encodeSigProvenData(
   spdata: ISigProvenData,
   crypto: ICrypto,
 ): EncodedSigProvenData {
   const encoded = new Uint8Array(sigProofDataBytes + spdata.data.length);
-
-  const view = new DataView(encoded.buffer, encoded.byteOffset);
-
-  // First 8 bytes of keyPath string, padded with null bytes
-  const encoder = new TextEncoder();
-  const encodedKeyPath = encoder.encode(
-    spdata.keyPath.slice(keyPathOffset, keyPathOffset + keyPathBytes),
-  );
-  for (let i = 0; i < keyPathBytes; i++) {
-    encoded[keyPathOffset + i] =
-      i < encodedKeyPath.length ? encodedKeyPath[i] : 0;
-  }
-
-  // idx as an 8 byte integer
-  view.setBigUint64(idxOffset, BigInt(spdata.idx), false);
 
   // spdata.pubKey (32 bytes)
   encoded.set(spdata.pubKey, pubKeyOffset);
@@ -83,28 +60,16 @@ export function decodeSigProvenData(
     throw new Error("Encoded data too short");
   }
 
-  const view = new DataView(encoded.buffer);
-
-  // Decode keyPath: first 8 bytes as string, trim trailing nulls
-  const decoder = new TextDecoder();
-  const encodedKeyPath = encoded.slice(0, keyPathBytes);
-  let keyPath = decoder.decode(encodedKeyPath).replace(/\0+$/, ""); // Trim trailing nulls
-
-  // Decode idx: 8 bytes starting at offset 8
-  const idx = Number(view.getBigUint64(idxOffset, false));
-
-  // Decode pubKey: 32 bytes starting at offset 16
+  // Decode pubKey: 32 bytes starting at offset 0
   const pubKey = encoded.slice(pubKeyOffset, pubKeyOffset + pubKeyBytes);
 
-  // Decode sig: 64 bytes starting at offset 48
+  // Decode sig: 64 bytes starting at offset 32
   const sig = encoded.slice(sigOffset, sigOffset + sigBytes);
 
-  // Decode data: remaining bytes after 112
+  // Decode data: remaining bytes after 96
   const data = encoded.slice(sigProofDataBytes);
 
   return {
-    keyPath,
-    idx,
     pubKey,
     sig,
     data,
@@ -124,17 +89,6 @@ export async function verifySigProvenData(
   spdata: ISigProvenData,
   crypto: ICrypto,
 ): Promise<boolean> {
-  // Verify pubKey match.
-  const keyPair = await crypto.deriveEd25519KeyPair(
-    seed,
-    spdata.keyPath,
-    spdata.idx,
-  );
-  const pubKeysMatch = uint8ArraysEqual(keyPair.publicKey, spdata.pubKey);
-  if (!pubKeysMatch) {
-    return false;
-  }
-
   // Verify sig match.
   return crypto.checkSigEd25519(spdata.sig, spdata.data, spdata.pubKey);
 }

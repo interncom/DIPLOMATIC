@@ -38,8 +38,6 @@ Deno.test(
     const encoded = encodeSigProvenData(spdata, libsodiumCrypto);
     const decoded = decodeSigProvenData(encoded);
 
-    assertEquals(decoded.keyPath, spdata.keyPath);
-    assertEquals(decoded.idx, spdata.idx);
     assertEquals(uint8ArraysEqual(decoded.pubKey, spdata.pubKey), true);
     assertEquals(uint8ArraysEqual(decoded.sig, spdata.sig), true);
     assertEquals(uint8ArraysEqual(decoded.data, spdata.data), true);
@@ -66,8 +64,6 @@ Deno.test(
     const encoded = encodeSigProvenData(spdata, libsodiumCrypto);
     const decoded = decodeSigProvenData(encoded);
 
-    assertEquals(decoded.keyPath, "verylong"); // truncated to 8 chars
-    assertEquals(decoded.idx, 123);
     assertEquals(uint8ArraysEqual(decoded.pubKey, spdata.pubKey), true);
     assertEquals(uint8ArraysEqual(decoded.sig, spdata.sig), true);
     assertEquals(uint8ArraysEqual(decoded.data, spdata.data), true);
@@ -94,8 +90,6 @@ Deno.test(
     const encoded = encodeSigProvenData(spdata, libsodiumCrypto);
     const decoded = decodeSigProvenData(encoded);
 
-    assertEquals(decoded.keyPath, "short"); // trailing nulls trimmed
-    assertEquals(decoded.idx, 0);
     assertEquals(uint8ArraysEqual(decoded.pubKey, spdata.pubKey), true);
     assertEquals(uint8ArraysEqual(decoded.sig, spdata.sig), true);
     assertEquals(uint8ArraysEqual(decoded.data, spdata.data), true);
@@ -103,7 +97,7 @@ Deno.test(
 );
 
 Deno.test("decodeSigProvenData with invalid data length", () => {
-  const shortEncoded = new Uint8Array(100); // less than 114
+  const shortEncoded = new Uint8Array(90); // less than 96
   try {
     decodeSigProvenData(shortEncoded);
     throw new Error("Should have thrown");

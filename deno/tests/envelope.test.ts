@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
   type IEnvelope,
+  type IEnvelopeHeader,
   encodeEnvelope,
   makeEnvelope,
   decodeEnvelope,
@@ -51,22 +52,19 @@ Deno.test("envelope", async (t) => {
       publicKey: new Uint8Array(32).fill(0x33),
     };
     const dkm = new Uint8Array(8).fill(0x44);
-    const result = await makeEnvelope(idx, keyPair, cipherOp, dkm, crypto);
+    const result = await makeEnvelope(keyPair, cipherOp, dkm, crypto);
     // Expected msg is dkm prepended to cipherOp
     const expectedMsg = new Uint8Array([...dkm, ...cipherOp]);
     // Compute expected values
-    const len = keyPathBytes + dkm.length + cipherOp.length;
+    const len = dkm.length + cipherOp.length;
     const hashSrc = new Uint8Array(len);
-    hashSrc.set(new Uint8Array(8).fill(0), 0); // keyPath
-    hashSrc.set(dkm, 8);
-    hashSrc.set(cipherOp, 16);
+    hashSrc.set(dkm, 0);
+    hashSrc.set(cipherOp, dkm.length);
     const expectedHash = await crypto.blake3(hashSrc);
     const expectedSig = await crypto.signEd25519(
       expectedHash,
       keyPair.privateKey,
     );
-    assertEquals(result.keyPath, "");
-    assertEquals(result.idx, idx);
     assertEquals(result.pubKey, keyPair.publicKey);
     assertEquals(result.sig, expectedSig);
     assertEquals(result.hsh, expectedHash);
@@ -76,32 +74,26 @@ Deno.test("envelope", async (t) => {
 
   await t.step("encodeEnvelope", async () => {
     const op = {
-      keyPath: "",
-      idx: 5,
       pubKey: new Uint8Array(32).fill(1),
       sig: new Uint8Array(64).fill(0x77),
       hsh: new Uint8Array(32).fill(0x88),
-      len: 99,
+      len: 3,
       msg: new Uint8Array([10, 11, 12]),
     };
-    const result = await encodeEnvelope(op);
+    const encoded = await encodeEnvelope(op);
     // Expected
-    const expected = new Uint8Array(fixedBytes + op.msg.length);
+    const expected = new Uint8Array(136 + op.msg.length);
     const view = new DataView(expected.buffer, expected.byteOffset);
-    // keyPath: already 0
-    view.setBigUint64(8, BigInt(op.idx), false);
-    expected.set(op.pubKey, 16);
-    expected.set(op.sig, 48);
-    expected.set(op.hsh, 112);
-    view.setBigUint64(144, BigInt(op.len), false);
-    expected.set(op.msg, 152);
-    assertEquals(result, expected);
+    expected.set(op.pubKey, 0);
+    expected.set(op.sig, 32);
+    expected.set(op.hsh, 96);
+    view.setBigUint64(128, BigInt(op.len), false);
+    expected.set(op.msg, 136);
+    assertEquals(encoded, expected);
   });
 
   await t.step("decodeEnvelope", async () => {
     const op = {
-      keyPath: "",
-      idx: 5,
       pubKey: new Uint8Array(32).fill(1),
       sig: new Uint8Array(64).fill(0x77),
       hsh: new Uint8Array(32).fill(0x88),
@@ -110,8 +102,6 @@ Deno.test("envelope", async (t) => {
     };
     const encoded = await encodeEnvelope(op);
     const decoded = decodeEnvelope(encoded);
-    assertEquals(decoded.keyPath, op.keyPath);
-    assertEquals(decoded.idx, op.idx);
     assertEquals(decoded.pubKey, op.pubKey);
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.hsh, op.hsh);
@@ -120,9 +110,7 @@ Deno.test("envelope", async (t) => {
   });
 
   await t.step("decodeEnvelopeHeader", async () => {
-    const op: IEnvelope = {
-      keyPath: "test",
-      idx: 123456789,
+    const op: IEnvelopeHeader = {
       pubKey: new Uint8Array(32).fill(0xab),
       sig: new Uint8Array(64).fill(0xcd),
       hsh: new Uint8Array(32).fill(0xef),
@@ -130,30 +118,18 @@ Deno.test("envelope", async (t) => {
     };
     const encoded = await encodeEnvelope({
       ...op,
-      msg: new Uint8Array(op.len - keyPathBytes),
+      msg: new Uint8Array(op.len),
     });
     const header = encoded.slice(0, fixedBytes);
     const decodedHeader = decodeEnvelopeHeader(header);
-    assertEquals(decodedHeader.keyPath, op.keyPath.slice(0, 8));
-    assertEquals(decodedHeader.idx, op.idx);
     assertEquals(decodedHeader.pubKey, op.pubKey);
     assertEquals(decodedHeader.sig, op.sig);
     assertEquals(decodedHeader.hsh, op.hsh);
     assertEquals(decodedHeader.len, op.len);
   });
 
-  await t.step("decodeEnvelopeHeader error on short input", () => {
-    const short = new Uint8Array(fixedBytes - 1);
-    try {
-      decodeEnvelopeHeader(short);
-      throw new Error("Should have thrown");
-    } catch (e) {
-      assertEquals((e as Error).message, "Envelope header too short");
-    }
-  });
-
-  await t.step("decodeEnvelope error on short input", () => {
-    const short = new Uint8Array(fixedBytes - 1);
+  await t.step("decodeEnvelope error on short input", async () => {
+    const short = new Uint8Array(130); // less than 136
     try {
       decodeEnvelope(short);
       throw new Error("Should have thrown");
@@ -162,10 +138,18 @@ Deno.test("envelope", async (t) => {
     }
   });
 
+  await t.step("decodeEnvelopeHeader error on short input", () => {
+    const short = new Uint8Array(130); // less than 136
+    try {
+      decodeEnvelopeHeader(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      assertEquals((e as Error).message, "Envelope header too short");
+    }
+  });
+
   await t.step("encodeEnvelope with non-empty keyPath", async () => {
     const op: IEnvelope = {
-      keyPath: "abcdefg",
-      idx: 42,
       pubKey: new Uint8Array(32).fill(2),
       sig: new Uint8Array(64).fill(0x55),
       hsh: new Uint8Array(32).fill(0x66),
@@ -174,8 +158,7 @@ Deno.test("envelope", async (t) => {
     };
     const encoded = await encodeEnvelope(op);
     const decoded = decodeEnvelope(encoded);
-    assertEquals(decoded.keyPath, op.keyPath.slice(0, 8));
-    assertEquals(decoded.idx, op.idx);
+
     // Test truncation
   });
 });

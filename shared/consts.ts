@@ -5,8 +5,8 @@ export const lenBytes = 8;
 export const pubKeyBytes = 32;
 export const keyPathBytes = 8;
 
-export const tsAuthSize = 120;
-export const envelopeHeaderSize = 152;
+export const tsAuthSize = pubKeyBytes + sigBytes + lenBytes;
+export const envelopeHeaderSize = pubKeyBytes + sigBytes + shaBytes + lenBytes;
 export const hashSize = 32;
 export const responseItemSize = 33; // status (1) + hash (32)
 export const clockToleranceMs = 30000;

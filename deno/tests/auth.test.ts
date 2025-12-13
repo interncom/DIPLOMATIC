@@ -65,8 +65,6 @@ Deno.test(
     const decoded = decodeSigProvenData(result);
 
     // Check decoded fields match inputs
-    assertEquals(decoded.keyPath, keyPath);
-    assertEquals(decoded.idx, idx);
 
     // Check that pubKey matches expected
     assertEquals(decoded.pubKey, publicKeyRaw);
@@ -97,8 +95,6 @@ Deno.test("timestampAuthProof works with different timestamp", async () => {
   const result = await timestampAuthProof(seed, keyPath, idx, ts, mockCrypto);
 
   const decoded = decodeSigProvenData(result);
-  assertEquals(decoded.keyPath, keyPath);
-  assertEquals(decoded.idx, idx);
 
   const expectedEncodedTs = new Uint8Array(8);
   new DataView(expectedEncodedTs.buffer).setBigUint64(0, BigInt(0), false);

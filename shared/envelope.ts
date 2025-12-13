@@ -4,9 +4,9 @@
 // If relayed indirectly, this data must also be included with the envelope.
 // KEYPATH - host keypair derivation keypath [8 bytes]
 // IDX - host keypair derivation index (0 until rotated) [8 bytes]
-// PUBKEY - host keypair pubkey [32 bytes]
+// PUBKEY - host keypair pubkey [32 bytes] (removed, implicit from tsAuth)
 
-// === Envelope Section [136 bytes] ===
+// === Envelope Section [104 bytes] ===
 // SIG - Ed25519 signature of MSGHASH, using keypair implied by pubkey client authenticates to host with [64 bytes]
 // MSGHASH - SHA256 hash of MSGLEN ++ MSGKEYPATH ++ CIPHERHEAD [32 bytes]
 // MSGLEN - Byte length of KEYPATH + CIPHERHEAD + CIPHERTEXT [8 bytes]
@@ -34,17 +34,15 @@
 import type { ICrypto, KeyPair } from "./types.ts";
 import { EncryptedMessage, EncodedMessage } from "./message.ts";
 import type { ISigProof } from "./sigProof.ts";
-import { sigBytes, shaBytes, lenBytes, pubKeyBytes } from "./consts.ts";
+import { sigBytes, hashBytes, lenBytes, pubKeyBytes } from "./consts.ts";
 
 // Offsets for encoding/decoding
-const pubKeyOffset = 0;
-const sigOffset = pubKeyOffset + pubKeyBytes;
+const sigOffset = 0;
 const hshOffset = sigOffset + sigBytes;
-const lenOffset = hshOffset + shaBytes;
+const lenOffset = hshOffset + hashBytes;
 const msgOffset = lenOffset + lenBytes;
 
 export interface IEnvelopeHeader {
-  pubKey: Uint8Array;
   sig: Uint8Array;
   hsh: Uint8Array;
   len: number;
@@ -62,9 +60,6 @@ export async function encodeEnvelope(op: IEnvelope): Promise<EncodedMessage> {
   const encoded = new Uint8Array(fixedBytes + op.msg.length);
 
   const view = new DataView(encoded.buffer, encoded.byteOffset);
-
-  // pubKey
-  encoded.set(op.pubKey, pubKeyOffset);
 
   // sig
   encoded.set(op.sig, sigOffset);
@@ -94,9 +89,7 @@ export async function makeEnvelope(
   const len = msg.length;
   const hash = await crypto.blake3(msg);
   const sig = await crypto.signEd25519(hash, keyPair.privateKey);
-
   return {
-    pubKey: keyPair.publicKey,
     sig,
     hsh: hash,
     len,
@@ -113,12 +106,11 @@ export function decodeEnvelopeHeader(
 
   const view = new DataView(encodedHeader.buffer, encodedHeader.byteOffset);
 
-  const pubKey = encodedHeader.slice(pubKeyOffset, sigOffset);
   const sig = encodedHeader.slice(sigOffset, hshOffset);
   const hsh = encodedHeader.slice(hshOffset, lenOffset);
   const len = Number(view.getBigUint64(lenOffset, false));
 
-  return { pubKey, sig, hsh, len };
+  return { sig, hsh, len };
 }
 
 export function decodeEnvelope(encoded: EncodedEnvelope): IEnvelope {

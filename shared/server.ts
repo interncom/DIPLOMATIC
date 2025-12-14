@@ -1,22 +1,28 @@
 import type {
   IHostCrypto,
   IListDeltasResponse,
-  IMsgpackCodec,
   IOperationRequest,
   IRegistrationRequest,
   IStorage,
   IWebsocketNotifier,
 } from "./types.ts";
-import { btoh, htob } from "./lib.ts";
+import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
+import {
+  tsAuthSize,
+  envelopeHeaderSize,
+  hashSize,
+  responseItemSize,
+  clockToleranceMs,
+} from "./consts.ts";
+import { decodeSigProvenData, type ISigProvenData } from "./sigProof.ts";
+import {
+  decodeEnvelope,
+  decodeEnvelopeHeader,
+  type IEnvelope,
+  type IEnvelopeHeader,
+} from "./envelope.ts";
 
-function opPath(storedAt: Date): string {
-  return storedAt.toISOString();
-}
-
-const allowedHeaders = [
-  "X-DIPLOMATIC-KEY",
-  "X-DIPLOMATIC-SIG",
-];
+const allowedHeaders = ["X-DIPLOMATIC-KEY", "X-DIPLOMATIC-SIG"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // Allow any origin
@@ -34,25 +40,42 @@ function cors(resp: Response): Response {
 
 export class DiplomaticServer {
   hostID: string;
-  regToken: string;
   storage: IStorage;
-  codec: IMsgpackCodec;
   crypto: IHostCrypto;
   notifier: IWebsocketNotifier;
   constructor(
     hostID: string,
-    regToken: string,
     storage: IStorage,
-    codec: IMsgpackCodec,
     crypto: IHostCrypto,
     notifier: IWebsocketNotifier,
   ) {
     this.hostID = hostID;
-    this.regToken = regToken;
     this.storage = storage;
-    this.codec = codec;
     this.crypto = crypto;
     this.notifier = notifier;
+  }
+
+  async validateTsAuth(
+    tsAuthBytes: Uint8Array,
+  ): Promise<{ pubKey: Uint8Array; pubKeyHex: string }> {
+    const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+    const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
+    const currentTime = Date.now();
+    const diff = Math.abs(currentTime - Number(timestampMs));
+    if (diff > clockToleranceMs) {
+      throw new Error("Clock out of sync");
+    }
+    if (
+      !(await this.crypto.checkSigEd25519(
+        tsAuth.sig,
+        tsAuth.data,
+        tsAuth.pubKey,
+      ))
+    ) {
+      throw new Error("Invalid signature");
+    }
+    const pubKeyHex = btoh(tsAuth.pubKey);
+    return { pubKey: tsAuth.pubKey, pubKeyHex };
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -74,6 +97,32 @@ export class DiplomaticServer {
     return cors(resp);
   };
 
+  async processEnvelope(
+    envHeader: IEnvelopeHeader,
+    msg: Uint8Array,
+    pubKeyHex: string,
+    expectedPubKey: Uint8Array,
+    now: Date,
+    envelope: Uint8Array,
+  ): Promise<number> {
+    const hash = await this.crypto.blake3(msg);
+    if (!uint8ArraysEqual(hash, envHeader.hsh)) {
+      return 2; // Invalid hash
+    }
+    if (
+      !(await this.crypto.checkSigEd25519(
+        envHeader.sig,
+        envHeader.hsh,
+        expectedPubKey,
+      ))
+    ) {
+      return 3; // Invalid envelope signature
+    }
+    await this.storage.setOp(pubKeyHex, now, envelope, btoh(envHeader.hsh));
+    await this.notifier.notify(pubKeyHex);
+    return 0; // Success
+  }
+
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -89,167 +138,253 @@ export class DiplomaticServer {
         if (!request.body) {
           return new Response("Invalid request", { status: 400 });
         }
-        const req = await this.codec.decodeAsync(
-          request.body,
-        ) as IRegistrationRequest;
-        if (req.token === undefined || req.pubKey === undefined) {
-          return new Response("Invalid request", { status: 400 });
+        const bodyArrayBuffer = await request.arrayBuffer();
+        let offset = 0;
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
         }
-        if (req.token !== this.regToken) {
-          return new Response("Unauthorized", { status: 401 });
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        // No more data expected
+        if (offset < bodyArrayBuffer.byteLength) {
+          return new Response("Extra body content", { status: 400 });
         }
-        // TODO: check pubKey length.
-        const pubKeyHex = btoh(req.pubKey);
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        // Register the public key
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
         return new Response("Processing request", { status: 500 });
       }
     }
 
     if (request.method === "POST" && url.pathname === "/ops") {
-      const now = new Date();
-
-      try {
-        if (!request.body) {
-          return new Response("Invalid request", { status: 400 });
-        }
-        const req = await this.codec.decodeAsync(
-          request.body,
-        ) as IOperationRequest;
-        if (req.cipher === undefined) {
-          return new Response("Invalid request", { status: 400 });
-        }
-
-        // Check user is registered.
-        const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
-        if (!pubKeyHex) {
-          return new Response("Missing pubkey", { status: 401 });
-        }
-        if (!await this.storage.hasUser(pubKeyHex)) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-
-        // Check signature.
-        const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
-        if (!sigHex) {
-          return new Response("Missing signature", { status: 401 });
-        }
-        const pubKey = htob(pubKeyHex);
-        const sig = htob(sigHex);
-        const sigValid = await this.crypto.checkSigEd25519(
-          sig,
-          req.cipher,
-          pubKey,
-        );
-        if (!sigValid) {
-          return new Response("Invalid signature", { status: 401 });
-        }
-
-        await this.storage.setOp(pubKeyHex, now, req.cipher);
-
-        // Notify listeners.
-        await this.notifier.notify(pubKeyHex);
-
-        const opHash = await this.crypto.sha256Hash(req.cipher);
-        const hex = btoh(opHash);
-        return new Response(hex, { status: 200 });
-      } catch (err) {
-        console.error(err);
-        return new Response("Processing request", { status: 500 });
+      const body = request.body;
+      if (!body) {
+        return new Response("Invalid request", { status: 400 });
       }
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/ops/")) {
+      const bodyArrayBuffer = await request.arrayBuffer();
+      const bodyView = new DataView(bodyArrayBuffer);
+      let offset = 0;
+      const now = new Date();
       try {
-        // Check user is registered.
-        const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
-        if (!pubKeyHex) {
-          return new Response("Missing pubkey", { status: 401 });
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
         }
-        if (!await this.storage.hasUser(pubKeyHex)) {
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        const { pubKey, pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
         }
 
-        const path = url.pathname.substring("/ops/".length);
+        const results: { status: number; hsh: Uint8Array }[] = [];
+        while (offset < bodyArrayBuffer.byteLength) {
+          // Read envelope header
+          if (offset + envelopeHeaderSize > bodyArrayBuffer.byteLength) {
+            return new Response("Incomplete envelope header", { status: 400 });
+          }
+          const headerBytes = new Uint8Array(
+            bodyArrayBuffer.slice(offset, offset + envelopeHeaderSize),
+          );
+          offset += envelopeHeaderSize;
 
-        // Check signature.
-        const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
-        if (!sigHex) {
-          return new Response("Missing signature", { status: 401 });
-        }
-        const pubKey = htob(pubKeyHex);
-        const sig = htob(sigHex);
-        const sigValid = await this.crypto.checkSigEd25519(sig, path, pubKey);
-        if (!sigValid) {
-          return new Response("Invalid signature", { status: 401 });
-        }
+          // Decode header
+          const envHeader = decodeEnvelopeHeader(headerBytes);
 
-        // Retrieve op.
-        const cipher = await this.storage.getOp(pubKeyHex, path);
-        if (cipher === undefined) {
-          return new Response("Not found", { status: 404 });
-        }
+          // Read envelope msg
+          const msgLen = envHeader.len;
+          if (offset + msgLen > bodyArrayBuffer.byteLength) {
+            return new Response("Incomplete envelope", { status: 400 });
+          }
+          const msgBytes = new Uint8Array(
+            bodyArrayBuffer.slice(offset, offset + msgLen),
+          );
+          offset += msgLen;
 
-        const respPack = this.codec.encode({ cipher });
-        return new Response(respPack.slice(0), {
+          const envelope = new Uint8Array(envelopeHeaderSize + msgLen);
+          envelope.set(headerBytes, 0);
+          envelope.set(msgBytes, envelopeHeaderSize);
+          envelope.set(msgBytes, headerBytes.length);
+
+          const status = await this.processEnvelope(
+            envHeader,
+            msgBytes,
+            pubKeyHex,
+            pubKey,
+            now,
+            envelope,
+          );
+          results.push({ status, hsh: envHeader.hsh });
+        }
+        const buffer = new Uint8Array(results.length * responseItemSize);
+        let idx = 0;
+        for (const result of results) {
+          buffer[idx] = result.status;
+          buffer.set(result.hsh, idx + 1);
+          idx += responseItemSize;
+        }
+        return new Response(buffer, {
           status: 200,
-          headers: { "Content-Type": "application/octet-stream" },
+          headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
-        return new Response("Processing request", { status: 500 });
+        return new Response("Internal error", { status: 500 });
       }
     }
 
-    if (request.method === "GET" && url.pathname.startsWith("/ops")) {
-      const now = new Date();
+    if (request.method === "POST" && url.pathname === "/pull") {
+      const body = request.body;
+      if (!body) {
+        return new Response("Invalid request", { status: 400 });
+      }
+      const bodyArrayBuffer = await request.arrayBuffer();
+      const bodyView = new DataView(bodyArrayBuffer);
+      let offset = 0;
       try {
-        // Check user is registered.
-        const pubKeyHex = request.headers.get("X-DIPLOMATIC-KEY");
-        if (!pubKeyHex) {
-          return new Response("Missing pubkey", { status: 401 });
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
         }
-        if (!await this.storage.hasUser(pubKeyHex)) {
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
         }
 
-        // Check signature.
-        const sigHex = request.headers.get("X-DIPLOMATIC-SIG");
-        if (!sigHex) {
-          return new Response("Missing signature", { status: 401 });
+        const hashes: Uint8Array[] = [];
+        while (offset < bodyArrayBuffer.byteLength) {
+          if (offset + hashSize > bodyArrayBuffer.byteLength) {
+            return new Response("Incomplete hash", { status: 400 });
+          }
+          const hash = new Uint8Array(
+            bodyArrayBuffer.slice(offset, offset + hashSize),
+          );
+          offset += hashSize;
+          hashes.push(hash);
         }
-        const pubKey = htob(pubKeyHex);
-        const sig = htob(sigHex);
-        const sigValid = await this.crypto.checkSigEd25519(
-          sig,
-          url.pathname,
-          pubKey,
-        );
-        if (!sigValid) {
-          return new Response("Invalid signature", { status: 401 });
+        const results: Uint8Array[] = [];
+        for (const hash of hashes) {
+          const envelope = await this.storage.getOp(pubKeyHex, btoh(hash));
+          if (envelope) {
+            results.push(envelope);
+          }
         }
-
-        // Retrieve ops.
-        const fetchedAt = now.toISOString();
-        const beginComponent = url.pathname.substring("/ops%3Fbegin=".length);
-        const begin = decodeURIComponent(beginComponent);
-        const userOpsList = await this.storage.listOps(
-          pubKeyHex,
-          begin,
-          fetchedAt,
-        );
-
-        const resp: IListDeltasResponse = {
-          deltas: userOpsList,
-          fetchedAt,
-        };
-        const respPack = this.codec.encode(resp);
-        return new Response(respPack.slice(0), { status: 200 });
+        let totalLength = 0;
+        for (const env of results) totalLength += env.length;
+        const responseBody = new Uint8Array(totalLength);
+        let pos = 0;
+        for (const env of results) {
+          responseBody.set(env, pos);
+          pos += env.length;
+        }
+        return new Response(responseBody, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        });
       } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
         console.error(err);
-        return new Response("Processing request", { status: 500 });
+        return new Response("Internal error", { status: 500 });
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/peek") {
+      const body = request.body;
+      if (!body) {
+        return new Response("Invalid request", { status: 400 });
+      }
+      const bodyArrayBuffer = await request.arrayBuffer();
+      let offset = 0;
+      try {
+        // Read tsAuth
+        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+          return new Response("Incomplete tsAuth", { status: 400 });
+        }
+        const tsAuthBytes = new Uint8Array(
+          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
+        );
+        offset += tsAuthSize;
+        // No other body content
+        if (offset < bodyArrayBuffer.byteLength) {
+          return new Response("Extra body content", { status: 400 });
+        }
+        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        if (!(await this.storage.hasUser(pubKeyHex))) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        // Get 'from' param
+        const fromParam = url.searchParams.get("from");
+        if (!fromParam) {
+          return new Response("Missing from param", { status: 400 });
+        }
+        const fromMillis = parseInt(fromParam, 10);
+        if (isNaN(fromMillis)) {
+          return new Response("Invalid from param", { status: 400 });
+        }
+        const begin = new Date(fromMillis).toISOString();
+        const end = new Date().toISOString();
+        const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
+        const headers: Uint8Array[] = [];
+        for (const item of userOpsList) {
+          const envelope = await this.storage.getOp(
+            pubKeyHex,
+            btoh(item.sha256),
+          );
+          if (envelope) {
+            const header = envelope.slice(0, envelopeHeaderSize);
+            headers.push(header);
+          }
+        }
+        let totalLength = 0;
+        for (const h of headers) totalLength += h.length;
+        const responseBody = new Uint8Array(totalLength);
+        let pos = 0;
+        for (const h of headers) {
+          responseBody.set(h, pos);
+          pos += h.length;
+        }
+        return new Response(responseBody, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        });
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "Invalid signature") {
+            return new Response(err.message, { status: 401 });
+          }
+          return new Response(err.message, { status: 400 });
+        }
+        console.error(err);
+        return new Response("Internal error", { status: 500 });
       }
     }
 

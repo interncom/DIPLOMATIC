@@ -1,26 +1,34 @@
-// Client class to facilitate building deno CLI apps.
-
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI from "../../shared/client2.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
 import { htob } from "../../shared/lib.ts";
-import type { IGetDeltaPathsResponse, IOp, KeyPair } from "../../shared/types.ts";
-import { isOp } from "../../shared/ops.ts";
+import type { KeyPair } from "../../shared/types.ts";
+import type { IMessage } from "../../shared/message.ts";
+import { decodeOp, concat } from "../../shared/message.ts";
+import type { IEnvelopeHeader } from "../../shared/envelope.ts";
+
+export interface IMessageDecoded {
+  eid: Uint8Array;
+  clk: Date;
+  ctr: number;
+  len: number;
+  bod?: any;
+}
 
 export async function initCLI() {
   const hostURL = Deno.env.get("DIPLOMATIC_HOST_URL");
   const seedHex = Deno.env.get("DIPLOMATIC_SEED_HEX");
   if (!hostURL) {
-    throw "Missing DIPLOMATIC_HOST_URL env var"
+    throw "Missing DIPLOMATIC_HOST_URL env var";
   }
   if (!seedHex) {
-    throw "Missing DIPLOMATIC_SEED_HEX env var"
+    throw "Missing DIPLOMATIC_SEED_HEX env var";
   }
 
   const seed = htob(seedHex);
   const encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
 
-  const api = new DiplomaticClientAPI(denoMsgpack, libsodiumCrypto);
+  const api = new DiplomaticClientAPI(libsodiumCrypto);
   const url = new URL(hostURL);
 
   const client = new DiplomaticClientCLI(api, seed, encKey, url);
@@ -33,8 +41,14 @@ export class DiplomaticClientCLI {
   seed: Uint8Array;
   encKey: Uint8Array;
   hostURL: URL;
+  hostID?: string;
   hostKeyPair?: KeyPair;
-  constructor(api: DiplomaticClientAPI, seed: Uint8Array, encKey: Uint8Array, hostURL: URL) {
+  constructor(
+    api: DiplomaticClientAPI,
+    seed: Uint8Array,
+    encKey: Uint8Array,
+    hostURL: URL,
+  ) {
     this.api = api;
     this.seed = seed;
     this.encKey = encKey;
@@ -42,40 +56,70 @@ export class DiplomaticClientCLI {
   }
 
   async register() {
-    const regToken = "tok123";
     const hostID = await this.api.getHostID(this.hostURL);
-    const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
-    await this.api.register(this.hostURL, keyPair.publicKey, regToken);
-    this.hostKeyPair = keyPair;
+    this.hostID = hostID;
+    const now = new Date();
+    await this.api.register(this.hostURL, this.seed, hostID, 0, now);
+    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+      this.seed,
+      hostID,
+      0,
+    );
   }
 
-  async push(op: IOp) {
-    if (!this.hostKeyPair) {
-      return;
-    }
-    const packed = denoMsgpack.encode(op);
-    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
-    await this.api.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
+  async push(msg: IMessage, idx: number = 0) {
+    const now = new Date();
+    const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
+    const results = await this.api.push(
+      this.hostURL,
+      [msg],
+      this.seed,
+      hostID,
+      idx,
+      now,
+    );
+    return results[0];
   }
 
-  async list(begin: Date): Promise<IGetDeltaPathsResponse | undefined> {
-    if (!this.hostKeyPair) {
-      return;
-    }
-    const resp = await this.api.getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
-    return resp;
+  async peek(begin: Date, idx: number = 0): Promise<IEnvelopeHeader[]> {
+    const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
+    const now = new Date();
+    return await this.api.peek(
+      this.hostURL,
+      begin.getTime(),
+      this.seed,
+      hostID,
+      idx,
+      now,
+    );
   }
 
-  async pull(path: string): Promise<IOp | undefined> {
-    if (!this.hostKeyPair) {
-      return;
+  async pull(hashes: Uint8Array[]): Promise<IMessageDecoded[]> {
+    const envelopes = await this.api.pull(
+      this.hostURL,
+      hashes,
+      this.seed,
+      this.hostID || (await this.api.getHostID(this.hostURL)),
+      0,
+      new Date(),
+    );
+    const messages: IMessageDecoded[] = [];
+    for (const env of envelopes) {
+      const encKey = await libsodiumCrypto.blake3(concat(this.seed, env.dkm));
+      const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
+        env.cipher,
+        encKey,
+      );
+      const msg = await decodeOp(decrypted);
+      const decodedMsg: IMessageDecoded = {
+        eid: msg.eid,
+        clk: msg.clk,
+        ctr: msg.ctr,
+        len: msg.len,
+        bod: msg.bod ? denoMsgpack.decode(msg.bod) : undefined,
+      };
+      messages.push(decodedMsg);
     }
-    const cipher = await this.api.getDelta(this.hostURL, path, this.hostKeyPair);
-    const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
-    const op = denoMsgpack.decode(packed);
-    if (!isOp(op)) {
-      return;
-    }
-    return op;
+    return messages;
   }
 }

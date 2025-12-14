@@ -16,11 +16,10 @@ From `deno` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Server
 
-`DIPLOMATIC_HOST_ID=id123 DIPLOMATIC_HOST_PORT=3311 DIPLOMATIC_REG_TOKEN=tok123 deno run --allow-env --allow-net --allow-read --allow-write hosts/deno/server.ts --https`
+`DIPLOMATIC_HOST_PORT=31337 DIPLOMATIC_HOST_ID=abc123 deno run --allow-net --allow-read --allow-write --allow-env hosts/deno/server.ts`
 
-### Demo Client (status app)
+### CLI
 
-1. `cd demos/status/web`
-1. `npm run dev`
+`echo "hello dip2" | DIPLOMATIC_HOST_URL=http://localhost:31337 DIPLOMATIC_SEED_HEX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF deno run --allow-net --allow-env tools/dipcat/dipcat.ts`
 
-See also `demos/status/web/README.md`.
+`DIPLOMATIC_HOST_URL=http://localhost:31337 DIPLOMATIC_SEED_HEX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF deno run --allow-net --allow-env tools/diplog/diplog.ts`

@@ -1,28 +1,42 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { DiplomaticServer } from "../../shared/server.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
 import { IWebsocketNotifier } from "../../shared/types.ts";
-import { btoh } from "../../shared/lib.ts";
+import { genInsert, decodeOp, concat } from "../../shared/message.ts";
+import { decodeEnvelope, type IEnvelope } from "../../shared/envelope.ts";
+import { uint8ArraysEqual } from "../../shared/lib.ts";
 
 // Server config.
 const port = 3331;
-const hostID = "id123";
-const registrationToken = "tok123";
+const hostID = "id123456";
 
 // Client config.
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(seed, hostID);
+
+// Derivation index for host key pair.
+// Increments as part of host keypair rotation.
+const hostIdx = 0;
+
+const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+  seed,
+  hostID,
+  hostIdx,
+);
 
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
     handler: async () => new Response(),
-    notify: async () => { },
-  }
-  const server = new DiplomaticServer(hostID, registrationToken, memStorage, denoMsgpack, libsodiumCrypto, websocketHandler);
+    notify: async () => {},
+  };
+  const server = new DiplomaticServer(
+    hostID,
+    memStorage,
+    libsodiumCrypto,
+    websocketHandler,
+  );
   const httpServer = Deno.serve({ port }, server.corsHandler);
 
   if (!server) {
@@ -30,9 +44,7 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const client = new DiplomaticClientAPI(denoMsgpack, libsodiumCrypto);
-
-  const cipherOp = new Uint8Array([0xFE, 0xFE]);
+  const client = new DiplomaticClientAPI(libsodiumCrypto);
 
   await t.step("GET /id", async () => {
     const id = await client.getHostID(url);
@@ -41,30 +53,77 @@ Deno.test("server", async (t) => {
 
   const pubKey = keyPair.publicKey;
 
+  // Use a consistent now Date for all operations and auth
+  const now = new Date();
+
   await t.step("POST /users", async () => {
-    await client.register(url, pubKey, registrationToken);
+    await client.register(url, seed, hostID, hostIdx, now);
   });
 
-  const opHash = await libsodiumCrypto.sha256Hash(cipherOp);
-
+  // Test PUSH
+  const content = denoMsgpack.encode("test operation data");
+  const op1 = await genInsert(now, content, libsodiumCrypto);
+  const op2 = await genInsert(now, content, libsodiumCrypto);
+  const ops = [op1, op2];
+  let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    const opPath = await client.putDelta(url, cipherOp, keyPair);
-    assertNotEquals(opPath.length, 0);
+    result = await client.push(url, ops, seed, hostID, hostIdx, now);
+    assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
+    for (const res of result) {
+      assertEquals(res.status, 0);
+      assertEquals(res.hash.length, 32);
+    }
   });
 
-  await t.step("GET /ops/:path", async () => {
-    const respCipher = await client.getDelta(url, opHash, keyPair);
-    assertEquals(respCipher, cipherOp);
+  await t.step("POST /pull", async () => {
+    const hashes = result.map((r) => r.hash);
+    const pulledEnvelopes = await client.pull(
+      url,
+      hashes,
+      seed,
+      hostID,
+      hostIdx,
+      now,
+    );
+    assertEquals(pulledEnvelopes.length, 2);
+
+    // Verify that pulled envelopes have the correct hashes and messages
+    for (let i = 0; i < pulledEnvelopes.length; i++) {
+      const env = pulledEnvelopes[i];
+      assertEquals(uint8ArraysEqual(env.hsh, hashes[i]), true);
+      const dkm = env.msg.slice(0, 8);
+      const cipherOp = env.msg.slice(8);
+      const encKey = await libsodiumCrypto.blake3(concat(seed, dkm));
+      const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
+        cipherOp,
+        encKey,
+      );
+      const pulledOp = await decodeOp(decrypted);
+      assertEquals(pulledOp.clk, ops[i].clk);
+      assertEquals(
+        uint8ArraysEqual(
+          pulledOp.bod ?? new Uint8Array(),
+          ops[i].bod ?? new Uint8Array(),
+        ),
+        true,
+      );
+      // Additional checks to exercise var-int encoding for ctr, eid, len
+      assertEquals(pulledOp.ctr, ops[i].ctr);
+      assertEquals(pulledOp.len, ops[i].len);
+      assertEquals(uint8ArraysEqual(pulledOp.eid, ops[i].eid), true);
+    }
   });
 
-  await t.step("GET /ops?begin=", async () => {
-    // Fetch ops in open-ended range.
-    const t0 = new Date(0);
-    const resp = await client.listDeltas(url, t0, keyPair);
-    assertEquals(resp.deltas.length, 1);
-    const sha256Hex = btoh(resp.deltas[0].sha256);
-    assertEquals(sha256Hex, btoh(opHash));
-    assertNotEquals(resp.fetchedAt, undefined);
+  await t.step("POST /peek", async () => {
+    const peekedHeaders = await client.peek(url, 0, seed, hostID, hostIdx, now);
+    assertEquals(peekedHeaders.length, 2);
+    // Optionally, verify the headers match the pushed ops' hashes
+    for (let i = 0; i < peekedHeaders.length; i++) {
+      assertEquals(
+        uint8ArraysEqual(peekedHeaders[i].hsh, result[i].hash),
+        true,
+      );
+    }
   });
 
   await httpServer.shutdown();

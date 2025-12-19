@@ -1,7 +1,8 @@
 import { assert, assertEquals } from "jsr:@std/assert@0.223.0";
 import { timestampAuthProof } from "../../shared/auth.ts";
 import { decodeSigProvenData } from "../../shared/sigProof.ts";
-import type { ICrypto, KeyPair } from "../../shared/types.ts";
+import type { ICrypto, KeyPair, DerivationSeed } from "../../shared/types.ts";
+import { concat } from "../../shared/message.ts";
 
 // Mock ICrypto using a fixed Ed25519 key pair for testing
 // Using test vectors from RFC 8032 for determinism
@@ -42,6 +43,17 @@ const mockCrypto: ICrypto = {
     };
   },
 
+  deriveEd25519KeyPairFromDerivationSeed: async (
+    derivationSeed,
+  ): Promise<KeyPair> => {
+    // Return fixed keys for testing
+    return {
+      keyType: "private",
+      privateKey: privateKeyRaw.slice(),
+      publicKey: publicKeyRaw.slice(),
+    };
+  },
+
   signEd25519: async (message, secKey) => {
     return new Uint8Array(64).fill(0);
   },
@@ -59,7 +71,18 @@ Deno.test(
     const idx = 42;
     const ts = new Date(1640995200000); // Example: 2022-01-01T00:00:00.000Z
 
-    const result = await timestampAuthProof(seed, keyPath, idx, ts, mockCrypto);
+    const hostIDBytes = new TextEncoder().encode(keyPath);
+    const indexBytes = new Uint8Array(8);
+    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(idx), false);
+    const kdm = concat(hostIDBytes, indexBytes);
+    const data = concat(seed, kdm);
+    const derivationSeed = await mockCrypto.blake3(data);
+
+    const result = await timestampAuthProof(
+      derivationSeed as DerivationSeed,
+      ts,
+      mockCrypto,
+    );
 
     // Decode the encoded data
     const decoded = decodeSigProvenData(result);
@@ -92,7 +115,18 @@ Deno.test("timestampAuthProof works with different timestamp", async () => {
   const idx = 123;
   const ts = new Date(0); // Epoch time: 1970-01-01T00:00:00.000Z
 
-  const result = await timestampAuthProof(seed, keyPath, idx, ts, mockCrypto);
+  const hostIDBytes = new TextEncoder().encode(keyPath);
+  const indexBytes = new Uint8Array(8);
+  new DataView(indexBytes.buffer).setBigUint64(0, BigInt(idx), false);
+  const kdm = concat(hostIDBytes, indexBytes);
+  const data = concat(seed, kdm);
+  const derivationSeed = await mockCrypto.blake3(data);
+
+  const result = await timestampAuthProof(
+    derivationSeed as DerivationSeed,
+    ts,
+    mockCrypto,
+  );
 
   const decoded = decodeSigProvenData(result);
 

@@ -4,6 +4,8 @@ import type {
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
+  MasterSeed,
+  DerivationSeed,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
 import {
@@ -29,10 +31,26 @@ import {
   concat,
 } from "./message.ts";
 
+import { Enclave } from "./enclave.ts";
+
 export default class DiplomaticClientAPI {
   crypto: ICrypto;
-  constructor(crypto: ICrypto) {
+  enclave: Enclave;
+
+  constructor(seed: Uint8Array, crypto: ICrypto) {
     this.crypto = crypto;
+    this.enclave = new Enclave(seed as MasterSeed, crypto);
+  }
+
+  private async getDerivationSeed(
+    keyPath: string,
+    idx: number,
+  ): Promise<DerivationSeed> {
+    const hostIDBytes = new TextEncoder().encode(keyPath);
+    const indexBytes = new Uint8Array(8);
+    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(idx), false);
+    const kdm = concat(hostIDBytes, indexBytes);
+    return await this.enclave.derive(kdm);
   }
 
   async getHostID(hostURL: URL): Promise<string> {
@@ -48,7 +66,6 @@ export default class DiplomaticClientAPI {
 
   async register(
     hostURL: URL,
-    seed: Uint8Array,
     keyPath: string,
     idx: number,
     now: Date,
@@ -57,13 +74,8 @@ export default class DiplomaticClientAPI {
     // Server can reject for timestamp too far from its clock.
     // In that case, signal to user that clock is out of sync.
     // Clocks must be synchronized to ensure correct op order.
-    const tsAuth = await timestampAuthProof(
-      seed,
-      keyPath,
-      idx,
-      now,
-      this.crypto,
-    );
+    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const url = new URL(hostURL);
     url.pathname = "/users";
@@ -81,7 +93,6 @@ export default class DiplomaticClientAPI {
   async push(
     hostURL: URL,
     ops: IMessage[],
-    seed: Uint8Array,
     keyPath: string,
     idx: number,
     now: Date,
@@ -89,20 +100,16 @@ export default class DiplomaticClientAPI {
     const url = new URL(hostURL);
     url.pathname = "/ops";
 
-    const keyPair = await this.crypto.deriveEd25519KeyPair(seed, keyPath, idx);
+    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const keyPair =
+      await this.crypto.deriveEd25519KeyPairFromDerivationSeed(derivationSeed);
 
     // Form the authentication prefix (sigproof of timestamp).
     // Server can reject for timestamp too far from its clock.
     // In that case, signal to user that clock is out of sync.
     // Clocks must be synchronized to ensure correct op order.
 
-    const tsAuth = await timestampAuthProof(
-      seed,
-      keyPath,
-      idx,
-      now,
-      this.crypto,
-    );
+    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     // Create a readable stream to stream the data
     const stream = new ReadableStream({
@@ -117,7 +124,7 @@ export default class DiplomaticClientAPI {
 
           // Derive encryption key.
           const dkm = await derivationKeyMaterial(msgHead, this.crypto);
-          const encKey = await this.crypto.blake3(concat(seed, dkm));
+          const encKey = await this.enclave.derive(dkm);
 
           // Encrypt message.
           const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(
@@ -158,7 +165,6 @@ export default class DiplomaticClientAPI {
   async pull(
     hostURL: URL,
     hashes: Uint8Array[],
-    seed: Uint8Array,
     keyPath: string,
     idx: number,
     now: Date,
@@ -166,13 +172,8 @@ export default class DiplomaticClientAPI {
     const url = new URL(hostURL);
     url.pathname = "/pull";
 
-    const tsAuth = await timestampAuthProof(
-      seed,
-      keyPath,
-      idx,
-      now,
-      this.crypto,
-    );
+    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const stream = new ReadableStream({
       start: (controller) => {
@@ -217,7 +218,6 @@ export default class DiplomaticClientAPI {
   async peek(
     hostURL: URL,
     fromMillis: number,
-    seed: Uint8Array,
     keyPath: string,
     idx: number,
     now: Date,
@@ -226,13 +226,8 @@ export default class DiplomaticClientAPI {
     url.pathname = "/peek";
     url.searchParams.set("from", fromMillis.toString());
 
-    const tsAuth = await timestampAuthProof(
-      seed,
-      keyPath,
-      idx,
-      now,
-      this.crypto,
-    );
+    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const response = await fetch(url, {
       method: "POST",

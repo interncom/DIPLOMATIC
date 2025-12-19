@@ -80,6 +80,11 @@ export interface KeyPair {
   publicKey: Uint8Array;
 }
 
+export type MasterSeed = Uint8Array & { readonly __brand: "MasterSeed" };
+export type DerivationSeed = Uint8Array & {
+  readonly __brand: "DerivationSeed";
+};
+
 export interface IHostCrypto {
   checkSigEd25519: (
     sig: Uint8Array,
@@ -109,6 +114,9 @@ export interface ICrypto extends IHostCrypto {
     seed: Uint8Array,
     hostID: string,
     derivationIndex: number,
+  ) => Promise<KeyPair>;
+  deriveEd25519KeyPairFromDerivationSeed: (
+    derivationSeed: DerivationSeed,
   ) => Promise<KeyPair>;
   signEd25519: (
     message: Uint8Array | string,

@@ -8,6 +8,8 @@ import {
   type ISigProvenData,
 } from "../../shared/sigProof.ts";
 import { uint8ArraysEqual, btoh } from "../../shared/lib.ts";
+import { concat } from "../../shared/message.ts";
+import type { DerivationSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -23,10 +25,14 @@ Deno.test(
   async () => {
     const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const data = new Uint8Array([3, 4, 5]);
+    const hostIDBytes = new TextEncoder().encode("testpath");
+    const indexBytes = new Uint8Array(8);
+    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(42), false);
+    const kdm = concat(hostIDBytes, indexBytes);
+    const dataForDerivation = concat(seed, kdm);
+    const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
     const sigProofResult = await sigProof(
-      seed,
-      "testpath",
-      42,
+      derivationSeed as DerivationSeed,
       data,
       libsodiumCrypto,
     );
@@ -49,10 +55,14 @@ Deno.test(
   async () => {
     const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const data = new Uint8Array([7, 8]);
+    const hostIDBytes = new TextEncoder().encode("verylongpath");
+    const indexBytes = new Uint8Array(8);
+    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(123), false);
+    const kdm = concat(hostIDBytes, indexBytes);
+    const dataForDerivation = concat(seed, kdm);
+    const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
     const sigProofResult = await sigProof(
-      seed,
-      "verylongpath",
-      123,
+      derivationSeed as DerivationSeed,
       data,
       libsodiumCrypto,
     );
@@ -75,10 +85,14 @@ Deno.test(
   async () => {
     const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const data = new Uint8Array([]); // empty data
+    const hostIDBytes = new TextEncoder().encode("short");
+    const indexBytes = new Uint8Array(8);
+    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(0), false);
+    const kdm = concat(hostIDBytes, indexBytes);
+    const dataForDerivation = concat(seed, kdm);
+    const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
     const sigProofResult = await sigProof(
-      seed,
-      "short",
-      0,
+      derivationSeed as DerivationSeed,
       data,
       libsodiumCrypto,
     );

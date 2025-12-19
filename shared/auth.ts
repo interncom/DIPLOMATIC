@@ -1,4 +1,4 @@
-import type { ICrypto } from "./types.ts";
+import type { ICrypto, DerivationSeed } from "./types.ts";
 import {
   sigProof,
   encodeSigProvenData,
@@ -9,9 +9,7 @@ import {
 // The sigproof demonstrates control of the pubKey.
 // Host ientifies users by their pubkeys.
 export async function timestampAuthProof(
-  seed: Uint8Array,
-  keyPath: string,
-  idx: number,
+  derivationSeed: DerivationSeed,
   ts: Date,
   crypto: ICrypto,
 ): Promise<EncodedSigProvenData> {
@@ -19,7 +17,7 @@ export async function timestampAuthProof(
   const encodedTs = new Uint8Array(8);
   new DataView(encodedTs.buffer).setBigUint64(0, BigInt(timestampMs), false);
   const spdata = {
-    ...(await sigProof(seed, keyPath, idx, encodedTs, crypto)),
+    ...(await sigProof(derivationSeed, encodedTs, crypto)),
     data: encodedTs,
   };
   const encoded = await encodeSigProvenData(spdata, crypto);

@@ -44,7 +44,8 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const client = new DiplomaticClientAPI(libsodiumCrypto);
+  const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
+  const client = new DiplomaticClientAPI(seed, libsodiumCrypto);
 
   await t.step("GET /id", async () => {
     const id = await client.getHostID(url);
@@ -57,7 +58,7 @@ Deno.test("server", async (t) => {
   const now = new Date();
 
   await t.step("POST /users", async () => {
-    await client.register(url, seed, hostID, hostIdx, now);
+    await client.register(url, hostID, hostIdx, now);
   });
 
   // Test PUSH
@@ -67,7 +68,7 @@ Deno.test("server", async (t) => {
   const ops = [op1, op2];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = await client.push(url, ops, seed, hostID, hostIdx, now);
+    result = await client.push(url, ops, hostID, hostIdx, now);
     assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
     for (const res of result) {
       assertEquals(res.status, 0);
@@ -80,7 +81,6 @@ Deno.test("server", async (t) => {
     const pulledEnvelopes = await client.pull(
       url,
       hashes,
-      seed,
       hostID,
       hostIdx,
       now,
@@ -115,7 +115,7 @@ Deno.test("server", async (t) => {
   });
 
   await t.step("POST /peek", async () => {
-    const peekedHeaders = await client.peek(url, 0, seed, hostID, hostIdx, now);
+    const peekedHeaders = await client.peek(url, 0, hostID, hostIdx, now);
     assertEquals(peekedHeaders.length, 2);
     // Optionally, verify the headers match the pushed ops' hashes
     for (let i = 0; i < peekedHeaders.length; i++) {

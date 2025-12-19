@@ -1,4 +1,4 @@
-import type { ICrypto, KeyPair } from "../types.ts";
+import type { ICrypto, KeyPair, DerivationSeed } from "../types.ts";
 import { blake3 } from "@noble/hashes/blake3.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -85,6 +85,15 @@ export class LibsodiumCrypto implements ICrypto {
     const keyPairDerivationSeed = await this.blake3(concatenated);
     const keyPair = this.sodium.crypto_sign_seed_keypair(
       keyPairDerivationSeed,
+    ) as KeyPair;
+    return keyPair;
+  }
+
+  async deriveEd25519KeyPairFromDerivationSeed(
+    derivationSeed: DerivationSeed,
+  ): Promise<KeyPair> {
+    const keyPair = this.sodium.crypto_sign_seed_keypair(
+      derivationSeed,
     ) as KeyPair;
     return keyPair;
   }

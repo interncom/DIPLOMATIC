@@ -8,7 +8,7 @@
 
 // === Envelope Section [104 bytes] ===
 // SIG - Ed25519 signature of MSGHASH, using keypair implied by pubkey client authenticates to host with [64 bytes]
-// MSGHASH - SHA256 hash of MSGLEN ++ MSGKEYPATH ++ CIPHERHEAD [32 bytes]
+// MSGHASH - Blake3 hash of MSGLEN ++ MSGKEYPATH ++ CIPHERHEAD [32 bytes]
 // MSGLEN - Byte length of KEYPATH + CIPHERHEAD + CIPHERTEXT [8 bytes]
 
 // The signed hash and sigproof allow an envelope to be trusted by the client
@@ -16,7 +16,7 @@
 // itself contains its own bona fides.
 
 // === Message Section [44 + LEN bytes + 16 bytes encryption overhead] ===
-// MSGKEYPATH - Derivation path for encryption key (truncated SHA256 hash of EID ++ CLK ++ CTR ++ LEN) [8 bytes]
+// MSGKEYPATH - Derivation path for encryption key (truncated Blake3 hash of EID ++ CLK ++ CTR ++ LEN) [8 bytes]
 // == Encrypted Section ==
 // EID - Entity ID [16 bytes]
 // CLK - Wall clock [8 bytes]
@@ -33,7 +33,6 @@
 
 import type { ICrypto, KeyPair } from "./types.ts";
 import { EncryptedMessage, EncodedMessage } from "./message.ts";
-import type { ISigProof } from "./sigProof.ts";
 import { sigBytes, hashBytes, lenBytes, pubKeyBytes } from "./consts.ts";
 
 // Offsets for encoding/decoding

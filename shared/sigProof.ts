@@ -23,8 +23,7 @@ export async function sigProof(
   data: Uint8Array,
   crypto: ICrypto,
 ): Promise<ISigProof> {
-  const keyPair =
-    await crypto.deriveEd25519KeyPairFromDerivationSeed(derivationSeed);
+  const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
   const sig = await crypto.signEd25519(data, keyPair.privateKey);
   return {
     pubKey: keyPair.publicKey,

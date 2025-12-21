@@ -117,10 +117,10 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
 
   await t.step("derivationKeyMaterial", async () => {
     const header = createFilledArray(24, 0x88);
-    const dkm = await derivationKeyMaterial(header, crypto);
-    assertEquals(dkm.length, 8);
+    const kdm = await derivationKeyMaterial(header, crypto);
+    assertEquals(kdm.length, 8);
     // Since it's a hash, we can't predict the exact value, but we can check it's not the input
-    assertEquals(dkm.length, keyPathBytes);
+    assertEquals(kdm.length, keyPathBytes);
   });
 
   await t.step("decodeOp with insufficient data", async () => {

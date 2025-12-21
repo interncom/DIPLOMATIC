@@ -64,34 +64,7 @@ export class LibsodiumCrypto implements ICrypto {
     return dec;
   }
 
-  async deriveEd25519KeyPair(
-    seed: Uint8Array,
-    hostID: string,
-    derivationIndex = 0,
-  ): Promise<KeyPair> {
-    const hostIDBytes = new TextEncoder().encode(hostID);
-    const indexBytes = new Uint8Array(8);
-    new DataView(indexBytes.buffer).setBigUint64(
-      0,
-      BigInt(derivationIndex),
-      false,
-    );
-    const concatenated = new Uint8Array(
-      seed.length + hostIDBytes.length + indexBytes.length,
-    );
-    concatenated.set(seed, 0);
-    concatenated.set(hostIDBytes, seed.length);
-    concatenated.set(indexBytes, seed.length + hostIDBytes.length);
-    const keyPairDerivationSeed = await this.blake3(concatenated);
-    const keyPair = this.sodium.crypto_sign_seed_keypair(
-      keyPairDerivationSeed,
-    ) as KeyPair;
-    return keyPair;
-  }
-
-  async deriveEd25519KeyPairFromDerivationSeed(
-    derivationSeed: DerivationSeed,
-  ): Promise<KeyPair> {
+  async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
     const keyPair = this.sodium.crypto_sign_seed_keypair(
       derivationSeed,
     ) as KeyPair;

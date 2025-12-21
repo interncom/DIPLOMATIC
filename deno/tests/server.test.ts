@@ -8,23 +8,23 @@ import { IWebsocketNotifier } from "../../shared/types.ts";
 import { genInsert, decodeOp, concat } from "../../shared/message.ts";
 import { decodeEnvelope, type IEnvelope } from "../../shared/envelope.ts";
 import { uint8ArraysEqual } from "../../shared/lib.ts";
+import { Enclave } from "../../shared/enclave.ts";
+import { MasterSeed } from "../../shared/types.ts";
 
 // Server config.
 const port = 3331;
 const hostID = "id123456";
 
 // Client config.
-const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
+const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
+const enclave = new Enclave(seed, libsodiumCrypto);
 
 // Derivation index for host key pair.
 // Increments as part of host keypair rotation.
 const hostIdx = 0;
 
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
-  seed,
-  hostID,
-  hostIdx,
-);
+const hostKDM = await enclave.derive(hostID, hostIdx);
+const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(hostKDM);
 
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
@@ -45,7 +45,7 @@ Deno.test("server", async (t) => {
   const url = new URL(`http://localhost:${port}`);
 
   const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-  const client = new DiplomaticClientAPI(seed, libsodiumCrypto);
+  const client = new DiplomaticClientAPI(enclave, libsodiumCrypto);
 
   await t.step("GET /id", async () => {
     const id = await client.getHostID(url);
@@ -91,9 +91,9 @@ Deno.test("server", async (t) => {
     for (let i = 0; i < pulledEnvelopes.length; i++) {
       const env = pulledEnvelopes[i];
       assertEquals(uint8ArraysEqual(env.hsh, hashes[i]), true);
-      const dkm = env.msg.slice(0, 8);
+      const kdm = env.msg.slice(0, 8);
       const cipherOp = env.msg.slice(8);
-      const encKey = await libsodiumCrypto.blake3(concat(seed, dkm));
+      const encKey = await enclave.deriveFromKDM(kdm);
       const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
         cipherOp,
         encKey,

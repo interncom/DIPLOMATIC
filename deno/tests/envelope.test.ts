@@ -50,15 +50,15 @@ Deno.test("envelope", async (t) => {
       privateKey: new Uint8Array(64).fill(0x22),
       publicKey: new Uint8Array(32).fill(0x33),
     };
-    const dkm = new Uint8Array(8).fill(0x44);
-    const result = await makeEnvelope(keyPair, cipherOp, dkm, crypto);
-    // Expected msg is dkm prepended to cipherOp
-    const expectedMsg = new Uint8Array([...dkm, ...cipherOp]);
+    const kdm = new Uint8Array(8).fill(0x44);
+    const result = await makeEnvelope(keyPair, cipherOp, kdm, crypto);
+    // Expected msg is kdm prepended to cipherOp
+    const expectedMsg = new Uint8Array([...kdm, ...cipherOp]);
     // Compute expected values
-    const len = dkm.length + cipherOp.length;
+    const len = kdm.length + cipherOp.length;
     const hashSrc = new Uint8Array(len);
-    hashSrc.set(dkm, 0);
-    hashSrc.set(cipherOp, dkm.length);
+    hashSrc.set(kdm, 0);
+    hashSrc.set(cipherOp, kdm.length);
     const expectedHash = await crypto.blake3(hashSrc);
     const expectedSig = await crypto.signEd25519(
       expectedHash,

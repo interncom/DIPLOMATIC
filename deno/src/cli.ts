@@ -1,4 +1,4 @@
-import DiplomaticClientAPI from "../../shared/client2.ts";
+import DiplomaticClientAPI from "../../shared/client.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
 import { htob } from "../../shared/lib.ts";
@@ -6,6 +6,7 @@ import type { KeyPair } from "../../shared/types.ts";
 import type { IMessage } from "../../shared/message.ts";
 import { decodeOp, concat } from "../../shared/message.ts";
 import type { IEnvelopeHeader } from "../../shared/envelope.ts";
+import { Enclave } from "../../shared/enclave.ts";
 
 export interface IMessageDecoded {
   eid: Uint8Array;
@@ -38,7 +39,7 @@ export async function initCLI() {
 
 export class DiplomaticClientCLI {
   api: DiplomaticClientAPI;
-  seed: Uint8Array;
+  enclave: Enclave;
   encKey: Uint8Array;
   hostURL: URL;
   hostID?: string;
@@ -50,7 +51,7 @@ export class DiplomaticClientCLI {
     hostURL: URL,
   ) {
     this.api = api;
-    this.seed = seed;
+    this.enclave = new Enclave(seed as MasterSeed, libsodiumCrypto);
     this.encKey = encKey;
     this.hostURL = hostURL;
   }
@@ -59,12 +60,9 @@ export class DiplomaticClientCLI {
     const hostID = await this.api.getHostID(this.hostURL);
     this.hostID = hostID;
     const now = new Date();
-    await this.api.register(this.hostURL, this.seed, hostID, 0, now);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
-      this.seed,
-      hostID,
-      0,
-    );
+    await this.api.register(this.hostURL, hostID, 0, now);
+    const derivationSeed = await this.enclave.derive(hostID, idx);
+    this.hostKeyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async push(msg: IMessage, idx: number = 0) {
@@ -105,7 +103,7 @@ export class DiplomaticClientCLI {
     );
     const messages: IMessageDecoded[] = [];
     for (const env of envelopes) {
-      const encKey = await libsodiumCrypto.blake3(concat(this.seed, env.dkm));
+      const encKey = await libsodiumCrypto.blake3(concat(this.seed, env.kdm));
       const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
         env.cipher,
         encKey,

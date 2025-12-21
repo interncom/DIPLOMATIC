@@ -52,7 +52,7 @@ export interface IEnvelope extends IEnvelopeHeader {
   msg: EncryptedMessage;
 }
 
-type EncodedEnvelope = Uint8Array;
+export type EncodedEnvelope = Uint8Array;
 
 const fixedBytes = msgOffset;
 
@@ -79,12 +79,12 @@ export async function encodeEnvelope(op: IEnvelope): Promise<EncodedMessage> {
 export async function makeEnvelope(
   keyPair: KeyPair, // Based on hostIdx (for rotation)
   cipherOp: EncryptedMessage,
-  dkm: Uint8Array,
+  kdm: Uint8Array,
   crypto: ICrypto,
 ): Promise<IEnvelope> {
-  const msg = new Uint8Array(dkm.length + cipherOp.length);
-  msg.set(dkm, 0);
-  msg.set(cipherOp, dkm.length);
+  const msg = new Uint8Array(kdm.length + cipherOp.length);
+  msg.set(kdm, 0);
+  msg.set(cipherOp, kdm.length);
 
   const len = msg.length;
   const hash = await crypto.blake3(msg);

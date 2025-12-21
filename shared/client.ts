@@ -4,7 +4,6 @@ import type {
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
-  MasterSeed,
   DerivationSeed,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
@@ -37,20 +36,14 @@ export default class DiplomaticClientAPI {
   crypto: ICrypto;
   enclave: Enclave;
 
-  constructor(seed: Uint8Array, crypto: ICrypto) {
+  constructor(enclave: Enclave, crypto: ICrypto) {
     this.crypto = crypto;
-    this.enclave = new Enclave(seed as MasterSeed, crypto);
+    this.enclave = enclave;
   }
 
-  private async getDerivationSeed(
-    keyPath: string,
-    idx: number,
-  ): Promise<DerivationSeed> {
-    const hostIDBytes = new TextEncoder().encode(keyPath);
-    const indexBytes = new Uint8Array(8);
-    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(idx), false);
-    const kdm = concat(hostIDBytes, indexBytes);
-    return await this.enclave.derive(kdm);
+  async getKeyPair(keyPath: string, idx: number): Promise<KeyPair> {
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
+    return await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async getHostID(hostURL: URL): Promise<string> {
@@ -74,7 +67,7 @@ export default class DiplomaticClientAPI {
     // Server can reject for timestamp too far from its clock.
     // In that case, signal to user that clock is out of sync.
     // Clocks must be synchronized to ensure correct op order.
-    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const url = new URL(hostURL);
@@ -100,9 +93,8 @@ export default class DiplomaticClientAPI {
     const url = new URL(hostURL);
     url.pathname = "/ops";
 
-    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
-    const keyPair =
-      await this.crypto.deriveEd25519KeyPairFromDerivationSeed(derivationSeed);
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
 
     // Form the authentication prefix (sigproof of timestamp).
     // Server can reject for timestamp too far from its clock.
@@ -123,8 +115,8 @@ export default class DiplomaticClientAPI {
           const [encMsg, msgHead] = await encodeOp(op);
 
           // Derive encryption key.
-          const dkm = await derivationKeyMaterial(msgHead, this.crypto);
-          const encKey = await this.enclave.derive(dkm);
+          const kdm = await derivationKeyMaterial(msgHead, this.crypto);
+          const encKey = await this.enclave.deriveFromKDM(kdm);
 
           // Encrypt message.
           const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(
@@ -133,7 +125,7 @@ export default class DiplomaticClientAPI {
           );
 
           // Wrap in envelope.
-          const env = await makeEnvelope(keyPair, ciphertxt, dkm, this.crypto);
+          const env = await makeEnvelope(keyPair, ciphertxt, kdm, this.crypto);
           const encEnv = await encodeEnvelope(env);
 
           // Upload.
@@ -172,7 +164,7 @@ export default class DiplomaticClientAPI {
     const url = new URL(hostURL);
     url.pathname = "/pull";
 
-    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const stream = new ReadableStream({
@@ -226,7 +218,7 @@ export default class DiplomaticClientAPI {
     url.pathname = "/peek";
     url.searchParams.set("from", fromMillis.toString());
 
-    const derivationSeed = await this.getDerivationSeed(keyPath, idx);
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
     const response = await fetch(url, {

@@ -30,22 +30,7 @@ const mockCrypto: ICrypto = {
       .digest("SHA-256", data.slice())
       .then((hash) => new Uint8Array(hash)),
 
-  deriveEd25519KeyPair: async (
-    seed,
-    hostID,
-    derivationIndex,
-  ): Promise<KeyPair> => {
-    // Return fixed keys for testing, ignoring seed/hostID/idx
-    return {
-      keyType: "private",
-      privateKey: privateKeyRaw.slice(),
-      publicKey: publicKeyRaw.slice(),
-    };
-  },
-
-  deriveEd25519KeyPairFromDerivationSeed: async (
-    derivationSeed,
-  ): Promise<KeyPair> => {
+  deriveEd25519KeyPair: async (derivationSeed): Promise<KeyPair> => {
     // Return fixed keys for testing
     return {
       keyType: "private",

@@ -110,14 +110,7 @@ export interface ICrypto extends IHostCrypto {
     headerAndCipher: Uint8Array,
     key: Uint8Array,
   ) => Promise<Uint8Array>;
-  deriveEd25519KeyPair: (
-    seed: Uint8Array,
-    hostID: string,
-    derivationIndex: number,
-  ) => Promise<KeyPair>;
-  deriveEd25519KeyPairFromDerivationSeed: (
-    derivationSeed: DerivationSeed,
-  ) => Promise<KeyPair>;
+  deriveEd25519KeyPair: (derivationSeed: DerivationSeed) => Promise<KeyPair>;
   signEd25519: (
     message: Uint8Array | string,
     secKey: Uint8Array,

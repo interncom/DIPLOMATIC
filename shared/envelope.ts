@@ -6,23 +6,35 @@
 // IDX - host keypair derivation index (0 until rotated) [8 bytes]
 // PUBKEY - host keypair pubkey [32 bytes] (removed, implicit from tsAuth)
 
-// === Envelope Section [104 bytes] ===
-// SIG - Ed25519 signature of MSGHASH, using keypair implied by pubkey client authenticates to host with [64 bytes]
-// MSGHASH - Blake3 hash of MSGLEN ++ MSGKEYPATH ++ CIPHERHEAD [32 bytes]
-// MSGLEN - Byte length of KEYPATH + CIPHERHEAD + CIPHERTEXT [8 bytes]
+// === Envelope Section [64 bytes] ===
+// SIG - Ed25519 signature of KDM ++ MSGHEAD, using keypair implied by pubkey client authenticates to host with [64 bytes]
 
 // The signed hash and sigproof allow an envelope to be trusted by the client
 // regardless of whether it was transmitted over a trusted channel. The envelope
 // itself contains its own bona fides.
 
-// === Message Section [44 + LEN bytes + 16 bytes encryption overhead] ===
-// MSGKEYPATH - Derivation path for encryption key (truncated Blake3 hash of EID ++ CLK ++ CTR ++ LEN) [8 bytes]
-// == Encrypted Section ==
+// === Message [156bytes + LEN bytes] ===
+// KDM - Key derivation material for encryption key [8 bytes]
+// == MSGHEAD (Encrypted) [68 bytes + 24 bytes nonce + 16 bytes tag encryption overhead] ==
+// HSH - Blake3 hash of BOD [32 bytes]
 // EID - Entity ID [16 bytes]
 // CLK - Wall clock [8 bytes]
 // CTR - Counter (CLK ++ CTR form the Hybrid Logical Clock HLC) [4 bytes]
-// LEN - body size in bytes [8 bytes]
+// LEN - body size in bytes [varint 8 bytes]
+// == MSGBODY (Encrypted) [LEN bytes + 24 bytes nonce + 16 bytes tag encryption overhead]==
 // BOD - MSGPACK-encoded, application-specific representation of entity [LEN bytes]
+
+// Why not include BOD in the keypath hash?
+// Why put LEN in the encrypted header, rather than outside? It's implicit, if an observer can identify SIG as a divider.
+// Looks like no, but MSGLEN would be detectable, because it's a fixed 9 bytes so the high bits would generally be 0's for small messages.
+// Wait, why even have LEN? MSGLEN implies it.
+// When storing in the client, it will be a Blob with size attached.
+// When exporting, the message will be its own file, with size.
+// When relaying via hosts, will be wrapped in an envelope, with MSGLEN.
+// So LEN can just be eliminated.
+// Wait. Hashing BOD leaks info doesn't it? Yes.
+// Have to include a NONCE in the hash to prevent that.
+// Why not just make the MSGKEYPATH be random?
 
 // The plaintext header section is only for client/host communication.
 // It is host-specific (IDX and SIG).

@@ -14,8 +14,10 @@ const kdmBytes = 8;
 const eidBytes = 16;
 const clkBytes = 8;
 const ctrBytes = 4; // Actually a varint.
+const seqBytes = 4; // Varint that could go up to 8 but probably averages much less.
 const metaDataBytes = eidBytes + clkBytes + ctrBytes;
-const msgHeaderBytes = kdmBytes + metaDataBytes + lenBytes + hashBytes;
+const msgHeaderBytes =
+  kdmBytes + metaDataBytes + lenBytes + hashBytes + seqBytes;
 
 const chachaNonceBytes = 24;
 const poly1305TagBytes = 16;

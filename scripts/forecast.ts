@@ -83,6 +83,7 @@ for (const scn of scenarios) {
 console.table(
   rows.map((r) => {
     const NumRecords = 1024 * 1024;
+    // const NumRecords = 10 * 1024;
     return {
       Scenario: r.scenario,
       Design: r.design,
@@ -92,13 +93,17 @@ console.table(
       PullOverheadBytes: r.pullOverheadBytes,
       NumRecords,
       EditPercent: r.editPercent,
-      TotalDownloadBytes:
-        NumRecords *
-        (1 - r.editPercent) *
-        (metaDataBytes +
-          r.peekOverheadBytes +
-          r.pullOverheadBytes +
-          r.avgRecordBytes),
+      TotalPeekBytes: NumRecords * (metaDataBytes + r.peekOverheadBytes),
+      TotalDownloadBytes: Number(
+        (
+          NumRecords *
+          (1 - r.editPercent) *
+          (metaDataBytes +
+            r.peekOverheadBytes +
+            r.pullOverheadBytes +
+            r.avgRecordBytes)
+        ).toFixed(1),
+      ),
       FullArchiveBytes:
         NumRecords *
         (metaDataBytes +
@@ -116,6 +121,7 @@ console.table(
     "PullOverheadBytes",
     "NumRecords",
     "EditPercent",
+    "TotalPeekBytes",
     "TotalDownloadBytes",
     "FullArchiveBytes",
   ],

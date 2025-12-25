@@ -21,3 +21,10 @@ export function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) return false;
   return a.every((byte, i) => byte === b[i]);
 }
+
+export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const res = new Uint8Array(a.length + b.length);
+  res.set(a, 0);
+  res.set(b, a.length);
+  return res;
+}

@@ -1,6 +1,7 @@
 import type { ICrypto, KeyPair } from "./types.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
 import { Decoder, Encoder } from "./codec.ts";
+import { concat } from "./lib.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -119,11 +120,4 @@ export async function derivationKeyMaterial(
 ): Promise<Uint8Array> {
   const random = await crypto.gen128BitRandomID();
   return random.slice(0, kdmBytes);
-}
-
-export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const res = new Uint8Array(a.length + b.length);
-  res.set(a, 0);
-  res.set(b, a.length);
-  return res;
 }

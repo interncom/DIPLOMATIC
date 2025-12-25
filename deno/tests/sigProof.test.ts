@@ -8,7 +8,7 @@ import {
   type ISigProvenData,
 } from "../../shared/sigProof.ts";
 import { uint8ArraysEqual, btoh } from "../../shared/lib.ts";
-import { concat } from "../../shared/message.ts";
+import { concat } from "../../shared/lib.ts";
 import type { DerivationSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 

@@ -36,8 +36,8 @@ import {
   decodeOp,
   type IMessage,
   derivationKeyMaterial,
-  concat,
 } from "./message.ts";
+import { concat } from "./lib.ts";
 
 import { decode_varint } from "./varint.ts";
 

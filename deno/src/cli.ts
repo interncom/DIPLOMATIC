@@ -1,10 +1,10 @@
 import DiplomaticClientAPI from "../../shared/client.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
-import { htob } from "../../shared/lib.ts";
+import { htob, concat } from "../../shared/lib.ts";
 import type { KeyPair } from "../../shared/types.ts";
 import type { IMessage } from "../../shared/message.ts";
-import { decodeOp, concat } from "../../shared/message.ts";
+import { decodeOp } from "../../shared/message.ts";
 import type { IEnvelopeHeader } from "../../shared/envelope.ts";
 import { Enclave } from "../../shared/enclave.ts";
 

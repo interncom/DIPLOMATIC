@@ -2,7 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@0.223.0";
 import { timestampAuthProof } from "../../shared/auth.ts";
 import { decodeSigProvenData } from "../../shared/sigProof.ts";
 import type { ICrypto, KeyPair, DerivationSeed } from "../../shared/types.ts";
-import { concat } from "../../shared/message.ts";
+import { concat } from "../../shared/lib.ts";
 
 // Mock ICrypto using a fixed Ed25519 key pair for testing
 // Using test vectors from RFC 8032 for determinism

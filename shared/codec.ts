@@ -73,6 +73,13 @@ export class Encoder {
   }
 
   result(): Uint8Array {
-    return this.parts.reduce((acc, arr) => concat(acc, arr), new Uint8Array(0));
+    const totalLength = this.parts.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const part of this.parts) {
+      result.set(part, offset);
+      offset += part.length;
+    }
+    return result;
   }
 }

@@ -36,7 +36,7 @@ Deno.test("envelope", async (t) => {
   await t.step("makeEnvelope", async () => {
     const cipherhead = new Uint8Array([1, 2, 3]);
     const cipherbody = new Uint8Array([4, 5, 6]);
-    const dkm = new Uint8Array(8).fill(0x44);
+    const kdm = new Uint8Array(8).fill(0x44);
     const keyPair = {
       keyType: "private" as const,
       privateKey: new Uint8Array(64).fill(0x22),
@@ -46,7 +46,7 @@ Deno.test("envelope", async (t) => {
       keyPair,
       cipherhead,
       cipherbody,
-      dkm,
+      kdm,
       crypto,
     );
     // Compute expected sig: sign(cipherhead, privateKey)
@@ -55,7 +55,7 @@ Deno.test("envelope", async (t) => {
       keyPair.privateKey,
     );
     assertEquals(result.sig, expectedSig);
-    assertEquals(result.dkm, dkm);
+    assertEquals(result.kdm, kdm);
     assertEquals(result.lenCipherHead, cipherhead.length);
     assertEquals(result.lenCipherBody, cipherbody.length);
     assertEquals(result.cipherhead, cipherhead);
@@ -65,19 +65,19 @@ Deno.test("envelope", async (t) => {
   await t.step("encodeEnvelope", async () => {
     const op: IEnvelope = {
       sig: new Uint8Array(64).fill(0x77),
-      dkm: new Uint8Array(8).fill(0x88),
+      kdm: new Uint8Array(8).fill(0x88),
       lenCipherHead: 3,
       lenCipherBody: 2,
       cipherhead: new Uint8Array([10, 11, 12]),
       cipherbody: new Uint8Array([13, 14]),
     };
     const encoded = encodeEnvelope(op);
-    const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + dkm + varint(3) + varint(2) + cipherhead + cipherbody
+    const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + kdm + varint(3) + varint(2) + cipherhead + cipherbody
     assertEquals(encoded.length, expectedLen);
     // Check sig
     assertEquals(encoded.slice(0, 64), op.sig);
-    // Check dkm
-    assertEquals(encoded.slice(64, 72), op.dkm);
+    // Check kdm
+    assertEquals(encoded.slice(64, 72), op.kdm);
     // Check lenCipherHead varint
     assertEquals(encoded[72], 3); // varint for 3
     // Check lenCipherBody varint
@@ -91,7 +91,7 @@ Deno.test("envelope", async (t) => {
   await t.step("decodeEnvelope", async () => {
     const op: IEnvelope = {
       sig: new Uint8Array(64).fill(0x77),
-      dkm: new Uint8Array(8).fill(0x88),
+      kdm: new Uint8Array(8).fill(0x88),
       lenCipherHead: 3,
       lenCipherBody: 2,
       cipherhead: new Uint8Array([10, 11, 12]),
@@ -101,7 +101,7 @@ Deno.test("envelope", async (t) => {
     const result = decodeEnvelope(encoded);
     const decoded = result.envelope;
     assertEquals(decoded.sig, op.sig);
-    assertEquals(decoded.dkm, op.dkm);
+    assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.lenCipherHead, op.lenCipherHead);
     assertEquals(decoded.lenCipherBody, op.lenCipherBody);
     assertEquals(decoded.cipherhead, op.cipherhead);
@@ -112,7 +112,7 @@ Deno.test("envelope", async (t) => {
   await t.step("decodeEnvelopeHeader", async () => {
     const op: IEnvelope = {
       sig: new Uint8Array(64).fill(0xcd),
-      dkm: new Uint8Array(8).fill(0x99),
+      kdm: new Uint8Array(8).fill(0x99),
       lenCipherHead: 5,
       lenCipherBody: 2,
       cipherhead: new Uint8Array([1, 2, 3, 4, 5]),
@@ -122,7 +122,7 @@ Deno.test("envelope", async (t) => {
     const encodedHeader = encoded.slice(0, 74); // 64+8+1+1
     const decodedHeader = decodeEnvelopeHeader(encodedHeader);
     assertEquals(decodedHeader.sig, op.sig);
-    assertEquals(decodedHeader.dkm, op.dkm);
+    assertEquals(decodedHeader.kdm, op.kdm);
     assertEquals(decodedHeader.lenCipherHead, op.lenCipherHead);
     assertEquals(decodedHeader.lenCipherBody, op.lenCipherBody);
   });

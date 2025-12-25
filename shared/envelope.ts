@@ -1,6 +1,6 @@
 // Envelope is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
 
-// The envelope includes a fixed-size header: signature (64), dkm (32), totaling 96 bytes.
+// The envelope includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 // The ciphertext follows without an embedded length field, as its length is part of the encrypted message header.
 
 import type { ICrypto, KeyPair } from "./types.ts";
@@ -10,14 +10,14 @@ import {
   hashBytes,
   lenBytes,
   pubKeyBytes,
-  dkmBytes,
+  kdmBytes,
 } from "./consts.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
 export interface IEnvelopeHeader {
   sig: Uint8Array;
-  dkm: Uint8Array;
+  kdm: Uint8Array;
   lenCipherHead: number;
   lenCipherBody: number;
 }
@@ -32,7 +32,7 @@ export type EncodedEnvelope = Uint8Array;
 export function encodeEnvelope(env: IEnvelope): Uint8Array {
   const encoder = new Encoder();
   encoder.writeBytes(env.sig);
-  encoder.writeBytes(env.dkm);
+  encoder.writeBytes(env.kdm);
   encoder.writeVarInt(env.lenCipherHead);
   encoder.writeVarInt(env.lenCipherBody);
   encoder.writeBytes(env.cipherhead);
@@ -44,13 +44,13 @@ export async function makeEnvelope(
   keyPair: KeyPair,
   cipherhead: Uint8Array,
   cipherbody: Uint8Array,
-  dkm: Uint8Array,
+  kdm: Uint8Array,
   crypto: ICrypto,
 ): Promise<IEnvelope> {
   const sig = await crypto.signEd25519(cipherhead, keyPair.privateKey);
   return {
     sig,
-    dkm,
+    kdm,
     lenCipherHead: cipherhead.length,
     lenCipherBody: cipherbody.length,
     cipherhead,
@@ -61,10 +61,10 @@ export async function makeEnvelope(
 export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
   const decoder = new Decoder(encoded);
   const sig = decoder.readBytes(sigBytes);
-  const dkm = decoder.readBytes(dkmBytes);
+  const kdm = decoder.readBytes(kdmBytes);
   const lenCipherHead = decoder.readVarInt();
   const lenCipherBody = decoder.readVarInt();
-  return { sig, dkm, lenCipherHead, lenCipherBody };
+  return { sig, kdm, lenCipherHead, lenCipherBody };
 }
 
 export function decodeEnvelope(encoded: Uint8Array): {
@@ -73,7 +73,7 @@ export function decodeEnvelope(encoded: Uint8Array): {
 } {
   const decoder = new Decoder(encoded);
   const sig = decoder.readBytes(sigBytes);
-  const dkm = decoder.readBytes(dkmBytes);
+  const kdm = decoder.readBytes(kdmBytes);
   const lenCipherHead = decoder.readVarInt();
   const lenCipherBody = decoder.readVarInt();
   const cipherhead = decoder.readBytes(lenCipherHead);
@@ -81,7 +81,7 @@ export function decodeEnvelope(encoded: Uint8Array): {
   return {
     envelope: {
       sig,
-      dkm,
+      kdm,
       lenCipherHead,
       lenCipherBody,
       cipherhead,

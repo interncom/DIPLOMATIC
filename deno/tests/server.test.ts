@@ -91,7 +91,7 @@ Deno.test("server", async (t) => {
     // Verify envelope structure (integration test, skip decryption)
     for (const env of pulledEnvelopes) {
       assertEquals(env.sig.length, 64);
-      assertEquals(env.dkm.length, 8);
+      assertEquals(env.kdm.length, 8);
       assert(env.lenCipherHead > 0);
       assertEquals(env.cipherhead.length, env.lenCipherHead);
       assert(env.cipherbody.length >= 0);

@@ -179,14 +179,14 @@ export class DiplomaticServer {
         const encoder = new Encoder();
         while (!decoder.done()) {
           const sig = decoder.readBytes(64);
-          const dkm = decoder.readBytes(8);
+          const kdm = decoder.readBytes(8);
           const lenCipherHead = decoder.readVarInt();
           const lenCipherBody = decoder.readVarInt();
           const cipherhead = decoder.readBytes(lenCipherHead);
           const cipherbody = decoder.readBytes(lenCipherBody);
           const env: IEnvelope = {
             sig,
-            dkm,
+            kdm,
             lenCipherHead,
             lenCipherBody,
             cipherhead,
@@ -246,7 +246,7 @@ export class DiplomaticServer {
             encoder.writeBytes(envelope);
           }
         }
-        return new Response(new Uint8Array(encoder.result()), {
+        return new Response(encoder.result(), {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
         });
@@ -295,7 +295,7 @@ export class DiplomaticServer {
           encoder.writeBytes(item.sha256);
           encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
         }
-        return new Response(new Uint8Array(encoder.result()), {
+        return new Response(encoder.result(), {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
         });

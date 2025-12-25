@@ -168,9 +168,6 @@ export class DiplomaticServer {
     const now = new Date();
     try {
       const pubKeyHex = btoh(pubKey);
-      if (!(await this.storage.hasUser(pubKeyHex))) {
-        return respFor(Status.UserNotRegistered);
-      }
       const encoder = new Encoder();
       while (!decoder.done()) {
         const env = decodeEnvelope(decoder);
@@ -208,10 +205,6 @@ export class DiplomaticServer {
   ): Promise<Response> => {
     try {
       const pubKeyHex = btoh(pubKey);
-      if (!(await this.storage.hasUser(pubKeyHex))) {
-        return respFor(Status.UserNotRegistered);
-      }
-
       const encoder = new Encoder();
       while (!decoder.done()) {
         const hash = decoder.readBytes(hashSize);
@@ -240,9 +233,6 @@ export class DiplomaticServer {
     }
     try {
       const pubKeyHex = btoh(pubKey);
-      if (!(await this.storage.hasUser(pubKeyHex))) {
-        return respFor(Status.UserNotRegistered);
-      }
       // Get 'from' param
       const fromParam = url.searchParams.get("from");
       if (!fromParam) {
@@ -276,7 +266,7 @@ export class DiplomaticServer {
       return this.handleHost(request);
     }
 
-    // Authenticated handlers.
+    // Timestamp authentication required beyond this point.
     const body = request.body;
     if (!body) {
       return respFor(Status.MissingBody);
@@ -292,6 +282,18 @@ export class DiplomaticServer {
     if (request.method === "POST" && url.pathname === "/users") {
       return this.handleUser(pubKey, decoder);
     }
+
+    // Registered user required beyond this point.
+    try {
+      const pubKeyHex = btoh(pubKey);
+      const userRegistered = await this.storage.hasUser(pubKeyHex);
+      if (!userRegistered) {
+        return respFor(Status.UserNotRegistered);
+      }
+    } catch {
+      return respFor(Status.InternalError);
+    }
+
     if (request.method === "POST" && url.pathname === "/ops") {
       return this.handlePush(pubKey, decoder);
     }

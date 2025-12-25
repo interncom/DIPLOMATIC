@@ -178,20 +178,7 @@ export class DiplomaticServer {
 
         const encoder = new Encoder();
         while (!decoder.done()) {
-          const sig = decoder.readBytes(64);
-          const kdm = decoder.readBytes(8);
-          const lenCipherHead = decoder.readVarInt();
-          const lenCipherBody = decoder.readVarInt();
-          const cipherhead = decoder.readBytes(lenCipherHead);
-          const cipherbody = decoder.readBytes(lenCipherBody);
-          const env: IEnvelope = {
-            sig,
-            kdm,
-            lenCipherHead,
-            lenCipherBody,
-            cipherhead,
-            cipherbody,
-          };
+          const env = decodeEnvelope(decoder);
           const status = await this.processEnvelope(
             env,
             pubKeyHex,
@@ -200,7 +187,9 @@ export class DiplomaticServer {
           );
           encoder.writeBytes(new Uint8Array([status]));
           encoder.writeBytes(
-            await this.crypto.sha256Hash(concat(cipherhead, cipherbody)),
+            await this.crypto.sha256Hash(
+              concat(env.cipherhead, env.cipherbody),
+            ),
           );
         }
         return new Response(new Uint8Array(encoder.result()), {
@@ -246,7 +235,7 @@ export class DiplomaticServer {
             encoder.writeBytes(envelope);
           }
         }
-        return new Response(encoder.result(), {
+        return new Response(encoder.result().slice(), {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
         });
@@ -295,7 +284,7 @@ export class DiplomaticServer {
           encoder.writeBytes(item.sha256);
           encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
         }
-        return new Response(encoder.result(), {
+        return new Response(encoder.result().slice(), {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
         });

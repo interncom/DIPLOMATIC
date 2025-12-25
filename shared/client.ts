@@ -194,9 +194,10 @@ export default class DiplomaticClientAPI {
     const envelopes: IEnvelope[] = [];
     let offset = 0;
     while (offset < data.length) {
-      const result = decodeEnvelope(data.slice(offset));
-      envelopes.push(result.envelope);
-      offset += result.consumed;
+      const decoder = new Decoder(data.slice(offset));
+      const envelope = decodeEnvelope(decoder);
+      envelopes.push(envelope);
+      offset += decoder.consumed();
     }
     return envelopes;
   }

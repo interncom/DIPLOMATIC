@@ -8,6 +8,7 @@ import {
   decodeEnvelopeHeader,
 } from "../../shared/envelope.ts";
 import libsodiumCrypto from "../src/crypto.ts";
+import { Decoder } from "../../shared/codec.ts";
 
 const sigBytes = 64;
 
@@ -98,15 +99,15 @@ Deno.test("envelope", async (t) => {
       cipherbody: new Uint8Array([13, 14]),
     };
     const encoded = encodeEnvelope(op);
-    const result = decodeEnvelope(encoded);
-    const decoded = result.envelope;
+    const decoder = new Decoder(encoded);
+    const decoded = decodeEnvelope(decoder);
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.lenCipherHead, op.lenCipherHead);
     assertEquals(decoded.lenCipherBody, op.lenCipherBody);
     assertEquals(decoded.cipherhead, op.cipherhead);
     assertEquals(decoded.cipherbody, op.cipherbody);
-    assertEquals(result.consumed, encoded.length);
+    assertEquals(decoder.done(), true);
   });
 
   await t.step("decodeEnvelopeHeader", async () => {
@@ -130,7 +131,8 @@ Deno.test("envelope", async (t) => {
   await t.step("decodeEnvelope error on short input", async () => {
     const short = new Uint8Array(70); // less than minimum
     try {
-      decodeEnvelope(short);
+      const decoder = new Decoder(short);
+      decodeEnvelope(decoder);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail on incomplete

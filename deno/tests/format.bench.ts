@@ -1,21 +1,22 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-
 import {
   encodeEnvelope,
   makeEnvelope,
   decodeEnvelope,
   type IEnvelope,
   type EncodedEnvelope,
-} from "../../web/src/shared/envelope.ts";
+} from "../../shared/envelope.ts";
+import { Encoder, Decoder } from "../../shared/codec.ts";
 import {
   kdmBytes,
   encodeOp,
   decodeOp,
   derivationKeyMaterial,
   type IMessage,
-} from "../../web/src/shared/message.ts";
+} from "../../shared/message.ts";
+import { concat } from "../../shared/lib.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import type { MasterSeed } from "../../web/src/shared/types.ts";
+import type { MasterSeed } from "../../shared/types.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
 // Setup crypto and keypair
@@ -37,14 +38,21 @@ const op: IMessage = {
 };
 
 async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
-  const [encMsg, msgHead] = await encodeOp(op);
+  const [encMsg, msgHead] = await encodeOp(op, crypto);
   const kdm = await derivationKeyMaterial(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
-  const ciphertxt = await crypto.encryptXSalsa20Poly1305Combined(
-    encMsg,
+  const cipherhead = await crypto.encryptXSalsa20Poly1305Combined(
+    msgHead,
     encKey,
   );
-  const env = await makeEnvelope(keyPair, ciphertxt, kdm, crypto);
+  if (!op.bod) {
+    throw new Error("ahhh!");
+  }
+  const cipherbody = await crypto.encryptXSalsa20Poly1305Combined(
+    op.bod,
+    encKey,
+  );
+  const env = await makeEnvelope(keyPair, cipherhead, cipherbody, kdm, crypto);
   return encodeEnvelope(env);
 }
 
@@ -55,14 +63,20 @@ Deno.bench("full encode op", async (b) => {
 const envelope = await fullyEncodeEnvelope(op);
 
 Deno.bench("full decode op", async (b) => {
-  const decodedEnv = await decodeEnvelope(envelope);
-  const kdm = decodedEnv.msg.slice(0, kdmBytes);
-  const cipherMsg = decodedEnv.msg.slice(kdmBytes);
+  const decoder = new Decoder(envelope);
+  const decodedEnv = decodeEnvelope(decoder);
+  const kdm = decodedEnv.kdm;
+  const cipherMsg = concat(decodedEnv.cipherhead, decodedEnv.cipherbody);
   const encKey = await enclave.deriveFromKDM(kdm);
-  const decryptedMsg = await crypto.decryptXSalsa20Poly1305Combined(
-    cipherMsg,
+  const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(
+    decodedEnv.cipherhead,
     encKey,
   );
+  const decryptedBody = await crypto.decryptXSalsa20Poly1305Combined(
+    decodedEnv.cipherbody,
+    encKey,
+  );
+  const decryptedMsg = concat(decryptedHead, decryptedBody);
   const msg = await decodeOp(decryptedMsg);
 
   // Verify the body

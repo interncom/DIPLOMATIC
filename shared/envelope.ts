@@ -67,11 +67,7 @@ export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
   return { sig, kdm, lenCipherHead, lenCipherBody };
 }
 
-export function decodeEnvelope(encoded: Uint8Array): {
-  envelope: IEnvelope;
-  consumed: number;
-} {
-  const decoder = new Decoder(encoded);
+export function decodeEnvelope(decoder: Decoder): IEnvelope {
   const sig = decoder.readBytes(sigBytes);
   const kdm = decoder.readBytes(kdmBytes);
   const lenCipherHead = decoder.readVarInt();
@@ -79,14 +75,11 @@ export function decodeEnvelope(encoded: Uint8Array): {
   const cipherhead = decoder.readBytes(lenCipherHead);
   const cipherbody = decoder.readBytes(lenCipherBody);
   return {
-    envelope: {
-      sig,
-      kdm,
-      lenCipherHead,
-      lenCipherBody,
-      cipherhead,
-      cipherbody,
-    },
-    consumed: decoder.consumed(),
+    sig,
+    kdm,
+    lenCipherHead,
+    lenCipherBody,
+    cipherhead,
+    cipherbody,
   };
 }

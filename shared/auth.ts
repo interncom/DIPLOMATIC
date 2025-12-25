@@ -4,6 +4,7 @@ import {
   encodeSigProvenData,
   type EncodedSigProvenData,
 } from "./sigProof.ts";
+import { Encoder } from "./codec.ts";
 
 // timestampAuthProof authenticates with a sigproven timestamp.
 // The sigproof demonstrates control of the pubKey.
@@ -17,8 +18,9 @@ export async function timestampAuthProof(
   crypto: ICrypto,
 ): Promise<EncodedSigProvenData> {
   const timestampMs = ts.getTime();
-  const encodedTs = new Uint8Array(8);
-  new DataView(encodedTs.buffer).setBigUint64(0, BigInt(timestampMs), false);
+  const encoder = new Encoder();
+  encoder.writeBigInt(BigInt(timestampMs));
+  const encodedTs = encoder.result();
   const spdata = {
     ...(await sigProof(derivationSeed, encodedTs, crypto)),
     data: encodedTs,

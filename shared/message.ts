@@ -79,8 +79,6 @@ export const clkBytes = 8;
 export const hshBytes = 32;
 
 // Returns the full encoded message and also a slice of just the encoded header.
-
-// Returns the full encoded message and also a slice of just the encoded header.
 export async function encodeOp(
   op: IMessage,
   crypto: ICrypto,

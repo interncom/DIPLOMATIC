@@ -82,6 +82,14 @@ function respFor(status: Status): Response {
   }
 }
 
+function binResp(data: Uint8Array): Response {
+  // TODO: fix types so it doesn't need the .slice().
+  return new Response(data.slice(), {
+    status: 200,
+    headers: { "content-type": "application/octet-stream" },
+  });
+}
+
 export class DiplomaticServer {
   hostID: string;
   storage: IStorage;
@@ -190,10 +198,7 @@ export class DiplomaticServer {
         }
         encoder.writeBytes(hash);
       }
-      return new Response(new Uint8Array(encoder.result()), {
-        status: 200,
-        headers: { "content-type": "application/octet-stream" },
-      });
+      return binResp(encoder.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }
@@ -214,10 +219,7 @@ export class DiplomaticServer {
           encoder.writeBytes(envelope);
         }
       }
-      return new Response(encoder.result().slice(), {
-        status: 200,
-        headers: { "content-type": "application/octet-stream" },
-      });
+      return binResp(encoder.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }
@@ -243,10 +245,7 @@ export class DiplomaticServer {
         encoder.writeBytes(item.sha256);
         encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
       }
-      return new Response(encoder.result().slice(), {
-        status: 200,
-        headers: { "content-type": "application/octet-stream" },
-      });
+      return binResp(encoder.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }

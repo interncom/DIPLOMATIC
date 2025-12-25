@@ -21,7 +21,6 @@ import {
   decodeEnvelopeHeader,
   decodeEnvelope,
   type IEnvelope,
-  type IEnvelopeHeader,
 } from "./envelope.ts";
 
 export interface IEnvelopePeekItem {

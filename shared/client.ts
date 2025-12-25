@@ -211,14 +211,17 @@ export default class DiplomaticClientAPI {
   ): Promise<IEnvelopePeekItem[]> {
     const url = new URL(hostURL);
     url.pathname = "/peek";
-    url.searchParams.set("from", fromMillis.toString());
 
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
+    const encoder = new Encoder();
+    encoder.writeBytes(tsAuth);
+    encoder.writeVarInt(fromMillis);
+
     const response = await fetch(url, {
       method: "POST",
-      body: tsAuth.slice(0),
+      body: encoder.result().slice(),
     });
     if (!response.ok) {
       throw "Uh oh";

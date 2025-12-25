@@ -141,30 +141,6 @@ export class DiplomaticServer {
     return cors(resp);
   };
 
-  async processEnvelope(
-    env: IEnvelope,
-    pubKeyHex: string,
-    expectedPubKey: Uint8Array,
-    now: Date,
-  ): Promise<Status> {
-    if (
-      !(await this.crypto.checkSigEd25519(
-        env.sig,
-        env.cipherhead,
-        expectedPubKey,
-      ))
-    ) {
-      return Status.InvalidSignature; // Invalid envelope signature
-    }
-    const envelope = encodeEnvelope(env);
-    const hsh = await this.crypto.sha256Hash(
-      concat(env.cipherhead, env.cipherbody),
-    );
-    await this.storage.setOp(pubKeyHex, now, envelope, btoh(hsh));
-    await this.notifier.notify(pubKeyHex);
-    return Status.Success; // Success
-  }
-
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -224,19 +200,24 @@ export class DiplomaticServer {
         const encoder = new Encoder();
         while (!decoder.done()) {
           const env = decodeEnvelope(decoder);
-          // can we simplify this? hash check seems like it could be better.
-          const status = await this.processEnvelope(
-            env,
-            pubKeyHex,
+          const hash = await this.crypto.sha256Hash(
+            concat(env.cipherhead, env.cipherbody),
+          );
+          const sigValid = await this.crypto.checkSigEd25519(
+            env.sig,
+            env.cipherhead,
             pubKey,
-            now,
           );
-          encoder.writeBytes(new Uint8Array([status]));
-          encoder.writeBytes(
-            await this.crypto.sha256Hash(
-              concat(env.cipherhead, env.cipherbody),
-            ),
-          );
+          if (sigValid) {
+            const envelope = encodeEnvelope(env);
+            const hashHex = btoh(hash);
+            await this.storage.setOp(pubKeyHex, now, envelope, hashHex);
+            await this.notifier.notify(pubKeyHex);
+            encoder.writeBytes(new Uint8Array([Status.Success]));
+          } else {
+            encoder.writeBytes(new Uint8Array([Status.InvalidSignature]));
+          }
+          encoder.writeBytes(hash);
         }
         return new Response(new Uint8Array(encoder.result()), {
           status: 200,

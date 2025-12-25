@@ -8,7 +8,7 @@ import {
   type EncodedEnvelope,
 } from "../../web/src/shared/envelope.ts";
 import {
-  keyPathBytes,
+  kdmBytes,
   encodeOp,
   decodeOp,
   derivationKeyMaterial,
@@ -56,8 +56,8 @@ const envelope = await fullyEncodeEnvelope(op);
 
 Deno.bench("full decode op", async (b) => {
   const decodedEnv = await decodeEnvelope(envelope);
-  const kdm = decodedEnv.msg.slice(0, keyPathBytes);
-  const cipherMsg = decodedEnv.msg.slice(keyPathBytes);
+  const kdm = decodedEnv.msg.slice(0, kdmBytes);
+  const cipherMsg = decodedEnv.msg.slice(kdmBytes);
   const encKey = await enclave.deriveFromKDM(kdm);
   const decryptedMsg = await crypto.decryptXSalsa20Poly1305Combined(
     cipherMsg,

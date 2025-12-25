@@ -61,13 +61,18 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
   };
 }
 
-// The keyPath should be the truncated hash of the message header.
-// This prevents an attacker from reusing a compromised derived key.
-// The benefit of the keyPath per message is that with a proper HSM,
+// The kdm should be random. Wait.
+// That allows attacker to reuse a compromised key.
+// It needs to be based on data an attacker cannot know.
+// It can't be the hash of meaningful data within the ciphertext.
+// That would leak private information.
+// Therefore, it must be derived from meaningless data.
+// In other words, a random nonce.
+// The benefit of the key-per-message is that with a proper HSM,
 // the seed never needs to be directly accessible in memory.
-// You just feed the keyPath into the HSM and get the derived key out.
+// You just feed the KDM into the HSM and get the derived key out.
 // Then symmetrically encrypt/decrypt using that derived key.
-export const keyPathBytes = 8;
+export const kdmBytes = 8;
 export const eidBytes = 16;
 export const clkBytes = 8;
 
@@ -148,7 +153,7 @@ export async function derivationKeyMaterial(
   crypto: ICrypto,
 ): Promise<Uint8Array> {
   const random = await crypto.gen128BitRandomID();
-  return random.slice(0, keyPathBytes);
+  return random.slice(0, kdmBytes);
 }
 
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {

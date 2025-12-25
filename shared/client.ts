@@ -62,8 +62,7 @@ export default class DiplomaticClientAPI {
   }
 
   async getHostID(hostURL: URL): Promise<string> {
-    const url = new URL(hostURL);
-    url.pathname = "/id";
+    const url = new URL("/id", hostURL);
     const response = await fetch(url, { method: "GET" });
     if (!response.ok) {
       throw "Uh oh";
@@ -81,8 +80,7 @@ export default class DiplomaticClientAPI {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    const url = new URL(hostURL);
-    url.pathname = "/users";
+    const url = new URL("/users", hostURL);
     const response = await fetch(url, {
       method: "POST",
       body: tsAuth.slice(0),
@@ -101,14 +99,11 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<Array<{ status: number; hash: Uint8Array }>> {
-    const url = new URL(hostURL);
-    url.pathname = "/ops";
-
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
     const encoder = new Encoder();
     encoder.writeBytes(tsAuth);
-    
+
     const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
       // Encode message.
@@ -140,6 +135,7 @@ export default class DiplomaticClientAPI {
       encoder.writeBytes(encEnv);
     }
 
+    const url = new URL("/ops", hostURL);
     const response = await post(url, encoder);
     if (!response.ok) {
       console.error(response);
@@ -164,9 +160,6 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IEnvelope[]> {
-    const url = new URL(hostURL);
-    url.pathname = "/pull";
-
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
@@ -176,6 +169,7 @@ export default class DiplomaticClientAPI {
       encoder.writeBytes(hash);
     }
 
+    const url = new URL("/pull", hostURL);
     const response = await post(url, encoder);
     if (!response.ok) {
       throw "Uh oh";
@@ -200,9 +194,6 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IEnvelopePeekItem[]> {
-    const url = new URL(hostURL);
-    url.pathname = "/peek";
-
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
@@ -210,6 +201,7 @@ export default class DiplomaticClientAPI {
     encoder.writeBytes(tsAuth);
     encoder.writeVarInt(fromMillis);
 
+    const url = new URL("/peek", hostURL);
     const response = await post(url, encoder);
     if (!response.ok) {
       throw "Uh oh";

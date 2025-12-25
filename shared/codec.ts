@@ -10,6 +10,9 @@ export class Decoder {
   }
 
   readBigInt(): bigint {
+    if (this.pos + 8 > this.data.length) {
+      throw new Error("Not enough data to read BigInt (needs 8 bytes)");
+    }
     const value = new DataView(
       this.data.buffer,
       this.data.byteOffset + this.pos,
@@ -19,6 +22,9 @@ export class Decoder {
   }
 
   readVarInt(): number {
+    if (this.pos >= this.data.length) {
+      throw new Error("Not enough data to read VarInt");
+    }
     const decode = decode_varint(this.data, this.pos);
     this.pos += decode.bytesRead;
     const val = decode.value;
@@ -26,6 +32,12 @@ export class Decoder {
   }
 
   readBytes(num: number): Uint8Array {
+    if (num < 0) {
+      throw new Error("Cannot read negative number of bytes");
+    }
+    if (this.pos + num > this.data.length) {
+      throw new Error("Not enough data to read requested bytes");
+    }
     const bytes = this.data.slice(this.pos, this.pos + num);
     this.pos += num;
     return bytes;
@@ -50,6 +62,9 @@ export class Encoder {
   }
 
   writeVarInt(n: number): void {
+    if (n < 0) {
+      throw new Error("Cannot write negative VarInt");
+    }
     this.parts.push(encode_varint(n));
   }
 

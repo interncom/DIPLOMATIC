@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Decoder } from "../../shared/codec.ts";
 import { encode_varint } from "../../shared/varint.ts";
 import { concat } from "../../shared/lib.ts";
@@ -119,4 +122,127 @@ Deno.test("Encoder empty", () => {
   const encoder = new Encoder();
   const result = encoder.result();
   assertEquals(result.length, 0);
+});
+
+Deno.test("Decoder readBytes negative num", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  assertThrows(
+    () => decoder.readBytes(-1),
+    Error,
+    "Cannot read negative number of bytes",
+  );
+});
+
+Deno.test("Decoder readBytes more than available", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  assertThrows(
+    () => decoder.readBytes(5),
+    Error,
+    "Not enough data to read requested bytes",
+  );
+});
+
+Deno.test("Decoder readBytes zero", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  const bytes = decoder.readBytes(0);
+  assertEquals(bytes, new Uint8Array(0));
+  assertEquals(decoder.consumed(), 0);
+});
+
+Deno.test("Decoder readBigInt not enough data", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  assertThrows(
+    () => decoder.readBigInt(),
+    Error,
+    "Not enough data to read BigInt (needs 8 bytes)",
+  );
+});
+
+Deno.test("Decoder readVarInt no data", () => {
+  const data = new Uint8Array([]);
+  const decoder = new Decoder(data);
+  assertThrows(
+    () => decoder.readVarInt(),
+    Error,
+    "Not enough data to read VarInt",
+  );
+});
+
+Deno.test("Decoder readVarInt truncated", () => {
+  // Varint for a large number but cut off
+  const data = new Uint8Array([0x80, 0x80]); // Incomplete varint
+  const decoder = new Decoder(data);
+  assertThrows(() => decoder.readVarInt()); // Assuming decode_varint throws
+});
+
+Deno.test("Decoder on empty data", () => {
+  const data = new Uint8Array([]);
+  const decoder = new Decoder(data);
+  assertEquals(decoder.done(), true);
+  assertEquals(decoder.consumed(), 0);
+});
+
+Deno.test("Decoder consumed after partial read", () => {
+  const data = new Uint8Array([1, 2, 3, 4, 5]);
+  const decoder = new Decoder(data);
+  decoder.readBytes(2);
+  assertEquals(decoder.consumed(), 2);
+  assertEquals(decoder.done(), false);
+});
+
+Deno.test("Decoder done after full read", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  decoder.readBytes(3);
+  assertEquals(decoder.done(), true);
+  assertEquals(decoder.consumed(), 3);
+});
+
+Deno.test("Encoder writeVarInt negative", () => {
+  const encoder = new Encoder();
+  assertThrows(
+    () => encoder.writeVarInt(-1),
+    Error,
+    "Cannot write negative VarInt",
+  );
+});
+
+Deno.test("Encoder writeBytes empty", () => {
+  const encoder = new Encoder();
+  encoder.writeBytes(new Uint8Array(0));
+  const result = encoder.result();
+  assertEquals(result.length, 0);
+});
+
+Deno.test("Encoder writeBigInt max value", () => {
+  const encoder = new Encoder();
+  encoder.writeBigInt(2n ** 64n - 1n);
+  const result = encoder.result();
+  assertEquals(result.length, 8);
+});
+
+Deno.test("Encoder multiple result calls", () => {
+  const encoder = new Encoder();
+  encoder.writeBytes(new Uint8Array([1, 2]));
+  const result1 = encoder.result();
+  const result2 = encoder.result();
+  assertEquals(result1, result2);
+  assertEquals(result1, new Uint8Array([1, 2]));
+});
+
+Deno.test("Decoder readBytes at exact end", () => {
+  const data = new Uint8Array([10, 20]);
+  const decoder = new Decoder(data);
+  const bytes = decoder.readBytes(2);
+  assertEquals(bytes, data);
+  assertEquals(decoder.done(), true);
+  assertThrows(
+    () => decoder.readBytes(1),
+    Error,
+    "Not enough data to read requested bytes",
+  );
 });

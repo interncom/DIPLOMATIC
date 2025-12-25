@@ -165,13 +165,6 @@ export class DiplomaticServer {
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
       } catch (err) {
-        if (err instanceof Error) {
-          if (err.message === "Invalid signature") {
-            return respFor(Status.InvalidSignature);
-          }
-          return respFor(Status.InvalidRequest);
-        }
-        console.error(err);
         return respFor(Status.InternalError);
       }
     }
@@ -220,10 +213,6 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
-        if (err instanceof Error) {
-          return respFor(Status.InvalidRequest);
-        }
-        console.error(err);
         return respFor(Status.InternalError);
       }
     }
@@ -258,10 +247,6 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
-        if (err instanceof Error) {
-          return respFor(Status.InvalidParam);
-        }
-        console.error(err);
         return respFor(Status.InternalError);
       }
     }
@@ -306,10 +291,6 @@ export class DiplomaticServer {
           headers: { "content-type": "application/octet-stream" },
         });
       } catch (err) {
-        if (err instanceof Error) {
-          return respFor(Status.InvalidRequest);
-        }
-        console.error(err);
         return respFor(Status.InternalError);
       }
     }

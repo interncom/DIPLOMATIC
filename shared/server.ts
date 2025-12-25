@@ -41,6 +41,11 @@ function cors(resp: Response): Response {
   });
 }
 
+export enum Status {
+  Success = 0,
+  InvalidSignature = 3,
+}
+
 export class DiplomaticServer {
   hostID: string;
   storage: IStorage;
@@ -113,7 +118,7 @@ export class DiplomaticServer {
         expectedPubKey,
       ))
     ) {
-      return 3; // Invalid envelope signature
+      return Status.InvalidSignature; // Invalid envelope signature
     }
     const envelope = encodeEnvelope(env);
     const hsh = await this.crypto.sha256Hash(
@@ -121,7 +126,7 @@ export class DiplomaticServer {
     );
     await this.storage.setOp(pubKeyHex, now, envelope, btoh(hsh));
     await this.notifier.notify(pubKeyHex);
-    return 0; // Success
+    return Status.Success; // Success
   }
 
   handler = async (request: Request): Promise<Response> => {
@@ -179,6 +184,7 @@ export class DiplomaticServer {
         const encoder = new Encoder();
         while (!decoder.done()) {
           const env = decodeEnvelope(decoder);
+          // can we simplify this? hash check seems like it could be better.
           const status = await this.processEnvelope(
             env,
             pubKeyHex,

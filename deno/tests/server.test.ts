@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std/testing/asserts.ts";
-import { DiplomaticServer } from "../../shared/server.ts";
+import { DiplomaticServer, Status } from "../../shared/server.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";
@@ -72,7 +72,7 @@ Deno.test("server", async (t) => {
     result = await client.push(url, ops, hostID, hostIdx, now);
     assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
     for (const res of result) {
-      assertEquals(res.status, 0);
+      assertEquals(res.status, Status.Success);
       assertEquals(res.hash.length, 32);
     }
   });

@@ -12,6 +12,7 @@ import { decodeEnvelope, type IEnvelope } from "../../shared/envelope.ts";
 import { uint8ArraysEqual } from "../../shared/lib.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { MasterSeed } from "../../shared/types.ts";
+import { Encoder } from "../../shared/codec.ts";
 
 // Server config.
 const port = 3331;
@@ -147,10 +148,13 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /peek requires valid tsAuth", async () => {
     const peekUrl = new URL(`http://localhost:${port}/peek`);
-    peekUrl.searchParams.set("from", "0");
+    const encoder = new Encoder();
+    encoder.writeBytes(invalidTsAuth);
+    encoder.writeVarInt(0);
+    const body = encoder.result().slice();
     const response = await fetch(peekUrl.toString(), {
       method: "POST",
-      body: invalidTsAuth,
+      body,
       headers: { "Content-Type": "application/octet-stream" },
     });
     assertEquals(response.status, 401);

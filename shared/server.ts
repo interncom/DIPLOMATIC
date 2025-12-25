@@ -224,27 +224,20 @@ export class DiplomaticServer {
   };
 
   handlePeek = async (
-    url: URL,
     pubKey: Uint8Array,
     decoder: Decoder,
   ): Promise<Response> => {
-    if (!decoder.done()) {
-      return respFor(Status.ExtraBodyContent);
-    }
     try {
-      const pubKeyHex = btoh(pubKey);
-      // Get 'from' param
-      const fromParam = url.searchParams.get("from");
-      if (!fromParam) {
-        return respFor(Status.MissingParam);
-      }
-      const fromMillis = parseInt(fromParam, 10);
-      if (isNaN(fromMillis)) {
-        return respFor(Status.InvalidParam);
+      const fromMillis = decoder.readVarInt();
+      if (!decoder.done()) {
+        return respFor(Status.ExtraBodyContent);
       }
       const begin = new Date(fromMillis).toISOString();
       const end = new Date().toISOString();
+
+      const pubKeyHex = btoh(pubKey);
       const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
+
       const encoder = new Encoder();
       for (const item of userOpsList) {
         encoder.writeBytes(item.sha256);
@@ -301,7 +294,7 @@ export class DiplomaticServer {
       return this.handlePull(pubKey, decoder);
     }
     if (request.method === "POST" && url.pathname === "/peek") {
-      return this.handlePeek(url, pubKey, decoder);
+      return this.handlePeek(pubKey, decoder);
     }
 
     return respFor(Status.NotFound);

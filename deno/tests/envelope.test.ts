@@ -2,23 +2,14 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
   type IEnvelope,
   type IEnvelopeHeader,
-  encodeEnvelope,
   makeEnvelope,
+  encodeEnvelope,
   decodeEnvelope,
   decodeEnvelopeHeader,
 } from "../../shared/envelope.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
-const idxBytes = 8; // Updated to 8 for new layout
 const sigBytes = 64;
-const hashBytes = 32;
-const lenBytes = 8;
-const keyPathBytes = 8;
-const pubKeyBytes = 32;
-const eidBytes = 16;
-const clkBytes = 8;
-const ctrBytes = 4;
-const fixedBytes = sigBytes + hashBytes + lenBytes; // 104
 
 // Helper functions for converting to big-endian bytes
 function dateToBytes(date: Date): Uint8Array {
@@ -43,113 +34,116 @@ Deno.test("envelope", async (t) => {
   const crypto = libsodiumCrypto;
 
   await t.step("makeEnvelope", async () => {
-    const idx = 0;
-    const cipherOp = new Uint8Array([4, 5, 6]);
+    const cipherhead = new Uint8Array([1, 2, 3]);
+    const cipherbody = new Uint8Array([4, 5, 6]);
+    const dkm = new Uint8Array(8).fill(0x44);
     const keyPair = {
       keyType: "private" as const,
       privateKey: new Uint8Array(64).fill(0x22),
       publicKey: new Uint8Array(32).fill(0x33),
     };
-    const kdm = new Uint8Array(8).fill(0x44);
-    const result = await makeEnvelope(keyPair, cipherOp, kdm, crypto);
-    // Expected msg is kdm prepended to cipherOp
-    const expectedMsg = new Uint8Array([...kdm, ...cipherOp]);
-    // Compute expected values
-    const len = kdm.length + cipherOp.length;
-    const hashSrc = new Uint8Array(len);
-    hashSrc.set(kdm, 0);
-    hashSrc.set(cipherOp, kdm.length);
-    const expectedHash = await crypto.blake3(hashSrc);
+    const result = await makeEnvelope(
+      keyPair,
+      cipherhead,
+      cipherbody,
+      dkm,
+      crypto,
+    );
+    // Compute expected sig: sign(cipherhead, privateKey)
     const expectedSig = await crypto.signEd25519(
-      expectedHash,
+      cipherhead,
       keyPair.privateKey,
     );
     assertEquals(result.sig, expectedSig);
-    assertEquals(result.hsh, expectedHash);
-    assertEquals(result.len, len);
-    assertEquals(result.msg, expectedMsg);
-  });
-
-  await t.step("encodeEnvelope", async () => {
-    const op = {
-      sig: new Uint8Array(64).fill(0x77),
-      hsh: new Uint8Array(32).fill(0x88),
-      len: 3,
-      msg: new Uint8Array([10, 11, 12]),
-    };
-    const encoded = await encodeEnvelope(op);
-    // Expected
-    const expected = new Uint8Array(104 + op.msg.length);
-    const view = new DataView(expected.buffer, expected.byteOffset);
-    expected.set(op.sig, 0);
-    expected.set(op.hsh, 64);
-    view.setBigUint64(96, BigInt(op.len), false);
-    expected.set(op.msg, 104);
-    assertEquals(encoded, expected);
-  });
-
-  await t.step("decodeEnvelope", async () => {
-    const op = {
-      sig: new Uint8Array(64).fill(0x77),
-      hsh: new Uint8Array(32).fill(0x88),
-      len: 3,
-      msg: new Uint8Array([10, 11, 12]),
-    };
-    const encoded = await encodeEnvelope(op);
-    const decoded = decodeEnvelope(encoded);
-    assertEquals(decoded.sig, op.sig);
-    assertEquals(decoded.hsh, op.hsh);
-    assertEquals(decoded.len, op.len);
-    assertEquals(decoded.msg, op.msg);
-  });
-
-  await t.step("decodeEnvelopeHeader", async () => {
-    const op: IEnvelopeHeader = {
-      sig: new Uint8Array(64).fill(0xcd),
-      hsh: new Uint8Array(32).fill(0xef),
-      len: 1000,
-    };
-    const encoded = await encodeEnvelope({
-      ...op,
-      msg: new Uint8Array(op.len),
-    });
-    const header = encoded.slice(0, fixedBytes);
-    const decodedHeader = decodeEnvelopeHeader(header);
-    assertEquals(decodedHeader.sig, op.sig);
-    assertEquals(decodedHeader.hsh, op.hsh);
-    assertEquals(decodedHeader.len, op.len);
-  });
-
-  await t.step("decodeEnvelope error on short input", async () => {
-    const short = new Uint8Array(100); // less than 104
-    try {
-      decodeEnvelope(short);
-      throw new Error("Should have thrown");
-    } catch (e) {
-      assertEquals((e as Error).message, "Envelope too short");
-    }
-  });
-
-  await t.step("decodeEnvelopeHeader error on short input", () => {
-    const short = new Uint8Array(100); // less than 104
-    try {
-      decodeEnvelopeHeader(short);
-      throw new Error("Should have thrown");
-    } catch (e) {
-      assertEquals((e as Error).message, "Envelope header too short");
-    }
+    assertEquals(result.dkm, dkm);
+    assertEquals(result.lenCipherHead, cipherhead.length);
+    assertEquals(result.lenCipherBody, cipherbody.length);
+    assertEquals(result.cipherhead, cipherhead);
+    assertEquals(result.cipherbody, cipherbody);
   });
 
   await t.step("encodeEnvelope", async () => {
     const op: IEnvelope = {
-      sig: new Uint8Array(64).fill(0x55),
-      hsh: new Uint8Array(32).fill(0x66),
-      len: 50,
-      msg: new Uint8Array([1, 2, 3]),
+      sig: new Uint8Array(64).fill(0x77),
+      dkm: new Uint8Array(8).fill(0x88),
+      lenCipherHead: 3,
+      lenCipherBody: 2,
+      cipherhead: new Uint8Array([10, 11, 12]),
+      cipherbody: new Uint8Array([13, 14]),
     };
-    const encoded = await encodeEnvelope(op);
-    const decoded = decodeEnvelope(encoded);
+    const encoded = encodeEnvelope(op);
+    const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + dkm + varint(3) + varint(2) + cipherhead + cipherbody
+    assertEquals(encoded.length, expectedLen);
+    // Check sig
+    assertEquals(encoded.slice(0, 64), op.sig);
+    // Check dkm
+    assertEquals(encoded.slice(64, 72), op.dkm);
+    // Check lenCipherHead varint
+    assertEquals(encoded[72], 3); // varint for 3
+    // Check lenCipherBody varint
+    assertEquals(encoded[73], 2); // varint for 2
+    // Check cipherhead
+    assertEquals(encoded.slice(74, 77), op.cipherhead);
+    // Check cipherbody
+    assertEquals(encoded.slice(77, 79), op.cipherbody);
+  });
 
-    // Test decoding
+  await t.step("decodeEnvelope", async () => {
+    const op: IEnvelope = {
+      sig: new Uint8Array(64).fill(0x77),
+      dkm: new Uint8Array(8).fill(0x88),
+      lenCipherHead: 3,
+      lenCipherBody: 2,
+      cipherhead: new Uint8Array([10, 11, 12]),
+      cipherbody: new Uint8Array([13, 14]),
+    };
+    const encoded = encodeEnvelope(op);
+    const result = decodeEnvelope(encoded);
+    const decoded = result.envelope;
+    assertEquals(decoded.sig, op.sig);
+    assertEquals(decoded.dkm, op.dkm);
+    assertEquals(decoded.lenCipherHead, op.lenCipherHead);
+    assertEquals(decoded.lenCipherBody, op.lenCipherBody);
+    assertEquals(decoded.cipherhead, op.cipherhead);
+    assertEquals(decoded.cipherbody, op.cipherbody);
+    assertEquals(result.consumed, encoded.length);
+  });
+
+  await t.step("decodeEnvelopeHeader", async () => {
+    const op: IEnvelope = {
+      sig: new Uint8Array(64).fill(0xcd),
+      dkm: new Uint8Array(8).fill(0x99),
+      lenCipherHead: 5,
+      lenCipherBody: 2,
+      cipherhead: new Uint8Array([1, 2, 3, 4, 5]),
+      cipherbody: new Uint8Array([6, 7]),
+    };
+    const encoded = encodeEnvelope(op);
+    const encodedHeader = encoded.slice(0, 74); // 64+8+1+1
+    const decodedHeader = decodeEnvelopeHeader(encodedHeader);
+    assertEquals(decodedHeader.sig, op.sig);
+    assertEquals(decodedHeader.dkm, op.dkm);
+    assertEquals(decodedHeader.lenCipherHead, op.lenCipherHead);
+    assertEquals(decodedHeader.lenCipherBody, op.lenCipherBody);
+  });
+
+  await t.step("decodeEnvelope error on short input", async () => {
+    const short = new Uint8Array(70); // less than minimum
+    try {
+      decodeEnvelope(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      // Expected to fail on incomplete
+    }
+  });
+
+  await t.step("decodeEnvelopeHeader error on short input", () => {
+    const short = new Uint8Array(70); // less than minimum
+    try {
+      decodeEnvelopeHeader(short);
+      throw new Error("Should have thrown");
+    } catch (e) {
+      // Expected to fail on incomplete
+    }
   });
 });

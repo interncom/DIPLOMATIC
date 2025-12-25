@@ -10,6 +10,8 @@ import { btoh } from "./lib.ts";
 import {
   envelopeHeaderSize,
   hashSize,
+  hashBytes,
+  lenBytes,
   responseItemSize,
   tsAuthSize,
 } from "./consts.ts";
@@ -21,6 +23,13 @@ import {
   type IEnvelope,
   type IEnvelopeHeader,
 } from "./envelope.ts";
+
+export interface IEnvelopePeekItem {
+  hash: Uint8Array;
+  recordedAt: number;
+}
+
+import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
 import {
   encodeOp,
@@ -30,7 +39,7 @@ import {
   concat,
 } from "./message.ts";
 
-import { Enclave } from "./enclave.ts";
+import { decode_varint } from "./varint.ts";
 
 export default class DiplomaticClientAPI {
   crypto: ICrypto;
@@ -103,52 +112,59 @@ export default class DiplomaticClientAPI {
 
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    // Create a readable stream to stream the data
-    const stream = new ReadableStream({
-      start: async (controller) => {
-        // First, send the tsAuth data
-        controller.enqueue(tsAuth);
+    // Collect all data into a buffer
+    let data = new Uint8Array(tsAuthSize);
+    data.set(tsAuth, 0);
+    let offset = tsAuthSize;
+    for (const op of ops) {
+      // Encode message.
+      const [encMsg, msgHead] = await encodeOp(op, this.crypto);
 
-        // Then, stream each envelope as it's generated
-        for (const op of ops) {
-          // Encode message.
-          const [encMsg, msgHead] = await encodeOp(op);
+      // Derive encryption key.
+      const dkm = (await derivationKeyMaterial(this.crypto)).slice(0, 8);
+      const encKey = await this.enclave.deriveFromKDM(dkm);
 
-          // Derive encryption key.
-          const kdm = await derivationKeyMaterial(msgHead, this.crypto);
-          const encKey = await this.enclave.deriveFromKDM(kdm);
+      // Encrypt header and body separately.
+      const cipherhead = await this.crypto.encryptXSalsa20Poly1305Combined(
+        msgHead,
+        encKey,
+      );
+      const cipherbody = op.bod
+        ? await this.crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey)
+        : new Uint8Array(0);
 
-          // Encrypt message.
-          const ciphertxt = await this.crypto.encryptXSalsa20Poly1305Combined(
-            encMsg,
-            encKey,
-          );
+      // Wrap in envelope.
+      const env = await makeEnvelope(
+        keyPair,
+        cipherhead,
+        cipherbody,
+        dkm,
+        this.crypto,
+      );
+      const encEnv = encodeEnvelope(env);
 
-          // Wrap in envelope.
-          const env = await makeEnvelope(keyPair, ciphertxt, kdm, this.crypto);
-          const encEnv = await encodeEnvelope(env);
-
-          // Upload.
-          controller.enqueue(encEnv);
-        }
-        controller.close();
-      },
-    });
+      // Append to data buffer.
+      const newData = new Uint8Array(data.length + encEnv.length);
+      newData.set(data, 0);
+      newData.set(encEnv, offset);
+      data = newData;
+      offset += encEnv.length;
+    }
 
     const response = await fetch(url, {
       method: "POST",
-      body: stream,
+      body: data,
     });
     if (!response.ok) {
       console.error(response);
       throw "Uh oh";
     }
     const arrayBuffer = await response.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
+    const responseData = new Uint8Array(arrayBuffer);
     const results: { status: number; hash: Uint8Array }[] = [];
-    for (let i = 0; i < data.length; i += responseItemSize) {
-      const status = data[i];
-      const hash = data.slice(i + 1, i + 1 + hashSize);
+    for (let i = 0; i < responseData.length; i += responseItemSize) {
+      const status = responseData[i];
+      const hash = responseData.slice(i + 1, i + 1 + hashSize);
       results.push({ status, hash });
     }
     return results;
@@ -188,21 +204,10 @@ export default class DiplomaticClientAPI {
     const data = new Uint8Array(arrayBuffer);
     const envelopes: IEnvelope[] = [];
     let offset = 0;
-
     while (offset < data.length) {
-      if (offset + envelopeHeaderSize > data.length) break;
-      const headerBytes = data.slice(offset, offset + envelopeHeaderSize);
-      offset += envelopeHeaderSize;
-      const envHeader = decodeEnvelopeHeader(headerBytes);
-      const msgLen = envHeader.len;
-      if (offset + msgLen > data.length) break;
-      const msgBytes = data.slice(offset, offset + msgLen);
-      offset += msgLen;
-      const fullEnvelope = new Uint8Array(envelopeHeaderSize + msgLen);
-      fullEnvelope.set(headerBytes, 0);
-      fullEnvelope.set(msgBytes, envelopeHeaderSize);
-      const env = decodeEnvelope(fullEnvelope);
-      envelopes.push(env);
+      const result = decodeEnvelope(data.slice(offset));
+      envelopes.push(result.envelope);
+      offset += result.consumed;
     }
     return envelopes;
   }
@@ -213,7 +218,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IEnvelopeHeader[]> {
+  ): Promise<IEnvelopePeekItem[]> {
     const url = new URL(hostURL);
     url.pathname = "/peek";
     url.searchParams.set("from", fromMillis.toString());
@@ -230,16 +235,19 @@ export default class DiplomaticClientAPI {
     }
     const arrayBuffer = await response.arrayBuffer();
     const data = new Uint8Array(arrayBuffer);
-    const headers: IEnvelopeHeader[] = [];
+    const items: IEnvelopePeekItem[] = [];
     let offset = 0;
+    const itemSize = hashSize + lenBytes;
 
     while (offset < data.length) {
-      if (offset + envelopeHeaderSize > data.length) break;
-      const headerBytes = data.slice(offset, offset + envelopeHeaderSize);
-      offset += envelopeHeaderSize;
-      const envHeader = decodeEnvelopeHeader(headerBytes);
-      headers.push(envHeader);
+      if (offset + itemSize > data.length) break;
+      const hash = data.slice(offset, offset + hashSize);
+      const recordedAt = Number(
+        new DataView(data.buffer, offset + hashSize).getBigUint64(0, false),
+      );
+      offset += itemSize;
+      items.push({ hash, recordedAt });
     }
-    return headers;
+    return items;
   }
 }

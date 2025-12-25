@@ -14,6 +14,7 @@ export interface IMessage {
   ctr: number;
   len: number;
   bod?: SerializedContent;
+  hsh?: Uint8Array;
 }
 
 interface IUpsertMessage extends IMessage {
@@ -73,6 +74,7 @@ export const clkBytes = 8;
 // Returns the full encoded message and also a slice of just the encoded header.
 export async function encodeOp(
   op: IMessage,
+  crypto: ICrypto,
 ): Promise<[EncodedMessage, Uint8Array]> {
   const eidBytes_arr = op.eid;
   const clkBytes_arr = new Uint8Array(8);
@@ -81,7 +83,12 @@ export async function encodeOp(
   const ctrVarint = encode_varint(op.ctr);
   const lenVarint = encode_varint(op.len);
 
-  const headerArrays = [eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint];
+  const headerArrays = [];
+  if (op.bod && op.len > 0) {
+    const hsh = await crypto.blake3(op.bod);
+    headerArrays.push(hsh);
+  }
+  headerArrays.push(eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint);
   const header = headerArrays.reduce(
     (acc, arr) => concat(acc, arr),
     new Uint8Array(0),
@@ -93,40 +100,55 @@ export async function encodeOp(
 
 export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
   let offset = 0;
-  const eid = encoded.slice(0, eidBytes);
+  let hsh: Uint8Array | undefined;
+  let tempOffset = 0;
+  // Check if has hsh by testing reading with hsh
+  if (encoded.length >= 32 + eidBytes + clkBytes) {
+    let testOffset = 32 + eidBytes + clkBytes;
+    const ctrDecode = decode_varint(encoded, testOffset);
+    testOffset += ctrDecode.bytesRead;
+    const lenDecode = decode_varint(encoded, testOffset);
+    const testLen = Number(lenDecode.value);
+    testOffset += lenDecode.bytesRead;
+    if (testOffset + testLen === encoded.length) {
+      // has hsh
+      hsh = encoded.slice(0, 32);
+      offset = 32;
+    } else {
+      offset = 0;
+    }
+  } else {
+    offset = 0;
+  }
+  const eid = encoded.slice(offset, offset + eidBytes);
   offset += eidBytes;
-
   const clkTime = new DataView(
     encoded.buffer,
     encoded.byteOffset + offset,
   ).getBigUint64(0, false);
   const clk = new Date(Number(clkTime));
   offset += clkBytes;
-
   const ctrDecode = decode_varint(encoded, offset);
   const ctr =
     typeof ctrDecode.value === "bigint"
       ? Number(ctrDecode.value)
       : ctrDecode.value;
   offset += ctrDecode.bytesRead;
-
   const lenDecode = decode_varint(encoded, offset);
   const len =
     typeof lenDecode.value === "bigint"
       ? Number(lenDecode.value)
       : lenDecode.value;
   offset += lenDecode.bytesRead;
-
   const body = encoded.slice(offset, offset + len);
-  return { eid, clk, ctr, len, bod: len > 0 ? body : undefined };
+  return { eid, clk, ctr, len, bod: len > 0 ? body : undefined, hsh };
 }
 
 export async function derivationKeyMaterial(
-  header: Uint8Array,
   crypto: ICrypto,
 ): Promise<Uint8Array> {
-  const hash = await crypto.blake3(header);
-  return hash.slice(0, keyPathBytes);
+  const random = await crypto.gen128BitRandomID();
+  return random.slice(0, keyPathBytes);
 }
 
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {

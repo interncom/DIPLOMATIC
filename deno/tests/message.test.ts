@@ -7,12 +7,12 @@ import {
   genDelete,
   genUpsert,
   derivationKeyMaterial,
+  kdmBytes,
   concat,
 } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed
-const keyPathBytes = 8;
 const eidBytes = 16;
 const clkBytes = 8;
 
@@ -125,7 +125,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const kdm = await derivationKeyMaterial(crypto);
     assertEquals(kdm.length, 8);
     // Now it's random, just check length
-    assertEquals(kdm.length, keyPathBytes);
+    assertEquals(kdm.length, kdmBytes);
   });
 
   await t.step("decodeOp with insufficient data", async () => {

@@ -15,7 +15,7 @@ import {
   responseItemSize,
   clockToleranceMs,
 } from "./consts.ts";
-import { decodeSigProvenData, type ISigProvenData } from "./sigProof.ts";
+import { decodeSigProvenData } from "./sigProof.ts";
 import {
   encodeEnvelope,
   decodeEnvelope,
@@ -100,20 +100,19 @@ export class DiplomaticServer {
   }
 
   async validateTsAuth(tsAuthBytes: Uint8Array): Promise<[Uint8Array, Status]> {
-    const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
+    const tsAuth = decodeSigProvenData(tsAuthBytes);
     const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
     const currentTime = Date.now();
     const diff = Math.abs(currentTime - Number(timestampMs));
     if (diff > clockToleranceMs) {
       return [new Uint8Array(0), Status.ClockOutOfSync];
     }
-    if (
-      !(await this.crypto.checkSigEd25519(
-        tsAuth.sig,
-        tsAuth.data,
-        tsAuth.pubKey,
-      ))
-    ) {
+    const sigValid = await this.crypto.checkSigEd25519(
+      tsAuth.sig,
+      tsAuth.data,
+      tsAuth.pubKey,
+    );
+    if (!sigValid) {
       return [new Uint8Array(0), Status.InvalidSignature];
     }
     return [tsAuth.pubKey, Status.Success];

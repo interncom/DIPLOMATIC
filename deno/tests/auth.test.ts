@@ -3,6 +3,7 @@ import { timestampAuthProof } from "../../shared/auth.ts";
 import { decodeSigProvenData } from "../../shared/sigProof.ts";
 import type { ICrypto, KeyPair, DerivationSeed } from "../../shared/types.ts";
 import { concat } from "../../shared/lib.ts";
+import { Encoder, Decoder } from "../../shared/codec.ts";
 
 // Mock ICrypto using a fixed Ed25519 key pair for testing
 // Using test vectors from RFC 8032 for determinism
@@ -63,6 +64,10 @@ Deno.test(
     const data = concat(seed, kdm);
     const derivationSeed = await mockCrypto.blake3(data);
 
+    const encoder = new Encoder();
+    encoder.writeDate(ts);
+    const expectedEncodedTs = encoder.result();
+
     const result = await timestampAuthProof(
       derivationSeed as DerivationSeed,
       ts,
@@ -78,19 +83,12 @@ Deno.test(
     assertEquals(decoded.pubKey, publicKeyRaw);
 
     // Check that data is the encoded timestamp
-    const expectedEncodedTs = new Uint8Array(8);
-    new DataView(expectedEncodedTs.buffer).setBigUint64(
-      0,
-      BigInt(ts.getTime()),
-      false,
-    );
     assertEquals(decoded.data, expectedEncodedTs);
 
     // Check that the encoded timestamp can be roundtripped
-    const decodedTimestampMs = Number(
-      new DataView(decoded.data.buffer).getBigUint64(0, false),
-    );
-    assertEquals(decodedTimestampMs, ts.getTime());
+    const decoder = new Decoder(decoded.data);
+    const decodedTs = decoder.readDate();
+    assertEquals(decodedTs, ts);
   },
 );
 

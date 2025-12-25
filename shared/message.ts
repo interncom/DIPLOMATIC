@@ -85,7 +85,7 @@ export async function encodeOp(
 ): Promise<[EncodedMessage, Uint8Array]> {
   const headerEncoder = new Encoder();
   headerEncoder.writeBytes(op.eid);
-  headerEncoder.writeBigInt(BigInt(op.clk.getTime()));
+  headerEncoder.writeDate(op.clk);
   headerEncoder.writeVarInt(op.ctr);
   headerEncoder.writeVarInt(op.len);
   if (op.bod && op.len > 0) {

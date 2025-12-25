@@ -17,9 +17,8 @@ export async function timestampAuthProof(
   ts: Date,
   crypto: ICrypto,
 ): Promise<EncodedSigProvenData> {
-  const timestampMs = ts.getTime();
   const encoder = new Encoder();
-  encoder.writeBigInt(BigInt(timestampMs));
+  encoder.writeDate(ts);
   const encodedTs = encoder.result();
   const spdata = {
     ...(await sigProof(derivationSeed, encodedTs, crypto)),

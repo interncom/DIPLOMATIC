@@ -137,162 +137,179 @@ export class DiplomaticServer {
     return cors(resp);
   };
 
+  handleHost = async (request: Request): Promise<Response> => {
+    if (!this.hostID) {
+      return respFor(Status.ServerMisconfigured);
+    }
+    return new Response(this.hostID, { status: 200 });
+  };
+
+  handleUser = async (request: Request): Promise<Response> => {
+    try {
+      if (!request.body) {
+        return respFor(Status.MissingBody);
+      }
+      const data = new Uint8Array(await request.arrayBuffer());
+      const decoder = new Decoder(data);
+      const tsAuthBytes = decoder.readBytes(tsAuthSize);
+      if (!decoder.done()) {
+        return respFor(Status.ExtraBodyContent);
+      }
+      const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+      if (status !== Status.Success) return respFor(status);
+      const pubKeyHex = btoh(pubKey);
+      // Register the public key
+      await this.storage.addUser(pubKeyHex);
+      return new Response("", { status: 200 });
+    } catch (err) {
+      return respFor(Status.InternalError);
+    }
+  };
+
+  handlePush = async (request: Request): Promise<Response> => {
+    const body = request.body;
+    if (!body) {
+      return respFor(Status.MissingBody);
+    }
+    const data = new Uint8Array(await request.arrayBuffer());
+    const decoder = new Decoder(data);
+    const now = new Date();
+    try {
+      const tsAuthBytes = decoder.readBytes(tsAuthSize);
+      const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+      if (status !== Status.Success) return respFor(status);
+      const pubKeyHex = btoh(pubKey);
+      if (!(await this.storage.hasUser(pubKeyHex))) {
+        return respFor(Status.UserNotRegistered);
+      }
+
+      const encoder = new Encoder();
+      while (!decoder.done()) {
+        const env = decodeEnvelope(decoder);
+        const hash = await this.crypto.sha256Hash(
+          concat(env.cipherhead, env.cipherbody),
+        );
+        const sigValid = await this.crypto.checkSigEd25519(
+          env.sig,
+          env.cipherhead,
+          pubKey,
+        );
+        if (sigValid) {
+          const envelope = encodeEnvelope(env);
+          const hashHex = btoh(hash);
+          await this.storage.setOp(pubKeyHex, now, envelope, hashHex);
+          await this.notifier.notify(pubKeyHex);
+          encoder.writeBytes(new Uint8Array([Status.Success]));
+        } else {
+          encoder.writeBytes(new Uint8Array([Status.InvalidSignature]));
+        }
+        encoder.writeBytes(hash);
+      }
+      return new Response(new Uint8Array(encoder.result()), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+      });
+    } catch (err) {
+      return respFor(Status.InternalError);
+    }
+  };
+
+  handlePull = async (request: Request): Promise<Response> => {
+    const body = request.body;
+    if (!body) {
+      return respFor(Status.MissingBody);
+    }
+    const data = new Uint8Array(await request.arrayBuffer());
+    const decoder = new Decoder(data);
+    try {
+      const tsAuthBytes = decoder.readBytes(tsAuthSize);
+      const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+      if (status !== Status.Success) return respFor(status);
+      const pubKeyHex = btoh(pubKey);
+      if (!(await this.storage.hasUser(pubKeyHex))) {
+        return respFor(Status.UserNotRegistered);
+      }
+
+      const encoder = new Encoder();
+      while (!decoder.done()) {
+        const hash = decoder.readBytes(hashSize);
+        const hashHex = btoh(hash);
+        const envelope = await this.storage.getOp(pubKeyHex, hashHex);
+        if (envelope) {
+          encoder.writeBytes(envelope);
+        }
+      }
+      return new Response(encoder.result().slice(), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+      });
+    } catch (err) {
+      return respFor(Status.InternalError);
+    }
+  };
+
+  handlePeek = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const body = request.body;
+    if (!body) {
+      return respFor(Status.MissingBody);
+    }
+    const data = new Uint8Array(await request.arrayBuffer());
+    const decoder = new Decoder(data);
+    try {
+      const tsAuthBytes = decoder.readBytes(tsAuthSize);
+      if (!decoder.done()) {
+        return respFor(Status.ExtraBodyContent);
+      }
+      const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+      if (status !== Status.Success) return respFor(status);
+      const pubKeyHex = btoh(pubKey);
+      if (!(await this.storage.hasUser(pubKeyHex))) {
+        return respFor(Status.UserNotRegistered);
+      }
+      // Get 'from' param
+      const fromParam = url.searchParams.get("from");
+      if (!fromParam) {
+        return respFor(Status.MissingParam);
+      }
+      const fromMillis = parseInt(fromParam, 10);
+      if (isNaN(fromMillis)) {
+        return respFor(Status.InvalidParam);
+      }
+      const begin = new Date(fromMillis).toISOString();
+      const end = new Date().toISOString();
+      const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
+      const encoder = new Encoder();
+      for (const item of userOpsList) {
+        encoder.writeBytes(item.sha256);
+        encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
+      }
+      return new Response(encoder.result().slice(), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+      });
+    } catch (err) {
+      return respFor(Status.InternalError);
+    }
+  };
+
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/id") {
-      if (!this.hostID) {
-        return respFor(Status.ServerMisconfigured);
-      }
-      return new Response(this.hostID, { status: 200 });
+      return this.handleHost(request);
     }
-
     if (request.method === "POST" && url.pathname === "/users") {
-      try {
-        if (!request.body) {
-          return respFor(Status.MissingBody);
-        }
-        const data = new Uint8Array(await request.arrayBuffer());
-        const decoder = new Decoder(data);
-        const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        if (!decoder.done()) {
-          return respFor(Status.ExtraBodyContent);
-        }
-        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return respFor(status);
-        const pubKeyHex = btoh(pubKey);
-        // Register the public key
-        await this.storage.addUser(pubKeyHex);
-        return new Response("", { status: 200 });
-      } catch (err) {
-        return respFor(Status.InternalError);
-      }
+      return this.handleUser(request);
     }
-
     if (request.method === "POST" && url.pathname === "/ops") {
-      const body = request.body;
-      if (!body) {
-        return respFor(Status.MissingBody);
-      }
-      const data = new Uint8Array(await request.arrayBuffer());
-      const decoder = new Decoder(data);
-      const now = new Date();
-      try {
-        const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return respFor(status);
-        const pubKeyHex = btoh(pubKey);
-        if (!(await this.storage.hasUser(pubKeyHex))) {
-          return respFor(Status.UserNotRegistered);
-        }
-
-        const encoder = new Encoder();
-        while (!decoder.done()) {
-          const env = decodeEnvelope(decoder);
-          const hash = await this.crypto.sha256Hash(
-            concat(env.cipherhead, env.cipherbody),
-          );
-          const sigValid = await this.crypto.checkSigEd25519(
-            env.sig,
-            env.cipherhead,
-            pubKey,
-          );
-          if (sigValid) {
-            const envelope = encodeEnvelope(env);
-            const hashHex = btoh(hash);
-            await this.storage.setOp(pubKeyHex, now, envelope, hashHex);
-            await this.notifier.notify(pubKeyHex);
-            encoder.writeBytes(new Uint8Array([Status.Success]));
-          } else {
-            encoder.writeBytes(new Uint8Array([Status.InvalidSignature]));
-          }
-          encoder.writeBytes(hash);
-        }
-        return new Response(new Uint8Array(encoder.result()), {
-          status: 200,
-          headers: { "content-type": "application/octet-stream" },
-        });
-      } catch (err) {
-        return respFor(Status.InternalError);
-      }
+      return this.handlePush(request);
     }
-
     if (request.method === "POST" && url.pathname === "/pull") {
-      const body = request.body;
-      if (!body) {
-        return respFor(Status.MissingBody);
-      }
-      const data = new Uint8Array(await request.arrayBuffer());
-      const decoder = new Decoder(data);
-      try {
-        const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return respFor(status);
-        const pubKeyHex = btoh(pubKey);
-        if (!(await this.storage.hasUser(pubKeyHex))) {
-          return respFor(Status.UserNotRegistered);
-        }
-
-        const encoder = new Encoder();
-        while (!decoder.done()) {
-          const hash = decoder.readBytes(hashSize);
-          const hashHex = btoh(hash);
-          const envelope = await this.storage.getOp(pubKeyHex, hashHex);
-          if (envelope) {
-            encoder.writeBytes(envelope);
-          }
-        }
-        return new Response(encoder.result().slice(), {
-          status: 200,
-          headers: { "content-type": "application/octet-stream" },
-        });
-      } catch (err) {
-        return respFor(Status.InternalError);
-      }
+      return this.handlePull(request);
     }
-
     if (request.method === "POST" && url.pathname === "/peek") {
-      const body = request.body;
-      if (!body) {
-        return respFor(Status.MissingBody);
-      }
-      const data = new Uint8Array(await request.arrayBuffer());
-      const decoder = new Decoder(data);
-      try {
-        const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        if (!decoder.done()) {
-          return respFor(Status.ExtraBodyContent);
-        }
-        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return respFor(status);
-        const pubKeyHex = btoh(pubKey);
-        if (!(await this.storage.hasUser(pubKeyHex))) {
-          return respFor(Status.UserNotRegistered);
-        }
-        // Get 'from' param
-        const fromParam = url.searchParams.get("from");
-        if (!fromParam) {
-          return respFor(Status.MissingParam);
-        }
-        const fromMillis = parseInt(fromParam, 10);
-        if (isNaN(fromMillis)) {
-          return respFor(Status.InvalidParam);
-        }
-        const begin = new Date(fromMillis).toISOString();
-        const end = new Date().toISOString();
-        const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
-        const encoder = new Encoder();
-        for (const item of userOpsList) {
-          encoder.writeBytes(item.sha256);
-          encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
-        }
-        return new Response(encoder.result().slice(), {
-          status: 200,
-          headers: { "content-type": "application/octet-stream" },
-        });
-      } catch (err) {
-        return respFor(Status.InternalError);
-      }
+      return this.handlePeek(request);
     }
 
     return respFor(Status.NotFound);

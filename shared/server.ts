@@ -267,13 +267,9 @@ export class DiplomaticServer {
           return respFor(Status.UserNotRegistered);
         }
 
-        const hashes: Uint8Array[] = [];
+        const encoder = new Encoder();
         while (!decoder.done()) {
           const hash = decoder.readBytes(hashSize);
-          hashes.push(hash);
-        }
-        const encoder = new Encoder();
-        for (const hash of hashes) {
           const hashHex = btoh(hash);
           const envelope = await this.storage.getOp(pubKeyHex, hashHex);
           if (envelope) {

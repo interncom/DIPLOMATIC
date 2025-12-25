@@ -107,9 +107,8 @@ export default class DiplomaticClient {
     await this.store.init?.();
 
     if (params.seed) {
-      const bytes = typeof params.seed === "string"
-        ? htob(params.seed)
-        : params.seed;
+      const bytes =
+        typeof params.seed === "string" ? htob(params.seed) : params.seed;
       await this.store.setSeed(bytes);
     }
     await this.loadSeed();
@@ -222,11 +221,12 @@ export default class DiplomaticClient {
 
   async getState(): Promise<IDiplomaticClientState> {
     const hasSeed = this.seed !== undefined && this.encKey !== undefined;
-    const hasHost = this.hostURL !== undefined &&
-      this.hostKeyPair !== undefined;
-    const connected = this.websocket === undefined
-      ? false
-      : this.websocket.readyState === this.websocket.OPEN;
+    const hasHost =
+      this.hostURL !== undefined && this.hostKeyPair !== undefined;
+    const connected =
+      this.websocket === undefined
+        ? false
+        : this.websocket.readyState === this.websocket.OPEN;
     return { hasSeed, hasHost, connected };
   }
 
@@ -412,17 +412,22 @@ export default class DiplomaticClient {
     }
   };
 
-  async upsert<T>(
-    { type, body, eid, gid, pid, version = 0 }: {
-      type: string;
-      body: T;
-      eid?: EntityID;
-      gid?: GroupID;
-      pid?: EntityID;
-      version?: number;
-    },
-  ) {
-    const id = eid ?? await libsodiumCrypto.gen128BitRandomID();
+  async upsert<T>({
+    type,
+    body,
+    eid,
+    gid,
+    pid,
+    version = 0,
+  }: {
+    type: string;
+    body: T;
+    eid?: EntityID;
+    gid?: GroupID;
+    pid?: EntityID;
+    version?: number;
+  }) {
+    const id = eid ?? (await libsodiumCrypto.gen128BitRandomID());
     const op = genUpsertOp<T>(id, type, body, version, gid, pid);
     return this.apply(op);
   }

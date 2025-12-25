@@ -7,6 +7,7 @@ import type {
   IWebsocketNotifier,
 } from "./types.ts";
 import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
+import { concat } from "./message.ts";
 import {
   tsAuthSize,
   envelopeHeaderSize,
@@ -16,11 +17,13 @@ import {
 } from "./consts.ts";
 import { decodeSigProvenData, type ISigProvenData } from "./sigProof.ts";
 import {
+  encodeEnvelope,
   decodeEnvelope,
   decodeEnvelopeHeader,
   type IEnvelope,
   type IEnvelopeHeader,
 } from "./envelope.ts";
+import { decode_varint } from "./varint.ts";
 
 const allowedHeaders = ["X-DIPLOMATIC-KEY", "X-DIPLOMATIC-SIG"];
 
@@ -98,27 +101,25 @@ export class DiplomaticServer {
   };
 
   async processEnvelope(
-    envHeader: IEnvelopeHeader,
-    msg: Uint8Array,
+    env: IEnvelope,
     pubKeyHex: string,
     expectedPubKey: Uint8Array,
     now: Date,
-    envelope: Uint8Array,
   ): Promise<number> {
-    const hash = await this.crypto.blake3(msg);
-    if (!uint8ArraysEqual(hash, envHeader.hsh)) {
-      return 2; // Invalid hash
-    }
     if (
       !(await this.crypto.checkSigEd25519(
-        envHeader.sig,
-        envHeader.hsh,
+        env.sig,
+        env.cipherhead,
         expectedPubKey,
       ))
     ) {
       return 3; // Invalid envelope signature
     }
-    await this.storage.setOp(pubKeyHex, now, envelope, btoh(envHeader.hsh));
+    const envelope = encodeEnvelope(env);
+    const hsh = await this.crypto.sha256Hash(
+      concat(env.cipherhead, env.cipherbody),
+    );
+    await this.storage.setOp(pubKeyHex, now, envelope, btoh(hsh));
     await this.notifier.notify(pubKeyHex);
     return 0; // Success
   }
@@ -174,17 +175,15 @@ export class DiplomaticServer {
         return new Response("Invalid request", { status: 400 });
       }
       const bodyArrayBuffer = await request.arrayBuffer();
-      const bodyView = new DataView(bodyArrayBuffer);
+      const data = new Uint8Array(bodyArrayBuffer);
       let offset = 0;
       const now = new Date();
       try {
         // Read tsAuth
-        if (offset + tsAuthSize > bodyArrayBuffer.byteLength) {
+        if (offset + tsAuthSize > data.length) {
           return new Response("Incomplete tsAuth", { status: 400 });
         }
-        const tsAuthBytes = new Uint8Array(
-          bodyArrayBuffer.slice(offset, offset + tsAuthSize),
-        );
+        const tsAuthBytes = data.slice(offset, offset + tsAuthSize);
         offset += tsAuthSize;
         const { pubKey, pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
         if (!(await this.storage.hasUser(pubKeyHex))) {
@@ -192,43 +191,49 @@ export class DiplomaticServer {
         }
 
         const results: { status: number; hsh: Uint8Array }[] = [];
-        while (offset < bodyArrayBuffer.byteLength) {
-          // Read envelope header
-          if (offset + envelopeHeaderSize > bodyArrayBuffer.byteLength) {
-            return new Response("Incomplete envelope header", { status: 400 });
-          }
-          const headerBytes = new Uint8Array(
-            bodyArrayBuffer.slice(offset, offset + envelopeHeaderSize),
-          );
-          offset += envelopeHeaderSize;
-
-          // Decode header
-          const envHeader = decodeEnvelopeHeader(headerBytes);
-
-          // Read envelope msg
-          const msgLen = envHeader.len;
-          if (offset + msgLen > bodyArrayBuffer.byteLength) {
-            return new Response("Incomplete envelope", { status: 400 });
-          }
-          const msgBytes = new Uint8Array(
-            bodyArrayBuffer.slice(offset, offset + msgLen),
-          );
-          offset += msgLen;
-
-          const envelope = new Uint8Array(envelopeHeaderSize + msgLen);
-          envelope.set(headerBytes, 0);
-          envelope.set(msgBytes, envelopeHeaderSize);
-          envelope.set(msgBytes, headerBytes.length);
-
+        while (offset < data.length) {
+          // Read sig
+          if (offset + 64 > data.length) break;
+          const sig = data.slice(offset, offset + 64);
+          offset += 64;
+          // Read dkm
+          if (offset + 8 > data.length) break;
+          const dkm = data.slice(offset, offset + 8);
+          offset += 8;
+          // Read varint lenCipherHead
+          const headLenDecode = decode_varint(data, offset);
+          const lenCipherHead = Number(headLenDecode.value);
+          offset += headLenDecode.bytesRead;
+          // Read varint lenCipherBody
+          const bodyLenDecode = decode_varint(data, offset);
+          const lenCipherBody = Number(bodyLenDecode.value);
+          offset += bodyLenDecode.bytesRead;
+          // Read cipherhead
+          if (offset + lenCipherHead > data.length) break;
+          const cipherhead = data.slice(offset, offset + lenCipherHead);
+          offset += lenCipherHead;
+          // Read cipherbody
+          if (offset + lenCipherBody > data.length) break;
+          const cipherbody = data.slice(offset, offset + lenCipherBody);
+          offset += lenCipherBody;
+          const env: IEnvelope = {
+            sig,
+            dkm,
+            lenCipherHead,
+            lenCipherBody,
+            cipherhead,
+            cipherbody,
+          };
           const status = await this.processEnvelope(
-            envHeader,
-            msgBytes,
+            env,
             pubKeyHex,
             pubKey,
             now,
-            envelope,
           );
-          results.push({ status, hsh: envHeader.hsh });
+          const hsh = await this.crypto.sha256Hash(
+            concat(cipherhead, cipherbody),
+          );
+          results.push({ status, hsh });
         }
         const buffer = new Uint8Array(results.length * responseItemSize);
         let idx = 0;
@@ -288,7 +293,8 @@ export class DiplomaticServer {
         }
         const results: Uint8Array[] = [];
         for (const hash of hashes) {
-          const envelope = await this.storage.getOp(pubKeyHex, btoh(hash));
+          const hashHex = btoh(hash);
+          const envelope = await this.storage.getOp(pubKeyHex, hashHex);
           if (envelope) {
             results.push(envelope);
           }
@@ -353,24 +359,26 @@ export class DiplomaticServer {
         const begin = new Date(fromMillis).toISOString();
         const end = new Date().toISOString();
         const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
-        const headers: Uint8Array[] = [];
+        const responseData: Uint8Array[] = [];
         for (const item of userOpsList) {
-          const envelope = await this.storage.getOp(
-            pubKeyHex,
-            btoh(item.sha256),
+          const hash = item.sha256;
+          const recordedAtBytes = new Uint8Array(8);
+          new DataView(recordedAtBytes.buffer).setBigUint64(
+            0,
+            BigInt(new Date(item.recordedAt).getTime()),
+            false,
           );
-          if (envelope) {
-            const header = envelope.slice(0, envelopeHeaderSize);
-            headers.push(header);
-          }
+          responseData.push(hash, recordedAtBytes);
         }
-        let totalLength = 0;
-        for (const h of headers) totalLength += h.length;
+        const totalLength = responseData.reduce(
+          (sum, arr) => sum + arr.length,
+          0,
+        );
         const responseBody = new Uint8Array(totalLength);
         let pos = 0;
-        for (const h of headers) {
-          responseBody.set(h, pos);
-          pos += h.length;
+        for (const arr of responseData) {
+          responseBody.set(arr, pos);
+          pos += arr.length;
         }
         return new Response(responseBody, {
           status: 200,

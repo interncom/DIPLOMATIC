@@ -33,13 +33,15 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: bod.length,
       bod,
     };
-    const [encoded, header] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op, crypto);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
+    // Check hsh
+    assertEquals(decoded.hsh, await crypto.blake3(bod));
     // Header should be the prefix without body
     assertEquals(header.length + (op.bod?.length ?? 0), encoded.length);
   });
@@ -53,36 +55,39 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: bod.length,
       bod,
     };
-    const [encoded, header] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op, crypto);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
+    assertEquals(decoded.hsh, await crypto.blake3(bod));
   });
 
   await t.step("delete operation (len=0, no body)", async () => {
     const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999);
-    const [encoded, header] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op, crypto);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined); // No body
+    assertEquals(decoded.hsh, undefined); // No hsh for delete
   });
 
   await t.step("genInsert round-trip", async () => {
     const content = createFilledArray(42, 0xcc);
     const op = await genInsert(new Date(555555555000), content, crypto);
-    const [encoded, header] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op, crypto);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid.length, eidBytes);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
+    assertEquals(decoded.hsh, await crypto.blake3(content));
   });
 
   await t.step("edge: empty body (upsert)", async () => {
@@ -93,13 +98,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: 0,
       bod: undefined,
     };
-    const [encoded, header] = await encodeOp(op);
+    const [encoded, header] = await encodeOp(op, crypto);
     const decoded = await decodeOp(encoded);
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined);
+    assertEquals(decoded.hsh, undefined); // No hsh for empty body
   });
 
   await t.step("genUpsert", () => {
@@ -116,10 +122,9 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("derivationKeyMaterial", async () => {
-    const header = createFilledArray(24, 0x88);
-    const kdm = await derivationKeyMaterial(header, crypto);
+    const kdm = await derivationKeyMaterial(crypto);
     assertEquals(kdm.length, 8);
-    // Since it's a hash, we can't predict the exact value, but we can check it's not the input
+    // Now it's random, just check length
     assertEquals(kdm.length, keyPathBytes);
   });
 
@@ -131,6 +136,21 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     } catch (e) {
       // Expected to fail due to insufficient data
     }
+  });
+
+  await t.step("encodeOp sets hsh correctly", async () => {
+    const bod = createFilledArray(10, 0xdd);
+    const op: IMessage = {
+      eid: createFilledArray(16, 0xee),
+      clk: new Date(1234567890000),
+      ctr: 5,
+      len: bod.length,
+      bod,
+    };
+    const expectedHsh = await crypto.blake3(bod);
+    const [encoded, header] = await encodeOp(op, crypto);
+    const decoded = await decodeOp(encoded);
+    assertEquals(decoded.hsh, expectedHsh);
   });
 
   await t.step("decodeOp with invalid varint", async () => {

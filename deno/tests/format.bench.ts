@@ -38,7 +38,7 @@ const op: IMessage = {
 
 async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
   const [encMsg, msgHead] = await encodeOp(op);
-  const kdm = await derivationKeyMaterial(msgHead, crypto);
+  const kdm = await derivationKeyMaterial(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
   const ciphertxt = await crypto.encryptXSalsa20Poly1305Combined(
     encMsg,

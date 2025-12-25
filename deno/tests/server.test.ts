@@ -1,4 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std/testing/asserts.ts";
+import { tsAuthSize } from "../../shared/consts.ts";
 import { DiplomaticServer, Status } from "../../shared/server.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
@@ -106,6 +107,54 @@ Deno.test("server", async (t) => {
       assertEquals(header.hash.length, 32);
       assert(typeof header.recordedAt === "number");
     }
+  });
+
+  const nowMs = BigInt(Date.now());
+  const timestampBytes = new Uint8Array(8);
+  new DataView(timestampBytes.buffer).setBigUint64(0, nowMs, false);
+  const invalidTsAuth = new Uint8Array(tsAuthSize);
+  invalidTsAuth.set(timestampBytes, 96);
+
+  await t.step("POST /users requires valid tsAuth", async () => {
+    const response = await fetch(`http://localhost:${port}/users`, {
+      method: "POST",
+      body: invalidTsAuth,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    assertEquals(response.status, 401);
+    await response.text();
+  });
+
+  await t.step("POST /ops requires valid tsAuth", async () => {
+    const response = await fetch(`http://localhost:${port}/ops`, {
+      method: "POST",
+      body: invalidTsAuth,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    assertEquals(response.status, 401);
+    await response.text();
+  });
+
+  await t.step("POST /pull requires valid tsAuth", async () => {
+    const response = await fetch(`http://localhost:${port}/pull`, {
+      method: "POST",
+      body: invalidTsAuth,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    assertEquals(response.status, 401);
+    await response.text();
+  });
+
+  await t.step("POST /peek requires valid tsAuth", async () => {
+    const peekUrl = new URL(`http://localhost:${port}/peek`);
+    peekUrl.searchParams.set("from", "0");
+    const response = await fetch(peekUrl.toString(), {
+      method: "POST",
+      body: invalidTsAuth,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    assertEquals(response.status, 401);
+    await response.text();
   });
 
   await httpServer.shutdown();

@@ -1,5 +1,4 @@
 import type { ICrypto, KeyPair } from "./types.ts";
-import { encode_varint, decode_varint } from "./varint.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { concat } from "./lib.ts";
 

@@ -146,7 +146,7 @@ export class DiplomaticServer {
     pubKeyHex: string,
     expectedPubKey: Uint8Array,
     now: Date,
-  ): Promise<number> {
+  ): Promise<Status> {
     if (
       !(await this.crypto.checkSigEd25519(
         env.sig,

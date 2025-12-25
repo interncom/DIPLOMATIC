@@ -88,12 +88,11 @@ export async function encodeOp(
   const ctrVarint = encode_varint(op.ctr);
   const lenVarint = encode_varint(op.len);
 
-  const headerArrays = [];
+  const headerArrays = [eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint];
   if (op.bod && op.len > 0) {
     const hsh = await crypto.blake3(op.bod);
     headerArrays.push(hsh);
   }
-  headerArrays.push(eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint);
   const header = headerArrays.reduce(
     (acc, arr) => concat(acc, arr),
     new Uint8Array(0),
@@ -105,26 +104,6 @@ export async function encodeOp(
 
 export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
   let offset = 0;
-  let hsh: Uint8Array | undefined;
-  let tempOffset = 0;
-  // Check if has hsh by testing reading with hsh
-  if (encoded.length >= 32 + eidBytes + clkBytes) {
-    let testOffset = 32 + eidBytes + clkBytes;
-    const ctrDecode = decode_varint(encoded, testOffset);
-    testOffset += ctrDecode.bytesRead;
-    const lenDecode = decode_varint(encoded, testOffset);
-    const testLen = Number(lenDecode.value);
-    testOffset += lenDecode.bytesRead;
-    if (testOffset + testLen === encoded.length) {
-      // has hsh
-      hsh = encoded.slice(0, 32);
-      offset = 32;
-    } else {
-      offset = 0;
-    }
-  } else {
-    offset = 0;
-  }
   const eid = encoded.slice(offset, offset + eidBytes);
   offset += eidBytes;
   const clkTime = new DataView(
@@ -145,8 +124,14 @@ export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
       ? Number(lenDecode.value)
       : lenDecode.value;
   offset += lenDecode.bytesRead;
-  const body = encoded.slice(offset, offset + len);
-  return { eid, clk, ctr, len, bod: len > 0 ? body : undefined, hsh };
+  let hsh: Uint8Array | undefined;
+  let bod: Uint8Array | undefined;
+  if (len > 0) {
+    hsh = encoded.slice(offset, offset + 32);
+    offset += 32;
+    bod = encoded.slice(offset, offset + len);
+  }
+  return { eid, clk, ctr, len, bod, hsh };
 }
 
 export async function derivationKeyMaterial(

@@ -40,6 +40,13 @@ import {
 import { concat } from "./lib.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
+async function post(url: URL, enc: Encoder) {
+  return fetch(url, {
+    method: "POST",
+    body: enc.result().slice(),
+  });
+}
+
 export default class DiplomaticClientAPI {
   crypto: ICrypto;
   enclave: Enclave;
@@ -71,10 +78,6 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<void> {
-    // Form the authentication prefix (sigproof of timestamp).
-    // Server can reject for timestamp too far from its clock.
-    // In that case, signal to user that clock is out of sync.
-    // Clocks must be synchronized to ensure correct op order.
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
@@ -102,17 +105,11 @@ export default class DiplomaticClientAPI {
     url.pathname = "/ops";
 
     const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
-
-    // Form the authentication prefix (sigproof of timestamp).
-    // Server can reject for timestamp too far from its clock.
-    // In that case, signal to user that clock is out of sync.
-    // Clocks must be synchronized to ensure correct op order.
-
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
-
     const encoder = new Encoder();
     encoder.writeBytes(tsAuth);
+    
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
       // Encode message.
       const [encMsg, msgHead] = await encodeOp(op, this.crypto);
@@ -121,7 +118,7 @@ export default class DiplomaticClientAPI {
       const kdm = (await derivationKeyMaterial(this.crypto)).slice(0, 8);
       const encKey = await this.enclave.deriveFromKDM(kdm);
 
-      // Encrypt header and body separately.
+      // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
       const cipherhead = await this.crypto.encryptXSalsa20Poly1305Combined(
         msgHead,
         encKey,
@@ -143,10 +140,7 @@ export default class DiplomaticClientAPI {
       encoder.writeBytes(encEnv);
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      body: encoder.result().slice(),
-    });
+    const response = await post(url, encoder);
     if (!response.ok) {
       console.error(response);
       throw "Uh oh";
@@ -182,10 +176,7 @@ export default class DiplomaticClientAPI {
       encoder.writeBytes(hash);
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      body: encoder.result().slice(),
-    });
+    const response = await post(url, encoder);
     if (!response.ok) {
       throw "Uh oh";
     }
@@ -219,10 +210,7 @@ export default class DiplomaticClientAPI {
     encoder.writeBytes(tsAuth);
     encoder.writeVarInt(fromMillis);
 
-    const response = await fetch(url, {
-      method: "POST",
-      body: encoder.result().slice(),
-    });
+    const response = await post(url, encoder);
     if (!response.ok) {
       throw "Uh oh";
     }

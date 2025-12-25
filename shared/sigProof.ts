@@ -1,5 +1,6 @@
 import type { ICrypto, DerivationSeed } from "./types.ts";
 import { sigBytes, pubKeyBytes } from "./consts.ts";
+import { Encoder, Decoder } from "./codec.ts";
 
 // ISigProof is a signature and data necessary to verify it.
 // The layout is:
@@ -7,9 +8,6 @@ import { sigBytes, pubKeyBytes } from "./consts.ts";
 // - ed25519 signature (64 bytes)
 export type EncodedSigProvenData = Uint8Array;
 
-const pubKeyOffset = 0;
-const sigOffset = pubKeyOffset + pubKeyBytes;
-const dataOffset = sigOffset + sigBytes;
 export interface ISigProof {
   pubKey: Uint8Array;
   sig: Uint8Array;
@@ -31,42 +29,24 @@ export async function sigProof(
   };
 }
 
-const sigProofDataBytes = pubKeyBytes + sigBytes;
-
 export function encodeSigProvenData(
   spdata: ISigProvenData,
   crypto: ICrypto,
 ): EncodedSigProvenData {
-  const encoded = new Uint8Array(sigProofDataBytes + spdata.data.length);
-
-  // spdata.pubKey (32 bytes)
-  encoded.set(spdata.pubKey, pubKeyOffset);
-
-  // spdata.sig (64 bytes)
-  encoded.set(spdata.sig, sigOffset);
-
-  // spdata.data
-  encoded.set(spdata.data, dataOffset);
-
-  return encoded;
+  const encoder = new Encoder();
+  encoder.writeBytes(spdata.pubKey);
+  encoder.writeBytes(spdata.sig);
+  encoder.writeBytes(spdata.data);
+  return encoder.result();
 }
 
 export function decodeSigProvenData(
   encoded: EncodedSigProvenData,
 ): ISigProvenData {
-  if (encoded.length < sigProofDataBytes) {
-    throw new Error("Encoded data too short");
-  }
-
-  // Decode pubKey: 32 bytes starting at offset 0
-  const pubKey = encoded.slice(pubKeyOffset, pubKeyOffset + pubKeyBytes);
-
-  // Decode sig: 64 bytes starting at offset 32
-  const sig = encoded.slice(sigOffset, sigOffset + sigBytes);
-
-  // Decode data: remaining bytes after 96
-  const data = encoded.slice(sigProofDataBytes);
-
+  const decoder = new Decoder(encoded);
+  const pubKey = decoder.readBytes(pubKeyBytes);
+  const sig = decoder.readBytes(sigBytes);
+  const data = decoder.readBytes(encoded.length - decoder.consumed());
   return {
     pubKey,
     sig,

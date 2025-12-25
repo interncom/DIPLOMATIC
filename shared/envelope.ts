@@ -13,6 +13,7 @@ import {
   dkmBytes,
 } from "./consts.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
+import { Decoder } from "./codec.ts";
 
 export interface IEnvelopeHeader {
   sig: Uint8Array;
@@ -77,16 +78,11 @@ export async function makeEnvelope(
 }
 
 export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
-  let offset = 0;
-  const sig = encoded.slice(offset, offset + sigBytes);
-  offset += sigBytes;
-  const dkm = encoded.slice(offset, offset + dkmBytes);
-  offset += dkmBytes;
-  const headLenDecode = decode_varint(encoded, offset);
-  const lenCipherHead = Number(headLenDecode.value);
-  offset += headLenDecode.bytesRead;
-  const bodyLenDecode = decode_varint(encoded, offset);
-  const lenCipherBody = Number(bodyLenDecode.value);
+  const decoder = new Decoder(encoded);
+  const sig = decoder.readBytes(sigBytes);
+  const dkm = decoder.readBytes(dkmBytes);
+  const lenCipherHead = decoder.readVarInt();
+  const lenCipherBody = decoder.readVarInt();
   return { sig, dkm, lenCipherHead, lenCipherBody };
 }
 
@@ -94,21 +90,13 @@ export function decodeEnvelope(encoded: Uint8Array): {
   envelope: IEnvelope;
   consumed: number;
 } {
-  let offset = 0;
-  const sig = encoded.slice(offset, offset + sigBytes);
-  offset += sigBytes;
-  const dkm = encoded.slice(offset, offset + dkmBytes);
-  offset += dkmBytes;
-  const headLenDecode = decode_varint(encoded, offset);
-  const lenCipherHead = Number(headLenDecode.value);
-  offset += headLenDecode.bytesRead;
-  const bodyLenDecode = decode_varint(encoded, offset);
-  const lenCipherBody = Number(bodyLenDecode.value);
-  offset += bodyLenDecode.bytesRead;
-  const cipherhead = encoded.slice(offset, offset + lenCipherHead);
-  offset += lenCipherHead;
-  const cipherbody = encoded.slice(offset, offset + lenCipherBody);
-  offset += lenCipherBody;
+  const decoder = new Decoder(encoded);
+  const sig = decoder.readBytes(sigBytes);
+  const dkm = decoder.readBytes(dkmBytes);
+  const lenCipherHead = decoder.readVarInt();
+  const lenCipherBody = decoder.readVarInt();
+  const cipherhead = decoder.readBytes(lenCipherHead);
+  const cipherbody = decoder.readBytes(lenCipherBody);
   return {
     envelope: {
       sig,
@@ -118,6 +106,6 @@ export function decodeEnvelope(encoded: Uint8Array): {
       cipherhead,
       cipherbody,
     },
-    consumed: offset,
+    consumed: decoder.consumed(),
   };
 }

@@ -33,4 +33,8 @@ export class Decoder {
   done(): boolean {
     return this.pos >= this.data.length;
   }
+
+  consumed(): number {
+    return this.pos;
+  }
 }

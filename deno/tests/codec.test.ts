@@ -68,3 +68,55 @@ Deno.test("Decoder consumed", () => {
   assertEquals(decoder.consumed(), 4);
   assertEquals(decoder.done(), true);
 });
+
+import { Encoder } from "../../shared/codec.ts";
+
+Deno.test("Encoder writeBytes", () => {
+  const encoder = new Encoder();
+  const bytes = new Uint8Array([1, 2, 3]);
+  encoder.writeBytes(bytes);
+  const result = encoder.result();
+  assertEquals(result, bytes);
+});
+
+Deno.test("Encoder writeBigInt", () => {
+  const encoder = new Encoder();
+  encoder.writeBigInt(1234567890123456789n);
+  const result = encoder.result();
+  const expected = new Uint8Array(8);
+  new DataView(expected.buffer).setBigUint64(0, 1234567890123456789n, false);
+  assertEquals(result, expected);
+});
+
+Deno.test("Encoder writeVarInt", () => {
+  const encoder = new Encoder();
+  encoder.writeVarInt(42);
+  const result = encoder.result();
+  assertEquals(result, encode_varint(42));
+});
+
+Deno.test("Encoder sequential writes", () => {
+  const encoder = new Encoder();
+  encoder.writeBytes(new Uint8Array([1, 2]));
+  encoder.writeBigInt(999n);
+  encoder.writeVarInt(5);
+  encoder.writeBytes(new Uint8Array([7, 8]));
+  const result = encoder.result();
+  // Expected: [1,2] + 8 bytes big endian 999 + varint 5 + [7,8]
+  const bytes4 = new Uint8Array([1, 2]);
+  const bigintData = new Uint8Array(8);
+  new DataView(bigintData.buffer).setBigUint64(0, 999n, false);
+  const varintData = encode_varint(5);
+  const bytes2 = new Uint8Array([7, 8]);
+  const expected = concat(
+    bytes4,
+    concat(bigintData, concat(varintData, bytes2)),
+  );
+  assertEquals(result, expected);
+});
+
+Deno.test("Encoder empty", () => {
+  const encoder = new Encoder();
+  const result = encoder.result();
+  assertEquals(result.length, 0);
+});

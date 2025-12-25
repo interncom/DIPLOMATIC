@@ -13,7 +13,7 @@ import {
   dkmBytes,
 } from "./consts.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
-import { Decoder } from "./codec.ts";
+import { Decoder, Encoder } from "./codec.ts";
 
 export interface IEnvelopeHeader {
   sig: Uint8Array;
@@ -30,33 +30,14 @@ export interface IEnvelope extends IEnvelopeHeader {
 export type EncodedEnvelope = Uint8Array;
 
 export function encodeEnvelope(env: IEnvelope): Uint8Array {
-  const lenHeadVarint = encode_varint(env.lenCipherHead);
-  const lenBodyVarint = encode_varint(env.lenCipherBody);
-  const total =
-    sigBytes +
-    dkmBytes +
-    lenHeadVarint.length +
-    lenBodyVarint.length +
-    env.cipherhead.length +
-    env.cipherbody.length;
-  const encoded = new Uint8Array(total);
-  encoded.set(env.sig, 0);
-  encoded.set(env.dkm, sigBytes);
-  encoded.set(lenHeadVarint, sigBytes + dkmBytes);
-  encoded.set(lenBodyVarint, sigBytes + dkmBytes + lenHeadVarint.length);
-  encoded.set(
-    env.cipherhead,
-    sigBytes + dkmBytes + lenHeadVarint.length + lenBodyVarint.length,
-  );
-  encoded.set(
-    env.cipherbody,
-    sigBytes +
-      dkmBytes +
-      lenHeadVarint.length +
-      lenBodyVarint.length +
-      env.cipherhead.length,
-  );
-  return encoded;
+  const encoder = new Encoder();
+  encoder.writeBytes(env.sig);
+  encoder.writeBytes(env.dkm);
+  encoder.writeVarInt(env.lenCipherHead);
+  encoder.writeVarInt(env.lenCipherBody);
+  encoder.writeBytes(env.cipherhead);
+  encoder.writeBytes(env.cipherbody);
+  return encoder.result();
 }
 
 export async function makeEnvelope(

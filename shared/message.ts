@@ -1,6 +1,6 @@
 import type { ICrypto, KeyPair } from "./types.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
-import { Decoder } from "./codec.ts";
+import { Decoder, Encoder } from "./codec.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -79,26 +79,22 @@ export const clkBytes = 8;
 export const hshBytes = 32;
 
 // Returns the full encoded message and also a slice of just the encoded header.
+
+// Returns the full encoded message and also a slice of just the encoded header.
 export async function encodeOp(
   op: IMessage,
   crypto: ICrypto,
 ): Promise<[EncodedMessage, Uint8Array]> {
-  const eidBytes_arr = op.eid;
-  const clkBytes_arr = new Uint8Array(8);
-  const view = new DataView(clkBytes_arr.buffer);
-  view.setBigUint64(0, BigInt(op.clk.getTime()), false);
-  const ctrVarint = encode_varint(op.ctr);
-  const lenVarint = encode_varint(op.len);
-
-  const headerArrays = [eidBytes_arr, clkBytes_arr, ctrVarint, lenVarint];
+  const headerEncoder = new Encoder();
+  headerEncoder.writeBytes(op.eid);
+  headerEncoder.writeBigInt(BigInt(op.clk.getTime()));
+  headerEncoder.writeVarInt(op.ctr);
+  headerEncoder.writeVarInt(op.len);
   if (op.bod && op.len > 0) {
     const hsh = await crypto.blake3(op.bod);
-    headerArrays.push(hsh);
+    headerEncoder.writeBytes(hsh);
   }
-  const header = headerArrays.reduce(
-    (acc, arr) => concat(acc, arr),
-    new Uint8Array(0),
-  );
+  const header = headerEncoder.result();
   const body = op.bod || new Uint8Array(0);
   const encoded = concat(header, body);
   return [encoded, header];

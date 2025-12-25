@@ -1,4 +1,11 @@
-import { decode_varint } from "./varint.ts";
+import { encode_varint, decode_varint } from "./varint.ts";
+
+function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const res = new Uint8Array(a.length + b.length);
+  res.set(a, 0);
+  res.set(b, a.length);
+  return res;
+}
 
 export class Decoder {
   private data: Uint8Array;
@@ -36,5 +43,27 @@ export class Decoder {
 
   consumed(): number {
     return this.pos;
+  }
+}
+
+export class Encoder {
+  private parts: Uint8Array[] = [];
+
+  writeBigInt(b: bigint): void {
+    const arr = new Uint8Array(8);
+    new DataView(arr.buffer).setBigUint64(0, b, false);
+    this.parts.push(arr);
+  }
+
+  writeVarInt(n: number): void {
+    this.parts.push(encode_varint(n));
+  }
+
+  writeBytes(bytes: Uint8Array): void {
+    this.parts.push(bytes);
+  }
+
+  result(): Uint8Array {
+    return this.parts.reduce((acc, arr) => concat(acc, arr), new Uint8Array(0));
   }
 }

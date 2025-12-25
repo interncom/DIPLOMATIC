@@ -44,6 +44,7 @@ function cors(resp: Response): Response {
 export enum Status {
   Success = 0,
   InvalidSignature = 3,
+  ClockOutOfSync = 4,
 }
 
 export class DiplomaticServer {
@@ -63,15 +64,13 @@ export class DiplomaticServer {
     this.notifier = notifier;
   }
 
-  async validateTsAuth(
-    tsAuthBytes: Uint8Array,
-  ): Promise<{ pubKey: Uint8Array; pubKeyHex: string }> {
+  async validateTsAuth(tsAuthBytes: Uint8Array): Promise<[Uint8Array, Status]> {
     const tsAuth: ISigProvenData = decodeSigProvenData(tsAuthBytes);
     const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
     const currentTime = Date.now();
     const diff = Math.abs(currentTime - Number(timestampMs));
     if (diff > clockToleranceMs) {
-      throw new Error("Clock out of sync");
+      return [new Uint8Array(0), Status.ClockOutOfSync];
     }
     if (
       !(await this.crypto.checkSigEd25519(
@@ -80,10 +79,18 @@ export class DiplomaticServer {
         tsAuth.pubKey,
       ))
     ) {
-      throw new Error("Invalid signature");
+      return [new Uint8Array(0), Status.InvalidSignature];
     }
-    const pubKeyHex = btoh(tsAuth.pubKey);
-    return { pubKey: tsAuth.pubKey, pubKeyHex };
+    return [tsAuth.pubKey, Status.Success];
+  }
+
+  getAuthErrorResponse(status: Status): Response {
+    const msg =
+      status === Status.ClockOutOfSync
+        ? "Clock out of sync"
+        : "Invalid signature";
+    const httpStatus = status === Status.ClockOutOfSync ? 400 : 401;
+    return new Response(msg, { status: httpStatus });
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -150,7 +157,9 @@ export class DiplomaticServer {
         if (!decoder.done()) {
           return new Response("Extra body content", { status: 400 });
         }
-        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        const pubKeyHex = btoh(pubKey);
         // Register the public key
         await this.storage.addUser(pubKeyHex);
         return new Response("", { status: 200 });
@@ -176,7 +185,9 @@ export class DiplomaticServer {
       const now = new Date();
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        const { pubKey, pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
         }
@@ -204,9 +215,6 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          if (err.message === "Invalid signature") {
-            return new Response(err.message, { status: 401 });
-          }
           return new Response(err.message, { status: 400 });
         }
         console.error(err);
@@ -223,7 +231,9 @@ export class DiplomaticServer {
       const decoder = new Decoder(data);
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
-        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
         }
@@ -247,9 +257,6 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          if (err.message === "Invalid signature") {
-            return new Response(err.message, { status: 401 });
-          }
           return new Response(err.message, { status: 400 });
         }
         console.error(err);
@@ -269,7 +276,9 @@ export class DiplomaticServer {
         if (!decoder.done()) {
           return new Response("Extra body content", { status: 400 });
         }
-        const { pubKeyHex } = await this.validateTsAuth(tsAuthBytes);
+        const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
+        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
           return new Response("Unauthorized", { status: 401 });
         }
@@ -296,9 +305,6 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          if (err.message === "Invalid signature") {
-            return new Response(err.message, { status: 401 });
-          }
           return new Response(err.message, { status: 400 });
         }
         console.error(err);

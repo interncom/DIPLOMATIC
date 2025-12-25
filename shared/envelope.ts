@@ -12,7 +12,6 @@ import {
   pubKeyBytes,
   kdmBytes,
 } from "./consts.ts";
-import { encode_varint, decode_varint } from "./varint.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
 export interface IEnvelopeHeader {

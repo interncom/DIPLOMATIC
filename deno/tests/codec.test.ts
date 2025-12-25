@@ -304,3 +304,52 @@ Deno.test("decode_varint too long throws error", () => {
     "Varint too long",
   );
 });
+
+Deno.test("Encoder writeDate", () => {
+  const encoder = new Encoder();
+  const date = new Date("2023-10-01T12:00:00Z");
+  encoder.writeDate(date);
+  const result = encoder.result();
+  // Date encodes to 8 bytes BigInt
+  assertEquals(result.length, 8);
+  // Decode back to verify
+  const decoder = new Decoder(result);
+  const decodedDate = decoder.readDate();
+  assertEquals(decodedDate.getTime(), date.getTime());
+});
+
+Deno.test("Decoder readDate", () => {
+  const encoder = new Encoder();
+  const originalDate = new Date(1696161600000); // 2023-10-01T12:00:00Z in ms
+  encoder.writeDate(originalDate);
+  const data = encoder.result();
+  const decoder = new Decoder(data);
+  const decodedDate = decoder.readDate();
+  assertEquals(decodedDate, originalDate);
+  assertEquals(decoder.done(), true);
+});
+
+Deno.test("Date roundtrip sequential", () => {
+  const encoder = new Encoder();
+  const date1 = new Date("2020-01-01T00:00:00Z");
+  const date2 = new Date("2030-12-31T23:59:59.999Z");
+  encoder.writeDate(date1);
+  encoder.writeDate(date2);
+  const encoded = encoder.result();
+  const decoder = new Decoder(encoded);
+  const decodedDate1 = decoder.readDate();
+  const decodedDate2 = decoder.readDate();
+  assertEquals(decodedDate1, date1);
+  assertEquals(decodedDate2, date2);
+  assertEquals(decoder.done(), true);
+});
+
+Deno.test("Decoder readDate not enough data", () => {
+  const data = new Uint8Array([1, 2, 3]);
+  const decoder = new Decoder(data);
+  assertThrows(
+    () => decoder.readDate(),
+    Error,
+    "Not enough data to read BigInt (needs 8 bytes)",
+  );
+});

@@ -1,5 +1,5 @@
 import type { ICrypto, MasterSeed, DerivationSeed } from "./types.ts";
-import { concat } from "./message.ts";
+import { concat } from "./lib.ts";
 
 export class Enclave {
   private seed: MasterSeed;

@@ -7,7 +7,7 @@ import type {
   IWebsocketNotifier,
 } from "./types.ts";
 import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
-import { concat } from "./message.ts";
+import { concat } from "./lib.ts";
 import {
   tsAuthSize,
   envelopeHeaderSize,

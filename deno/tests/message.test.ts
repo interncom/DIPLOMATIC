@@ -8,8 +8,8 @@ import {
   genUpsert,
   derivationKeyMaterial,
   kdmBytes,
-  concat,
 } from "../../shared/message.ts";
+import { concat } from "../../shared/lib.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed

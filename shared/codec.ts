@@ -1,11 +1,5 @@
 import { encode_varint, decode_varint } from "./varint.ts";
-
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const res = new Uint8Array(a.length + b.length);
-  res.set(a, 0);
-  res.set(b, a.length);
-  return res;
-}
+import { concat } from "./lib.ts";
 
 export class Decoder {
   private data: Uint8Array;

@@ -56,6 +56,35 @@ export enum Status {
   NotFound = 13,
 }
 
+function respFor(status: Status): Response {
+  switch (status) {
+    case Status.InvalidSignature:
+      return new Response("Invalid signature", { status: 401 });
+    case Status.ClockOutOfSync:
+      return new Response("Clock out of sync", { status: 400 });
+    case Status.UserNotRegistered:
+      return new Response("Unauthorized", { status: 401 });
+    case Status.ServerMisconfigured:
+      return new Response("Server misconfigured", { status: 500 });
+    case Status.MissingBody:
+      return new Response("Missing request body", { status: 400 });
+    case Status.ExtraBodyContent:
+      return new Response("Extra body content", { status: 400 });
+    case Status.MissingParam:
+      return new Response("Missing from param", { status: 400 });
+    case Status.InvalidParam:
+      return new Response("Invalid from param", { status: 400 });
+    case Status.InvalidRequest:
+      return new Response("Invalid request format", { status: 400 });
+    case Status.InternalError:
+      return new Response("Internal error", { status: 500 });
+    case Status.NotFound:
+      return new Response("Not Found", { status: 404 });
+    default:
+      throw new Error(`Unhandled status: ${status}`);
+  }
+}
+
 export class DiplomaticServer {
   hostID: string;
   storage: IStorage;
@@ -91,35 +120,6 @@ export class DiplomaticServer {
       return [new Uint8Array(0), Status.InvalidSignature];
     }
     return [tsAuth.pubKey, Status.Success];
-  }
-
-  getAuthErrorResponse(status: Status): Response {
-    switch (status) {
-      case Status.InvalidSignature:
-        return new Response("Invalid signature", { status: 401 });
-      case Status.ClockOutOfSync:
-        return new Response("Clock out of sync", { status: 400 });
-      case Status.UserNotRegistered:
-        return new Response("Unauthorized", { status: 401 });
-      case Status.ServerMisconfigured:
-        return new Response("Server misconfigured", { status: 500 });
-      case Status.MissingBody:
-        return new Response("Missing request body", { status: 400 });
-      case Status.ExtraBodyContent:
-        return new Response("Extra body content", { status: 400 });
-      case Status.MissingParam:
-        return new Response("Missing from param", { status: 400 });
-      case Status.InvalidParam:
-        return new Response("Invalid from param", { status: 400 });
-      case Status.InvalidRequest:
-        return new Response("Invalid request format", { status: 400 });
-      case Status.InternalError:
-        return new Response("Internal error", { status: 500 });
-      case Status.NotFound:
-        return new Response("Not Found", { status: 404 });
-      default:
-        throw new Error(`Unhandled status: ${status}`);
-    }
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -170,7 +170,7 @@ export class DiplomaticServer {
 
     if (request.method === "GET" && url.pathname === "/id") {
       if (!this.hostID) {
-        return this.getAuthErrorResponse(Status.ServerMisconfigured);
+        return respFor(Status.ServerMisconfigured);
       }
       return new Response(this.hostID, { status: 200 });
     }
@@ -178,16 +178,16 @@ export class DiplomaticServer {
     if (request.method === "POST" && url.pathname === "/users") {
       try {
         if (!request.body) {
-          return this.getAuthErrorResponse(Status.MissingBody);
+          return respFor(Status.MissingBody);
         }
         const data = new Uint8Array(await request.arrayBuffer());
         const decoder = new Decoder(data);
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         if (!decoder.done()) {
-          return this.getAuthErrorResponse(Status.ExtraBodyContent);
+          return respFor(Status.ExtraBodyContent);
         }
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        if (status !== Status.Success) return respFor(status);
         const pubKeyHex = btoh(pubKey);
         // Register the public key
         await this.storage.addUser(pubKeyHex);
@@ -195,19 +195,19 @@ export class DiplomaticServer {
       } catch (err) {
         if (err instanceof Error) {
           if (err.message === "Invalid signature") {
-            return this.getAuthErrorResponse(Status.InvalidSignature);
+            return respFor(Status.InvalidSignature);
           }
-          return this.getAuthErrorResponse(Status.InvalidRequest);
+          return respFor(Status.InvalidRequest);
         }
         console.error(err);
-        return this.getAuthErrorResponse(Status.InternalError);
+        return respFor(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/ops") {
       const body = request.body;
       if (!body) {
-        return this.getAuthErrorResponse(Status.MissingBody);
+        return respFor(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
@@ -215,10 +215,10 @@ export class DiplomaticServer {
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        if (status !== Status.Success) return respFor(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return this.getAuthErrorResponse(Status.UserNotRegistered);
+          return respFor(Status.UserNotRegistered);
         }
 
         const encoder = new Encoder();
@@ -244,27 +244,27 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return this.getAuthErrorResponse(Status.InvalidRequest);
+          return respFor(Status.InvalidRequest);
         }
         console.error(err);
-        return this.getAuthErrorResponse(Status.InternalError);
+        return respFor(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/pull") {
       const body = request.body;
       if (!body) {
-        return this.getAuthErrorResponse(Status.MissingBody);
+        return respFor(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        if (status !== Status.Success) return respFor(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return this.getAuthErrorResponse(Status.UserNotRegistered);
+          return respFor(Status.UserNotRegistered);
         }
 
         const hashes: Uint8Array[] = [];
@@ -286,39 +286,39 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return this.getAuthErrorResponse(Status.InvalidParam);
+          return respFor(Status.InvalidParam);
         }
         console.error(err);
-        return this.getAuthErrorResponse(Status.InternalError);
+        return respFor(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/peek") {
       const body = request.body;
       if (!body) {
-        return this.getAuthErrorResponse(Status.MissingBody);
+        return respFor(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         if (!decoder.done()) {
-          return this.getAuthErrorResponse(Status.ExtraBodyContent);
+          return respFor(Status.ExtraBodyContent);
         }
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
-        if (status !== Status.Success) return this.getAuthErrorResponse(status);
+        if (status !== Status.Success) return respFor(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return this.getAuthErrorResponse(Status.UserNotRegistered);
+          return respFor(Status.UserNotRegistered);
         }
         // Get 'from' param
         const fromParam = url.searchParams.get("from");
         if (!fromParam) {
-          return this.getAuthErrorResponse(Status.MissingParam);
+          return respFor(Status.MissingParam);
         }
         const fromMillis = parseInt(fromParam, 10);
         if (isNaN(fromMillis)) {
-          return this.getAuthErrorResponse(Status.InvalidParam);
+          return respFor(Status.InvalidParam);
         }
         const begin = new Date(fromMillis).toISOString();
         const end = new Date().toISOString();
@@ -334,13 +334,13 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return this.getAuthErrorResponse(Status.InvalidRequest);
+          return respFor(Status.InvalidRequest);
         }
         console.error(err);
-        return this.getAuthErrorResponse(Status.InternalError);
+        return respFor(Status.InternalError);
       }
     }
 
-    return this.getAuthErrorResponse(Status.NotFound);
+    return respFor(Status.NotFound);
   };
 }

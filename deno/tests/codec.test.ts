@@ -58,3 +58,13 @@ Deno.test("Decoder readBytes at end", () => {
   assertEquals(bytes, data);
   assertEquals(decoder.done(), true);
 });
+
+Deno.test("Decoder consumed", () => {
+  const data = new Uint8Array([1, 2, 3, 4]);
+  const decoder = new Decoder(data);
+  decoder.readBytes(2);
+  assertEquals(decoder.consumed(), 2);
+  decoder.readBytes(2);
+  assertEquals(decoder.consumed(), 4);
+  assertEquals(decoder.done(), true);
+});

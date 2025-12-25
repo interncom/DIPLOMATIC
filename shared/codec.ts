@@ -64,6 +64,11 @@ export class Decoder {
     return value;
   }
 
+  readDate(): Date {
+    const timestampMs = this.readBigInt();
+    return new Date(Number(timestampMs));
+  }
+
   readVarInt(): number {
     if (this.pos >= this.data.length) {
       throw new Error("Not enough data to read VarInt");
@@ -102,6 +107,11 @@ export class Encoder {
     const arr = new Uint8Array(8);
     new DataView(arr.buffer).setBigUint64(0, b, false);
     this.parts.push(arr);
+  }
+
+  writeDate(ts: Date): void {
+    const timestampMs = ts.getTime();
+    this.writeBigInt(BigInt(timestampMs));
   }
 
   writeVarInt(n: number): void {

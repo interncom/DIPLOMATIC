@@ -38,8 +38,7 @@ import {
   derivationKeyMaterial,
 } from "./message.ts";
 import { concat } from "./lib.ts";
-
-import { decode_varint } from "./varint.ts";
+import { Decoder, Encoder } from "./codec.ts";
 
 export default class DiplomaticClientAPI {
   crypto: ICrypto;
@@ -112,10 +111,8 @@ export default class DiplomaticClientAPI {
 
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    // Collect all data into a buffer
-    let data = new Uint8Array(tsAuthSize);
-    data.set(tsAuth, 0);
-    let offset = tsAuthSize;
+    const encoder = new Encoder();
+    encoder.writeBytes(tsAuth);
     for (const op of ops) {
       // Encode message.
       const [encMsg, msgHead] = await encodeOp(op, this.crypto);
@@ -143,17 +140,12 @@ export default class DiplomaticClientAPI {
       );
       const encEnv = encodeEnvelope(env);
 
-      // Append to data buffer.
-      const newData = new Uint8Array(data.length + encEnv.length);
-      newData.set(data, 0);
-      newData.set(encEnv, offset);
-      data = newData;
-      offset += encEnv.length;
+      encoder.writeBytes(encEnv);
     }
 
     const response = await fetch(url, {
       method: "POST",
-      body: data,
+      body: encoder.result().slice(),
     });
     if (!response.ok) {
       console.error(response);
@@ -161,10 +153,11 @@ export default class DiplomaticClientAPI {
     }
     const arrayBuffer = await response.arrayBuffer();
     const responseData = new Uint8Array(arrayBuffer);
+    const decoder = new Decoder(responseData);
     const results: { status: number; hash: Uint8Array }[] = [];
-    for (let i = 0; i < responseData.length; i += responseItemSize) {
-      const status = responseData[i];
-      const hash = responseData.slice(i + 1, i + 1 + hashSize);
+    while (!decoder.done()) {
+      const status = decoder.readBytes(1)[0];
+      const hash = decoder.readBytes(hashSize);
       results.push({ status, hash });
     }
     return results;
@@ -183,19 +176,15 @@ export default class DiplomaticClientAPI {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    const stream = new ReadableStream({
-      start: (controller) => {
-        controller.enqueue(tsAuth);
-        for (const hash of hashes) {
-          controller.enqueue(hash);
-        }
-        controller.close();
-      },
-    });
+    const encoder = new Encoder();
+    encoder.writeBytes(tsAuth);
+    for (const hash of hashes) {
+      encoder.writeBytes(hash);
+    }
 
     const response = await fetch(url, {
       method: "POST",
-      body: stream,
+      body: encoder.result().slice(),
     });
     if (!response.ok) {
       throw "Uh oh";
@@ -235,17 +224,12 @@ export default class DiplomaticClientAPI {
     }
     const arrayBuffer = await response.arrayBuffer();
     const data = new Uint8Array(arrayBuffer);
+    const decoder = new Decoder(data);
     const items: IEnvelopePeekItem[] = [];
-    let offset = 0;
-    const itemSize = hashSize + lenBytes;
-
-    while (offset < data.length) {
-      if (offset + itemSize > data.length) break;
-      const hash = data.slice(offset, offset + hashSize);
-      const recordedAt = Number(
-        new DataView(data.buffer, offset + hashSize).getBigUint64(0, false),
-      );
-      offset += itemSize;
+    while (!decoder.done()) {
+      const hash = decoder.readBytes(hashSize);
+      const recordedAtBigInt = decoder.readBigInt();
+      const recordedAt = Number(recordedAtBigInt);
       items.push({ hash, recordedAt });
     }
     return items;

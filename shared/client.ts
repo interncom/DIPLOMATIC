@@ -118,8 +118,8 @@ export default class DiplomaticClientAPI {
       const [encMsg, msgHead] = await encodeOp(op, this.crypto);
 
       // Derive encryption key.
-      const dkm = (await derivationKeyMaterial(this.crypto)).slice(0, 8);
-      const encKey = await this.enclave.deriveFromKDM(dkm);
+      const kdm = (await derivationKeyMaterial(this.crypto)).slice(0, 8);
+      const encKey = await this.enclave.deriveFromKDM(kdm);
 
       // Encrypt header and body separately.
       const cipherhead = await this.crypto.encryptXSalsa20Poly1305Combined(
@@ -135,7 +135,7 @@ export default class DiplomaticClientAPI {
         keyPair,
         cipherhead,
         cipherbody,
-        dkm,
+        kdm,
         this.crypto,
       );
       const encEnv = encodeEnvelope(env);

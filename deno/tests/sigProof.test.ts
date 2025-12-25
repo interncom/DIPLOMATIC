@@ -116,6 +116,9 @@ Deno.test("decodeSigProvenData with invalid data length", () => {
     decodeSigProvenData(shortEncoded);
     throw new Error("Should have thrown");
   } catch (e) {
-    assertEquals((e as Error).message, "Encoded data too short");
+    assertEquals(
+      (e as Error).message,
+      "Not enough data to read requested bytes",
+    );
   }
 });

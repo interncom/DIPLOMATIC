@@ -45,6 +45,15 @@ export enum Status {
   Success = 0,
   InvalidSignature = 3,
   ClockOutOfSync = 4,
+  UserNotRegistered = 5,
+  ServerMisconfigured = 6,
+  MissingBody = 7,
+  ExtraBodyContent = 8,
+  MissingParam = 9,
+  InvalidParam = 10,
+  InvalidRequest = 11,
+  InternalError = 12,
+  NotFound = 13,
 }
 
 export class DiplomaticServer {
@@ -85,12 +94,32 @@ export class DiplomaticServer {
   }
 
   getAuthErrorResponse(status: Status): Response {
-    const msg =
-      status === Status.ClockOutOfSync
-        ? "Clock out of sync"
-        : "Invalid signature";
-    const httpStatus = status === Status.ClockOutOfSync ? 400 : 401;
-    return new Response(msg, { status: httpStatus });
+    switch (status) {
+      case Status.InvalidSignature:
+        return new Response("Invalid signature", { status: 401 });
+      case Status.ClockOutOfSync:
+        return new Response("Clock out of sync", { status: 400 });
+      case Status.UserNotRegistered:
+        return new Response("Unauthorized", { status: 401 });
+      case Status.ServerMisconfigured:
+        return new Response("Server misconfigured", { status: 500 });
+      case Status.MissingBody:
+        return new Response("Missing request body", { status: 400 });
+      case Status.ExtraBodyContent:
+        return new Response("Extra body content", { status: 400 });
+      case Status.MissingParam:
+        return new Response("Missing from param", { status: 400 });
+      case Status.InvalidParam:
+        return new Response("Invalid from param", { status: 400 });
+      case Status.InvalidRequest:
+        return new Response("Invalid request format", { status: 400 });
+      case Status.InternalError:
+        return new Response("Internal error", { status: 500 });
+      case Status.NotFound:
+        return new Response("Not Found", { status: 404 });
+      default:
+        throw new Error(`Unhandled status: ${status}`);
+    }
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -141,7 +170,7 @@ export class DiplomaticServer {
 
     if (request.method === "GET" && url.pathname === "/id") {
       if (!this.hostID) {
-        return new Response("Server misconfigured", { status: 500 });
+        return this.getAuthErrorResponse(Status.ServerMisconfigured);
       }
       return new Response(this.hostID, { status: 200 });
     }
@@ -149,13 +178,13 @@ export class DiplomaticServer {
     if (request.method === "POST" && url.pathname === "/users") {
       try {
         if (!request.body) {
-          return new Response("Invalid request", { status: 400 });
+          return this.getAuthErrorResponse(Status.MissingBody);
         }
         const data = new Uint8Array(await request.arrayBuffer());
         const decoder = new Decoder(data);
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         if (!decoder.done()) {
-          return new Response("Extra body content", { status: 400 });
+          return this.getAuthErrorResponse(Status.ExtraBodyContent);
         }
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
         if (status !== Status.Success) return this.getAuthErrorResponse(status);
@@ -166,19 +195,19 @@ export class DiplomaticServer {
       } catch (err) {
         if (err instanceof Error) {
           if (err.message === "Invalid signature") {
-            return new Response(err.message, { status: 401 });
+            return this.getAuthErrorResponse(Status.InvalidSignature);
           }
-          return new Response(err.message, { status: 400 });
+          return this.getAuthErrorResponse(Status.InvalidRequest);
         }
         console.error(err);
-        return new Response("Processing request", { status: 500 });
+        return this.getAuthErrorResponse(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/ops") {
       const body = request.body;
       if (!body) {
-        return new Response("Invalid request", { status: 400 });
+        return this.getAuthErrorResponse(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
@@ -189,7 +218,7 @@ export class DiplomaticServer {
         if (status !== Status.Success) return this.getAuthErrorResponse(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return new Response("Unauthorized", { status: 401 });
+          return this.getAuthErrorResponse(Status.UserNotRegistered);
         }
 
         const encoder = new Encoder();
@@ -215,17 +244,17 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return new Response(err.message, { status: 400 });
+          return this.getAuthErrorResponse(Status.InvalidRequest);
         }
         console.error(err);
-        return new Response("Internal error", { status: 500 });
+        return this.getAuthErrorResponse(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/pull") {
       const body = request.body;
       if (!body) {
-        return new Response("Invalid request", { status: 400 });
+        return this.getAuthErrorResponse(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
@@ -235,7 +264,7 @@ export class DiplomaticServer {
         if (status !== Status.Success) return this.getAuthErrorResponse(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return new Response("Unauthorized", { status: 401 });
+          return this.getAuthErrorResponse(Status.UserNotRegistered);
         }
 
         const hashes: Uint8Array[] = [];
@@ -257,39 +286,39 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return new Response(err.message, { status: 400 });
+          return this.getAuthErrorResponse(Status.InvalidParam);
         }
         console.error(err);
-        return new Response("Internal error", { status: 500 });
+        return this.getAuthErrorResponse(Status.InternalError);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/peek") {
       const body = request.body;
       if (!body) {
-        return new Response("Invalid request", { status: 400 });
+        return this.getAuthErrorResponse(Status.MissingBody);
       }
       const data = new Uint8Array(await request.arrayBuffer());
       const decoder = new Decoder(data);
       try {
         const tsAuthBytes = decoder.readBytes(tsAuthSize);
         if (!decoder.done()) {
-          return new Response("Extra body content", { status: 400 });
+          return this.getAuthErrorResponse(Status.ExtraBodyContent);
         }
         const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
         if (status !== Status.Success) return this.getAuthErrorResponse(status);
         const pubKeyHex = btoh(pubKey);
         if (!(await this.storage.hasUser(pubKeyHex))) {
-          return new Response("Unauthorized", { status: 401 });
+          return this.getAuthErrorResponse(Status.UserNotRegistered);
         }
         // Get 'from' param
         const fromParam = url.searchParams.get("from");
         if (!fromParam) {
-          return new Response("Missing from param", { status: 400 });
+          return this.getAuthErrorResponse(Status.MissingParam);
         }
         const fromMillis = parseInt(fromParam, 10);
         if (isNaN(fromMillis)) {
-          return new Response("Invalid from param", { status: 400 });
+          return this.getAuthErrorResponse(Status.InvalidParam);
         }
         const begin = new Date(fromMillis).toISOString();
         const end = new Date().toISOString();
@@ -305,13 +334,13 @@ export class DiplomaticServer {
         });
       } catch (err) {
         if (err instanceof Error) {
-          return new Response(err.message, { status: 400 });
+          return this.getAuthErrorResponse(Status.InvalidRequest);
         }
         console.error(err);
-        return new Response("Internal error", { status: 500 });
+        return this.getAuthErrorResponse(Status.InternalError);
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    return this.getAuthErrorResponse(Status.NotFound);
   };
 }

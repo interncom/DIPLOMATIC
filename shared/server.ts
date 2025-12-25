@@ -25,12 +25,9 @@ import {
 } from "./envelope.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
-const allowedHeaders = ["X-DIPLOMATIC-KEY", "X-DIPLOMATIC-SIG"];
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // Allow any origin
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": allowedHeaders.join(","),
 };
 
 function cors(resp: Response): Response {

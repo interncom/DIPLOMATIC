@@ -1,5 +1,6 @@
 import type { ICrypto, KeyPair } from "./types.ts";
 import { encode_varint, decode_varint } from "./varint.ts";
+import { Decoder } from "./codec.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -75,6 +76,7 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
 export const kdmBytes = 8;
 export const eidBytes = 16;
 export const clkBytes = 8;
+export const hshBytes = 32;
 
 // Returns the full encoded message and also a slice of just the encoded header.
 export async function encodeOp(
@@ -103,33 +105,17 @@ export async function encodeOp(
 }
 
 export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
-  let offset = 0;
-  const eid = encoded.slice(offset, offset + eidBytes);
-  offset += eidBytes;
-  const clkTime = new DataView(
-    encoded.buffer,
-    encoded.byteOffset + offset,
-  ).getBigUint64(0, false);
+  const decoder = new Decoder(encoded);
+  const eid = decoder.readBytes(eidBytes);
+  const clkTime = decoder.readBigInt();
   const clk = new Date(Number(clkTime));
-  offset += clkBytes;
-  const ctrDecode = decode_varint(encoded, offset);
-  const ctr =
-    typeof ctrDecode.value === "bigint"
-      ? Number(ctrDecode.value)
-      : ctrDecode.value;
-  offset += ctrDecode.bytesRead;
-  const lenDecode = decode_varint(encoded, offset);
-  const len =
-    typeof lenDecode.value === "bigint"
-      ? Number(lenDecode.value)
-      : lenDecode.value;
-  offset += lenDecode.bytesRead;
+  const ctr = decoder.readVarInt();
+  const len = decoder.readVarInt();
   let hsh: Uint8Array | undefined;
   let bod: Uint8Array | undefined;
   if (len > 0) {
-    hsh = encoded.slice(offset, offset + 32);
-    offset += 32;
-    bod = encoded.slice(offset, offset + len);
+    hsh = decoder.readBytes(hshBytes);
+    bod = decoder.readBytes(len);
   }
   return { eid, clk, ctr, len, bod, hsh };
 }

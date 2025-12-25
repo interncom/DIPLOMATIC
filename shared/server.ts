@@ -243,7 +243,7 @@ export class DiplomaticServer {
       const encoder = new Encoder();
       for (const item of userOpsList) {
         encoder.writeBytes(item.sha256);
-        encoder.writeBigInt(BigInt(new Date(item.recordedAt).getTime()));
+        encoder.writeDate(new Date(item.recordedAt));
       }
       return binResp(encoder.result());
     } catch (err) {

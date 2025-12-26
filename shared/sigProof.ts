@@ -33,20 +33,20 @@ export function encodeSigProvenData(
   spdata: ISigProvenData,
   crypto: ICrypto,
 ): EncodedSigProvenData {
-  const encoder = new Encoder();
-  encoder.writeBytes(spdata.pubKey);
-  encoder.writeBytes(spdata.sig);
-  encoder.writeBytes(spdata.data);
-  return encoder.result();
+  const enc = new Encoder();
+  enc.writeBytes(spdata.pubKey);
+  enc.writeBytes(spdata.sig);
+  enc.writeBytes(spdata.data);
+  return enc.result();
 }
 
 export function decodeSigProvenData(
   encoded: EncodedSigProvenData,
 ): ISigProvenData {
-  const decoder = new Decoder(encoded);
-  const pubKey = decoder.readBytes(pubKeyBytes);
-  const sig = decoder.readBytes(sigBytes);
-  const data = decoder.readBytes(encoded.length - decoder.consumed());
+  const dec = new Decoder(encoded);
+  const pubKey = dec.readBytes(pubKeyBytes);
+  const sig = dec.readBytes(sigBytes);
+  const data = dec.readBytes(encoded.length - dec.consumed());
   return {
     pubKey,
     sig,

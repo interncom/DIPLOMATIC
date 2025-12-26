@@ -29,14 +29,14 @@ export interface IEnvelope extends IEnvelopeHeader {
 export type EncodedEnvelope = Uint8Array;
 
 export function encodeEnvelope(env: IEnvelope): Uint8Array {
-  const encoder = new Encoder();
-  encoder.writeBytes(env.sig);
-  encoder.writeBytes(env.kdm);
-  encoder.writeVarInt(env.lenCipherHead);
-  encoder.writeVarInt(env.lenCipherBody);
-  encoder.writeBytes(env.cipherhead);
-  encoder.writeBytes(env.cipherbody);
-  return encoder.result();
+  const enc = new Encoder();
+  enc.writeBytes(env.sig);
+  enc.writeBytes(env.kdm);
+  enc.writeVarInt(env.lenCipherHead);
+  enc.writeVarInt(env.lenCipherBody);
+  enc.writeBytes(env.cipherhead);
+  enc.writeBytes(env.cipherbody);
+  return enc.result();
 }
 
 export async function makeEnvelope(
@@ -58,21 +58,21 @@ export async function makeEnvelope(
 }
 
 export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
-  const decoder = new Decoder(encoded);
-  const sig = decoder.readBytes(sigBytes);
-  const kdm = decoder.readBytes(kdmBytes);
-  const lenCipherHead = decoder.readVarInt();
-  const lenCipherBody = decoder.readVarInt();
+  const dec = new Decoder(encoded);
+  const sig = dec.readBytes(sigBytes);
+  const kdm = dec.readBytes(kdmBytes);
+  const lenCipherHead = dec.readVarInt();
+  const lenCipherBody = dec.readVarInt();
   return { sig, kdm, lenCipherHead, lenCipherBody };
 }
 
-export function decodeEnvelope(decoder: Decoder): IEnvelope {
-  const sig = decoder.readBytes(sigBytes);
-  const kdm = decoder.readBytes(kdmBytes);
-  const lenCipherHead = decoder.readVarInt();
-  const lenCipherBody = decoder.readVarInt();
-  const cipherhead = decoder.readBytes(lenCipherHead);
-  const cipherbody = decoder.readBytes(lenCipherBody);
+export function decodeEnvelope(dec: Decoder): IEnvelope {
+  const sig = dec.readBytes(sigBytes);
+  const kdm = dec.readBytes(kdmBytes);
+  const lenCipherHead = dec.readVarInt();
+  const lenCipherBody = dec.readVarInt();
+  const cipherhead = dec.readBytes(lenCipherHead);
+  const cipherbody = dec.readBytes(lenCipherBody);
   return {
     sig,
     kdm,

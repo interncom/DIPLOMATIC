@@ -4,12 +4,12 @@ CREATE TABLE IF NOT EXISTS users (
   pubKey TEXT PRIMARY KEY
 );
 
-DROP TABLE IF EXISTS ops;
-CREATE TABLE IF NOT EXISTS ops (
+DROP TABLE IF EXISTS envelopes;
+CREATE TABLE IF NOT EXISTS envelopes (
   userPubKey TEXT,
   recordedAt TEXT,
   sha256 BLOB,
-  op BLOB,
-  size INT,
+  headCry BLOB,
+  bodyCry BLOB,
   PRIMARY KEY (userPubKey, sha256)
 );

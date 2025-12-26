@@ -11,142 +11,148 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier } from "../../../shared/types";
-import { DiplomaticServer } from "../../../shared/server";
-import { decodeAsync, encode, decode } from "@msgpack/msgpack";
-import { DurableObject } from "cloudflare:workers";
-import { htob } from "../../../shared/lib";
+import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier } from '../../../shared/types';
+import { DiplomaticServer } from '../../../shared/server';
+import { decodeAsync, encode, decode } from '@msgpack/msgpack';
+import { DurableObject } from 'cloudflare:workers';
+import { htob } from '../../../shared/lib';
 
 const cloudflareCrypto: IHostCrypto = {
-  async checkSigEd25519(sig, message, pubKey) {
-    const cryptoKey = await crypto.subtle.importKey("raw", pubKey, "ED25519", true, ["verify"]);
-    if (typeof message === "string") {
-      const encoder = new TextEncoder();
-      const encMsg = encoder.encode(message);
-      return await crypto.subtle.verify("ED25519", cryptoKey, sig, encMsg);
-    }
-    return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
-  },
+	async checkSigEd25519(sig, message, pubKey) {
+		const cryptoKey = await crypto.subtle.importKey('raw', pubKey, 'ED25519', true, ['verify']);
+		if (typeof message === 'string') {
+			const encoder = new TextEncoder();
+			const encMsg = encoder.encode(message);
+			return await crypto.subtle.verify('ED25519', cryptoKey, sig, encMsg);
+		}
+		return await crypto.subtle.verify('ED25519', cryptoKey, sig, message);
+	},
 
-  async sha256Hash(data) {
-    const buf = await crypto.subtle.digest('SHA-256', data);
-    const arr = new Uint8Array(buf);
-    return arr;
-  },
+	async sha256Hash(data) {
+		const buf = await crypto.subtle.digest('SHA-256', data);
+		const arr = new Uint8Array(buf);
+		return arr;
+	},
 };
 
 const msgpack: IMsgpackCodec = {
-  encode,
-  decode,
-  decodeAsync,
-}
+	encode,
+	decode,
+	decodeAsync,
+};
 
 export class WebSocketServer extends DurableObject {
-  async fetch(request: Request): Promise<Response> {
-    const upgradeHeader = request.headers.get('Upgrade');
-    if (upgradeHeader === 'websocket') {
-      const webSocketPair = new WebSocketPair();
-      const [client, server] = Object.values(webSocketPair);
+	async fetch(request: Request): Promise<Response> {
+		const upgradeHeader = request.headers.get('Upgrade');
+		if (upgradeHeader === 'websocket') {
+			const webSocketPair = new WebSocketPair();
+			const [client, server] = Object.values(webSocketPair);
 
-      this.ctx.acceptWebSocket(server);
+			this.ctx.acceptWebSocket(server);
 
-      return new Response(null, {
-        status: 101,
-        webSocket: client,
-      });
-    }
+			return new Response(null, {
+				status: 101,
+				webSocket: client,
+			});
+		}
 
-    if (request.url.endsWith("/notify")) {
-      const sockets = this.ctx.getWebSockets();
-      for (const socket of sockets) {
-        socket.send("NEW OP");
-      }
-      return new Response(null, { status: 200 });
-    }
+		if (request.url.endsWith('/notify')) {
+			const sockets = this.ctx.getWebSockets();
+			for (const socket of sockets) {
+				socket.send('NEW OP');
+			}
+			return new Response(null, { status: 200 });
+		}
 
-    return new Response(null, {
-      status: 400,
-      statusText: 'Bad Request',
-      headers: {
-        'Content-Type': 'text/plain',
-      },
-    });
-  }
+		return new Response(null, {
+			status: 400,
+			statusText: 'Bad Request',
+			headers: {
+				'Content-Type': 'text/plain',
+			},
+		});
+	}
 }
 
-const hostID = "cfhost";
-const regToken = "tok123";
+const hostID = 'cfhost';
+const regToken = 'tok123';
 
 interface Env {
-  DIP_DB: D1Database;
-  WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServer>;
+	DIP_DB: D1Database;
+	WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServer>;
 }
 export default {
-  async fetch(request, env, ctx): Promise<Response> {
-    const d1Storage: IStorage = {
-      async addUser(pubKeyHex: string) {
-        await env.DIP_DB.prepare("INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING").bind(pubKeyHex).run();
-      },
+	async fetch(request, env, ctx): Promise<Response> {
+		const d1Storage: IStorage = {
+			async addUser(pubKeyHex: string) {
+				await env.DIP_DB.prepare('INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING').bind(pubKeyHex).run();
+			},
 
-      async hasUser(pubKeyHex: string) {
-        const has = await env.DIP_DB.prepare("SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)").bind(pubKeyHex).first<boolean>();
-        return has ?? false;
-      },
+			async hasUser(pubKeyHex: string) {
+				const has = await env.DIP_DB.prepare('SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)').bind(pubKeyHex).first<boolean>();
+				return has ?? false;
+			},
 
-      async setOp(pubKeyHex: string, recordedAt: Date, op: Uint8Array) {
-        const recAtStr = recordedAt.toISOString();
-        const sha256 = await cloudflareCrypto.sha256Hash(op);
-        await env.DIP_DB.prepare("INSERT INTO ops (sha256, userPubKey, recordedAt, op, size) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING").bind(sha256, pubKeyHex, recAtStr, op, op.byteLength).run();
-      },
+			async setEnvelope(pubKeyHex: string, recordedAt: Date, headCry: Uint8Array, bodyCry: Uint8Array, sha256Hex: string) {
+				const recAtStr = recordedAt.toISOString();
+				const sha256 = htob(sha256Hex);
+				await env.DIP_DB.prepare(
+					'INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCry, bodyCry) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+				)
+					.bind(sha256, pubKeyHex, recAtStr, headCry, bodyCry)
+					.run();
+			},
 
-      async getOp(pubKeyHex: string, sha256Hex: string) {
-        const sha256 = htob(sha256Hex);
-        const row = await env.DIP_DB.prepare("SELECT op, size FROM ops WHERE userPubKey = ? AND sha256 = ?").bind(pubKeyHex, sha256).first<{ op: Uint8Array, size: number }>();
-        if (!row) {
-          return undefined;
-        }
-        const op = new Uint8Array(row.op);
-        return op.subarray(0, row.size);
-      },
+			async getBody(pubKeyHex: string, sha256Hex: string) {
+				const sha256 = htob(sha256Hex);
+				const row = await env.DIP_DB.prepare('SELECT bodyCry FROM envelopes WHERE userPubKey = ? AND sha256 = ?')
+					.bind(pubKeyHex, sha256)
+					.first<{ bodyCry: Uint8Array }>();
+				if (!row) {
+					return undefined;
+				}
+				return new Uint8Array(row.bodyCry);
+			},
 
-      async listOps(pubKeyHex: string, begin: string, end: string) {
-        const rows = await env.DIP_DB.prepare("SELECT sha256, recordedAt FROM ops WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?").bind(pubKeyHex, begin, end).all<{ sha256: Uint8Array, recordedAt: string }>();
-        return rows.results?.map(row => ({ sha256: row.sha256, recordedAt: new Date(row.recordedAt) }));
-      },
-    }
+			async listHeads(pubKeyHex: string, begin: string, end: string) {
+				const rows = await env.DIP_DB.prepare(
+					'SELECT sha256, recordedAt, headCry FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?',
+				)
+					.bind(pubKeyHex, begin, end)
+					.all<{ sha256: Uint8Array; recordedAt: string; headCry: Uint8Array }>();
+				return rows.results?.map((row) => ({
+					sha256: row.sha256,
+					recordedAt: new Date(row.recordedAt),
+					headCry: new Uint8Array(row.headCry),
+				}));
+			},
+		};
 
-    const notifier: IWebsocketNotifier = {
-      handler: async (request, hasUser) => {
-        const url = new URL(request.url);
-        const pubKeyHex = url.searchParams.get("key");
-        if (!pubKeyHex) {
-          return new Response("Missing pubkey", { status: 401 });
-        }
-        if (!await hasUser(pubKeyHex)) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-        const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
-        const stub = env.WEBSOCKET_SERVER.get(id);
-        const resp = await stub.fetch(request);
-        return resp;
-      },
-      notify: async (pubKeyHex) => {
-        const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
-        const stub = env.WEBSOCKET_SERVER.get(id);
-        const request = new Request("http://durableobject/notify", { method: "POST" });
-        await stub.fetch(request);
-      },
-    }
+		const notifier: IWebsocketNotifier = {
+			handler: async (request, hasUser) => {
+				const url = new URL(request.url);
+				const pubKeyHex = url.searchParams.get('key');
+				if (!pubKeyHex) {
+					return new Response('Missing pubkey', { status: 401 });
+				}
+				if (!(await hasUser(pubKeyHex))) {
+					return new Response('Unauthorized', { status: 401 });
+				}
+				const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
+				const stub = env.WEBSOCKET_SERVER.get(id);
+				const resp = await stub.fetch(request);
+				return resp;
+			},
+			notify: async (pubKeyHex) => {
+				const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
+				const stub = env.WEBSOCKET_SERVER.get(id);
+				const request = new Request('http://durableobject/notify', { method: 'POST' });
+				await stub.fetch(request);
+			},
+		};
 
-    const server = new DiplomaticServer(
-      hostID,
-      regToken,
-      d1Storage,
-      msgpack,
-      cloudflareCrypto,
-      notifier,
-    );
+		const server = new DiplomaticServer(hostID, regToken, d1Storage, msgpack, cloudflareCrypto, notifier);
 
-    return server.corsHandler(request);
-  },
+		return server.corsHandler(request);
+	},
 } satisfies ExportedHandler<Env>;

@@ -47,6 +47,7 @@ export interface IOperationRequest {
 export interface IDeltaListItem {
   sha256: Uint8Array;
   recordedAt: Date;
+  headCry: Uint8Array;
 }
 
 export interface IListDeltasResponse {
@@ -57,17 +58,18 @@ export interface IListDeltasResponse {
 export interface IStorage {
   addUser: (pubKeyHex: string) => Promise<void>;
   hasUser: (pubKeyHex: string) => Promise<boolean>;
-  setOp: (
+  setEnvelope: (
     pubKeyHex: string,
     recordedAt: Date,
-    op: Uint8Array,
-    key?: string,
+    headCry: Uint8Array,
+    bodyCry: Uint8Array,
+    storageKey: string,
   ) => Promise<void>;
-  getOp: (
+  getBody: (
     pubKeyHex: string,
     sha256Hex: string,
   ) => Promise<Uint8Array | undefined>;
-  listOps: (
+  listHeads: (
     pubKeyHex: string,
     begin: string,
     end: string,

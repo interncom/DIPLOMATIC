@@ -31,6 +31,12 @@ import { Decoder, Encoder } from "./codec.ts";
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
   recordedAt: number;
+  headCry: Uint8Array;
+}
+
+export interface IEnvelopePullItem {
+  hash: Uint8Array;
+  bodyCry: Uint8Array;
 }
 
 async function post(url: URL, enc: Encoder): Promise<Decoder> {
@@ -137,7 +143,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IEnvelope[]> {
+  ): Promise<IEnvelopePullItem[]> {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
@@ -149,12 +155,14 @@ export default class DiplomaticClientAPI {
 
     const url = new URL("/pull", hostURL);
     const dec = await post(url, enc);
-    const envelopes: IEnvelope[] = [];
+    const items: IEnvelopePullItem[] = [];
     while (!dec.done()) {
-      const envelope = decodeEnvelope(dec);
-      envelopes.push(envelope);
+      const hash = dec.readBytes(hashBytes);
+      const len = dec.readVarInt();
+      const bodyCry = dec.readBytes(len);
+      items.push({ hash, bodyCry });
     }
-    return envelopes;
+    return items;
   }
 
   async peek(
@@ -178,7 +186,9 @@ export default class DiplomaticClientAPI {
       const hash = dec.readBytes(hashSize);
       const recordedAtBigInt = dec.readBigInt();
       const recordedAt = Number(recordedAtBigInt);
-      items.push({ hash, recordedAt });
+      const headCryLen = dec.readVarInt();
+      const headCry = dec.readBytes(headCryLen);
+      items.push({ hash, recordedAt, headCry });
     }
     return items;
   }

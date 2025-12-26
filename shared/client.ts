@@ -104,7 +104,7 @@ export default class DiplomaticClientAPI {
       const [encMsg, msgHead] = await encodeOp(op, this.crypto);
 
       // Derive encryption key.
-      const kdm = (await genKDM(this.crypto)).slice(0, 8);
+      const kdm = await genKDM(this.crypto);
       const encKey = await this.enclave.deriveFromKDM(kdm);
 
       // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.

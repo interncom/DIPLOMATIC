@@ -53,11 +53,6 @@ export default class DiplomaticClientAPI {
     this.enclave = enclave;
   }
 
-  async getKeyPair(keyPath: string, idx: number): Promise<KeyPair> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    return await this.crypto.deriveEd25519KeyPair(derivationSeed);
-  }
-
   async getHostID(hostURL: URL): Promise<string> {
     const url = new URL("/id", hostURL);
     const response = await fetch(url, { method: "GET" });

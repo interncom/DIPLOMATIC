@@ -103,7 +103,7 @@ export default class DiplomaticClientAPI {
     const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
       // Encode message.
-      const [encMsg, head] = await encodeOp(op, crypto);
+      const [, head] = await encodeOp(op, crypto);
 
       // Derive encryption key.
       const kdm = await genKDM(crypto);

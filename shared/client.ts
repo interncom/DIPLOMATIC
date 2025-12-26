@@ -76,7 +76,8 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<void> {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const url = new URL("/users", hostURL);
     const response = await fetch(url, {
@@ -100,11 +101,11 @@ export default class DiplomaticClientAPI {
     const { crypto, enclave } = this;
 
     const derivationSeed = await enclave.derive(keyPath, idx);
-    const tsAuth = await timestampAuthProof(derivationSeed, now, crypto);
+    const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
+    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
-    const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
       // Encode message.
       const [, head] = await encodeOp(op, crypto);
@@ -145,7 +146,8 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IEnvelopePullItem[]> {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -173,7 +175,8 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IEnvelopePeekItem[]> {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);

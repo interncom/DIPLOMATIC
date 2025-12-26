@@ -31,11 +31,10 @@ Deno.test(
     const kdm = concat(hostIDBytes, indexBytes);
     const dataForDerivation = concat(seed, kdm);
     const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
-    const sigProofResult = await sigProof(
+    const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
       derivationSeed as DerivationSeed,
-      data,
-      libsodiumCrypto,
     );
+    const sigProofResult = await sigProof(keyPair, data, libsodiumCrypto);
     const spdata: ISigProvenData = {
       ...sigProofResult,
       data,
@@ -61,11 +60,10 @@ Deno.test(
     const kdm = concat(hostIDBytes, indexBytes);
     const dataForDerivation = concat(seed, kdm);
     const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
-    const sigProofResult = await sigProof(
+    const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
       derivationSeed as DerivationSeed,
-      data,
-      libsodiumCrypto,
     );
+    const sigProofResult = await sigProof(keyPair, data, libsodiumCrypto);
     const spdata: ISigProvenData = {
       ...sigProofResult,
       data,
@@ -91,11 +89,10 @@ Deno.test(
     const kdm = concat(hostIDBytes, indexBytes);
     const dataForDerivation = concat(seed, kdm);
     const derivationSeed = await libsodiumCrypto.blake3(dataForDerivation);
-    const sigProofResult = await sigProof(
+    const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
       derivationSeed as DerivationSeed,
-      data,
-      libsodiumCrypto,
     );
+    const sigProofResult = await sigProof(keyPair, data, libsodiumCrypto);
     const spdata: ISigProvenData = {
       ...sigProofResult,
       data,

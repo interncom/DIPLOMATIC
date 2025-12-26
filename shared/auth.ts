@@ -1,4 +1,4 @@
-import type { ICrypto, DerivationSeed } from "./types.ts";
+import type { ICrypto, KeyPair } from "./types.ts";
 import {
   sigProof,
   encodeSigProvenData,
@@ -13,7 +13,7 @@ import { Encoder } from "./codec.ts";
 // In that case, signal to user that clock is out of sync.
 // Clocks must be synchronized to ensure correct op order.
 export async function timestampAuthProof(
-  derivationSeed: DerivationSeed,
+  keyPair: KeyPair,
   ts: Date,
   crypto: ICrypto,
 ): Promise<EncodedSigProvenData> {
@@ -21,7 +21,7 @@ export async function timestampAuthProof(
   enc.writeDate(ts);
   const encodedTs = enc.result();
   const spdata = {
-    ...(await sigProof(derivationSeed, encodedTs, crypto)),
+    ...(await sigProof(keyPair, encodedTs, crypto)),
     data: encodedTs,
   };
   const encoded = await encodeSigProvenData(spdata, crypto);

@@ -22,17 +22,16 @@ import {
   decodeEnvelope,
   type IEnvelope,
 } from "./envelope.ts";
-
-export interface IEnvelopePeekItem {
-  hash: Uint8Array;
-  recordedAt: number;
-}
-
 import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
 import { concat } from "./lib.ts";
 import { Decoder, Encoder } from "./codec.ts";
+
+export interface IEnvelopePeekItem {
+  hash: Uint8Array;
+  recordedAt: number;
+}
 
 async function post(url: URL, enc: Encoder) {
   return fetch(url, {
@@ -48,11 +47,6 @@ export default class DiplomaticClientAPI {
   constructor(enclave: Enclave, crypto: ICrypto) {
     this.crypto = crypto;
     this.enclave = enclave;
-  }
-
-  async getKeyPair(keyPath: string, idx: number): Promise<KeyPair> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    return await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async getHostID(hostURL: URL): Promise<string> {

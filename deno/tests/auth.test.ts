@@ -68,11 +68,10 @@ Deno.test(
     enc.writeDate(ts);
     const expectedEncodedTs = enc.result();
 
-    const result = await timestampAuthProof(
+    const keyPair = await mockCrypto.deriveEd25519KeyPair(
       derivationSeed as DerivationSeed,
-      ts,
-      mockCrypto,
     );
+    const result = await timestampAuthProof(keyPair, ts, mockCrypto);
 
     // Decode the encoded data
     const decoded = decodeSigProvenData(result);
@@ -105,11 +104,10 @@ Deno.test("timestampAuthProof works with different timestamp", async () => {
   const data = concat(seed, kdm);
   const derivationSeed = await mockCrypto.blake3(data);
 
-  const result = await timestampAuthProof(
+  const keyPair = await mockCrypto.deriveEd25519KeyPair(
     derivationSeed as DerivationSeed,
-    ts,
-    mockCrypto,
   );
+  const result = await timestampAuthProof(keyPair, ts, mockCrypto);
 
   const decoded = decodeSigProvenData(result);
 

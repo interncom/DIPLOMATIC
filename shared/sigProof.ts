@@ -1,4 +1,4 @@
-import type { ICrypto, DerivationSeed } from "./types.ts";
+import type { ICrypto, KeyPair } from "./types.ts";
 import { sigBytes, pubKeyBytes } from "./consts.ts";
 import { Encoder, Decoder } from "./codec.ts";
 
@@ -17,11 +17,10 @@ export interface ISigProvenData extends ISigProof {
 }
 
 export async function sigProof(
-  derivationSeed: DerivationSeed,
+  keyPair: KeyPair,
   data: Uint8Array,
   crypto: ICrypto,
 ): Promise<ISigProof> {
-  const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
   const sig = await crypto.signEd25519(data, keyPair.privateKey);
   return {
     pubKey: keyPair.publicKey,

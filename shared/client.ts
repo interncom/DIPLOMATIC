@@ -95,8 +95,8 @@ export default class DiplomaticClientAPI {
 
     const derivationSeed = await enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, crypto);
-    const encoder = new Encoder();
-    encoder.writeBytes(tsAuth);
+    const enc = new Encoder();
+    enc.writeBytes(tsAuth);
 
     const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
@@ -117,15 +117,15 @@ export default class DiplomaticClientAPI {
       const env = await makeEnvelope(keyPair, headCry, bodyCry, kdm, crypto);
       const envEnc = encodeEnvelope(env);
 
-      encoder.writeBytes(envEnc);
+      enc.writeBytes(envEnc);
     }
 
     const url = new URL("/ops", hostURL);
-    const decoder = await post(url, encoder);
+    const dec = await post(url, enc);
     const results: { status: number; hash: Uint8Array }[] = [];
-    while (!decoder.done()) {
-      const status = decoder.readBytes(1)[0];
-      const hash = decoder.readBytes(hashSize);
+    while (!dec.done()) {
+      const status = dec.readBytes(1)[0];
+      const hash = dec.readBytes(hashSize);
       results.push({ status, hash });
     }
     return results;
@@ -141,17 +141,17 @@ export default class DiplomaticClientAPI {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    const encoder = new Encoder();
-    encoder.writeBytes(tsAuth);
+    const enc = new Encoder();
+    enc.writeBytes(tsAuth);
     for (const hash of hashes) {
-      encoder.writeBytes(hash);
+      enc.writeBytes(hash);
     }
 
     const url = new URL("/pull", hostURL);
-    const decoder = await post(url, encoder);
+    const dec = await post(url, enc);
     const envelopes: IEnvelope[] = [];
-    while (!decoder.done()) {
-      const envelope = decodeEnvelope(decoder);
+    while (!dec.done()) {
+      const envelope = decodeEnvelope(dec);
       envelopes.push(envelope);
     }
     return envelopes;
@@ -167,16 +167,16 @@ export default class DiplomaticClientAPI {
     const derivationSeed = await this.enclave.derive(keyPath, idx);
     const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
 
-    const encoder = new Encoder();
-    encoder.writeBytes(tsAuth);
-    encoder.writeVarInt(fromMillis);
+    const enc = new Encoder();
+    enc.writeBytes(tsAuth);
+    enc.writeVarInt(fromMillis);
 
     const url = new URL("/peek", hostURL);
-    const decoder = await post(url, encoder);
+    const dec = await post(url, enc);
     const items: IEnvelopePeekItem[] = [];
-    while (!decoder.done()) {
-      const hash = decoder.readBytes(hashSize);
-      const recordedAtBigInt = decoder.readBigInt();
+    while (!dec.done()) {
+      const hash = dec.readBytes(hashSize);
+      const recordedAtBigInt = dec.readBigInt();
       const recordedAt = Number(recordedAtBigInt);
       items.push({ hash, recordedAt });
     }

@@ -148,10 +148,10 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /peek requires valid tsAuth", async () => {
     const peekUrl = new URL(`http://localhost:${port}/peek`);
-    const encoder = new Encoder();
-    encoder.writeBytes(invalidTsAuth);
-    encoder.writeVarInt(0);
-    const body = encoder.result().slice();
+    const enc = new Encoder();
+    enc.writeBytes(invalidTsAuth);
+    enc.writeVarInt(0);
+    const body = enc.result().slice();
     const response = await fetch(peekUrl.toString(), {
       method: "POST",
       body,

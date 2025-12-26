@@ -64,9 +64,9 @@ Deno.test(
     const data = concat(seed, kdm);
     const derivationSeed = await mockCrypto.blake3(data);
 
-    const encoder = new Encoder();
-    encoder.writeDate(ts);
-    const expectedEncodedTs = encoder.result();
+    const enc = new Encoder();
+    enc.writeDate(ts);
+    const expectedEncodedTs = enc.result();
 
     const result = await timestampAuthProof(
       derivationSeed as DerivationSeed,
@@ -86,8 +86,8 @@ Deno.test(
     assertEquals(decoded.data, expectedEncodedTs);
 
     // Check that the encoded timestamp can be roundtripped
-    const decoder = new Decoder(decoded.data);
-    const decodedTs = decoder.readDate();
+    const dec = new Decoder(decoded.data);
+    const decodedTs = dec.readDate();
     assertEquals(decodedTs, ts);
   },
 );

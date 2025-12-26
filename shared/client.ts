@@ -117,9 +117,9 @@ export default class DiplomaticClientAPI {
 
       // Wrap in envelope.
       const env = await makeEnvelope(keyPair, headCry, bodyCry, kdm, crypto);
-      const encEnv = encodeEnvelope(env);
+      const envEnc = encodeEnvelope(env);
 
-      encoder.writeBytes(encEnv);
+      encoder.writeBytes(envEnc);
     }
 
     const url = new URL("/ops", hostURL);

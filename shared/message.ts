@@ -114,9 +114,7 @@ export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
   return { eid, clk, ctr, len, bod, hsh };
 }
 
-export async function derivationKeyMaterial(
-  crypto: ICrypto,
-): Promise<Uint8Array> {
+export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {
   const random = await crypto.gen128BitRandomID();
   return random.slice(0, kdmBytes);
 }

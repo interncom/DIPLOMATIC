@@ -6,7 +6,7 @@ import {
   genInsert,
   genDelete,
   genUpsert,
-  derivationKeyMaterial,
+  genKDM,
   kdmBytes,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
@@ -121,8 +121,8 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(op.bod, content);
   });
 
-  await t.step("derivationKeyMaterial", async () => {
-    const kdm = await derivationKeyMaterial(crypto);
+  await t.step("genKDM", async () => {
+    const kdm = await genKDM(crypto);
     assertEquals(kdm.length, 8);
     // Now it's random, just check length
     assertEquals(kdm.length, kdmBytes);

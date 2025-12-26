@@ -6,11 +6,12 @@ A suffix of "enc", e.g. "envEnc", indicates that the variable is encoded (binary
 
 "msg" is short for "message".
 
+`enc` stands for encoder.
+
+`dec` stands for decoder.
 
 TODOS:
-- rename encoder -> enc
-- rename decoder -> dec
-- document those here
+- use generators (yield) as return values from client methods rather than accumulating arrays
 - use generators (yield) as return values from client methods rather than accumulating arrays
 - deduplicate the keypair generation that happens in each client method and also in timestampAuthProof
 - refactor sigProof. maybe just combine with tsAuth and inline that all in client.ts

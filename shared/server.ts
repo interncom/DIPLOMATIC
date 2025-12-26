@@ -152,11 +152,8 @@ export class DiplomaticServer {
     return new Response(this.hostID, { status: 200 });
   };
 
-  handleUser = async (
-    pubKey: Uint8Array,
-    decoder: Decoder,
-  ): Promise<Response> => {
-    if (!decoder.done()) {
+  handleUser = async (pubKey: Uint8Array, dec: Decoder): Promise<Response> => {
+    if (!dec.done()) {
       return respFor(Status.ExtraBodyContent);
     }
     try {
@@ -169,16 +166,13 @@ export class DiplomaticServer {
     }
   };
 
-  handlePush = async (
-    pubKey: Uint8Array,
-    decoder: Decoder,
-  ): Promise<Response> => {
+  handlePush = async (pubKey: Uint8Array, dec: Decoder): Promise<Response> => {
     const now = new Date();
     try {
       const pubKeyHex = btoh(pubKey);
-      const encoder = new Encoder();
-      while (!decoder.done()) {
-        const env = decodeEnvelope(decoder);
+      const enc = new Encoder();
+      while (!dec.done()) {
+        const env = decodeEnvelope(dec);
         const hash = await this.crypto.sha256Hash(
           concat(env.cipherhead, env.cipherbody),
         );
@@ -192,46 +186,40 @@ export class DiplomaticServer {
           const hashHex = btoh(hash);
           await this.storage.setOp(pubKeyHex, now, envelope, hashHex);
           await this.notifier.notify(pubKeyHex);
-          encoder.writeBytes(new Uint8Array([Status.Success]));
+          enc.writeBytes(new Uint8Array([Status.Success]));
         } else {
-          encoder.writeBytes(new Uint8Array([Status.InvalidSignature]));
+          enc.writeBytes(new Uint8Array([Status.InvalidSignature]));
         }
-        encoder.writeBytes(hash);
+        enc.writeBytes(hash);
       }
-      return binResp(encoder.result());
+      return binResp(enc.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }
   };
 
-  handlePull = async (
-    pubKey: Uint8Array,
-    decoder: Decoder,
-  ): Promise<Response> => {
+  handlePull = async (pubKey: Uint8Array, dec: Decoder): Promise<Response> => {
     try {
       const pubKeyHex = btoh(pubKey);
-      const encoder = new Encoder();
-      while (!decoder.done()) {
-        const hash = decoder.readBytes(hashSize);
+      const enc = new Encoder();
+      while (!dec.done()) {
+        const hash = dec.readBytes(hashSize);
         const hashHex = btoh(hash);
         const envelope = await this.storage.getOp(pubKeyHex, hashHex);
         if (envelope) {
-          encoder.writeBytes(envelope);
+          enc.writeBytes(envelope);
         }
       }
-      return binResp(encoder.result());
+      return binResp(enc.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }
   };
 
-  handlePeek = async (
-    pubKey: Uint8Array,
-    decoder: Decoder,
-  ): Promise<Response> => {
+  handlePeek = async (pubKey: Uint8Array, dec: Decoder): Promise<Response> => {
     try {
-      const fromMillis = decoder.readVarInt();
-      if (!decoder.done()) {
+      const fromMillis = dec.readVarInt();
+      if (!dec.done()) {
         return respFor(Status.ExtraBodyContent);
       }
       const begin = new Date(fromMillis).toISOString();
@@ -240,12 +228,12 @@ export class DiplomaticServer {
       const pubKeyHex = btoh(pubKey);
       const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
 
-      const encoder = new Encoder();
+      const enc = new Encoder();
       for (const item of userOpsList) {
-        encoder.writeBytes(item.sha256);
-        encoder.writeDate(new Date(item.recordedAt));
+        enc.writeBytes(item.sha256);
+        enc.writeDate(new Date(item.recordedAt));
       }
-      return binResp(encoder.result());
+      return binResp(enc.result());
     } catch (err) {
       return respFor(Status.InternalError);
     }
@@ -264,15 +252,15 @@ export class DiplomaticServer {
       return respFor(Status.MissingBody);
     }
     const data = new Uint8Array(await request.arrayBuffer());
-    const decoder = new Decoder(data);
-    const tsAuthBytes = decoder.readBytes(tsAuthSize);
+    const dec = new Decoder(data);
+    const tsAuthBytes = dec.readBytes(tsAuthSize);
     const [pubKey, status] = await this.validateTsAuth(tsAuthBytes);
     if (status !== Status.Success) {
       return respFor(status);
     }
 
     if (request.method === "POST" && url.pathname === "/users") {
-      return this.handleUser(pubKey, decoder);
+      return this.handleUser(pubKey, dec);
     }
 
     // Registered user required beyond this point.
@@ -287,13 +275,13 @@ export class DiplomaticServer {
     }
 
     if (request.method === "POST" && url.pathname === "/ops") {
-      return this.handlePush(pubKey, decoder);
+      return this.handlePush(pubKey, dec);
     }
     if (request.method === "POST" && url.pathname === "/pull") {
-      return this.handlePull(pubKey, decoder);
+      return this.handlePull(pubKey, dec);
     }
     if (request.method === "POST" && url.pathname === "/peek") {
-      return this.handlePeek(pubKey, decoder);
+      return this.handlePeek(pubKey, dec);
     }
 
     return respFor(Status.NotFound);

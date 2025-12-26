@@ -33,11 +33,15 @@ export interface IEnvelopePeekItem {
   recordedAt: number;
 }
 
-async function post(url: URL, enc: Encoder) {
-  return fetch(url, {
+async function post(url: URL, enc: Encoder): Promise<Decoder> {
+  const response = await fetch(url, {
     method: "POST",
     body: enc.result().slice(),
   });
+  if (!response.ok) {
+    throw new Error("Request failed");
+  }
+  return await Decoder.fromResponse(response);
 }
 
 export default class DiplomaticClientAPI {
@@ -47,6 +51,11 @@ export default class DiplomaticClientAPI {
   constructor(enclave: Enclave, crypto: ICrypto) {
     this.crypto = crypto;
     this.enclave = enclave;
+  }
+
+  async getKeyPair(keyPath: string, idx: number): Promise<KeyPair> {
+    const derivationSeed = await this.enclave.derive(keyPath, idx);
+    return await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async getHostID(hostURL: URL): Promise<string> {
@@ -117,12 +126,7 @@ export default class DiplomaticClientAPI {
     }
 
     const url = new URL("/ops", hostURL);
-    const response = await post(url, encoder);
-    if (!response.ok) {
-      console.error(response);
-      throw "Uh oh";
-    }
-    const decoder = await Decoder.fromResponse(response);
+    const decoder = await post(url, encoder);
     const results: { status: number; hash: Uint8Array }[] = [];
     while (!decoder.done()) {
       const status = decoder.readBytes(1)[0];
@@ -149,11 +153,7 @@ export default class DiplomaticClientAPI {
     }
 
     const url = new URL("/pull", hostURL);
-    const response = await post(url, encoder);
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const decoder = await Decoder.fromResponse(response);
+    const decoder = await post(url, encoder);
     const envelopes: IEnvelope[] = [];
     while (!decoder.done()) {
       const envelope = decodeEnvelope(decoder);
@@ -177,11 +177,7 @@ export default class DiplomaticClientAPI {
     encoder.writeVarInt(fromMillis);
 
     const url = new URL("/peek", hostURL);
-    const response = await post(url, encoder);
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const decoder = await Decoder.fromResponse(response);
+    const decoder = await post(url, encoder);
     const items: IEnvelopePeekItem[] = [];
     while (!decoder.done()) {
       const hash = decoder.readBytes(hashSize);

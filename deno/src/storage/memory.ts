@@ -4,14 +4,19 @@ import libsodiumCrypto from "../crypto.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
-  ops: Map<
+  envelopes: Map<
     string,
-    { cipherOp: Uint8Array; recordedAt: Date; pubKeyHex: string }
+    {
+      headCry: Uint8Array;
+      bodyCry: Uint8Array;
+      recordedAt: Date;
+      pubKeyHex: string;
+    }
   >;
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
-  ops: new Map(), // Path => op binary.
+  envelopes: new Map(), // Sha256Hex => envelope parts.
 
   async addUser(pubKeyHex) {
     this.users.add(pubKeyHex);
@@ -21,26 +26,34 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setOp(pubKeyHex, recordedAt, op, key?) {
-    const storageKey = key ?? btoh(await libsodiumCrypto.sha256Hash(op));
-    this.ops.set(storageKey, { pubKeyHex, cipherOp: op, recordedAt });
+  async setEnvelope(pubKeyHex, recordedAt, headCry, bodyCry, storageKey) {
+    this.envelopes.set(storageKey, {
+      pubKeyHex,
+      headCry,
+      bodyCry,
+      recordedAt,
+    });
   },
 
-  async getOp(pubKeyHex, sha256Hex) {
-    const op = this.ops.get(sha256Hex);
-    if (op?.pubKeyHex !== pubKeyHex) {
+  async getBody(pubKeyHex, sha256Hex) {
+    const item = this.envelopes.get(sha256Hex);
+    if (item?.pubKeyHex !== pubKeyHex) {
       return;
     }
-    return op.cipherOp;
+    return item.bodyCry;
   },
 
-  async listOps(pubKeyHex, begin, end) {
+  async listHeads(pubKeyHex, begin, end) {
     const list: IDeltaListItem[] = [];
-    for (const [key, op] of this.ops.entries()) {
-      const ts = op.recordedAt.toISOString();
-      if (op.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
+    for (const [key, item] of this.envelopes.entries()) {
+      const ts = item.recordedAt.toISOString();
+      if (item.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
         const sha256 = htob(key);
-        list.push({ sha256, recordedAt: op.recordedAt });
+        list.push({
+          sha256,
+          recordedAt: item.recordedAt,
+          headCry: item.headCry,
+        });
       }
     }
     return list;

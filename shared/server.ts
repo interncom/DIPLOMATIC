@@ -14,6 +14,8 @@ import {
   hashSize,
   responseItemSize,
   clockToleranceMs,
+  sigBytes,
+  kdmBytes,
 } from "./consts.ts";
 import { decodeSigProvenData } from "./sigProof.ts";
 import {
@@ -173,24 +175,28 @@ export class DiplomaticServer {
       const enc = new Encoder();
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
-        const hash = await this.crypto.sha256Hash(
-          concat(env.cipherhead, env.cipherbody),
-        );
+        const headHash = await this.crypto.sha256Hash(env.cipherhead);
         const sigValid = await this.crypto.checkSigEd25519(
           env.sig,
           env.cipherhead,
           pubKey,
         );
         if (sigValid) {
-          const envelope = encodeEnvelope(env);
-          const hashHex = btoh(hash);
-          await this.storage.setOp(pubKeyHex, now, envelope, hashHex);
+          const headHashHex = btoh(headHash);
+          const headCombined = concat(concat(env.sig, env.kdm), env.cipherhead);
+          await this.storage.setEnvelope(
+            pubKeyHex,
+            now,
+            headCombined,
+            env.cipherbody,
+            headHashHex,
+          );
           await this.notifier.notify(pubKeyHex);
           enc.writeBytes(new Uint8Array([Status.Success]));
         } else {
           enc.writeBytes(new Uint8Array([Status.InvalidSignature]));
         }
-        enc.writeBytes(hash);
+        enc.writeBytes(headHash);
       }
       return binResp(enc.result());
     } catch (err) {
@@ -203,11 +209,13 @@ export class DiplomaticServer {
       const pubKeyHex = btoh(pubKey);
       const enc = new Encoder();
       while (!dec.done()) {
-        const hash = dec.readBytes(hashSize);
-        const hashHex = btoh(hash);
-        const envelope = await this.storage.getOp(pubKeyHex, hashHex);
-        if (envelope) {
-          enc.writeBytes(envelope);
+        const headHash = dec.readBytes(hashSize);
+        const headHashHex = btoh(headHash);
+        const bodyCry = await this.storage.getBody(pubKeyHex, headHashHex);
+        if (bodyCry) {
+          enc.writeBytes(headHash);
+          enc.writeVarInt(bodyCry.length);
+          enc.writeBytes(bodyCry);
         }
       }
       return binResp(enc.result());
@@ -226,12 +234,14 @@ export class DiplomaticServer {
       const end = new Date().toISOString();
 
       const pubKeyHex = btoh(pubKey);
-      const userOpsList = await this.storage.listOps(pubKeyHex, begin, end);
+      const userHeadsList = await this.storage.listHeads(pubKeyHex, begin, end);
 
       const enc = new Encoder();
-      for (const item of userOpsList) {
+      for (const item of userHeadsList) {
         enc.writeBytes(item.sha256);
         enc.writeDate(new Date(item.recordedAt));
+        enc.writeVarInt(item.headCry.length);
+        enc.writeBytes(item.headCry);
       }
       return binResp(enc.result());
     } catch (err) {

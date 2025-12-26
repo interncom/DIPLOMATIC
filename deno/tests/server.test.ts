@@ -81,22 +81,13 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /pull", async () => {
     const hashes = result.map((r) => r.hash);
-    const pulledEnvelopes = await client.pull(
-      url,
-      hashes,
-      hostID,
-      hostIdx,
-      now,
-    );
-    assertEquals(pulledEnvelopes.length, 2);
+    const pulledItems = await client.pull(url, hashes, hostID, hostIdx, now);
+    assertEquals(pulledItems.length, 2);
 
-    // Verify envelope structure (integration test, skip decryption)
-    for (const env of pulledEnvelopes) {
-      assertEquals(env.sig.length, 64);
-      assertEquals(env.kdm.length, 8);
-      assert(env.lenCipherHead > 0);
-      assertEquals(env.cipherhead.length, env.lenCipherHead);
-      assert(env.cipherbody.length >= 0);
+    // Verify item structure (integration test, skip decryption)
+    for (const item of pulledItems) {
+      assertEquals(item.hash.length, 32);
+      assert(item.bodyCry.length >= 0);
     }
   });
 
@@ -107,6 +98,7 @@ Deno.test("server", async (t) => {
     for (const header of peekedHeaders) {
       assertEquals(header.hash.length, 32);
       assert(typeof header.recordedAt === "number");
+      assert(header.headCry.length > 0);
     }
   });
 

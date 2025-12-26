@@ -353,3 +353,12 @@ Deno.test("Decoder readDate not enough data", () => {
     "Not enough data to read BigInt (needs 8 bytes)",
   );
 });
+
+Deno.test("Decoder fromResponse", async () => {
+  const data = new Uint8Array([1, 2, 3, 4, 5]);
+  const response = new Response(data.slice());
+  const decoder = await Decoder.fromResponse(response);
+  const bytes = decoder.readBytes(3);
+  assertEquals(bytes, new Uint8Array([1, 2, 3]));
+  assertEquals(decoder.done(), false);
+});

@@ -128,9 +128,7 @@ export default class DiplomaticClientAPI {
       console.error(response);
       throw "Uh oh";
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const responseData = new Uint8Array(arrayBuffer);
-    const decoder = new Decoder(responseData);
+    const decoder = await Decoder.fromResponse(response);
     const results: { status: number; hash: Uint8Array }[] = [];
     while (!decoder.done()) {
       const status = decoder.readBytes(1)[0];
@@ -161,9 +159,7 @@ export default class DiplomaticClientAPI {
     if (!response.ok) {
       throw "Uh oh";
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    const decoder = new Decoder(data);
+    const decoder = await Decoder.fromResponse(response);
     const envelopes: IEnvelope[] = [];
     while (!decoder.done()) {
       const envelope = decodeEnvelope(decoder);
@@ -191,9 +187,7 @@ export default class DiplomaticClientAPI {
     if (!response.ok) {
       throw "Uh oh";
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    const decoder = new Decoder(data);
+    const decoder = await Decoder.fromResponse(response);
     const items: IEnvelopePeekItem[] = [];
     while (!decoder.done()) {
       const hash = decoder.readBytes(hashSize);

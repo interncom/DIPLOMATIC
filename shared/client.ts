@@ -163,13 +163,11 @@ export default class DiplomaticClientAPI {
     }
     const arrayBuffer = await response.arrayBuffer();
     const data = new Uint8Array(arrayBuffer);
+    const decoder = new Decoder(data);
     const envelopes: IEnvelope[] = [];
-    let offset = 0;
-    while (offset < data.length) {
-      const decoder = new Decoder(data.slice(offset));
+    while (!decoder.done()) {
       const envelope = decodeEnvelope(decoder);
       envelopes.push(envelope);
-      offset += decoder.consumed();
     }
     return envelopes;
   }

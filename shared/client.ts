@@ -93,37 +93,30 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<Array<{ status: number; hash: Uint8Array }>> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const tsAuth = await timestampAuthProof(derivationSeed, now, this.crypto);
+    const { crypto, enclave } = this;
+
+    const derivationSeed = await enclave.derive(keyPath, idx);
+    const tsAuth = await timestampAuthProof(derivationSeed, now, crypto);
     const encoder = new Encoder();
     encoder.writeBytes(tsAuth);
 
-    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
     for (const op of ops) {
       // Encode message.
-      const [encMsg, msgHead] = await encodeOp(op, this.crypto);
+      const [encMsg, head] = await encodeOp(op, crypto);
 
       // Derive encryption key.
-      const kdm = await genKDM(this.crypto);
-      const encKey = await this.enclave.deriveFromKDM(kdm);
+      const kdm = await genKDM(crypto);
+      const key = await enclave.deriveFromKDM(kdm);
 
       // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-      const cipherhead = await this.crypto.encryptXSalsa20Poly1305Combined(
-        msgHead,
-        encKey,
-      );
-      const cipherbody = op.bod
-        ? await this.crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey)
+      const headCry = await crypto.encryptXSalsa20Poly1305Combined(head, key);
+      const bodyCry = op.bod
+        ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
         : new Uint8Array(0);
 
       // Wrap in envelope.
-      const env = await makeEnvelope(
-        keyPair,
-        cipherhead,
-        cipherbody,
-        kdm,
-        this.crypto,
-      );
+      const env = await makeEnvelope(keyPair, headCry, bodyCry, kdm, crypto);
       const encEnv = encodeEnvelope(env);
 
       encoder.writeBytes(encEnv);

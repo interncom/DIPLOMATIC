@@ -30,12 +30,7 @@ export interface IEnvelopePeekItem {
 
 import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
-import {
-  encodeOp,
-  decodeOp,
-  type IMessage,
-  derivationKeyMaterial,
-} from "./message.ts";
+import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
 import { concat } from "./lib.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
@@ -109,7 +104,7 @@ export default class DiplomaticClientAPI {
       const [encMsg, msgHead] = await encodeOp(op, this.crypto);
 
       // Derive encryption key.
-      const kdm = (await derivationKeyMaterial(this.crypto)).slice(0, 8);
+      const kdm = (await genKDM(this.crypto)).slice(0, 8);
       const encKey = await this.enclave.deriveFromKDM(kdm);
 
       // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.

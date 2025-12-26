@@ -11,7 +11,7 @@ import {
   kdmBytes,
   encodeOp,
   decodeOp,
-  derivationKeyMaterial,
+  genKDM,
   type IMessage,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
@@ -39,7 +39,7 @@ const op: IMessage = {
 
 async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
   const [encMsg, msgHead] = await encodeOp(op, crypto);
-  const kdm = await derivationKeyMaterial(crypto);
+  const kdm = await genKDM(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
   const cipherhead = await crypto.encryptXSalsa20Poly1305Combined(
     msgHead,

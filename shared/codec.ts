@@ -52,6 +52,12 @@ export class Decoder {
     this.data = data;
   }
 
+  static async fromResponse(resp: Response): Promise<Decoder> {
+    const arrayBuffer = await resp.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    return new Decoder(data);
+  }
+
   readBigInt(): bigint {
     if (this.pos + 8 > this.data.length) {
       throw new Error("Not enough data to read BigInt (needs 8 bytes)");

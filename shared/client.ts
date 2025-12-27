@@ -44,13 +44,10 @@ import {
 } from "./protocol.ts";
 
 export default class DiplomaticClientAPI {
-  crypto: ICrypto;
-  enclave: Enclave;
-
-  constructor(enclave: Enclave, crypto: ICrypto) {
-    this.crypto = crypto;
-    this.enclave = enclave;
-  }
+  constructor(
+    private enclave: Enclave,
+    private crypto: ICrypto,
+  ) {}
 
   async getHostID(hostURL: URL): Promise<string> {
     const url = new URL(HOST_PATH, hostURL);

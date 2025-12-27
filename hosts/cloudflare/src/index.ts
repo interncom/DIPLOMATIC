@@ -93,37 +93,37 @@ export default {
 				return has ?? false;
 			},
 
-			async setEnvelope(pubKeyHex: string, recordedAt: Date, headCry: Uint8Array, bodyCry: Uint8Array, sha256Hex: string) {
+			async setEnvelope(pubKeyHex: string, recordedAt: Date, headCph: Uint8Array, bodyCph: Uint8Array, sha256Hex: string) {
 				const recAtStr = recordedAt.toISOString();
 				const sha256 = htob(sha256Hex);
 				await env.DIP_DB.prepare(
-					'INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCry, bodyCry) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+					'INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
 				)
-					.bind(sha256, pubKeyHex, recAtStr, headCry, bodyCry)
+					.bind(sha256, pubKeyHex, recAtStr, headCph, bodyCph)
 					.run();
 			},
 
 			async getBody(pubKeyHex: string, sha256Hex: string) {
 				const sha256 = htob(sha256Hex);
-				const row = await env.DIP_DB.prepare('SELECT bodyCry FROM envelopes WHERE userPubKey = ? AND sha256 = ?')
+				const row = await env.DIP_DB.prepare('SELECT bodyCph FROM envelopes WHERE userPubKey = ? AND sha256 = ?')
 					.bind(pubKeyHex, sha256)
-					.first<{ bodyCry: Uint8Array }>();
+					.first<{ bodyCph: Uint8Array }>();
 				if (!row) {
 					return undefined;
 				}
-				return new Uint8Array(row.bodyCry);
+				return new Uint8Array(row.bodyCph);
 			},
 
 			async listHeads(pubKeyHex: string, begin: string, end: string) {
 				const rows = await env.DIP_DB.prepare(
-					'SELECT sha256, recordedAt, headCry FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?',
+					'SELECT sha256, recordedAt, headCph FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?',
 				)
 					.bind(pubKeyHex, begin, end)
-					.all<{ sha256: Uint8Array; recordedAt: string; headCry: Uint8Array }>();
+					.all<{ sha256: Uint8Array; recordedAt: string; headCph: Uint8Array }>();
 				return rows.results?.map((row) => ({
 					sha256: row.sha256,
 					recordedAt: new Date(row.recordedAt),
-					headCry: new Uint8Array(row.headCry),
+					headCph: new Uint8Array(row.headCph),
 				}));
 			},
 		};

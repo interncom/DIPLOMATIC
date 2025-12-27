@@ -87,7 +87,7 @@ Deno.test("server", async (t) => {
     // Verify item structure (integration test, skip decryption)
     for (const item of pulledItems) {
       assertEquals(item.hash.length, 32);
-      assert(item.bodyCry.length >= 0);
+      assert(item.bodyCph.length >= 0);
     }
   });
 
@@ -98,7 +98,7 @@ Deno.test("server", async (t) => {
     for (const header of peekedHeaders) {
       assertEquals(header.hash.length, 32);
       assert(typeof header.recordedAt === "number");
-      assert(header.headCry.length > 0);
+      assert(header.headCph.length > 0);
     }
   });
 

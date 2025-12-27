@@ -114,28 +114,29 @@ export class DiplomaticServer {
     }
   };
 
-  handlePush = async (pubKey: Uint8Array, dec: Decoder): Promise<Response> => {
+  handlePush = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
+    const { crypto, notifier, storage } = this;
     const now = new Date();
     try {
       const enc = new Encoder();
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
-        const headHash = await this.crypto.sha256Hash(env.cipherhead);
-        const sigValid = await this.crypto.checkSigEd25519(
+        const headHash = await crypto.sha256Hash(env.cipherhead);
+        const sigValid = await crypto.checkSigEd25519(
           env.sig,
           env.cipherhead,
-          pubKey as PublicKey,
+          pubKey,
         );
         if (sigValid) {
           const headCombined = concat(concat(env.sig, env.kdm), env.cipherhead);
-          await this.storage.setEnvelope(
-            pubKey as PublicKey,
+          await storage.setEnvelope(
+            pubKey,
             now,
             headCombined,
             env.cipherbody,
             headHash,
           );
-          await this.notifier.notify(pubKey as PublicKey);
+          await notifier.notify(pubKey as PublicKey);
           enc.writeBytes(new Uint8Array([Status.Success]));
         } else {
           enc.writeBytes(new Uint8Array([Status.InvalidSignature]));

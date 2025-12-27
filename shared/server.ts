@@ -8,7 +8,6 @@ import type {
   PublicKey,
 } from "./types.ts";
 import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
-import { concat } from "./lib.ts";
 import {
   tsAuthSize,
   envelopeHeaderSize,
@@ -128,14 +127,7 @@ export class DiplomaticServer {
           pubKey,
         );
         if (sigValid) {
-          const headCombined = concat(concat(env.sig, env.kdm), env.headCph);
-          await storage.setEnvelope(
-            pubKey,
-            now,
-            headCombined,
-            env.bodyCph,
-            headHash,
-          );
+          await storage.setEnvelope(pubKey, now, env, headHash);
           await notifier.notify(pubKey as PublicKey);
           enc.writeBytes(new Uint8Array([Status.Success]));
         } else {

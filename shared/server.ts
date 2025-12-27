@@ -38,6 +38,7 @@ import {
   cors,
 } from "./http.ts";
 import { Status } from "./consts.ts";
+import { encodePeekItem, encodePullItem, encodePushItem } from "./protocol.ts";
 
 export class DiplomaticServer {
   hostID: string;
@@ -122,16 +123,15 @@ export class DiplomaticServer {
       const enc = new Encoder();
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
-        const headHash = await crypto.sha256Hash(env.headCph);
+        const hash = await crypto.sha256Hash(env.headCph);
         const sigValid = await envSigValid(env, pubKey, crypto);
-        if (sigValid) {
-          await storage.setEnvelope(pubKey, now, env, headHash);
-          await notifier.notify(pubKey as PublicKey);
-          enc.writeBytes(new Uint8Array([Status.Success]));
-        } else {
-          enc.writeBytes(new Uint8Array([Status.InvalidSignature]));
+        if (!sigValid) {
+          encodePushItem({ status: Status.InvalidSignature, hash }, enc);
+          continue;
         }
-        enc.writeBytes(headHash);
+        await storage.setEnvelope(pubKey, now, env, hash);
+        await notifier.notify(pubKey as PublicKey);
+        encodePushItem({ status: Status.Success, hash }, enc);
       }
       return binResp(enc);
     } catch (err) {
@@ -147,9 +147,7 @@ export class DiplomaticServer {
         const headHash = dec.readBytes(hashSize);
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
-          enc.writeBytes(headHash);
-          enc.writeVarInt(bodyCph.length);
-          enc.writeBytes(bodyCph);
+          encodePullItem({ hash: headHash, bodyCph }, enc);
         }
       }
       return binResp(enc);
@@ -172,10 +170,7 @@ export class DiplomaticServer {
 
       const enc = new Encoder();
       for (const item of items) {
-        enc.writeBytes(item.sha256);
-        enc.writeDate(new Date(item.recordedAt));
-        enc.writeVarInt(item.headCph.length);
-        enc.writeBytes(item.headCph);
+        encodePeekItem(item, enc);
       }
       return binResp(enc);
     } catch (err) {

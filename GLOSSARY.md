@@ -22,7 +22,6 @@ TODOS:
 - get client.register using same dec = post(url, enc) pattern as the rest
 - make getHostID use same tsAuth pattern as rest? host could theoretically return a different ID for each client which would be fine if consistent. this would allow a kind of key exchange. it's a rare call so the extra overhead is negligble. seems good
 
-- share URL path constants between client and server
 - refactor so that HTTP layer is separate and built on top of protocol layer (protocol itself doesn't care about URLs and HTTP response codes)
 
 - make a Clock abstraction rather than passing now to each client method

@@ -41,18 +41,12 @@ async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
   const [encMsg, msgHead] = await encodeOp(op, crypto);
   const kdm = await genKDM(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
-  const cipherhead = await crypto.encryptXSalsa20Poly1305Combined(
-    msgHead,
-    encKey,
-  );
+  const headCph = await crypto.encryptXSalsa20Poly1305Combined(msgHead, encKey);
   if (!op.bod) {
     throw new Error("ahhh!");
   }
-  const cipherbody = await crypto.encryptXSalsa20Poly1305Combined(
-    op.bod,
-    encKey,
-  );
-  const env = await makeEnvelope(keyPair, cipherhead, cipherbody, kdm, crypto);
+  const bodyCph = await crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey);
+  const env = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
   return encodeEnvelope(env);
 }
 
@@ -66,14 +60,14 @@ Deno.bench("full decode op", async (b) => {
   const decoder = new Decoder(envelope);
   const decodedEnv = decodeEnvelope(decoder);
   const kdm = decodedEnv.kdm;
-  const cipherMsg = concat(decodedEnv.cipherhead, decodedEnv.cipherbody);
+  const cipherMsg = concat(decodedEnv.headCph, decodedEnv.bodyCph);
   const encKey = await enclave.deriveFromKDM(kdm);
   const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(
-    decodedEnv.cipherhead,
+    decodedEnv.headCph,
     encKey,
   );
   const decryptedBody = await crypto.decryptXSalsa20Poly1305Combined(
-    decodedEnv.cipherbody,
+    decodedEnv.bodyCph,
     encKey,
   );
   const decryptedMsg = concat(decryptedHead, decryptedBody);

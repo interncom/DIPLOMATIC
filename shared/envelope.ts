@@ -17,13 +17,13 @@ import { Decoder, Encoder } from "./codec.ts";
 export interface IEnvelopeHeader {
   sig: Uint8Array;
   kdm: Uint8Array;
-  lenCipherHead: number;
-  lenCipherBody: number;
+  lenHeadCph: number;
+  lenBodyCph: number;
 }
 
 export interface IEnvelope extends IEnvelopeHeader {
-  cipherhead: Uint8Array;
-  cipherbody: Uint8Array;
+  headCph: Uint8Array;
+  bodyCph: Uint8Array;
 }
 
 export type EncodedEnvelope = Uint8Array;
@@ -32,28 +32,28 @@ export function encodeEnvelope(env: IEnvelope): Uint8Array {
   const enc = new Encoder();
   enc.writeBytes(env.sig);
   enc.writeBytes(env.kdm);
-  enc.writeVarInt(env.lenCipherHead);
-  enc.writeVarInt(env.lenCipherBody);
-  enc.writeBytes(env.cipherhead);
-  enc.writeBytes(env.cipherbody);
+  enc.writeVarInt(env.lenHeadCph);
+  enc.writeVarInt(env.lenBodyCph);
+  enc.writeBytes(env.headCph);
+  enc.writeBytes(env.bodyCph);
   return enc.result();
 }
 
 export async function makeEnvelope(
   keyPair: KeyPair,
-  cipherhead: Uint8Array,
-  cipherbody: Uint8Array,
+  headCph: Uint8Array,
+  bodyCph: Uint8Array,
   kdm: Uint8Array,
   crypto: ICrypto,
 ): Promise<IEnvelope> {
-  const sig = await crypto.signEd25519(cipherhead, keyPair.privateKey);
+  const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
   return {
     sig,
     kdm,
-    lenCipherHead: cipherhead.length,
-    lenCipherBody: cipherbody.length,
-    cipherhead,
-    cipherbody,
+    lenHeadCph: headCph.length,
+    lenBodyCph: bodyCph.length,
+    headCph,
+    bodyCph,
   };
 }
 
@@ -61,24 +61,24 @@ export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
   const dec = new Decoder(encoded);
   const sig = dec.readBytes(sigBytes);
   const kdm = dec.readBytes(kdmBytes);
-  const lenCipherHead = dec.readVarInt();
-  const lenCipherBody = dec.readVarInt();
-  return { sig, kdm, lenCipherHead, lenCipherBody };
+  const lenHeadCph = dec.readVarInt();
+  const lenBodyCph = dec.readVarInt();
+  return { sig, kdm, lenHeadCph, lenBodyCph };
 }
 
 export function decodeEnvelope(dec: Decoder): IEnvelope {
   const sig = dec.readBytes(sigBytes);
   const kdm = dec.readBytes(kdmBytes);
-  const lenCipherHead = dec.readVarInt();
-  const lenCipherBody = dec.readVarInt();
-  const cipherhead = dec.readBytes(lenCipherHead);
-  const cipherbody = dec.readBytes(lenCipherBody);
+  const lenHeadCph = dec.readVarInt();
+  const lenBodyCph = dec.readVarInt();
+  const headCph = dec.readBytes(lenHeadCph);
+  const bodyCph = dec.readBytes(lenBodyCph);
   return {
     sig,
     kdm,
-    lenCipherHead,
-    lenCipherBody,
-    cipherhead,
-    cipherbody,
+    lenHeadCph,
+    lenBodyCph,
+    headCph,
+    bodyCph,
   };
 }

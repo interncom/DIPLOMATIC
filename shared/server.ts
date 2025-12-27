@@ -101,12 +101,13 @@ export class DiplomaticServer {
   };
 
   handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
+    const { storage } = this;
     if (!dec.done()) {
       return respFor(Status.ExtraBodyContent);
     }
     try {
       // Register the public key
-      await this.storage.addUser(pubKey);
+      await storage.addUser(pubKey);
       return new Response("", { status: 200 });
     } catch (err) {
       return respFor(Status.InternalError);
@@ -142,11 +143,12 @@ export class DiplomaticServer {
   };
 
   handlePull = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
+    const { storage } = this;
     try {
       const enc = new Encoder();
       while (!dec.done()) {
         const headHash = dec.readBytes(hashSize);
-        const bodyCph = await this.storage.getBody(pubKey, headHash);
+        const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
           enc.writeBytes(headHash);
           enc.writeVarInt(bodyCph.length);
@@ -160,15 +162,16 @@ export class DiplomaticServer {
   };
 
   handlePeek = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
+    const { storage } = this;
     try {
       const fromMillis = dec.readVarInt();
       if (!dec.done()) {
         return respFor(Status.ExtraBodyContent);
       }
+
       const begin = new Date(fromMillis).toISOString();
       const end = new Date().toISOString();
-
-      const userHeadsList = await this.storage.listHeads(pubKey, begin, end);
+      const items = await storage.listHeads(pubKey, begin, end);
 
       const enc = new Encoder();
       for (const item of userHeadsList) {

@@ -11,11 +11,11 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier } from '../../../shared/types';
+import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier, PublicKey } from '../../../shared/types';
 import { DiplomaticServer } from '../../../shared/server';
 import { decodeAsync, encode, decode } from '@msgpack/msgpack';
 import { DurableObject } from 'cloudflare:workers';
-import { htob } from '../../../shared/lib';
+import { htob, btoh } from '../../../shared/lib';
 
 const cloudflareCrypto: IHostCrypto = {
 	async checkSigEd25519(sig, message, pubKey) {
@@ -84,18 +84,20 @@ interface Env {
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const d1Storage: IStorage = {
-			async addUser(pubKeyHex: string) {
+			async addUser(pubKey: Uint8Array) {
+				const pubKeyHex = btoh(pubKey);
 				await env.DIP_DB.prepare('INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING').bind(pubKeyHex).run();
 			},
 
-			async hasUser(pubKeyHex: string) {
+			async hasUser(pubKey: Uint8Array) {
+				const pubKeyHex = btoh(pubKey);
 				const has = await env.DIP_DB.prepare('SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)').bind(pubKeyHex).first<boolean>();
 				return has ?? false;
 			},
 
-			async setEnvelope(pubKeyHex: string, recordedAt: Date, headCph: Uint8Array, bodyCph: Uint8Array, sha256Hex: string) {
+			async setEnvelope(pubKey: Uint8Array, recordedAt: Date, headCph: Uint8Array, bodyCph: Uint8Array, sha256: Uint8Array) {
+				const pubKeyHex = btoh(pubKey);
 				const recAtStr = recordedAt.toISOString();
-				const sha256 = htob(sha256Hex);
 				await env.DIP_DB.prepare(
 					'INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
 				)
@@ -103,8 +105,8 @@ export default {
 					.run();
 			},
 
-			async getBody(pubKeyHex: string, sha256Hex: string) {
-				const sha256 = htob(sha256Hex);
+			async getBody(pubKey: Uint8Array, sha256: Uint8Array) {
+				const pubKeyHex = btoh(pubKey);
 				const row = await env.DIP_DB.prepare('SELECT bodyCph FROM envelopes WHERE userPubKey = ? AND sha256 = ?')
 					.bind(pubKeyHex, sha256)
 					.first<{ bodyCph: Uint8Array }>();
@@ -114,7 +116,8 @@ export default {
 				return new Uint8Array(row.bodyCph);
 			},
 
-			async listHeads(pubKeyHex: string, begin: string, end: string) {
+			async listHeads(pubKey: Uint8Array, begin: string, end: string) {
+				const pubKeyHex = btoh(pubKey);
 				const rows = await env.DIP_DB.prepare(
 					'SELECT sha256, recordedAt, headCph FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?',
 				)
@@ -135,7 +138,8 @@ export default {
 				if (!pubKeyHex) {
 					return new Response('Missing pubkey', { status: 401 });
 				}
-				if (!(await hasUser(pubKeyHex))) {
+				const pubKey = htob(pubKeyHex) as PublicKey;
+				if (!(await hasUser(pubKey))) {
 					return new Response('Unauthorized', { status: 401 });
 				}
 				const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
@@ -143,7 +147,8 @@ export default {
 				const resp = await stub.fetch(request);
 				return resp;
 			},
-			notify: async (pubKeyHex) => {
+			notify: async (pubKey) => {
+				const pubKeyHex = btoh(pubKey);
 				const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
 				const stub = env.WEBSOCKET_SERVER.get(id);
 				const request = new Request('http://durableobject/notify', { method: 'POST' });

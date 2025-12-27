@@ -7,6 +7,7 @@ import {
   decodeEnvelope,
   decodeEnvelopeHeader,
 } from "../../shared/envelope.ts";
+import type { PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder } from "../../shared/codec.ts";
 
@@ -40,8 +41,8 @@ Deno.test("envelope", async (t) => {
     const kdm = new Uint8Array(8).fill(0x44);
     const keyPair = {
       keyType: "private" as const,
-      privateKey: new Uint8Array(64).fill(0x22),
-      publicKey: new Uint8Array(32).fill(0x33),
+      privateKey: new Uint8Array(64).fill(0x22) as PrivateKey,
+      publicKey: new Uint8Array(32).fill(0x33) as PublicKey,
     };
     const result = await makeEnvelope(
       keyPair,

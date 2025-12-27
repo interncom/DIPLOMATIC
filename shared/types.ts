@@ -56,21 +56,21 @@ export interface IListDeltasResponse {
 }
 
 export interface IStorage {
-  addUser: (pubKeyHex: string) => Promise<void>;
-  hasUser: (pubKeyHex: string) => Promise<boolean>;
+  addUser: (pubKey: PublicKey) => Promise<void>;
+  hasUser: (pubKey: PublicKey) => Promise<boolean>;
   setEnvelope: (
-    pubKeyHex: string,
+    pubKey: PublicKey,
     recordedAt: Date,
     headCph: Uint8Array,
     bodyCph: Uint8Array,
-    storageKey: string,
+    sha256: Uint8Array,
   ) => Promise<void>;
   getBody: (
-    pubKeyHex: string,
-    sha256Hex: string,
+    pubKey: PublicKey,
+    sha256: Uint8Array,
   ) => Promise<Uint8Array | undefined>;
   listHeads: (
-    pubKeyHex: string,
+    pubKey: PublicKey,
     begin: string,
     end: string,
   ) => Promise<IDeltaListItem[]>;
@@ -78,20 +78,27 @@ export interface IStorage {
 
 export interface KeyPair {
   keyType: "public" | "private" | "secret";
-  privateKey: Uint8Array;
-  publicKey: Uint8Array;
+  privateKey: PrivateKey;
+  publicKey: PublicKey;
 }
 
-export type MasterSeed = Uint8Array & { readonly __brand: "MasterSeed" };
+const masterSeedSymbol = Symbol("MasterSeed");
+const derivationSeedSymbol = Symbol("DerivationSeed");
+const publicKeySymbol = Symbol("PublicKey");
+const privateKeySymbol = Symbol("PrivateKey");
+
+export type MasterSeed = Uint8Array & { readonly [masterSeedSymbol]: true };
 export type DerivationSeed = Uint8Array & {
-  readonly __brand: "DerivationSeed";
+  readonly [derivationSeedSymbol]: true;
 };
+export type PublicKey = Uint8Array & { readonly [publicKeySymbol]: true };
+export type PrivateKey = Uint8Array & { readonly [privateKeySymbol]: true };
 
 export interface IHostCrypto {
   checkSigEd25519: (
     sig: Uint8Array,
     message: Uint8Array | string,
-    pubKey: Uint8Array,
+    pubKey: PublicKey,
   ) => Promise<boolean>;
   sha256Hash: (data: Uint8Array) => Promise<Uint8Array>;
   blake3: (data: Uint8Array) => Promise<Uint8Array>;
@@ -115,7 +122,7 @@ export interface ICrypto extends IHostCrypto {
   deriveEd25519KeyPair: (derivationSeed: DerivationSeed) => Promise<KeyPair>;
   signEd25519: (
     message: Uint8Array | string,
-    secKey: Uint8Array,
+    secKey: PrivateKey,
   ) => Promise<Uint8Array>;
   blake3: (data: Uint8Array) => Promise<Uint8Array>;
 }
@@ -129,7 +136,7 @@ export interface IMsgpackCodec {
 export interface IWebsocketNotifier {
   handler: (
     request: Request,
-    hasUser: (pubKeyHex: string) => Promise<boolean>,
+    hasUser: (pubKey: PublicKey) => Promise<boolean>,
   ) => Promise<Response>;
-  notify: (pubKeyHex: string) => Promise<void>;
+  notify: (pubKey: PublicKey) => Promise<void>;
 }

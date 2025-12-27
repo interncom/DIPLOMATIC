@@ -1,6 +1,6 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
 import { IStorage } from "../../../shared/types.ts";
-import { htob } from "../../../shared/lib.ts";
+import { htob, btoh } from "../../../shared/lib.ts";
 import libsodiumCrypto from "../crypto.ts";
 
 const db = new DB("diplomatic.db");
@@ -21,13 +21,15 @@ db.query(`
 `);
 
 const sqliteStorage: IStorage = {
-  async addUser(pubKeyHex: string) {
+  async addUser(pubKey) {
+    const pubKeyHex = btoh(pubKey);
     db.query("INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING", [
       pubKeyHex,
     ]);
   },
 
-  async hasUser(pubKeyHex: string) {
+  async hasUser(pubKey) {
+    const pubKeyHex = btoh(pubKey);
     const rows = db.query<[boolean]>(
       "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)",
       [pubKeyHex],
@@ -37,23 +39,17 @@ const sqliteStorage: IStorage = {
     return has ?? false;
   },
 
-  async setEnvelope(
-    pubKeyHex: string,
-    recordedAt: Date,
-    headCph: Uint8Array,
-    bodyCph: Uint8Array,
-    sha256Hex: string,
-  ) {
+  async setEnvelope(pubKey, recordedAt, headCph, bodyCph, sha256) {
+    const pubKeyHex = btoh(pubKey);
     const recAtStr = recordedAt.toISOString();
-    const sha256 = htob(sha256Hex);
     db.query(
       "INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
       [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
     );
   },
 
-  async getBody(pubKeyHex: string, sha256Hex: string) {
-    const sha256 = htob(sha256Hex);
+  async getBody(pubKey, sha256) {
+    const pubKeyHex = btoh(pubKey);
     const rows = db.query<[Uint8Array]>(
       "SELECT bodyCph FROM envelopes WHERE userPubKey = ? AND sha256 = ?",
       [pubKeyHex, sha256],
@@ -65,7 +61,8 @@ const sqliteStorage: IStorage = {
     return new Uint8Array(row[0]);
   },
 
-  async listHeads(pubKeyHex: string, begin: string, end: string) {
+  async listHeads(pubKey, begin, end) {
+    const pubKeyHex = btoh(pubKey);
     const rows = db.query<[Uint8Array, string, Uint8Array]>(
       "SELECT sha256, recordedAt, headCph FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
       [pubKeyHex, begin, end],

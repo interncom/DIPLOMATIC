@@ -1,4 +1,4 @@
-import type { ICrypto, KeyPair } from "./types.ts";
+import type { ICrypto, KeyPair, PublicKey } from "./types.ts";
 import { sigBytes, pubKeyBytes } from "./consts.ts";
 import { Encoder, Decoder } from "./codec.ts";
 
@@ -9,7 +9,7 @@ import { Encoder, Decoder } from "./codec.ts";
 export type EncodedSigProvenData = Uint8Array;
 
 export interface ISigProof {
-  pubKey: Uint8Array;
+  pubKey: PublicKey;
   sig: Uint8Array;
 }
 export interface ISigProvenData extends ISigProof {
@@ -43,7 +43,7 @@ export function decodeSigProvenData(
   encoded: EncodedSigProvenData,
 ): ISigProvenData {
   const dec = new Decoder(encoded);
-  const pubKey = dec.readBytes(pubKeyBytes);
+  const pubKey = dec.readBytes(pubKeyBytes) as PublicKey;
   const sig = dec.readBytes(sigBytes);
   const data = dec.readBytes(encoded.length - dec.consumed());
   return {

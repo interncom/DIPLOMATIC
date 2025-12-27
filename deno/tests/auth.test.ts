@@ -1,7 +1,13 @@
 import { assert, assertEquals } from "jsr:@std/assert@0.223.0";
 import { timestampAuthProof } from "../../shared/auth.ts";
 import { decodeSigProvenData } from "../../shared/sigProof.ts";
-import type { ICrypto, KeyPair, DerivationSeed } from "../../shared/types.ts";
+import type {
+  ICrypto,
+  KeyPair,
+  DerivationSeed,
+  PrivateKey,
+  PublicKey,
+} from "../../shared/types.ts";
 import { concat } from "../../shared/lib.ts";
 import { Encoder, Decoder } from "../../shared/codec.ts";
 
@@ -35,8 +41,8 @@ const mockCrypto: ICrypto = {
     // Return fixed keys for testing
     return {
       keyType: "private",
-      privateKey: privateKeyRaw.slice(),
-      publicKey: publicKeyRaw.slice(),
+      privateKey: privateKeyRaw.slice() as PrivateKey,
+      publicKey: publicKeyRaw.slice() as PublicKey,
     };
   },
 
@@ -79,7 +85,7 @@ Deno.test(
     // Check decoded fields match inputs
 
     // Check that pubKey matches expected
-    assertEquals(decoded.pubKey, publicKeyRaw);
+    assertEquals(decoded.pubKey, publicKeyRaw as PublicKey);
 
     // Check that data is the encoded timestamp
     assertEquals(decoded.data, expectedEncodedTs);

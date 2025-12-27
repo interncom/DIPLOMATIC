@@ -23,12 +23,13 @@ TODOS:
 - make getHostID use same tsAuth pattern as rest? host could theoretically return a different ID for each client which would be fine if consistent. this would allow a kind of key exchange. it's a rare call so the extra overhead is negligble. seems good
 
 - refactor so that HTTP layer is separate and built on top of protocol layer (protocol itself doesn't care about URLs and HTTP response codes)
+- test protocol client against binary test vector responses. make them thorough enough and can generate clients in other lanuages via LLM
+- mock clock and storage and test server protocol handlers
 
 - make a Clock abstraction rather than passing now to each client method
 - server can use Clock abstraction too. use it to make tests of clocks out of sync
 
 - add tests for PUSH, PEEK, and PULL that round-trip a couple envelopes and check their contents
-- make compound decoders for PULL and PEEK responses
 - index envelopes with a per-user SEQ on host, and use that for PEEK responses and PULL requests (with varints, saves almost 32 bytes per envelope until very large numbers of envelopes)
 
 - use generators (yield) as return values from client methods rather than accumulating arrays

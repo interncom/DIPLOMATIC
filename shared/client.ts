@@ -33,17 +33,14 @@ import {
   PULL_PATH,
   PEEK_PATH,
 } from "./http.ts";
-
-export interface IEnvelopePeekItem {
-  hash: Uint8Array;
-  recordedAt: number;
-  headCph: Uint8Array;
-}
-
-export interface IEnvelopePullItem {
-  hash: Uint8Array;
-  bodyCph: Uint8Array;
-}
+import {
+  type IEnvelopePeekItem,
+  type IEnvelopePullItem,
+  type IEnvelopePushItem,
+  decodePullItem,
+  decodePeekItem,
+  decodePushItem,
+} from "./protocol.ts";
 
 async function post(url: URL, enc: Encoder): Promise<Decoder> {
   const response = await fetch(url, {
@@ -135,11 +132,10 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(PUSH_PATH, hostURL);
     const dec = await post(url, enc);
-    const results: { status: number; hash: Uint8Array }[] = [];
+    const results: IEnvelopePushItem[] = [];
     while (!dec.done()) {
-      const status = dec.readBytes(1)[0];
-      const hash = dec.readBytes(hashSize);
-      results.push({ status, hash });
+      const item = decodePushItem(dec);
+      results.push(item);
     }
     return results;
   }
@@ -159,6 +155,7 @@ export default class DiplomaticClientAPI {
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
+
     for (const hash of hashes) {
       enc.writeBytes(hash);
     }
@@ -167,10 +164,8 @@ export default class DiplomaticClientAPI {
     const dec = await post(url, enc);
     const items: IEnvelopePullItem[] = [];
     while (!dec.done()) {
-      const hash = dec.readBytes(hashBytes);
-      const len = dec.readVarInt();
-      const bodyCph = dec.readBytes(len);
-      items.push({ hash, bodyCph });
+      const item = decodePullItem(dec);
+      items.push(item);
     }
     return items;
   }
@@ -196,12 +191,8 @@ export default class DiplomaticClientAPI {
     const dec = await post(url, enc);
     const items: IEnvelopePeekItem[] = [];
     while (!dec.done()) {
-      const hash = dec.readBytes(hashSize);
-      const recordedAtBigInt = dec.readBigInt();
-      const recordedAt = Number(recordedAtBigInt);
-      const headCphLen = dec.readVarInt();
-      const headCph = dec.readBytes(headCphLen);
-      items.push({ hash, recordedAt, headCph });
+      const item = decodePeekItem(dec);
+      items.push(item);
     }
     return items;
   }

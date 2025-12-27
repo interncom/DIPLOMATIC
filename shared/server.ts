@@ -211,11 +211,11 @@ export class DiplomaticServer {
       while (!dec.done()) {
         const headHash = dec.readBytes(hashSize);
         const headHashHex = btoh(headHash);
-        const bodyCry = await this.storage.getBody(pubKeyHex, headHashHex);
-        if (bodyCry) {
+        const bodyCph = await this.storage.getBody(pubKeyHex, headHashHex);
+        if (bodyCph) {
           enc.writeBytes(headHash);
-          enc.writeVarInt(bodyCry.length);
-          enc.writeBytes(bodyCry);
+          enc.writeVarInt(bodyCph.length);
+          enc.writeBytes(bodyCph);
         }
       }
       return binResp(enc.result());
@@ -240,8 +240,8 @@ export class DiplomaticServer {
       for (const item of userHeadsList) {
         enc.writeBytes(item.sha256);
         enc.writeDate(new Date(item.recordedAt));
-        enc.writeVarInt(item.headCry.length);
-        enc.writeBytes(item.headCry);
+        enc.writeVarInt(item.headCph.length);
+        enc.writeBytes(item.headCph);
       }
       return binResp(enc.result());
     } catch (err) {

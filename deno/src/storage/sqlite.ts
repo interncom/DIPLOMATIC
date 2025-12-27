@@ -14,8 +14,8 @@ db.query(`
       userPubKey TEXT,
       recordedAt TEXT,
       sha256 BLOB,
-      headCry BLOB,
-      bodyCry BLOB,
+      headCph BLOB,
+      bodyCph BLOB,
       PRIMARY KEY (userPubKey, sha256)
     );
 `);
@@ -40,22 +40,22 @@ const sqliteStorage: IStorage = {
   async setEnvelope(
     pubKeyHex: string,
     recordedAt: Date,
-    headCry: Uint8Array,
-    bodyCry: Uint8Array,
+    headCph: Uint8Array,
+    bodyCph: Uint8Array,
     sha256Hex: string,
   ) {
     const recAtStr = recordedAt.toISOString();
     const sha256 = htob(sha256Hex);
     db.query(
-      "INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCry, bodyCry) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-      [sha256, pubKeyHex, recAtStr, headCry, bodyCry],
+      "INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+      [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
     );
   },
 
   async getBody(pubKeyHex: string, sha256Hex: string) {
     const sha256 = htob(sha256Hex);
     const rows = db.query<[Uint8Array]>(
-      "SELECT bodyCry FROM envelopes WHERE userPubKey = ? AND sha256 = ?",
+      "SELECT bodyCph FROM envelopes WHERE userPubKey = ? AND sha256 = ?",
       [pubKeyHex, sha256],
     );
     const row = rows[0];
@@ -67,13 +67,13 @@ const sqliteStorage: IStorage = {
 
   async listHeads(pubKeyHex: string, begin: string, end: string) {
     const rows = db.query<[Uint8Array, string, Uint8Array]>(
-      "SELECT sha256, recordedAt, headCry FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
+      "SELECT sha256, recordedAt, headCph FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
       [pubKeyHex, begin, end],
     );
-    return rows.map(([sha256, recordedAt, headCry]) => ({
+    return rows.map(([sha256, recordedAt, headCph]) => ({
       sha256: sha256,
       recordedAt: new Date(recordedAt),
-      headCry: new Uint8Array(headCry),
+      headCph: new Uint8Array(headCph),
     }));
   },
 };

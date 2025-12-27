@@ -1,6 +1,6 @@
 `kdm` stands for key derivation material.
 
-A suffix of "cry", e.g. `headCry`, indicates that the variable is encrypted.
+A suffix of "cph", e.g. `headCph`, indicates that the variable is encrypted.
 
 A suffix of "enc", e.g. "envEnc", indicates that the variable is encoded (binary-encoded).
 

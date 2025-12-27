@@ -7,8 +7,8 @@ interface IMemoryStorage extends IStorage {
   envelopes: Map<
     string,
     {
-      headCry: Uint8Array;
-      bodyCry: Uint8Array;
+      headCph: Uint8Array;
+      bodyCph: Uint8Array;
       recordedAt: Date;
       pubKeyHex: string;
     }
@@ -26,11 +26,11 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setEnvelope(pubKeyHex, recordedAt, headCry, bodyCry, storageKey) {
+  async setEnvelope(pubKeyHex, recordedAt, headCph, bodyCph, storageKey) {
     this.envelopes.set(storageKey, {
       pubKeyHex,
-      headCry,
-      bodyCry,
+      headCph,
+      bodyCph,
       recordedAt,
     });
   },
@@ -40,7 +40,7 @@ const memStorage: IMemoryStorage = {
     if (item?.pubKeyHex !== pubKeyHex) {
       return;
     }
-    return item.bodyCry;
+    return item.bodyCph;
   },
 
   async listHeads(pubKeyHex, begin, end) {
@@ -52,7 +52,7 @@ const memStorage: IMemoryStorage = {
         list.push({
           sha256,
           recordedAt: item.recordedAt,
-          headCry: item.headCry,
+          headCph: item.headCph,
         });
       }
     }

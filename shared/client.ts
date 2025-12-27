@@ -4,7 +4,6 @@ import type {
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
-  derivSeed,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
 import {
@@ -31,12 +30,12 @@ import { Decoder, Encoder } from "./codec.ts";
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
   recordedAt: number;
-  headCry: Uint8Array;
+  headCph: Uint8Array;
 }
 
 export interface IEnvelopePullItem {
   hash: Uint8Array;
-  bodyCry: Uint8Array;
+  bodyCph: Uint8Array;
 }
 
 async function post(url: URL, enc: Encoder): Promise<Decoder> {
@@ -115,13 +114,13 @@ export default class DiplomaticClientAPI {
       const key = await enclave.deriveFromKDM(kdm);
 
       // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-      const headCry = await crypto.encryptXSalsa20Poly1305Combined(head, key);
-      const bodyCry = op.bod
+      const headCph = await crypto.encryptXSalsa20Poly1305Combined(head, key);
+      const bodyCph = op.bod
         ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
         : new Uint8Array(0);
 
       // Wrap in envelope.
-      const env = await makeEnvelope(keyPair, headCry, bodyCry, kdm, crypto);
+      const env = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
       const envEnc = encodeEnvelope(env);
 
       enc.writeBytes(envEnc);
@@ -161,8 +160,8 @@ export default class DiplomaticClientAPI {
     while (!dec.done()) {
       const hash = dec.readBytes(hashBytes);
       const len = dec.readVarInt();
-      const bodyCry = dec.readBytes(len);
-      items.push({ hash, bodyCry });
+      const bodyCph = dec.readBytes(len);
+      items.push({ hash, bodyCph });
     }
     return items;
   }
@@ -189,9 +188,9 @@ export default class DiplomaticClientAPI {
       const hash = dec.readBytes(hashSize);
       const recordedAtBigInt = dec.readBigInt();
       const recordedAt = Number(recordedAtBigInt);
-      const headCryLen = dec.readVarInt();
-      const headCry = dec.readBytes(headCryLen);
-      items.push({ hash, recordedAt, headCry });
+      const headCphLen = dec.readVarInt();
+      const headCph = dec.readBytes(headCphLen);
+      items.push({ hash, recordedAt, headCph });
     }
     return items;
   }

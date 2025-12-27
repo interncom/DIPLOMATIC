@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS envelopes (
   userPubKey TEXT,
   recordedAt TEXT,
   sha256 BLOB,
-  headCry BLOB,
-  bodyCry BLOB,
+  headCph BLOB,
+  bodyCph BLOB,
   PRIMARY KEY (userPubKey, sha256)
 );

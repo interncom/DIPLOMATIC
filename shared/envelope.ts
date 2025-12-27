@@ -3,7 +3,14 @@
 // The envelope includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 // The ciphertext follows without an embedded length field, as its length is part of the encrypted message header.
 
-import type { ICrypto, KeyPair } from "./types.ts";
+import type {
+  ICrypto,
+  IHostCrypto,
+  KeyPair,
+  IEnvelope,
+  IEnvelopeHeader,
+  PublicKey,
+} from "./types.ts";
 import { EncryptedMessage, EncodedMessage } from "./message.ts";
 import {
   sigBytes,
@@ -13,20 +20,6 @@ import {
   kdmBytes,
 } from "./consts.ts";
 import { Decoder, Encoder } from "./codec.ts";
-
-export interface IEnvelopeHeader {
-  sig: Uint8Array;
-  kdm: Uint8Array;
-  lenHeadCph: number;
-  lenBodyCph: number;
-}
-
-export interface IEnvelope extends IEnvelopeHeader {
-  headCph: Uint8Array;
-  bodyCph: Uint8Array;
-}
-
-export type EncodedEnvelope = Uint8Array;
 
 export function encodeEnvelope(env: IEnvelope): Uint8Array {
   const enc = new Encoder();
@@ -81,4 +74,12 @@ export function decodeEnvelope(dec: Decoder): IEnvelope {
     headCph,
     bodyCph,
   };
+}
+
+export function envSigValid(
+  env: IEnvelope,
+  pubKey: PublicKey,
+  crypto: IHostCrypto,
+): Promise<boolean> {
+  return crypto.checkSigEd25519(env.sig, env.headCph, pubKey);
 }

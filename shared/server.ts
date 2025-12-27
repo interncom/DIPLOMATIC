@@ -6,6 +6,8 @@ import type {
   IStorage,
   IWebsocketNotifier,
   PublicKey,
+  IEnvelope,
+  IEnvelopeHeader,
 } from "./types.ts";
 import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
 import {
@@ -22,8 +24,7 @@ import {
   encodeEnvelope,
   decodeEnvelope,
   decodeEnvelopeHeader,
-  type IEnvelope,
-  type IEnvelopeHeader,
+  envSigValid,
 } from "./envelope.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import {
@@ -122,11 +123,7 @@ export class DiplomaticServer {
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
         const headHash = await crypto.sha256Hash(env.headCph);
-        const sigValid = await crypto.checkSigEd25519(
-          env.sig,
-          env.headCph,
-          pubKey,
-        );
+        const sigValid = await envSigValid(env, pubKey, crypto);
         if (sigValid) {
           await storage.setEnvelope(pubKey, now, env, headHash);
           await notifier.notify(pubKey as PublicKey);
@@ -174,7 +171,7 @@ export class DiplomaticServer {
       const items = await storage.listHeads(pubKey, begin, end);
 
       const enc = new Encoder();
-      for (const item of userHeadsList) {
+      for (const item of items) {
         enc.writeBytes(item.sha256);
         enc.writeDate(new Date(item.recordedAt));
         enc.writeVarInt(item.headCph.length);

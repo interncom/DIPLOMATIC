@@ -1,5 +1,3 @@
-import { IEnvelope } from "./envelope.ts";
-
 export enum Verb {
   DELETE = 0,
   UPSERT = 1,
@@ -141,3 +139,17 @@ export interface IWebsocketNotifier {
   ) => Promise<Response>;
   notify: (pubKey: PublicKey) => Promise<void>;
 }
+
+export interface IEnvelopeHeader {
+  sig: Uint8Array;
+  kdm: Uint8Array;
+  lenHeadCph: number;
+  lenBodyCph: number;
+}
+
+export interface IEnvelope extends IEnvelopeHeader {
+  headCph: Uint8Array;
+  bodyCph: Uint8Array;
+}
+
+export type EncodedEnvelope = Uint8Array;

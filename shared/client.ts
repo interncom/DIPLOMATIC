@@ -4,6 +4,7 @@ import type {
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
+  IEnvelope,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
 import {
@@ -19,7 +20,6 @@ import {
   encodeEnvelope,
   decodeEnvelopeHeader,
   decodeEnvelope,
-  type IEnvelope,
 } from "./envelope.ts";
 import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";

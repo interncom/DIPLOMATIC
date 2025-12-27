@@ -32,6 +32,7 @@ import {
   PUSH_PATH,
   PULL_PATH,
   PEEK_PATH,
+  post,
 } from "./http.ts";
 import {
   type IEnvelopePeekItem,
@@ -41,17 +42,6 @@ import {
   decodePeekItem,
   decodePushItem,
 } from "./protocol.ts";
-
-async function post(url: URL, enc: Encoder): Promise<Decoder> {
-  const response = await fetch(url, {
-    method: "POST",
-    body: enc.result().slice(),
-  });
-  if (!response.ok) {
-    throw new Error("Request failed");
-  }
-  return await Decoder.fromResponse(response);
-}
 
 export default class DiplomaticClientAPI {
   crypto: ICrypto;

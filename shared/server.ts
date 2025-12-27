@@ -121,19 +121,19 @@ export class DiplomaticServer {
       const enc = new Encoder();
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
-        const headHash = await crypto.sha256Hash(env.cipherhead);
+        const headHash = await crypto.sha256Hash(env.headCph);
         const sigValid = await crypto.checkSigEd25519(
           env.sig,
-          env.cipherhead,
+          env.headCph,
           pubKey,
         );
         if (sigValid) {
-          const headCombined = concat(concat(env.sig, env.kdm), env.cipherhead);
+          const headCombined = concat(concat(env.sig, env.kdm), env.headCph);
           await storage.setEnvelope(
             pubKey,
             now,
             headCombined,
-            env.cipherbody,
+            env.bodyCph,
             headHash,
           );
           await notifier.notify(pubKey as PublicKey);

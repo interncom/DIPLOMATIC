@@ -15,11 +15,9 @@ import {
   envelopeHeaderSize,
   hashSize,
   responseItemSize,
-  clockToleranceMs,
   sigBytes,
   kdmBytes,
 } from "./consts.ts";
-import { decodeSigProvenData } from "./sigProof.ts";
 import {
   encodeEnvelope,
   decodeEnvelope,
@@ -39,6 +37,7 @@ import {
 } from "./http.ts";
 import { Status } from "./consts.ts";
 import { encodePeekItem, encodePullItem, encodePushItem } from "./protocol.ts";
+import { validateTsAuth } from "./auth.ts";
 
 export class DiplomaticServer {
   hostID: string;
@@ -55,25 +54,6 @@ export class DiplomaticServer {
     this.storage = storage;
     this.crypto = crypto;
     this.notifier = notifier;
-  }
-
-  async validateTsAuth(tsAuthBytes: Uint8Array): Promise<[PublicKey, Status]> {
-    const tsAuth = decodeSigProvenData(tsAuthBytes);
-    const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
-    const currentTime = Date.now();
-    const diff = Math.abs(currentTime - Number(timestampMs));
-    if (diff > clockToleranceMs) {
-      return [new Uint8Array(0) as PublicKey, Status.ClockOutOfSync];
-    }
-    const sigValid = await this.crypto.checkSigEd25519(
-      tsAuth.sig,
-      tsAuth.data,
-      tsAuth.pubKey,
-    );
-    if (!sigValid) {
-      return [new Uint8Array(0) as PublicKey, Status.InvalidSignature];
-    }
-    return [tsAuth.pubKey, Status.Success];
   }
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -193,11 +173,10 @@ export class DiplomaticServer {
     const data = new Uint8Array(await request.arrayBuffer());
     const dec = new Decoder(data);
     const tsAuthBytes = dec.readBytes(tsAuthSize);
-    const result = await this.validateTsAuth(tsAuthBytes);
-    if (result[1] !== Status.Success) {
-      return respFor(result[1]);
+    const [pubKey, status] = await validateTsAuth(tsAuthBytes, this.crypto);
+    if (status !== Status.Success) {
+      return respFor(status);
     }
-    const pubKey: PublicKey = result[0];
 
     if (request.method === "POST" && url.pathname === USER_PATH) {
       return this.handleUser(pubKey, dec);

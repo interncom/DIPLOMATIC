@@ -1,10 +1,12 @@
-import type { ICrypto, KeyPair } from "./types.ts";
+import type { ICrypto, IHostCrypto, KeyPair, PublicKey } from "./types.ts";
 import {
   sigProof,
+  decodeSigProvenData,
   encodeSigProvenData,
   type EncodedSigProvenData,
 } from "./sigProof.ts";
 import { Encoder } from "./codec.ts";
+import { Status, clockToleranceMs } from "./consts.ts";
 
 // timestampAuthProof authenticates with a sigproven timestamp.
 // The sigproof demonstrates control of the pubKey.
@@ -26,4 +28,26 @@ export async function timestampAuthProof(
   };
   const encoded = await encodeSigProvenData(spdata, crypto);
   return encoded;
+}
+
+export async function validateTsAuth(
+  tsAuthBytes: Uint8Array,
+  crypto: IHostCrypto,
+): Promise<[PublicKey, Status]> {
+  const tsAuth = decodeSigProvenData(tsAuthBytes);
+  const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
+  const currentTime = Date.now();
+  const diff = Math.abs(currentTime - Number(timestampMs));
+  if (diff > clockToleranceMs) {
+    return [new Uint8Array(0) as PublicKey, Status.ClockOutOfSync];
+  }
+  const sigValid = await crypto.checkSigEd25519(
+    tsAuth.sig,
+    tsAuth.data,
+    tsAuth.pubKey,
+  );
+  if (!sigValid) {
+    return [new Uint8Array(0) as PublicKey, Status.InvalidSignature];
+  }
+  return [tsAuth.pubKey, Status.Success];
 }

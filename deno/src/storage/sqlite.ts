@@ -1,6 +1,6 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import { IStorage } from "../../../shared/types.ts";
-import { htob, btoh } from "../../../shared/lib.ts";
+import type { IEnvelope, IStorage } from "../../../shared/types.ts";
+import { htob, btoh, concat } from "../../../shared/lib.ts";
 import libsodiumCrypto from "../crypto.ts";
 
 const db = new DB("diplomatic.db");
@@ -39,9 +39,11 @@ const sqliteStorage: IStorage = {
     return has ?? false;
   },
 
-  async setEnvelope(pubKey, recordedAt, headCph, bodyCph, sha256) {
+  async setEnvelope(pubKey, recordedAt, env, sha256) {
     const pubKeyHex = btoh(pubKey);
     const recAtStr = recordedAt.toISOString();
+    const headCph = concat(concat(env.sig, env.kdm), env.headCph);
+    const bodyCph = env.bodyCph;
     db.query(
       "INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
       [sha256, pubKeyHex, recAtStr, headCph, bodyCph],

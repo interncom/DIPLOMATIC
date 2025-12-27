@@ -11,11 +11,11 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import type { IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier, PublicKey } from '../../../shared/types';
+import type { IEnvelope, IHostCrypto, IMsgpackCodec, IStorage, IWebsocketNotifier, PublicKey } from '../../../shared/types';
 import { DiplomaticServer } from '../../../shared/server';
 import { decodeAsync, encode, decode } from '@msgpack/msgpack';
 import { DurableObject } from 'cloudflare:workers';
-import { htob, btoh } from '../../../shared/lib';
+import { htob, btoh, concat } from '../../../shared/lib';
 
 const cloudflareCrypto: IHostCrypto = {
 	async checkSigEd25519(sig, message, pubKey) {
@@ -95,9 +95,11 @@ export default {
 				return has ?? false;
 			},
 
-			async setEnvelope(pubKey: Uint8Array, recordedAt: Date, headCph: Uint8Array, bodyCph: Uint8Array, sha256: Uint8Array) {
+			async setEnvelope(pubKey: Uint8Array, recordedAt: Date, env: IEnvelope, sha256: Uint8Array) {
 				const pubKeyHex = btoh(pubKey);
 				const recAtStr = recordedAt.toISOString();
+				const headCph = concat(concat(env.sig, env.kdm), env.headCph);
+				const bodyCph = env.bodyCph;
 				await env.DIP_DB.prepare(
 					'INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
 				)

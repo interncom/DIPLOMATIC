@@ -1,6 +1,7 @@
-import { htob, btoh } from "../../../shared/lib.ts";
+import { htob, btoh, concat } from "../../../shared/lib.ts";
 import type {
   IDeltaListItem,
+  IEnvelope,
   IStorage,
   PublicKey,
 } from "../../../shared/types.ts";
@@ -32,9 +33,11 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setEnvelope(pubKey, recordedAt, headCph, bodyCph, sha256) {
+  async setEnvelope(pubKey, recordedAt, env, sha256) {
     const pubKeyHex = btoh(pubKey);
     const storageKey = btoh(sha256);
+    const headCph = concat(concat(env.sig, env.kdm), env.headCph);
+    const bodyCph = env.bodyCph;
     this.envelopes.set(storageKey, {
       pubKeyHex,
       headCph,

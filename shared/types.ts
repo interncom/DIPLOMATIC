@@ -1,3 +1,5 @@
+import { IEnvelope } from "./envelope.ts";
+
 export enum Verb {
   DELETE = 0,
   UPSERT = 1,
@@ -61,8 +63,7 @@ export interface IStorage {
   setEnvelope: (
     pubKey: PublicKey,
     recordedAt: Date,
-    headCph: Uint8Array,
-    bodyCph: Uint8Array,
+    env: IEnvelope,
     sha256: Uint8Array,
   ) => Promise<void>;
   getBody: (

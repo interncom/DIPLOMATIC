@@ -1,5 +1,5 @@
 import { Status } from "./consts.ts";
-import { Encoder } from "./codec.ts";
+import { Encoder, Decoder } from "./codec.ts";
 
 // Named constants for API endpoint paths
 export const HOST_PATH = "/id";
@@ -57,4 +57,15 @@ export function cors(resp: Response): Response {
     status: resp.status,
     statusText: resp.statusText,
   });
+}
+
+export async function post(url: URL, enc: Encoder): Promise<Decoder> {
+  const response = await fetch(url, {
+    method: "POST",
+    body: enc.result().slice(),
+  });
+  if (!response.ok) {
+    throw new Error("Request failed");
+  }
+  return await Decoder.fromResponse(response);
 }

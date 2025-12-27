@@ -1,4 +1,5 @@
 import { Status } from "./consts.ts";
+import { Encoder } from "./codec.ts";
 
 // Named constants for API endpoint paths
 export const HOST_PATH = "/id";
@@ -36,9 +37,10 @@ export function respFor(status: Status): Response {
   }
 }
 
-export function binResp(data: Uint8Array): Response {
+export function binResp(encoder: Encoder): Response {
   // TODO: fix types so it doesn't need the .slice().
-  return new Response(data.slice(), {
+  const data = encoder.result().slice();
+  return new Response(data, {
     status: 200,
     headers: { "content-type": "application/octet-stream" },
   });

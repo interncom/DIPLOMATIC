@@ -144,7 +144,7 @@ export class DiplomaticServer {
         }
         enc.writeBytes(headHash);
       }
-      return binResp(enc.result());
+      return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);
     }
@@ -164,7 +164,7 @@ export class DiplomaticServer {
           enc.writeBytes(bodyCph);
         }
       }
-      return binResp(enc.result());
+      return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);
     }
@@ -189,7 +189,7 @@ export class DiplomaticServer {
         enc.writeVarInt(item.headCph.length);
         enc.writeBytes(item.headCph);
       }
-      return binResp(enc.result());
+      return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);
     }

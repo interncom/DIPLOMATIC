@@ -1,6 +1,7 @@
 import { assertEquals, assert } from "https://deno.land/std/testing/asserts.ts";
 import { tsAuthSize } from "../../shared/consts.ts";
-import { DiplomaticServer, Status } from "../../shared/server.ts";
+import { DiplomaticServer } from "../../shared/server.ts";
+import { Status } from "../../shared/consts.ts";
 import memStorage from "../src/storage/memory.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import denoMsgpack from "../src/codec.ts";

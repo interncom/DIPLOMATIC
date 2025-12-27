@@ -10,3 +10,18 @@ export const envelopeHeaderSize = sigBytes + kdmBytes + lenBytes + lenBytes;
 export const hashSize = 32;
 export const responseItemSize = 33; // status (1) + hash (32)
 export const clockToleranceMs = 30000;
+
+export enum Status {
+  Success = 0,
+  InvalidSignature = 3,
+  ClockOutOfSync = 4,
+  UserNotRegistered = 5,
+  ServerMisconfigured = 6,
+  MissingBody = 7,
+  ExtraBodyContent = 8,
+  MissingParam = 9,
+  InvalidParam = 10,
+  InvalidRequest = 11,
+  InternalError = 12,
+  NotFound = 13,
+}

@@ -26,71 +26,17 @@ import {
   type IEnvelopeHeader,
 } from "./envelope.ts";
 import { Decoder, Encoder } from "./codec.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Allow any origin
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-};
-
-function cors(resp: Response): Response {
-  return new Response(resp.body, {
-    headers: { ...resp.headers, ...corsHeaders },
-    status: resp.status,
-    statusText: resp.statusText,
-  });
-}
-
-export enum Status {
-  Success = 0,
-  InvalidSignature = 3,
-  ClockOutOfSync = 4,
-  UserNotRegistered = 5,
-  ServerMisconfigured = 6,
-  MissingBody = 7,
-  ExtraBodyContent = 8,
-  MissingParam = 9,
-  InvalidParam = 10,
-  InvalidRequest = 11,
-  InternalError = 12,
-  NotFound = 13,
-}
-
-function respFor(status: Status): Response {
-  switch (status) {
-    case Status.InvalidSignature:
-      return new Response("Invalid signature", { status: 401 });
-    case Status.ClockOutOfSync:
-      return new Response("Clock out of sync", { status: 400 });
-    case Status.UserNotRegistered:
-      return new Response("Unauthorized", { status: 401 });
-    case Status.ServerMisconfigured:
-      return new Response("Server misconfigured", { status: 500 });
-    case Status.MissingBody:
-      return new Response("Missing request body", { status: 400 });
-    case Status.ExtraBodyContent:
-      return new Response("Extra body content", { status: 400 });
-    case Status.MissingParam:
-      return new Response("Missing from param", { status: 400 });
-    case Status.InvalidParam:
-      return new Response("Invalid from param", { status: 400 });
-    case Status.InvalidRequest:
-      return new Response("Invalid request format", { status: 400 });
-    case Status.InternalError:
-      return new Response("Internal error", { status: 500 });
-    case Status.NotFound:
-      return new Response("Not Found", { status: 404 });
-    default:
-      throw new Error(`Unhandled status: ${status}`);
-  }
-}
-
-function binResp(data: Uint8Array): Response {
-  // TODO: fix types so it doesn't need the .slice().
-  return new Response(data.slice(), {
-    status: 200,
-    headers: { "content-type": "application/octet-stream" },
-  });
-}
+import {
+  HOST_PATH,
+  USER_PATH,
+  PUSH_PATH,
+  PULL_PATH,
+  PEEK_PATH,
+  respFor,
+  binResp,
+  cors,
+} from "./http.ts";
+import { Status } from "./consts.ts";
 
 export class DiplomaticServer {
   hostID: string;
@@ -252,7 +198,7 @@ export class DiplomaticServer {
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === "/id") {
+    if (request.method === "GET" && url.pathname === HOST_PATH) {
       return this.handleHost(request);
     }
 
@@ -269,7 +215,7 @@ export class DiplomaticServer {
       return respFor(status);
     }
 
-    if (request.method === "POST" && url.pathname === "/users") {
+    if (request.method === "POST" && url.pathname === USER_PATH) {
       return this.handleUser(pubKey, dec);
     }
 
@@ -284,13 +230,13 @@ export class DiplomaticServer {
       return respFor(Status.InternalError);
     }
 
-    if (request.method === "POST" && url.pathname === "/ops") {
+    if (request.method === "POST" && url.pathname === PUSH_PATH) {
       return this.handlePush(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === "/pull") {
+    if (request.method === "POST" && url.pathname === PULL_PATH) {
       return this.handlePull(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === "/peek") {
+    if (request.method === "POST" && url.pathname === PEEK_PATH) {
       return this.handlePeek(pubKey, dec);
     }
 

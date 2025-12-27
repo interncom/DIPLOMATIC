@@ -26,6 +26,13 @@ import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
 import { concat } from "./lib.ts";
 import { Decoder, Encoder } from "./codec.ts";
+import {
+  HOST_PATH,
+  USER_PATH,
+  PUSH_PATH,
+  PULL_PATH,
+  PEEK_PATH,
+} from "./http.ts";
 
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
@@ -59,7 +66,7 @@ export default class DiplomaticClientAPI {
   }
 
   async getHostID(hostURL: URL): Promise<string> {
-    const url = new URL("/id", hostURL);
+    const url = new URL(HOST_PATH, hostURL);
     const response = await fetch(url, { method: "GET" });
     if (!response.ok) {
       throw "Uh oh";
@@ -78,7 +85,7 @@ export default class DiplomaticClientAPI {
     const keyPair = await this.crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
-    const url = new URL("/users", hostURL);
+    const url = new URL(USER_PATH, hostURL);
     const response = await fetch(url, {
       method: "POST",
       body: tsAuth.slice(0),
@@ -126,7 +133,7 @@ export default class DiplomaticClientAPI {
       enc.writeBytes(envEnc);
     }
 
-    const url = new URL("/ops", hostURL);
+    const url = new URL(PUSH_PATH, hostURL);
     const dec = await post(url, enc);
     const results: { status: number; hash: Uint8Array }[] = [];
     while (!dec.done()) {
@@ -154,7 +161,7 @@ export default class DiplomaticClientAPI {
       enc.writeBytes(hash);
     }
 
-    const url = new URL("/pull", hostURL);
+    const url = new URL(PULL_PATH, hostURL);
     const dec = await post(url, enc);
     const items: IEnvelopePullItem[] = [];
     while (!dec.done()) {
@@ -181,7 +188,7 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
     enc.writeVarInt(fromMillis);
 
-    const url = new URL("/peek", hostURL);
+    const url = new URL(PEEK_PATH, hostURL);
     const dec = await post(url, enc);
     const items: IEnvelopePeekItem[] = [];
     while (!dec.done()) {

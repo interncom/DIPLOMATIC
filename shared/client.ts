@@ -4,7 +4,7 @@ import type {
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
-  DerivationSeed,
+  derivSeed,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
 import {
@@ -75,8 +75,8 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<void> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const derivSeed = await this.enclave.derive(keyPath, idx);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const url = new URL("/users", hostURL);
@@ -100,8 +100,8 @@ export default class DiplomaticClientAPI {
   ): Promise<Array<{ status: number; hash: Uint8Array }>> {
     const { crypto, enclave } = this;
 
-    const derivationSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivationSeed);
+    const derivSeed = await enclave.derive(keyPath, idx);
+    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, crypto);
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -145,8 +145,8 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IEnvelopePullItem[]> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const derivSeed = await this.enclave.derive(keyPath, idx);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const enc = new Encoder();
@@ -174,8 +174,8 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IEnvelopePeekItem[]> {
-    const derivationSeed = await this.enclave.derive(keyPath, idx);
-    const keyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    const derivSeed = await this.enclave.derive(keyPath, idx);
+    const keyPair = await this.crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
 
     const enc = new Encoder();

@@ -40,21 +40,12 @@ import { encodePeekItem, encodePullItem, encodePushItem } from "./protocol.ts";
 import { validateTsAuth } from "./auth.ts";
 
 export class DiplomaticServer {
-  hostID: string;
-  storage: IStorage;
-  crypto: IHostCrypto;
-  notifier: IWebsocketNotifier;
   constructor(
-    hostID: string,
-    storage: IStorage,
-    crypto: IHostCrypto,
-    notifier: IWebsocketNotifier,
-  ) {
-    this.hostID = hostID;
-    this.storage = storage;
-    this.crypto = crypto;
-    this.notifier = notifier;
-  }
+    private hostID: string,
+    private storage: IStorage,
+    private crypto: IHostCrypto,
+    private notifier: IWebsocketNotifier,
+  ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {

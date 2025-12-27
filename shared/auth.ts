@@ -41,11 +41,8 @@ export async function validateTsAuth(
   if (diff > clockToleranceMs) {
     return [new Uint8Array(0) as PublicKey, Status.ClockOutOfSync];
   }
-  const sigValid = await crypto.checkSigEd25519(
-    tsAuth.sig,
-    tsAuth.data,
-    tsAuth.pubKey,
-  );
+  const { sig, data, pubKey } = tsAuth;
+  const sigValid = await crypto.checkSigEd25519(sig, data, pubKey);
   if (!sigValid) {
     return [new Uint8Array(0) as PublicKey, Status.InvalidSignature];
   }

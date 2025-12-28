@@ -3,7 +3,7 @@ import { Status, hashBytes, hashSize } from "./consts.ts";
 
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
-  recordedAt: number;
+  recordedAt: Date;
   headCph: Uint8Array;
 }
 
@@ -32,14 +32,13 @@ export const envelopePushItemCodec: ICodecStruct<IEnvelopePushItem> = {
 export const envelopePeekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
-    enc.writeDate(new Date(item.recordedAt));
+    enc.writeDate(item.recordedAt);
     enc.writeVarInt(item.headCph.length);
     enc.writeBytes(item.headCph);
   },
   decode(dec) {
     const hash = dec.readBytes(hashSize);
-    const recordedAtBigInt = dec.readBigInt();
-    const recordedAt = Number(recordedAtBigInt);
+    const recordedAt = dec.readDate();
     const headCphLen = dec.readVarInt();
     const headCph = dec.readBytes(headCphLen);
     return { hash, recordedAt, headCph };

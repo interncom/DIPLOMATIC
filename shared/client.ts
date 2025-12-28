@@ -68,17 +68,11 @@ export default class DiplomaticClientAPI {
     const derivSeed = await this.enclave.derive(keyPath, idx);
     const keyPair = await this.crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, this.crypto);
+    const enc = new Encoder();
+    enc.writeBytes(tsAuth);
 
     const url = new URL(USER_PATH, hostURL);
-    const response = await fetch(url, {
-      method: "POST",
-      body: tsAuth.slice(0),
-    });
-    if (!response.ok) {
-      console.error(response);
-      throw "Uh oh";
-    }
-    await response.body?.cancel();
+    const dec = await post(url, enc);
   }
 
   async push(

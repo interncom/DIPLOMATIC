@@ -13,6 +13,10 @@ A suffix of "enc", e.g. "envEnc", indicates that the variable is encoded (binary
 `deriv` is short for "derivation".
 
 TODOS:
+- rename "envelope" to "parcel". shorter and connotes full package not just wrapper
+
+- use CodecStruct abstraction for entire request/response encoding in client
+
 - deduplicate the keypair generation that happens in each client method and also in timestampAuthProof
 - refactor sigProof. maybe just combine with tsAuth and inline that all in client.ts
 

@@ -67,5 +67,5 @@ export async function post(url: URL, enc: Encoder): Promise<Decoder> {
   if (!response.ok) {
     throw new Error("Request failed");
   }
-  return await Decoder.fromResponse(response);
+  return Decoder.fromResponse(response);
 }

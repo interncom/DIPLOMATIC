@@ -7,20 +7,7 @@ import type {
   IEnvelope,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
-import {
-  envelopeHeaderSize,
-  hashSize,
-  hashBytes,
-  lenBytes,
-  responseItemSize,
-  tsAuthSize,
-} from "./consts.ts";
-import {
-  makeEnvelope,
-  encodeEnvelope,
-  decodeEnvelopeHeader,
-  decodeEnvelope,
-} from "./envelope.ts";
+import { encodeEnvelope, makeEnvelope } from "./envelope.ts";
 import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
@@ -42,6 +29,29 @@ import {
   decodePeekItem,
   decodePushItem,
 } from "./protocol.ts";
+
+export async function envelopeFor(
+  op: IMessage,
+  keyPair: KeyPair,
+  crypto: ICrypto,
+  enclave: Enclave,
+): Promise<IEnvelope> {
+  // Encode message.
+  const [, head] = await encodeOp(op, crypto);
+
+  // Derive encryption key.
+  const kdm = await genKDM(crypto);
+  const key = await enclave.deriveFromKDM(kdm);
+
+  // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
+  const headCph = await crypto.encryptXSalsa20Poly1305Combined(head, key);
+  const bodyCph = op.bod
+    ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
+    : new Uint8Array(0);
+
+  // Wrap in envelope.
+  return makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+}
 
 export default class DiplomaticClientAPI {
   constructor(
@@ -91,23 +101,8 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
 
     for (const op of ops) {
-      // Encode message.
-      const [, head] = await encodeOp(op, crypto);
-
-      // Derive encryption key.
-      const kdm = await genKDM(crypto);
-      const key = await enclave.deriveFromKDM(kdm);
-
-      // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-      const headCph = await crypto.encryptXSalsa20Poly1305Combined(head, key);
-      const bodyCph = op.bod
-        ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
-        : new Uint8Array(0);
-
-      // Wrap in envelope.
-      const env = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+      const env = await envelopeFor(op, keyPair, crypto, enclave);
       const envEnc = encodeEnvelope(env);
-
       enc.writeBytes(envEnc);
     }
 

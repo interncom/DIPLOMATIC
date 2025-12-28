@@ -97,7 +97,7 @@ export class DiplomaticServer {
     const { crypto, notifier, storage } = this;
     const now = new Date();
     try {
-      const enc = new Encoder();
+      const items: IEnvelopePushItem[] = [];
       while (!dec.done()) {
         const env = decodeEnvelope(dec);
         const hash = await crypto.sha256Hash(env.headCph);
@@ -107,14 +107,16 @@ export class DiplomaticServer {
             status: Status.InvalidSignature,
             hash,
           };
-          enc.writeStruct(envelopePushItemCodec, item);
+          items.push(item);
           continue;
         }
         await storage.setEnvelope(pubKey, now, env, hash);
         await notifier.notify(pubKey as PublicKey);
         const item: IEnvelopePushItem = { status: Status.Success, hash };
-        enc.writeStruct(envelopePushItemCodec, item);
+        items.push(item);
       }
+      const enc = new Encoder();
+      enc.writeStructs(envelopePushItemCodec, items);
       return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);
@@ -124,15 +126,17 @@ export class DiplomaticServer {
   handlePull = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
     const { storage } = this;
     try {
-      const enc = new Encoder();
+      const items: IEnvelopePullItem[] = [];
       while (!dec.done()) {
         const headHash = dec.readBytes(hashBytes);
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
           const item: IEnvelopePullItem = { hash: headHash, bodyCph };
-          enc.writeStruct(envelopePullItemCodec, item);
+          items.push(item);
         }
       }
+      const enc = new Encoder();
+      enc.writeStructs(envelopePullItemCodec, items);
       return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);
@@ -152,9 +156,7 @@ export class DiplomaticServer {
       const items = await storage.listHeads(pubKey, begin, end);
 
       const enc = new Encoder();
-      for (const item of items) {
-        enc.writeStruct(envelopePeekItemCodec, item);
-      }
+      enc.writeStructs(envelopePeekItemCodec, items);
       return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);

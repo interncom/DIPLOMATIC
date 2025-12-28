@@ -101,6 +101,12 @@ export class Decoder {
     return codec.decode(this);
   }
 
+  *readStructs<T>(this: Decoder, codec: ICodecStruct<T>): IterableIterator<T> {
+    while (!this.done()) {
+      yield this.readStruct(codec);
+    }
+  }
+
   done(): boolean {
     return this.pos >= this.data.length;
   }
@@ -137,6 +143,16 @@ export class Encoder {
 
   writeStruct<T>(codec: ICodecStruct<T>, str: T): void {
     codec.encode(this, str);
+  }
+
+  writeStructs<T>(
+    this: Encoder,
+    codec: ICodecStruct<T>,
+    structs: Iterable<T>,
+  ): void {
+    for (const struct of structs) {
+      this.writeStruct(codec, struct);
+    }
   }
 
   result(): Uint8Array {

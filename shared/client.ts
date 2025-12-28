@@ -12,14 +12,7 @@ import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
 import { concat } from "./lib.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import {
-  HOST_PATH,
-  USER_PATH,
-  PUSH_PATH,
-  PULL_PATH,
-  PEEK_PATH,
-  post,
-} from "./http.ts";
+import { apiPaths, post } from "./http.ts";
 import {
   type IEnvelopePeekItem,
   type IEnvelopePullItem,
@@ -60,7 +53,7 @@ export default class DiplomaticClientAPI {
   ) {}
 
   async getHostID(hostURL: URL): Promise<string> {
-    const url = new URL(HOST_PATH, hostURL);
+    const url = new URL(apiPaths.host, hostURL);
     const response = await fetch(url, { method: "GET" });
     if (!response.ok) {
       throw "Uh oh";
@@ -83,7 +76,7 @@ export default class DiplomaticClientAPI {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
-    const url = new URL(USER_PATH, hostURL);
+    const url = new URL(apiPaths.user, hostURL);
     const dec = await post(url, enc);
   }
 
@@ -107,7 +100,7 @@ export default class DiplomaticClientAPI {
       enc.writeStruct(envelopeCodec, env);
     }
 
-    const url = new URL(PUSH_PATH, hostURL);
+    const url = new URL(apiPaths.push, hostURL);
     const dec = await post(url, enc);
     return dec.readStructs(envelopePushItemCodec);
   }
@@ -132,7 +125,7 @@ export default class DiplomaticClientAPI {
       enc.writeBytes(hash);
     }
 
-    const url = new URL(PULL_PATH, hostURL);
+    const url = new URL(apiPaths.pull, hostURL);
     const dec = await post(url, enc);
     return dec.readStructs(envelopePullItemCodec);
   }
@@ -154,7 +147,7 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
     enc.writeVarInt(fromMillis);
 
-    const url = new URL(PEEK_PATH, hostURL);
+    const url = new URL(apiPaths.peek, hostURL);
     const dec = await post(url, enc);
     return dec.readStructs(envelopePeekItemCodec);
   }

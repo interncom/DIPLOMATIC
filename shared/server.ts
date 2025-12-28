@@ -19,16 +19,7 @@ import {
 } from "./consts.ts";
 import { decodeEnvelopeHeader, envSigValid } from "./envelope.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import {
-  HOST_PATH,
-  USER_PATH,
-  PUSH_PATH,
-  PULL_PATH,
-  PEEK_PATH,
-  respFor,
-  binResp,
-  cors,
-} from "./http.ts";
+import { apiPaths, respFor, binResp, cors } from "./http.ts";
 import { Status } from "./consts.ts";
 import {
   type IEnvelopePeekItem,
@@ -162,7 +153,7 @@ export class DiplomaticServer {
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === HOST_PATH) {
+    if (request.method === "GET" && url.pathname === apiPaths.host) {
       return this.handleHost(request);
     }
 
@@ -179,7 +170,7 @@ export class DiplomaticServer {
       return respFor(status);
     }
 
-    if (request.method === "POST" && url.pathname === USER_PATH) {
+    if (request.method === "POST" && url.pathname === apiPaths.user) {
       return this.handleUser(pubKey, dec);
     }
 
@@ -193,13 +184,13 @@ export class DiplomaticServer {
       return respFor(Status.InternalError);
     }
 
-    if (request.method === "POST" && url.pathname === PUSH_PATH) {
+    if (request.method === "POST" && url.pathname === apiPaths.push) {
       return this.handlePush(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === PULL_PATH) {
+    if (request.method === "POST" && url.pathname === apiPaths.pull) {
       return this.handlePull(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === PEEK_PATH) {
+    if (request.method === "POST" && url.pathname === apiPaths.peek) {
       return this.handlePeek(pubKey, dec);
     }
 

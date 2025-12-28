@@ -17,12 +17,7 @@ import {
   sigBytes,
   kdmBytes,
 } from "./consts.ts";
-import {
-  encodeEnvelope,
-  decodeEnvelope,
-  decodeEnvelopeHeader,
-  envSigValid,
-} from "./envelope.ts";
+import { decodeEnvelopeHeader, envSigValid } from "./envelope.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import {
   HOST_PATH,
@@ -42,6 +37,7 @@ import {
   envelopePullItemCodec,
   envelopePushItemCodec,
   envelopePeekItemCodec,
+  envelopeCodec,
 } from "./protocol.ts";
 import { validateTsAuth } from "./auth.ts";
 
@@ -99,7 +95,7 @@ export class DiplomaticServer {
     try {
       const items: IEnvelopePushItem[] = [];
       while (!dec.done()) {
-        const env = decodeEnvelope(dec);
+        const env = dec.readStruct(envelopeCodec);
         const hash = await crypto.sha256Hash(env.headCph);
         const sigValid = await envSigValid(env, pubKey, crypto);
         if (!sigValid) {

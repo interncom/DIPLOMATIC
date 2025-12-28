@@ -1,5 +1,6 @@
 import { Encoder, Decoder, ICodecStruct } from "./codec.ts";
-import { Status, hashBytes } from "./consts.ts";
+import { Status, hashBytes, sigBytes, kdmBytes } from "./consts.ts";
+import type { IEnvelope, IEnvelopeHeader } from "./types.ts";
 
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
@@ -56,5 +57,32 @@ export const envelopePullItemCodec: ICodecStruct<IEnvelopePullItem> = {
     const len = dec.readVarInt();
     const bodyCph = dec.readBytes(len);
     return { hash, bodyCph };
+  },
+};
+
+export const envelopeCodec: ICodecStruct<IEnvelope> = {
+  encode(enc, env) {
+    enc.writeBytes(env.sig);
+    enc.writeBytes(env.kdm);
+    enc.writeVarInt(env.lenHeadCph);
+    enc.writeVarInt(env.lenBodyCph);
+    enc.writeBytes(env.headCph);
+    enc.writeBytes(env.bodyCph);
+  },
+  decode(dec) {
+    const sig = dec.readBytes(sigBytes);
+    const kdm = dec.readBytes(kdmBytes);
+    const lenHeadCph = dec.readVarInt();
+    const lenBodyCph = dec.readVarInt();
+    const headCph = dec.readBytes(lenHeadCph);
+    const bodyCph = dec.readBytes(lenBodyCph);
+    return {
+      sig,
+      kdm,
+      lenHeadCph,
+      lenBodyCph,
+      headCph,
+      bodyCph,
+    };
   },
 };

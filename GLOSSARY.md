@@ -37,3 +37,5 @@ TODOS:
 
 - stream data uploads from client (wire encoder to stream writer somehow)
 - stream response downloads in client (wire Decoder to stream reader)
+
+- check whether the indirection in encodeStruct causes a perf hit

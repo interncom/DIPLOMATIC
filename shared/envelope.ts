@@ -21,17 +21,6 @@ import {
 } from "./consts.ts";
 import { Decoder, Encoder } from "./codec.ts";
 
-export function encodeEnvelope(env: IEnvelope): Uint8Array {
-  const enc = new Encoder();
-  enc.writeBytes(env.sig);
-  enc.writeBytes(env.kdm);
-  enc.writeVarInt(env.lenHeadCph);
-  enc.writeVarInt(env.lenBodyCph);
-  enc.writeBytes(env.headCph);
-  enc.writeBytes(env.bodyCph);
-  return enc.result();
-}
-
 export async function makeEnvelope(
   keyPair: KeyPair,
   headCph: Uint8Array,
@@ -57,23 +46,6 @@ export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
   const lenHeadCph = dec.readVarInt();
   const lenBodyCph = dec.readVarInt();
   return { sig, kdm, lenHeadCph, lenBodyCph };
-}
-
-export function decodeEnvelope(dec: Decoder): IEnvelope {
-  const sig = dec.readBytes(sigBytes);
-  const kdm = dec.readBytes(kdmBytes);
-  const lenHeadCph = dec.readVarInt();
-  const lenBodyCph = dec.readVarInt();
-  const headCph = dec.readBytes(lenHeadCph);
-  const bodyCph = dec.readBytes(lenBodyCph);
-  return {
-    sig,
-    kdm,
-    lenHeadCph,
-    lenBodyCph,
-    headCph,
-    bodyCph,
-  };
 }
 
 export function envSigValid(

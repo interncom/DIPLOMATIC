@@ -6,7 +6,7 @@ import type {
   IEnvelope,
 } from "./types.ts";
 import { btoh } from "./lib.ts";
-import { encodeEnvelope, makeEnvelope } from "./envelope.ts";
+import { makeEnvelope } from "./envelope.ts";
 import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
 import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
@@ -27,6 +27,7 @@ import {
   envelopePullItemCodec,
   envelopePushItemCodec,
   envelopePeekItemCodec,
+  envelopeCodec,
 } from "./protocol.ts";
 
 export async function envelopeFor(
@@ -103,8 +104,7 @@ export default class DiplomaticClientAPI {
 
     for (const op of ops) {
       const env = await envelopeFor(op, keyPair, crypto, enclave);
-      const envEnc = encodeEnvelope(env);
-      enc.writeBytes(envEnc);
+      enc.writeStruct(envelopeCodec, env);
     }
 
     const url = new URL(PUSH_PATH, hostURL);

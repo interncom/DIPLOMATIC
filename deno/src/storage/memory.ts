@@ -61,7 +61,7 @@ const memStorage: IMemoryStorage = {
         const sha256 = htob(key);
         list.push({
           hash: sha256,
-          recordedAt: item.recordedAt.getTime(),
+          recordedAt: item.recordedAt,
           headCph: item.headCph,
         });
       }

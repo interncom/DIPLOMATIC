@@ -98,7 +98,7 @@ Deno.test("server", async (t) => {
     // Verify header structure
     for (const header of peekedHeaders) {
       assertEquals(header.hash.length, 32);
-      assert(typeof header.recordedAt === "number");
+      assert(header.recordedAt instanceof Date);
       assert(header.headCph.length > 0);
     }
   });

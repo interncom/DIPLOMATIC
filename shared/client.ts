@@ -1,6 +1,5 @@
 import type {
   ICrypto,
-  IListDeltasResponse,
   IOperationRequest,
   IRegistrationRequest,
   KeyPair,
@@ -25,9 +24,9 @@ import {
   type IEnvelopePeekItem,
   type IEnvelopePullItem,
   type IEnvelopePushItem,
-  decodePullItem,
-  decodePeekItem,
-  decodePushItem,
+  envelopePullItemCodec,
+  envelopePushItemCodec,
+  envelopePeekItemCodec,
 } from "./protocol.ts";
 
 export async function envelopeFor(
@@ -112,7 +111,7 @@ export default class DiplomaticClientAPI {
     const dec = await post(url, enc);
     const results: IEnvelopePushItem[] = [];
     while (!dec.done()) {
-      const item = decodePushItem(dec);
+      const item = dec.readStruct(envelopePushItemCodec);
       results.push(item);
     }
     return results;
@@ -142,7 +141,7 @@ export default class DiplomaticClientAPI {
     const dec = await post(url, enc);
     const items: IEnvelopePullItem[] = [];
     while (!dec.done()) {
-      const item = decodePullItem(dec);
+      const item = dec.readStruct(envelopePullItemCodec);
       items.push(item);
     }
     return items;
@@ -169,7 +168,7 @@ export default class DiplomaticClientAPI {
     const dec = await post(url, enc);
     const items: IEnvelopePeekItem[] = [];
     while (!dec.done()) {
-      const item = decodePeekItem(dec);
+      const item = dec.readStruct(envelopePeekItemCodec);
       items.push(item);
     }
     return items;

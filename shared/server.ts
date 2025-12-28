@@ -1,6 +1,5 @@
 import type {
   IHostCrypto,
-  IListDeltasResponse,
   IOperationRequest,
   IRegistrationRequest,
   IStorage,
@@ -36,7 +35,14 @@ import {
   cors,
 } from "./http.ts";
 import { Status } from "./consts.ts";
-import { encodePeekItem, encodePullItem, encodePushItem } from "./protocol.ts";
+import {
+  type IEnvelopePeekItem,
+  type IEnvelopePullItem,
+  type IEnvelopePushItem,
+  envelopePullItemCodec,
+  envelopePushItemCodec,
+  envelopePeekItemCodec,
+} from "./protocol.ts";
 import { validateTsAuth } from "./auth.ts";
 
 export class DiplomaticServer {
@@ -97,12 +103,17 @@ export class DiplomaticServer {
         const hash = await crypto.sha256Hash(env.headCph);
         const sigValid = await envSigValid(env, pubKey, crypto);
         if (!sigValid) {
-          encodePushItem({ status: Status.InvalidSignature, hash }, enc);
+          const item: IEnvelopePushItem = {
+            status: Status.InvalidSignature,
+            hash,
+          };
+          enc.writeStruct(envelopePushItemCodec, item);
           continue;
         }
         await storage.setEnvelope(pubKey, now, env, hash);
         await notifier.notify(pubKey as PublicKey);
-        encodePushItem({ status: Status.Success, hash }, enc);
+        const item: IEnvelopePushItem = { status: Status.Success, hash };
+        enc.writeStruct(envelopePushItemCodec, item);
       }
       return binResp(enc);
     } catch (err) {
@@ -118,7 +129,8 @@ export class DiplomaticServer {
         const headHash = dec.readBytes(hashSize);
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
-          encodePullItem({ hash: headHash, bodyCph }, enc);
+          const item: IEnvelopePullItem = { hash: headHash, bodyCph };
+          enc.writeStruct(envelopePullItemCodec, item);
         }
       }
       return binResp(enc);
@@ -141,7 +153,7 @@ export class DiplomaticServer {
 
       const enc = new Encoder();
       for (const item of items) {
-        encodePeekItem(item, enc);
+        enc.writeStruct(envelopePeekItemCodec, item);
       }
       return binResp(enc);
     } catch (err) {

@@ -97,6 +97,10 @@ export class Decoder {
     return bytes;
   }
 
+  readStruct<T>(codec: ICodecStruct<T>): T {
+    return codec.decode(this);
+  }
+
   done(): boolean {
     return this.pos >= this.data.length;
   }
@@ -131,6 +135,10 @@ export class Encoder {
     this.parts.push(bytes);
   }
 
+  writeStruct<T>(codec: ICodecStruct<T>, str: T): void {
+    codec.encode(this, str);
+  }
+
   result(): Uint8Array {
     const totalLength = this.parts.reduce((sum, arr) => sum + arr.length, 0);
     const result = new Uint8Array(totalLength);
@@ -141,4 +149,9 @@ export class Encoder {
     }
     return result;
   }
+}
+
+export interface ICodecStruct<T> {
+  encode: (enc: Encoder, struct: T) => void;
+  decode: (dec: Decoder) => T;
 }

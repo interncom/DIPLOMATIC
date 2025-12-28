@@ -1,5 +1,4 @@
-import type { IDeltaListItem } from "./types.ts";
-import { Encoder, Decoder } from "./codec.ts";
+import { Encoder, Decoder, ICodecStruct } from "./codec.ts";
 import { Status, hashBytes, hashSize } from "./consts.ts";
 
 export interface IEnvelopePeekItem {
@@ -18,42 +17,45 @@ export interface IEnvelopePushItem {
   hash: Uint8Array;
 }
 
-export function encodePeekItem(item: IDeltaListItem, enc: Encoder) {
-  enc.writeBytes(item.sha256);
-  enc.writeDate(new Date(item.recordedAt));
-  enc.writeVarInt(item.headCph.length);
-  enc.writeBytes(item.headCph);
-}
+export const envelopePushItemCodec: ICodecStruct<IEnvelopePushItem> = {
+  encode(enc, item) {
+    enc.writeBytes(new Uint8Array([item.status]));
+    enc.writeBytes(item.hash);
+  },
+  decode(dec) {
+    const status = dec.readBytes(1)[0];
+    const hash = dec.readBytes(hashSize);
+    return { status, hash };
+  },
+};
 
-export function decodePeekItem(dec: Decoder): IEnvelopePeekItem {
-  const hash = dec.readBytes(hashSize);
-  const recordedAtBigInt = dec.readBigInt();
-  const recordedAt = Number(recordedAtBigInt);
-  const headCphLen = dec.readVarInt();
-  const headCph = dec.readBytes(headCphLen);
-  return { hash, recordedAt, headCph };
-}
+export const envelopePeekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
+  encode(enc, item) {
+    enc.writeBytes(item.hash);
+    enc.writeDate(new Date(item.recordedAt));
+    enc.writeVarInt(item.headCph.length);
+    enc.writeBytes(item.headCph);
+  },
+  decode(dec) {
+    const hash = dec.readBytes(hashSize);
+    const recordedAtBigInt = dec.readBigInt();
+    const recordedAt = Number(recordedAtBigInt);
+    const headCphLen = dec.readVarInt();
+    const headCph = dec.readBytes(headCphLen);
+    return { hash, recordedAt, headCph };
+  },
+};
 
-export function encodePullItem(item: IEnvelopePullItem, enc: Encoder) {
-  enc.writeBytes(item.hash);
-  enc.writeVarInt(item.bodyCph.length);
-  enc.writeBytes(item.bodyCph);
-}
-
-export function decodePullItem(dec: Decoder): IEnvelopePullItem {
-  const hash = dec.readBytes(hashBytes);
-  const len = dec.readVarInt();
-  const bodyCph = dec.readBytes(len);
-  return { hash, bodyCph };
-}
-
-export function encodePushItem(item: IEnvelopePushItem, enc: Encoder) {
-  enc.writeBytes(new Uint8Array([item.status]));
-  enc.writeBytes(item.hash);
-}
-
-export function decodePushItem(dec: Decoder): IEnvelopePushItem {
-  const status = dec.readBytes(1)[0];
-  const hash = dec.readBytes(hashSize);
-  return { status, hash };
-}
+export const envelopePullItemCodec: ICodecStruct<IEnvelopePullItem> = {
+  encode(enc, item) {
+    enc.writeBytes(item.hash);
+    enc.writeVarInt(item.bodyCph.length);
+    enc.writeBytes(item.bodyCph);
+  },
+  decode(dec) {
+    const hash = dec.readBytes(hashBytes);
+    const len = dec.readVarInt();
+    const bodyCph = dec.readBytes(len);
+    return { hash, bodyCph };
+  },
+};

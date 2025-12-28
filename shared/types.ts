@@ -1,3 +1,5 @@
+import type { IEnvelopePeekItem } from "./protocol.ts";
+
 export enum Verb {
   DELETE = 0,
   UPSERT = 1,
@@ -44,17 +46,6 @@ export interface IOperationRequest {
   cipher: Uint8Array;
 }
 
-export interface IDeltaListItem {
-  sha256: Uint8Array;
-  recordedAt: Date;
-  headCph: Uint8Array;
-}
-
-export interface IListDeltasResponse {
-  deltas: IDeltaListItem[];
-  fetchedAt: string;
-}
-
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<void>;
   hasUser: (pubKey: PublicKey) => Promise<boolean>;
@@ -72,7 +63,7 @@ export interface IStorage {
     pubKey: PublicKey,
     begin: string,
     end: string,
-  ) => Promise<IDeltaListItem[]>;
+  ) => Promise<IEnvelopePeekItem[]>;
 }
 
 export interface KeyPair {

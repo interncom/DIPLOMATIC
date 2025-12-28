@@ -1,11 +1,7 @@
 import { htob, btoh, concat } from "../../../shared/lib.ts";
-import type {
-  IDeltaListItem,
-  IEnvelope,
-  IStorage,
-  PublicKey,
-} from "../../../shared/types.ts";
+import type { IEnvelope, IStorage, PublicKey } from "../../../shared/types.ts";
 import libsodiumCrypto from "../crypto.ts";
+import type { IEnvelopePeekItem } from "../../../shared/protocol.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
@@ -58,14 +54,14 @@ const memStorage: IMemoryStorage = {
 
   async listHeads(pubKey, begin, end) {
     const pubKeyHex = btoh(pubKey);
-    const list: IDeltaListItem[] = [];
+    const list: IEnvelopePeekItem[] = [];
     for (const [key, item] of this.envelopes.entries()) {
       const ts = item.recordedAt.toISOString();
       if (item.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
         const sha256 = htob(key);
         list.push({
-          sha256,
-          recordedAt: item.recordedAt,
+          hash: sha256,
+          recordedAt: item.recordedAt.getTime(),
           headCph: item.headCph,
         });
       }

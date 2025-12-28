@@ -68,28 +68,32 @@ export class DiplomaticClientCLI {
   async push(msg: IMessage, idx: number = 0) {
     const now = new Date();
     const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
-    const results = await this.api.push(
-      this.hostURL,
-      [msg],
-      this.seed,
-      hostID,
-      idx,
-      now,
-    );
+    const results = [
+      ...(await this.api.push(
+        this.hostURL,
+        [msg],
+        this.seed,
+        hostID,
+        idx,
+        now,
+      )),
+    ];
     return results[0];
   }
 
   async peek(begin: Date, idx: number = 0): Promise<IEnvelopeHeader[]> {
     const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
     const now = new Date();
-    return await this.api.peek(
-      this.hostURL,
-      begin.getTime(),
-      this.seed,
-      hostID,
-      idx,
-      now,
-    );
+    return [
+      ...(await this.api.peek(
+        this.hostURL,
+        begin.getTime(),
+        this.seed,
+        hostID,
+        idx,
+        now,
+      )),
+    ];
   }
 
   async pull(hashes: Uint8Array[]): Promise<IMessageDecoded[]> {

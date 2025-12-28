@@ -92,7 +92,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<Array<{ status: number; hash: Uint8Array }>> {
+  ): Promise<IterableIterator<IEnvelopePushItem>> {
     const { crypto, enclave } = this;
 
     const derivSeed = await enclave.derive(keyPath, idx);
@@ -109,11 +109,7 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(PUSH_PATH, hostURL);
     const dec = await post(url, enc);
-    const results: IEnvelopePushItem[] = [];
-    for (const item of dec.readStructs(envelopePushItemCodec)) {
-      results.push(item);
-    }
-    return results;
+    return dec.readStructs(envelopePushItemCodec);
   }
 
   async pull(
@@ -122,7 +118,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IEnvelopePullItem[]> {
+  ): Promise<IterableIterator<IEnvelopePullItem>> {
     const { crypto, enclave } = this;
 
     const derivSeed = await enclave.derive(keyPath, idx);
@@ -138,11 +134,7 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(PULL_PATH, hostURL);
     const dec = await post(url, enc);
-    const items: IEnvelopePullItem[] = [];
-    for (const item of dec.readStructs(envelopePullItemCodec)) {
-      items.push(item);
-    }
-    return items;
+    return dec.readStructs(envelopePullItemCodec);
   }
 
   async peek(
@@ -151,7 +143,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IEnvelopePeekItem[]> {
+  ): Promise<IterableIterator<IEnvelopePeekItem>> {
     const { crypto, enclave } = this;
 
     const derivSeed = await enclave.derive(keyPath, idx);
@@ -164,10 +156,6 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(PEEK_PATH, hostURL);
     const dec = await post(url, enc);
-    const items: IEnvelopePeekItem[] = [];
-    for (const item of dec.readStructs(envelopePeekItemCodec)) {
-      items.push(item);
-    }
-    return items;
+    return dec.readStructs(envelopePeekItemCodec);
   }
 }

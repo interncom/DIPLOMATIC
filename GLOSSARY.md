@@ -35,6 +35,5 @@ TODOS:
 - add tests for PUSH, PEEK, and PULL that round-trip a couple envelopes and check their contents
 - index envelopes with a per-user SEQ on host, and use that for PEEK responses and PULL requests (with varints, saves almost 32 bytes per envelope until very large numbers of envelopes)
 
-- use generators (yield) as return values from client methods rather than accumulating arrays
 - stream data uploads from client (wire encoder to stream writer somehow)
 - stream response downloads in client (wire Decoder to stream reader)

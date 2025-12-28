@@ -72,7 +72,7 @@ Deno.test("server", async (t) => {
   const ops = [op1, op2];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = await client.push(url, ops, hostID, hostIdx, now);
+    result = [...(await client.push(url, ops, hostID, hostIdx, now))];
     assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
     for (const res of result) {
       assertEquals(res.status, Status.Success);
@@ -82,7 +82,9 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /pull", async () => {
     const hashes = result.map((r) => r.hash);
-    const pulledItems = await client.pull(url, hashes, hostID, hostIdx, now);
+    const pulledItems = [
+      ...(await client.pull(url, hashes, hostID, hostIdx, now)),
+    ];
     assertEquals(pulledItems.length, 2);
 
     // Verify item structure (integration test, skip decryption)
@@ -93,7 +95,9 @@ Deno.test("server", async (t) => {
   });
 
   await t.step("POST /peek", async () => {
-    const peekedHeaders = await client.peek(url, 0, hostID, hostIdx, now);
+    const peekedHeaders = [
+      ...(await client.peek(url, 0, hostID, hostIdx, now)),
+    ];
     assertEquals(peekedHeaders.length, 2);
     // Verify header structure
     for (const header of peekedHeaders) {

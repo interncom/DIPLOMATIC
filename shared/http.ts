@@ -2,11 +2,13 @@ import { Status } from "./consts.ts";
 import { Encoder, Decoder } from "./codec.ts";
 
 // Named constants for API endpoint paths
-export const HOST_PATH = "/id";
-export const USER_PATH = "/users";
-export const PUSH_PATH = "/ops";
-export const PULL_PATH = "/pull";
-export const PEEK_PATH = "/peek";
+export const apiPaths = {
+  host: "/id",
+  user: "/users",
+  push: "/ops",
+  pull: "/pull",
+  peek: "/peek",
+} as const;
 
 export function respFor(status: Status): Response {
   switch (status) {

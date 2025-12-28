@@ -17,9 +17,6 @@ TODOS:
 
 - use CodecStruct abstraction for entire request/response encoding in client
 
-- deduplicate the keypair generation that happens in each client method and also in timestampAuthProof
-- refactor sigProof. maybe just combine with tsAuth and inline that all in client.ts
-
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)
 
@@ -39,3 +36,4 @@ TODOS:
 - stream response downloads in client (wire Decoder to stream reader)
 
 - check whether the indirection in encodeStruct causes a perf hit
+- refactor sigProof. maybe just combine with tsAuth and inline that all in client.ts

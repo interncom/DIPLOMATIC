@@ -1,5 +1,5 @@
 import { Encoder, Decoder, ICodecStruct } from "./codec.ts";
-import { Status, hashBytes, hashSize } from "./consts.ts";
+import { Status, hashBytes } from "./consts.ts";
 
 export interface IEnvelopePeekItem {
   hash: Uint8Array;
@@ -24,7 +24,7 @@ export const envelopePushItemCodec: ICodecStruct<IEnvelopePushItem> = {
   },
   decode(dec) {
     const status = dec.readBytes(1)[0];
-    const hash = dec.readBytes(hashSize);
+    const hash = dec.readBytes(hashBytes);
     return { status, hash };
   },
 };
@@ -37,7 +37,7 @@ export const envelopePeekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
     enc.writeBytes(item.headCph);
   },
   decode(dec) {
-    const hash = dec.readBytes(hashSize);
+    const hash = dec.readBytes(hashBytes);
     const recordedAt = dec.readDate();
     const headCphLen = dec.readVarInt();
     const headCph = dec.readBytes(headCphLen);

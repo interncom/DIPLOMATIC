@@ -12,7 +12,7 @@ import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
 import {
   tsAuthSize,
   envelopeHeaderSize,
-  hashSize,
+  hashBytes,
   responseItemSize,
   sigBytes,
   kdmBytes,
@@ -126,7 +126,7 @@ export class DiplomaticServer {
     try {
       const enc = new Encoder();
       while (!dec.done()) {
-        const headHash = dec.readBytes(hashSize);
+        const headHash = dec.readBytes(hashBytes);
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
           const item: IEnvelopePullItem = { hash: headHash, bodyCph };

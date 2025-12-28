@@ -110,8 +110,7 @@ export default class DiplomaticClientAPI {
     const url = new URL(PUSH_PATH, hostURL);
     const dec = await post(url, enc);
     const results: IEnvelopePushItem[] = [];
-    while (!dec.done()) {
-      const item = dec.readStruct(envelopePushItemCodec);
+    for (const item of dec.readStructs(envelopePushItemCodec)) {
       results.push(item);
     }
     return results;
@@ -140,8 +139,7 @@ export default class DiplomaticClientAPI {
     const url = new URL(PULL_PATH, hostURL);
     const dec = await post(url, enc);
     const items: IEnvelopePullItem[] = [];
-    while (!dec.done()) {
-      const item = dec.readStruct(envelopePullItemCodec);
+    for (const item of dec.readStructs(envelopePullItemCodec)) {
       items.push(item);
     }
     return items;
@@ -167,8 +165,7 @@ export default class DiplomaticClientAPI {
     const url = new URL(PEEK_PATH, hostURL);
     const dec = await post(url, enc);
     const items: IEnvelopePeekItem[] = [];
-    while (!dec.done()) {
-      const item = dec.readStruct(envelopePeekItemCodec);
+    for (const item of dec.readStructs(envelopePeekItemCodec)) {
       items.push(item);
     }
     return items;

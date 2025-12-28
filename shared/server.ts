@@ -128,12 +128,12 @@ export class DiplomaticServer {
   handlePeek = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
     const { storage } = this;
     try {
-      const fromMillis = dec.readVarInt();
+      const from = dec.readDate();
       if (!dec.done()) {
         return respFor(Status.ExtraBodyContent);
       }
 
-      const begin = new Date(fromMillis).toISOString();
+      const begin = from.toISOString();
       const end = new Date().toISOString();
       const items = await storage.listHeads(pubKey, begin, end);
 

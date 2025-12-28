@@ -58,7 +58,11 @@ export default class DiplomaticClientAPI {
     private crypto: ICrypto,
   ) {}
 
-  private async authDataFor(keyPath: string, idx: number): Promise<IAuthData> {
+  private async authDataFor(
+    now: Date,
+    keyPath: string,
+    idx: number,
+  ): Promise<IAuthData> {
     const { crypto, enclave } = this;
     const derivSeed = await enclave.derive(keyPath, idx);
     const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
@@ -82,7 +86,7 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<void> {
-    const { tsAuth } = await this.authDataFor(keyPath, idx);
+    const { tsAuth } = await this.authDataFor(now, keyPath, idx);
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
@@ -98,7 +102,7 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IterableIterator<IEnvelopePushItem>> {
     const { crypto, enclave } = this;
-    const { keyPair, tsAuth } = await this.authDataFor(keyPath, idx);
+    const { keyPair, tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -121,7 +125,7 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IterableIterator<IEnvelopePullItem>> {
     const { crypto, enclave } = this;
-    const { tsAuth } = await this.authDataFor(keyPath, idx);
+    const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -137,17 +141,17 @@ export default class DiplomaticClientAPI {
 
   async peek(
     hostURL: URL,
-    fromMillis: number,
+    from: Date,
     keyPath: string,
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IEnvelopePeekItem>> {
     const { crypto, enclave } = this;
-    const { tsAuth } = await this.authDataFor(keyPath, idx);
+    const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
-    enc.writeVarInt(fromMillis);
+    enc.writeDate(from);
 
     const url = new URL(apiPaths.peek, hostURL);
     const dec = await post(url, enc);

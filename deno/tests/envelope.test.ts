@@ -1,10 +1,6 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import {
-  makeEnvelope,
-  encodeEnvelope,
-  decodeEnvelope,
-  decodeEnvelopeHeader,
-} from "../../shared/envelope.ts";
+import { makeEnvelope, decodeEnvelopeHeader } from "../../shared/envelope.ts";
+import { envelopeCodec } from "../../shared/protocol.ts";
 import type {
   PrivateKey,
   PublicKey,
@@ -12,7 +8,7 @@ import type {
   IEnvelopeHeader,
 } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import { Decoder } from "../../shared/codec.ts";
+import { Decoder, Encoder } from "../../shared/codec.ts";
 
 const sigBytes = 64;
 
@@ -67,7 +63,9 @@ Deno.test("envelope", async (t) => {
       headCph: new Uint8Array([10, 11, 12]),
       bodyCph: new Uint8Array([13, 14]),
     };
-    const encoded = encodeEnvelope(op);
+    const enc = new Encoder();
+    enc.writeStruct(envelopeCodec, op);
+    const encoded = enc.result();
     const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + kdm + varint(3) + varint(2) + headCph + bodyCph
     assertEquals(encoded.length, expectedLen);
     // Check sig
@@ -93,9 +91,11 @@ Deno.test("envelope", async (t) => {
       headCph: new Uint8Array([10, 11, 12]),
       bodyCph: new Uint8Array([13, 14]),
     };
-    const encoded = encodeEnvelope(op);
+    const enc = new Encoder();
+    enc.writeStruct(envelopeCodec, op);
+    const encoded = enc.result();
     const decoder = new Decoder(encoded);
-    const decoded = decodeEnvelope(decoder);
+    const decoded = decoder.readStruct(envelopeCodec);
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.lenHeadCph, op.lenHeadCph);
@@ -114,7 +114,9 @@ Deno.test("envelope", async (t) => {
       headCph: new Uint8Array([1, 2, 3, 4, 5]),
       bodyCph: new Uint8Array([6, 7]),
     };
-    const encoded = encodeEnvelope(op);
+    const enc = new Encoder();
+    enc.writeStruct(envelopeCodec, op);
+    const encoded = enc.result();
     const encodedHeader = encoded.slice(0, 74); // 64+8+1+1
     const decodedHeader = decodeEnvelopeHeader(encodedHeader);
     assertEquals(decodedHeader.sig, op.sig);
@@ -127,7 +129,7 @@ Deno.test("envelope", async (t) => {
     const short = new Uint8Array(70); // less than minimum
     try {
       const decoder = new Decoder(short);
-      decodeEnvelope(decoder);
+      decoder.readStruct(envelopeCodec);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail on incomplete

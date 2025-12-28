@@ -1,10 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import {
-  encodeEnvelope,
-  makeEnvelope,
-  decodeEnvelope,
-} from "../../shared/envelope.ts";
+import { makeEnvelope } from "../../shared/envelope.ts";
 import { Encoder, Decoder } from "../../shared/codec.ts";
+import { envelopeCodec } from "../../shared/protocol.ts";
 import {
   kdmBytes,
   encodeOp,
@@ -35,7 +32,7 @@ const op: IMessage = {
   bod,
 };
 
-async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
+async function fullyEncodeEnvelope(op: IMessage): Promise<Uint8Array> {
   const [encMsg, msgHead] = await encodeOp(op, crypto);
   const kdm = await genKDM(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
@@ -45,7 +42,9 @@ async function fullyEncodeEnvelope(op: IMessage): Promise<EncodedEnvelope> {
   }
   const bodyCph = await crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey);
   const env = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
-  return encodeEnvelope(env);
+  const enc = new Encoder();
+  enc.writeStruct(envelopeCodec, env);
+  return enc.result();
 }
 
 Deno.bench("full encode op", async (b) => {
@@ -56,7 +55,7 @@ const envelope = await fullyEncodeEnvelope(op);
 
 Deno.bench("full decode op", async (b) => {
   const decoder = new Decoder(envelope);
-  const decodedEnv = decodeEnvelope(decoder);
+  const decodedEnv = decoder.readStruct(envelopeCodec);
   const kdm = decodedEnv.kdm;
   const cipherMsg = concat(decodedEnv.headCph, decodedEnv.bodyCph);
   const encKey = await enclave.deriveFromKDM(kdm);

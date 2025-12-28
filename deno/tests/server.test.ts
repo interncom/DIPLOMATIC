@@ -9,7 +9,7 @@ import DiplomaticClientAPI from "../../shared/client.ts";
 import { IWebsocketNotifier, type IEnvelope } from "../../shared/types.ts";
 import { genInsert, decodeOp } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
-import { decodeEnvelope } from "../../shared/envelope.ts";
+
 import { uint8ArraysEqual } from "../../shared/lib.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { MasterSeed } from "../../shared/types.ts";

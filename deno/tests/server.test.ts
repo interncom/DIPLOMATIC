@@ -96,7 +96,7 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /peek", async () => {
     const peekedHeaders = [
-      ...(await client.peek(url, 0, hostID, hostIdx, now)),
+      ...(await client.peek(url, new Date(0), hostID, hostIdx, now)),
     ];
     assertEquals(peekedHeaders.length, 2);
     // Verify header structure

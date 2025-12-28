@@ -3,8 +3,6 @@ import {
   encodeEnvelope,
   makeEnvelope,
   decodeEnvelope,
-  type IEnvelope,
-  type EncodedEnvelope,
 } from "../../shared/envelope.ts";
 import { Encoder, Decoder } from "../../shared/codec.ts";
 import {
@@ -16,7 +14,7 @@ import {
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import type { MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed, EncodedEnvelope } from "../../shared/types.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
 // Setup crypto and keypair

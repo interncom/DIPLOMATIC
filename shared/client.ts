@@ -22,6 +22,7 @@ import {
   envelopePeekItemCodec,
   envelopeCodec,
 } from "./protocol.ts";
+import { type EncodedSigProvenData } from "./sigProof.ts";
 
 export async function envelopeFor(
   op: IMessage,
@@ -46,11 +47,24 @@ export async function envelopeFor(
   return makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
 }
 
+interface IAuthData {
+  keyPair: KeyPair;
+  tsAuth: EncodedSigProvenData;
+}
+
 export default class DiplomaticClientAPI {
   constructor(
     private enclave: Enclave,
     private crypto: ICrypto,
   ) {}
+
+  private async authDataFor(keyPath: string, idx: number): Promise<IAuthData> {
+    const { crypto, enclave } = this;
+    const derivSeed = await enclave.derive(keyPath, idx);
+    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
+    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
+    return { keyPair, tsAuth };
+  }
 
   async getHostID(hostURL: URL): Promise<string> {
     const url = new URL(apiPaths.host, hostURL);
@@ -68,11 +82,7 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<void> {
-    const { crypto, enclave } = this;
-
-    const derivSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
-    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
+    const { tsAuth } = await this.authDataFor(keyPath, idx);
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
@@ -88,10 +98,8 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IterableIterator<IEnvelopePushItem>> {
     const { crypto, enclave } = this;
+    const { keyPair, tsAuth } = await this.authDataFor(keyPath, idx);
 
-    const derivSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
-    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
@@ -113,10 +121,7 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IterableIterator<IEnvelopePullItem>> {
     const { crypto, enclave } = this;
-
-    const derivSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
-    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
+    const { tsAuth } = await this.authDataFor(keyPath, idx);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -138,10 +143,7 @@ export default class DiplomaticClientAPI {
     now: Date,
   ): Promise<IterableIterator<IEnvelopePeekItem>> {
     const { crypto, enclave } = this;
-
-    const derivSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
-    const tsAuth = await timestampAuthProof(keyPair, now, crypto);
+    const { tsAuth } = await this.authDataFor(keyPath, idx);
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);

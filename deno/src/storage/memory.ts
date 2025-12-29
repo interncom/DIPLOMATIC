@@ -1,7 +1,7 @@
 import { htob, btoh, concat } from "../../../shared/lib.ts";
 import type { IEnvelope, IStorage, PublicKey } from "../../../shared/types.ts";
 import libsodiumCrypto from "../crypto.ts";
-import type { IEnvelopePeekItem } from "../../../shared/protocol.ts";
+import type { IEnvelopePeekItem } from "../../../shared/codecs/peekItem.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;

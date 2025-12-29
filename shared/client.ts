@@ -4,15 +4,10 @@ import { Enclave } from "./enclave.ts";
 import { makeEnvelope } from "./envelope.ts";
 import { apiPaths, post } from "./http.ts";
 import { encodeOp, genKDM, type IMessage } from "./message.ts";
-import {
-  envelopeCodec,
-  envelopePeekItemCodec,
-  envelopePullItemCodec,
-  envelopePushItemCodec,
-  type IEnvelopePeekItem,
-  type IEnvelopePullItem,
-  type IEnvelopePushItem,
-} from "./protocol.ts";
+import { envelopeCodec } from "./codecs/envelope.ts";
+import { envelopePeekItemCodec, type IEnvelopePeekItem } from "./codecs/peekItem.ts";
+import { envelopePullItemCodec, type IEnvelopePullItem } from "./codecs/pullItem.ts";
+import { envelopePushItemCodec, type IEnvelopePushItem } from "./codecs/pushItem.ts";
 import { type EncodedSigProvenData } from "./sigProof.ts";
 import type { ICrypto, IEnvelope, KeyPair } from "./types.ts";
 

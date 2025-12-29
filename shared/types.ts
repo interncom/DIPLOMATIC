@@ -1,4 +1,4 @@
-import type { IEnvelopePeekItem } from "./protocol.ts";
+import type { IEnvelopePeekItem } from "./codecs/peekItem.ts";
 
 export enum Verb {
   DELETE = 0,

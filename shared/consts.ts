@@ -4,6 +4,9 @@ export const idxBytes = 8;
 export const lenBytes = 8;
 export const pubKeyBytes = 32;
 export const kdmBytes = 8;
+export const eidBytes = 16;
+export const clkBytes = 8;
+export const hshBytes = 32;
 
 export const tsAuthSize = pubKeyBytes + sigBytes + lenBytes;
 export const envelopeHeaderSize = sigBytes + kdmBytes + lenBytes + lenBytes;

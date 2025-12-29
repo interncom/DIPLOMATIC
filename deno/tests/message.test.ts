@@ -2,10 +2,8 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
   genDelete,
   genInsert,
-  genKDM,
   genUpsert,
   IMessage,
-  kdmBytes,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
@@ -206,13 +204,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(op.ctr, ctr);
     assertEquals(op.len, content.length);
     assertEquals(op.bod, content);
-  });
-
-  await t.step("genKDM", async () => {
-    const kdm = await genKDM(crypto);
-    assertEquals(kdm.length, 8);
-    // Now it's random, just check length
-    assertEquals(kdm.length, kdmBytes);
   });
 
   await t.step("message head decode with insufficient data", async () => {

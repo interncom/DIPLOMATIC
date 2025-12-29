@@ -1,9 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { makeEnvelope } from "../../shared/envelope.ts";
+import { genKDM, makeEnvelope } from "../../shared/envelope.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { envelopeCodec } from "../../shared/codecs/envelope.ts";
 import type { IEnvelope } from "../../shared/types.ts";
-import { genKDM, type IMessage } from "../../shared/message.ts";
+import { type IMessage } from "../../shared/message.ts";
 import {
   type IMessageHead,
   messageHeadCodec,

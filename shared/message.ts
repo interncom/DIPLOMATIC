@@ -1,6 +1,4 @@
-
 import type { ICrypto } from "./types.ts";
-
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -73,16 +71,3 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
 // the seed never needs to be directly accessible in memory.
 // You just feed the KDM into the HSM and get the derived key out.
 // Then symmetrically encrypt/decrypt using that derived key.
-export const kdmBytes = 8;
-export const eidBytes = 16;
-export const clkBytes = 8;
-export const hshBytes = 32;
-
-
-
-
-
-export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {
-  const random = await crypto.gen128BitRandomID();
-  return random.slice(0, kdmBytes);
-}

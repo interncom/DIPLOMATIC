@@ -33,14 +33,21 @@ export default class DiplomaticClientAPI {
     return { keyPair, tsAuth };
   }
 
-  async getHostID(hostURL: URL): Promise<string> {
+  async getHostID(
+    hostURL: URL,
+    keyPath: string,
+    idx: number,
+    now: Date,
+  ): Promise<string> {
+    const { tsAuth } = await this.authDataFor(now, keyPath, idx);
+    const enc = new Encoder();
+    enc.writeBytes(tsAuth);
+
     const url = new URL(apiPaths.host, hostURL);
-    const response = await fetch(url, { method: "GET" });
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const id = await response.text();
-    return id;
+    const dec = await post(url, enc);
+    const len = dec.readVarInt();
+    const bytes = dec.readBytes(len);
+    return new TextDecoder().decode(bytes);
   }
 
   async register(

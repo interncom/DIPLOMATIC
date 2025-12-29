@@ -1,12 +1,12 @@
 import { validateTsAuth } from "./auth.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { hashBytes, Status, tsAuthSize } from "./consts.ts";
-import { envSigValid } from "./envelope.ts";
-import { apiPaths, binResp, cors, respFor } from "./http.ts";
 import { envelopeCodec } from "./codecs/envelope.ts";
 import { peekItemCodec } from "./codecs/peekItem.ts";
 import { type IEnvelopePullItem, pullItemCodec } from "./codecs/pullItem.ts";
 import { type IEnvelopePushItem, pushItemCodec } from "./codecs/pushItem.ts";
+import { hashBytes, Status, tsAuthSize } from "./consts.ts";
+import { envSigValid } from "./envelope.ts";
+import { apiPaths, binResp, cors, respFor } from "./http.ts";
 import type {
   IHostCrypto,
   IStorage,
@@ -41,11 +41,20 @@ export class DiplomaticServer {
     return cors(resp);
   };
 
-  handleHost = async (request: Request): Promise<Response> => {
+  handleHost = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
     if (!this.hostID) {
       return respFor(Status.ServerMisconfigured);
     }
-    return new Response(this.hostID, { status: 200 });
+    if (!dec.done()) {
+      return respFor(Status.ExtraBodyContent);
+    }
+    const hash = await this.crypto.sha256Hash(pubKey);
+    const suffix = btoa(String.fromCharCode(...hash.slice(0, 4)));
+    const uniqueHostID = this.hostID + "-" + suffix;
+    const enc = new Encoder();
+    enc.writeVarInt(uniqueHostID.length);
+    enc.writeBytes(new TextEncoder().encode(uniqueHostID));
+    return binResp(enc);
   };
 
   handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
@@ -57,7 +66,7 @@ export class DiplomaticServer {
       // Register the public key
       await storage.addUser(pubKey);
       return new Response("", { status: 200 });
-    } catch (err) {
+    } catch (_err) {
       return respFor(Status.InternalError);
     }
   };
@@ -84,7 +93,7 @@ export class DiplomaticServer {
         enc.writeStruct(pushItemCodec, item);
       }
       return binResp(enc);
-    } catch (err) {
+    } catch (_err) {
       return respFor(Status.InternalError);
     }
   };
@@ -102,7 +111,7 @@ export class DiplomaticServer {
         }
       }
       return binResp(enc);
-    } catch (err) {
+    } catch (_err) {
       return respFor(Status.InternalError);
     }
   };
@@ -122,7 +131,7 @@ export class DiplomaticServer {
       const enc = new Encoder();
       enc.writeStructs(peekItemCodec, items);
       return binResp(enc);
-    } catch (err) {
+    } catch (_err) {
       return respFor(Status.InternalError);
     }
   };
@@ -130,11 +139,11 @@ export class DiplomaticServer {
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === apiPaths.host) {
-      return this.handleHost(request);
+    // All requests are POST with authentication.
+    if (request.method !== "POST") {
+      return respFor(Status.NotFound);
     }
 
-    // Timestamp authentication required beyond this point.
     const body = request.body;
     if (!body) {
       return respFor(Status.MissingBody);
@@ -142,12 +151,17 @@ export class DiplomaticServer {
     const data = new Uint8Array(await request.arrayBuffer());
     const dec = new Decoder(data);
     const tsAuthBytes = dec.readBytes(tsAuthSize);
+
     const [pubKey, status] = await validateTsAuth(tsAuthBytes, this.crypto);
     if (status !== Status.Success) {
       return respFor(status);
     }
 
-    if (request.method === "POST" && url.pathname === apiPaths.user) {
+    if (url.pathname === apiPaths.host) {
+      return this.handleHost(pubKey, dec);
+    }
+
+    if (url.pathname === apiPaths.user) {
       return this.handleUser(pubKey, dec);
     }
 
@@ -161,13 +175,13 @@ export class DiplomaticServer {
       return respFor(Status.InternalError);
     }
 
-    if (request.method === "POST" && url.pathname === apiPaths.push) {
+    if (url.pathname === apiPaths.push) {
       return this.handlePush(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === apiPaths.pull) {
+    if (url.pathname === apiPaths.pull) {
       return this.handlePull(pubKey, dec);
     }
-    if (request.method === "POST" && url.pathname === apiPaths.peek) {
+    if (url.pathname === apiPaths.peek) {
       return this.handlePeek(pubKey, dec);
     }
 

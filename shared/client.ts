@@ -78,7 +78,7 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
 
     const url = new URL(apiPaths.user, hostURL);
-    const dec = await post(url, enc);
+    await post(url, enc);
   }
 
   async push(
@@ -111,7 +111,6 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IEnvelopePullItem>> {
-    const { crypto, enclave } = this;
     const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();
@@ -133,7 +132,6 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IEnvelopePeekItem>> {
-    const { crypto, enclave } = this;
     const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();

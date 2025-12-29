@@ -1,36 +1,22 @@
+import { validateTsAuth } from "./auth.ts";
+import { Decoder, Encoder } from "./codec.ts";
+import { hashBytes, Status, tsAuthSize } from "./consts.ts";
+import { envSigValid } from "./envelope.ts";
+import { apiPaths, binResp, cors, respFor } from "./http.ts";
+import {
+  envelopeCodec,
+  envelopePeekItemCodec,
+  envelopePullItemCodec,
+  envelopePushItemCodec,
+  type IEnvelopePullItem,
+  type IEnvelopePushItem,
+} from "./protocol.ts";
 import type {
   IHostCrypto,
-  IOperationRequest,
-  IRegistrationRequest,
   IStorage,
   IWebsocketNotifier,
   PublicKey,
-  IEnvelope,
-  IEnvelopeHeader,
 } from "./types.ts";
-import { btoh, htob, uint8ArraysEqual } from "./lib.ts";
-import {
-  tsAuthSize,
-  envelopeHeaderSize,
-  hashBytes,
-  responseItemSize,
-  sigBytes,
-  kdmBytes,
-} from "./consts.ts";
-import { decodeEnvelopeHeader, envSigValid } from "./envelope.ts";
-import { Decoder, Encoder } from "./codec.ts";
-import { apiPaths, respFor, binResp, cors } from "./http.ts";
-import { Status } from "./consts.ts";
-import {
-  type IEnvelopePeekItem,
-  type IEnvelopePullItem,
-  type IEnvelopePushItem,
-  envelopePullItemCodec,
-  envelopePushItemCodec,
-  envelopePeekItemCodec,
-  envelopeCodec,
-} from "./protocol.ts";
-import { validateTsAuth } from "./auth.ts";
 
 export class DiplomaticServer {
   constructor(

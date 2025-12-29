@@ -1,35 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { makeEnvelope, decodeEnvelopeHeader } from "../../shared/envelope.ts";
+import { decodeEnvelopeHeader, makeEnvelope } from "../../shared/envelope.ts";
 import { envelopeCodec } from "../../shared/protocol.ts";
-import type {
-  PrivateKey,
-  PublicKey,
-  IEnvelope,
-  IEnvelopeHeader,
-} from "../../shared/types.ts";
+import type { IEnvelope, PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
-
-const sigBytes = 64;
-
-// Helper functions for converting to big-endian bytes
-function dateToBytes(date: Date): Uint8Array {
-  const buffer = new ArrayBuffer(8);
-  new DataView(buffer).setBigUint64(0, BigInt(date.getTime()), false);
-  return new Uint8Array(buffer);
-}
-
-function numberTo4Bytes(num: number): Uint8Array {
-  const buffer = new ArrayBuffer(4);
-  new DataView(buffer).setUint32(0, num, false);
-  return new Uint8Array(buffer);
-}
-
-function numberTo8Bytes(num: number): Uint8Array {
-  const buffer = new ArrayBuffer(8);
-  new DataView(buffer).setBigUint64(0, BigInt(num), false);
-  return new Uint8Array(buffer);
-}
 
 Deno.test("envelope", async (t) => {
   const crypto = libsodiumCrypto;

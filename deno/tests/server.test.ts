@@ -1,19 +1,16 @@
-import { assertEquals, assert } from "https://deno.land/std/testing/asserts.ts";
-import { tsAuthSize } from "../../shared/consts.ts";
-import { DiplomaticServer } from "../../shared/server.ts";
-import { Status } from "../../shared/consts.ts";
-import memStorage from "../src/storage/memory.ts";
-import libsodiumCrypto from "../src/crypto.ts";
-import denoMsgpack from "../src/codec.ts";
+import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
-import { IWebsocketNotifier, type IEnvelope } from "../../shared/types.ts";
-import { genInsert, decodeOp } from "../../shared/message.ts";
-import { concat } from "../../shared/lib.ts";
+import { Status, tsAuthSize } from "../../shared/consts.ts";
+import { genInsert } from "../../shared/message.ts";
+import { DiplomaticServer } from "../../shared/server.ts";
+import { IWebsocketNotifier } from "../../shared/types.ts";
+import denoMsgpack from "../src/codec.ts";
+import libsodiumCrypto from "../src/crypto.ts";
+import memStorage from "../src/storage/memory.ts";
 
-import { uint8ArraysEqual } from "../../shared/lib.ts";
+import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { MasterSeed } from "../../shared/types.ts";
-import { Encoder } from "../../shared/codec.ts";
 
 // Server config.
 const port = 3331;
@@ -48,15 +45,12 @@ Deno.test("server", async (t) => {
   }
   const url = new URL(`http://localhost:${port}`);
 
-  const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
   const client = new DiplomaticClientAPI(enclave, libsodiumCrypto);
 
   await t.step("GET /id", async () => {
     const id = await client.getHostID(url);
     assertEquals(id, hostID);
   });
-
-  const pubKey = keyPair.publicKey;
 
   // Use a consistent now Date for all operations and auth
   const now = new Date();

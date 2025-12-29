@@ -3,23 +3,16 @@
 // The envelope includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 // The ciphertext follows without an embedded length field, as its length is part of the encrypted message header.
 
+import { Decoder } from "./codec.ts";
+import { kdmBytes, sigBytes } from "./consts.ts";
 import type {
   ICrypto,
-  IHostCrypto,
-  KeyPair,
   IEnvelope,
   IEnvelopeHeader,
+  IHostCrypto,
+  KeyPair,
   PublicKey,
 } from "./types.ts";
-import { EncryptedMessage, EncodedMessage } from "./message.ts";
-import {
-  sigBytes,
-  hashBytes,
-  lenBytes,
-  pubKeyBytes,
-  kdmBytes,
-} from "./consts.ts";
-import { Decoder, Encoder } from "./codec.ts";
 
 export async function makeEnvelope(
   keyPair: KeyPair,

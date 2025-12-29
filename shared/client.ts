@@ -1,28 +1,20 @@
-import type {
-  ICrypto,
-  IOperationRequest,
-  IRegistrationRequest,
-  KeyPair,
-  IEnvelope,
-} from "./types.ts";
-import { btoh } from "./lib.ts";
-import { makeEnvelope } from "./envelope.ts";
-import { Enclave } from "./enclave.ts";
 import { timestampAuthProof } from "./auth.ts";
-import { encodeOp, decodeOp, type IMessage, genKDM } from "./message.ts";
-import { concat } from "./lib.ts";
-import { Decoder, Encoder } from "./codec.ts";
+import { Encoder } from "./codec.ts";
+import { Enclave } from "./enclave.ts";
+import { makeEnvelope } from "./envelope.ts";
 import { apiPaths, post } from "./http.ts";
+import { encodeOp, genKDM, type IMessage } from "./message.ts";
 import {
+  envelopeCodec,
+  envelopePeekItemCodec,
+  envelopePullItemCodec,
+  envelopePushItemCodec,
   type IEnvelopePeekItem,
   type IEnvelopePullItem,
   type IEnvelopePushItem,
-  envelopePullItemCodec,
-  envelopePushItemCodec,
-  envelopePeekItemCodec,
-  envelopeCodec,
 } from "./protocol.ts";
 import { type EncodedSigProvenData } from "./sigProof.ts";
+import type { ICrypto, IEnvelope, KeyPair } from "./types.ts";
 
 export async function envelopeFor(
   op: IMessage,

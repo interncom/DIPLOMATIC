@@ -1,50 +1,62 @@
 import type { ICrypto, IHostCrypto, KeyPair, PublicKey } from "./types.ts";
+import { Decoder, Encoder } from "./codec.ts";
+import { clockToleranceMs, Status } from "./consts.ts";
 import {
-  sigProof,
-  decodeSigProvenData,
-  encodeSigProvenData,
-  type EncodedSigProvenData,
-} from "./sigProof.ts";
-import { Encoder } from "./codec.ts";
-import { Status, clockToleranceMs } from "./consts.ts";
+  authTimestampCodec,
+  type IAuthTimestamp,
+} from "./codecs/authTimestamp.ts";
+
+export type EncodedAuthTimestamp = Uint8Array;
+export { authTimestampCodec, type IAuthTimestamp };
 
 // timestampAuthProof authenticates with a sigproven timestamp.
 // The sigproof demonstrates control of the pubKey.
-// Host ientifies users by their pubkeys.
+// Host identifies users by their pubkeys.
 // Server can reject for timestamp too far from its clock.
 // In that case, signal to user that clock is out of sync.
 // Clocks must be synchronized to ensure correct op order.
+
 export async function timestampAuthProof(
   keyPair: KeyPair,
   ts: Date,
   crypto: ICrypto,
-): Promise<EncodedSigProvenData> {
+): Promise<EncodedAuthTimestamp> {
   const enc = new Encoder();
   enc.writeDate(ts);
   const encodedTs = enc.result();
-  const spdata = {
-    ...(await sigProof(keyPair, encodedTs, crypto)),
-    data: encodedTs,
+  const sig = await crypto.signEd25519(encodedTs, keyPair.privateKey);
+  const authTs: IAuthTimestamp = {
+    pubKey: keyPair.publicKey,
+    sig,
+    timestamp: ts,
   };
-  const encoded = await encodeSigProvenData(spdata, crypto);
-  return encoded;
+  const finalEnc = new Encoder();
+  authTimestampCodec.encode(finalEnc, authTs);
+  return finalEnc.result();
 }
 
 export async function validateTsAuth(
   tsAuthBytes: Uint8Array,
   crypto: IHostCrypto,
 ): Promise<[PublicKey, Status]> {
-  const tsAuth = decodeSigProvenData(tsAuthBytes);
-  const timestampMs = new DataView(tsAuth.data.buffer).getBigUint64(0, false);
+  const dec = new Decoder(tsAuthBytes);
+  const authTs = authTimestampCodec.decode(dec);
   const currentTime = Date.now();
-  const diff = Math.abs(currentTime - Number(timestampMs));
+  const tsTime = authTs.timestamp.getTime();
+  const diff = Math.abs(currentTime - tsTime);
   if (diff > clockToleranceMs) {
     return [new Uint8Array(0) as PublicKey, Status.ClockOutOfSync];
   }
-  const { sig, data, pubKey } = tsAuth;
-  const sigValid = await crypto.checkSigEd25519(sig, data, pubKey);
+  const enc = new Encoder();
+  enc.writeDate(authTs.timestamp);
+  const data = enc.result();
+  const sigValid = await crypto.checkSigEd25519(
+    authTs.sig,
+    data,
+    authTs.pubKey,
+  );
   if (!sigValid) {
     return [new Uint8Array(0) as PublicKey, Status.InvalidSignature];
   }
-  return [tsAuth.pubKey, Status.Success];
+  return [authTs.pubKey, Status.Success];
 }

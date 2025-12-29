@@ -5,10 +5,19 @@ import { makeEnvelope } from "./envelope.ts";
 import { apiPaths, post } from "./http.ts";
 import { encodeOp, genKDM, type IMessage } from "./message.ts";
 import { envelopeCodec } from "./codecs/envelope.ts";
-import { envelopePeekItemCodec, type IEnvelopePeekItem } from "./codecs/peekItem.ts";
-import { envelopePullItemCodec, type IEnvelopePullItem } from "./codecs/pullItem.ts";
-import { envelopePushItemCodec, type IEnvelopePushItem } from "./codecs/pushItem.ts";
-import { type EncodedSigProvenData } from "./sigProof.ts";
+import {
+  envelopePeekItemCodec,
+  type IEnvelopePeekItem,
+} from "./codecs/peekItem.ts";
+import {
+  envelopePullItemCodec,
+  type IEnvelopePullItem,
+} from "./codecs/pullItem.ts";
+import {
+  envelopePushItemCodec,
+  type IEnvelopePushItem,
+} from "./codecs/pushItem.ts";
+import { type EncodedAuthTimestamp } from "./auth.ts";
 import type { ICrypto, IEnvelope, KeyPair } from "./types.ts";
 
 export async function envelopeFor(
@@ -36,7 +45,7 @@ export async function envelopeFor(
 
 interface IAuthData {
   keyPair: KeyPair;
-  tsAuth: EncodedSigProvenData;
+  tsAuth: EncodedAuthTimestamp;
 }
 
 export default class DiplomaticClientAPI {

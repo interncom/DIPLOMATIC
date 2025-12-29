@@ -6,7 +6,7 @@ export interface IEnvelopePushItem {
   hash: Uint8Array;
 }
 
-export const envelopePushItemCodec: ICodecStruct<IEnvelopePushItem> = {
+export const pushItemCodec: ICodecStruct<IEnvelopePushItem> = {
   encode(enc, item) {
     enc.writeBytes(new Uint8Array([item.status]));
     enc.writeBytes(item.hash);

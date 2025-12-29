@@ -6,7 +6,7 @@ export interface IEnvelopePullItem {
   bodyCph: Uint8Array;
 }
 
-export const envelopePullItemCodec: ICodecStruct<IEnvelopePullItem> = {
+export const pullItemCodec: ICodecStruct<IEnvelopePullItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
     enc.writeVarInt(item.bodyCph.length);
@@ -19,4 +19,3 @@ export const envelopePullItemCodec: ICodecStruct<IEnvelopePullItem> = {
     return { hash, bodyCph };
   },
 };
-

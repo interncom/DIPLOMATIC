@@ -105,6 +105,12 @@ export class Decoder {
     }
   }
 
+  *readBytesSeq(len: number): Generator<Uint8Array, void, unknown> {
+    while (!this.done()) {
+      yield this.readBytes(len);
+    }
+  }
+
   done(): boolean {
     return this.pos >= this.data.length;
   }
@@ -150,6 +156,12 @@ export class Encoder {
   ): void {
     for (const struct of structs) {
       this.writeStruct(codec, struct);
+    }
+  }
+
+  writeBytesSeq(bytesSeq: Iterable<Uint8Array>): void {
+    for (const bytes of bytesSeq) {
+      this.writeBytes(bytes);
     }
   }
 

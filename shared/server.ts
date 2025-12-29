@@ -102,8 +102,7 @@ export class DiplomaticServer {
     const { storage } = this;
     try {
       const enc = new Encoder();
-      while (!dec.done()) {
-        const headHash = dec.readBytes(hashBytes);
+      for (const headHash of dec.readBytesSeq(hashBytes)) {
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
           const item: IEnvelopePullItem = { hash: headHash, bodyCph };

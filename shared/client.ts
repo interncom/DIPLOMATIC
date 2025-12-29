@@ -98,10 +98,7 @@ export default class DiplomaticClientAPI {
 
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
-
-    for (const hash of hashes) {
-      enc.writeBytes(hash);
-    }
+    enc.writeBytesSeq(hashes);
 
     const url = new URL(apiPaths.pull, hostURL);
     const dec = await post(url, enc);

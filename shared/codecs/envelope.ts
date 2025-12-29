@@ -1,5 +1,5 @@
 import { ICodecStruct } from "../codec.ts";
-import { hashBytes, kdmBytes, sigBytes, Status } from "../consts.ts";
+import { kdmBytes, sigBytes } from "../consts.ts";
 import type { IEnvelope } from "../types.ts";
 
 export const envelopeCodec: ICodecStruct<IEnvelope> = {

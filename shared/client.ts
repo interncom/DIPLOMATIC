@@ -1,9 +1,5 @@
-import { timestampAuthProof } from "./auth.ts";
+import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
 import { Encoder } from "./codec.ts";
-import { Enclave } from "./enclave.ts";
-import { makeEnvelope } from "./envelope.ts";
-import { apiPaths, post } from "./http.ts";
-import { encodeOp, genKDM, type IMessage } from "./message.ts";
 import { envelopeCodec } from "./codecs/envelope.ts";
 import {
   envelopePeekItemCodec,
@@ -17,31 +13,11 @@ import {
   envelopePushItemCodec,
   type IEnvelopePushItem,
 } from "./codecs/pushItem.ts";
-import { type EncodedAuthTimestamp } from "./auth.ts";
-import type { ICrypto, IEnvelope, KeyPair } from "./types.ts";
-
-export async function envelopeFor(
-  op: IMessage,
-  keyPair: KeyPair,
-  crypto: ICrypto,
-  enclave: Enclave,
-): Promise<IEnvelope> {
-  // Encode message.
-  const [, head] = await encodeOp(op, crypto);
-
-  // Derive encryption key.
-  const kdm = await genKDM(crypto);
-  const key = await enclave.deriveFromKDM(kdm);
-
-  // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-  const headCph = await crypto.encryptXSalsa20Poly1305Combined(head, key);
-  const bodyCph = op.bod
-    ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
-    : new Uint8Array(0);
-
-  // Wrap in envelope.
-  return makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
-}
+import { Enclave } from "./enclave.ts";
+import { envelopeFor } from "./envelope.ts";
+import { apiPaths, post } from "./http.ts";
+import { type IMessage } from "./message.ts";
+import type { ICrypto, KeyPair } from "./types.ts";
 
 interface IAuthData {
   keyPair: KeyPair;

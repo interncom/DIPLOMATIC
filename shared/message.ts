@@ -1,6 +1,6 @@
-import { Decoder, Encoder } from "./codec.ts";
-import { concat } from "./lib.ts";
+
 import type { ICrypto } from "./types.ts";
+
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
@@ -78,41 +78,9 @@ export const eidBytes = 16;
 export const clkBytes = 8;
 export const hshBytes = 32;
 
-// Returns the full encoded message and also a slice of just the encoded header.
-export async function encodeOp(
-  op: IMessage,
-  crypto: ICrypto,
-): Promise<[EncodedMessage, Uint8Array]> {
-  const headerEncoder = new Encoder();
-  headerEncoder.writeBytes(op.eid);
-  headerEncoder.writeDate(op.clk);
-  headerEncoder.writeVarInt(op.ctr);
-  headerEncoder.writeVarInt(op.len);
-  if (op.bod && op.len > 0) {
-    const hsh = await crypto.blake3(op.bod);
-    headerEncoder.writeBytes(hsh);
-  }
-  const header = headerEncoder.result();
-  const body = op.bod || new Uint8Array(0);
-  const encoded = concat(header, body);
-  return [encoded, header];
-}
 
-export async function decodeOp(encoded: EncodedMessage): Promise<IMessage> {
-  const decoder = new Decoder(encoded);
-  const eid = decoder.readBytes(eidBytes);
-  const clkTime = decoder.readBigInt();
-  const clk = new Date(Number(clkTime));
-  const ctr = decoder.readVarInt();
-  const len = decoder.readVarInt();
-  let hsh: Uint8Array | undefined;
-  let bod: Uint8Array | undefined;
-  if (len > 0) {
-    hsh = decoder.readBytes(hshBytes);
-    bod = decoder.readBytes(len);
-  }
-  return { eid, clk, ctr, len, bod, hsh };
-}
+
+
 
 export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {
   const random = await crypto.gen128BitRandomID();

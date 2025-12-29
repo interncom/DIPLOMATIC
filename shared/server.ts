@@ -3,14 +3,10 @@ import { Decoder, Encoder } from "./codec.ts";
 import { hashBytes, Status, tsAuthSize } from "./consts.ts";
 import { envSigValid } from "./envelope.ts";
 import { apiPaths, binResp, cors, respFor } from "./http.ts";
-import {
-  envelopeCodec,
-  envelopePeekItemCodec,
-  envelopePullItemCodec,
-  envelopePushItemCodec,
-  type IEnvelopePullItem,
-  type IEnvelopePushItem,
-} from "./protocol.ts";
+import { envelopeCodec } from "./codecs/envelope.ts";
+import { envelopePeekItemCodec } from "./codecs/peekItem.ts";
+import { envelopePullItemCodec, type IEnvelopePullItem } from "./codecs/pullItem.ts";
+import { envelopePushItemCodec, type IEnvelopePushItem } from "./codecs/pushItem.ts";
 import type {
   IHostCrypto,
   IStorage,

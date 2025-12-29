@@ -1,6 +1,6 @@
 import type { ICrypto, KeyPair, PublicKey } from "./types.ts";
-import { sigBytes, pubKeyBytes } from "./consts.ts";
-import { Encoder, Decoder } from "./codec.ts";
+import { pubKeyBytes, sigBytes } from "./consts.ts";
+import { Decoder, Encoder } from "./codec.ts";
 
 // ISigProof is a signature and data necessary to verify it.
 // The layout is:
@@ -51,14 +51,6 @@ export function decodeSigProvenData(
     sig,
     data,
   };
-}
-
-function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
 }
 
 export async function verifySigProvenData(

@@ -1,6 +1,6 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { decodeEnvelopeHeader, makeEnvelope } from "../../shared/envelope.ts";
-import { envelopeCodec } from "../../shared/protocol.ts";
+import { envelopeCodec } from "../../shared/codecs/envelope.ts";
 import type { IEnvelope, PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";

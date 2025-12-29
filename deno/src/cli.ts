@@ -1,10 +1,15 @@
 import DiplomaticClientAPI from "../../shared/client.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
-import { htob, concat } from "../../shared/lib.ts";
+import { concat, htob } from "../../shared/lib.ts";
 import type { KeyPair } from "../../shared/types.ts";
 import type { IMessage } from "../../shared/message.ts";
-import { decodeOp } from "../../shared/message.ts";
+import { Decoder } from "../../shared/codec.ts";
+import { type IMessage } from "../../shared/message.ts";
+import {
+  type IMessageHead,
+  messageHeadCodec,
+} from "../../shared/codecs/messageHead.ts";
 import type { IEnvelopeHeader } from "../../shared/envelope.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
@@ -112,7 +117,13 @@ export class DiplomaticClientCLI {
         env.cipher,
         encKey,
       );
-      const msg = await decodeOp(decrypted);
+      const dec = new Decoder(decrypted);
+      const msgHead: IMessageHead = messageHeadCodec.decode(dec);
+      let bod: Uint8Array | undefined;
+      if (msgHead.len > 0) {
+        bod = dec.readBytes(msgHead.len);
+      }
+      const msg: IMessage = { ...msgHead, bod };
       const decodedMsg: IMessageDecoded = {
         eid: msg.eid,
         clk: msg.clk,

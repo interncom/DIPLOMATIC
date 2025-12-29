@@ -1,7 +1,5 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
-  decodeOp,
-  encodeOp,
   genDelete,
   genInsert,
   genKDM,
@@ -10,6 +8,11 @@ import {
   kdmBytes,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
+import { Decoder, Encoder } from "../../shared/codec.ts";
+import {
+  type IMessageHead,
+  messageHeadCodec,
+} from "../../shared/codecs/messageHead.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed
@@ -32,17 +35,34 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: bod.length,
       bod,
     };
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = concat(header, op.bod || new Uint8Array(0));
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
     // Check hsh
-    assertEquals(decoded.hsh, await crypto.blake3(bod));
+    assertEquals(decoded.hsh, hsh);
     // Header should be the prefix without body
-    assertEquals(header.length + (op.bod?.length ?? 0), encoded.length);
+    assertEquals(header.length + (op.bod?.length ?? 0), fullEncoded.length);
   });
 
   await t.step("large ctr and len round-trip", async () => {
@@ -54,20 +74,54 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: bod.length,
       bod,
     };
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = concat(header, op.bod || new Uint8Array(0));
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
-    assertEquals(decoded.hsh, await crypto.blake3(bod));
+    assertEquals(decoded.hsh, hsh);
   });
 
   await t.step("delete operation (len=0, no body)", async () => {
     const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999);
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = header; // No body since len=0
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
@@ -79,14 +133,31 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   await t.step("genInsert round-trip", async () => {
     const content = createFilledArray(42, 0xcc);
     const op = await genInsert(new Date(555555555000), content, crypto);
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = concat(header, op.bod || new Uint8Array(0));
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid.length, eidBytes);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
-    assertEquals(decoded.hsh, await crypto.blake3(content));
+    assertEquals(decoded.hsh, hsh);
   });
 
   await t.step("edge: empty body (upsert)", async () => {
@@ -97,8 +168,25 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       len: 0,
       bod: undefined,
     };
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = header; // No body since len=0
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
@@ -127,10 +215,11 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(kdm.length, kdmBytes);
   });
 
-  await t.step("decodeOp with insufficient data", async () => {
+  await t.step("message head decode with insufficient data", async () => {
     const short = new Uint8Array(eidBytes - 1);
     try {
-      await decodeOp(short);
+      const dec = new Decoder(short);
+      messageHeadCodec.decode(dec);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail due to insufficient data
@@ -147,12 +236,29 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       bod,
     };
     const expectedHsh = await crypto.blake3(bod);
-    const [encoded, header] = await encodeOp(op, crypto);
-    const decoded = await decodeOp(encoded);
+    const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
+    const msgHead: IMessageHead = {
+      eid: op.eid,
+      clk: op.clk,
+      ctr: op.ctr,
+      len: op.len,
+      hsh,
+    };
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, msgHead);
+    const header = enc.result();
+    const fullEncoded = concat(header, op.bod || new Uint8Array(0));
+    const dec = new Decoder(fullEncoded);
+    const decodedHead = messageHeadCodec.decode(dec);
+    let decodedBod: Uint8Array | undefined;
+    if (decodedHead.len > 0) {
+      decodedBod = dec.readBytes(decodedHead.len);
+    }
+    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.hsh, expectedHsh);
   });
 
-  await t.step("decodeOp with invalid varint", async () => {
+  await t.step("message head decode with invalid varint", async () => {
     // Create encoded with invalid varint for ctr
     const eid = createFilledArray(16, 0x99);
     const clkBytes = new Uint8Array(8);
@@ -175,7 +281,8 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     ]); // Too large varint
     const encoded = concat(eid, concat(clkBytes, invalidVarint));
     try {
-      await decodeOp(encoded);
+      const dec = new Decoder(encoded);
+      messageHeadCodec.decode(dec);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail on invalid varint

@@ -17,6 +17,10 @@ A suffix of "enc", e.g. `bagEnc`, indicates that the variable is encoded (binary
 
 # TODOS
 
+ARCH
+- sign bag with key derived from kdm, same as encryption (maybe derive separate ones via "sign" and "encrypt" labels). this secures against forged bag injection if a single bag key is broken or sniffed (e.g. from memory)
+- switch to Schnorr signatures (let hosts maintain multiple ID keys to mitigate loss risk)
+
 ERRORS
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)

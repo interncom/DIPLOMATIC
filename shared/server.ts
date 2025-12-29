@@ -4,9 +4,9 @@ import { hashBytes, Status, tsAuthSize } from "./consts.ts";
 import { envSigValid } from "./envelope.ts";
 import { apiPaths, binResp, cors, respFor } from "./http.ts";
 import { envelopeCodec } from "./codecs/envelope.ts";
-import { envelopePeekItemCodec } from "./codecs/peekItem.ts";
-import { envelopePullItemCodec, type IEnvelopePullItem } from "./codecs/pullItem.ts";
-import { envelopePushItemCodec, type IEnvelopePushItem } from "./codecs/pushItem.ts";
+import { peekItemCodec } from "./codecs/peekItem.ts";
+import { type IEnvelopePullItem, pullItemCodec } from "./codecs/pullItem.ts";
+import { type IEnvelopePushItem, pushItemCodec } from "./codecs/pushItem.ts";
 import type {
   IHostCrypto,
   IStorage,
@@ -75,13 +75,13 @@ export class DiplomaticServer {
             status: Status.InvalidSignature,
             hash,
           };
-          enc.writeStruct(envelopePushItemCodec, item);
+          enc.writeStruct(pushItemCodec, item);
           continue;
         }
         await storage.setEnvelope(pubKey, now, env, hash);
         await notifier.notify(pubKey as PublicKey);
         const item: IEnvelopePushItem = { status: Status.Success, hash };
-        enc.writeStruct(envelopePushItemCodec, item);
+        enc.writeStruct(pushItemCodec, item);
       }
       return binResp(enc);
     } catch (err) {
@@ -98,7 +98,7 @@ export class DiplomaticServer {
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
           const item: IEnvelopePullItem = { hash: headHash, bodyCph };
-          enc.writeStruct(envelopePullItemCodec, item);
+          enc.writeStruct(pullItemCodec, item);
         }
       }
       return binResp(enc);
@@ -120,7 +120,7 @@ export class DiplomaticServer {
       const items = await storage.listHeads(pubKey, begin, end);
 
       const enc = new Encoder();
-      enc.writeStructs(envelopePeekItemCodec, items);
+      enc.writeStructs(peekItemCodec, items);
       return binResp(enc);
     } catch (err) {
       return respFor(Status.InternalError);

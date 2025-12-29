@@ -1,18 +1,9 @@
 import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
 import { Encoder } from "./codec.ts";
 import { envelopeCodec } from "./codecs/envelope.ts";
-import {
-  envelopePeekItemCodec,
-  type IEnvelopePeekItem,
-} from "./codecs/peekItem.ts";
-import {
-  envelopePullItemCodec,
-  type IEnvelopePullItem,
-} from "./codecs/pullItem.ts";
-import {
-  envelopePushItemCodec,
-  type IEnvelopePushItem,
-} from "./codecs/pushItem.ts";
+import { type IEnvelopePeekItem, peekItemCodec } from "./codecs/peekItem.ts";
+import { type IEnvelopePullItem, pullItemCodec } from "./codecs/pullItem.ts";
+import { type IEnvelopePushItem, pushItemCodec } from "./codecs/pushItem.ts";
 import { Enclave } from "./enclave.ts";
 import { envelopeFor } from "./envelope.ts";
 import { apiPaths, post } from "./http.ts";
@@ -86,7 +77,7 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(apiPaths.push, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(envelopePushItemCodec);
+    return dec.readStructs(pushItemCodec);
   }
 
   async pull(
@@ -107,7 +98,7 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(apiPaths.pull, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(envelopePullItemCodec);
+    return dec.readStructs(pullItemCodec);
   }
 
   async peek(
@@ -125,6 +116,6 @@ export default class DiplomaticClientAPI {
 
     const url = new URL(apiPaths.peek, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(envelopePeekItemCodec);
+    return dec.readStructs(peekItemCodec);
   }
 }

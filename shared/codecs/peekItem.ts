@@ -7,7 +7,7 @@ export interface IEnvelopePeekItem {
   headCph: Uint8Array;
 }
 
-export const envelopePeekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
+export const peekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
     enc.writeDate(item.recordedAt);

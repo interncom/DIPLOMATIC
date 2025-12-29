@@ -1,17 +1,13 @@
 // Envelope is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
-
 // The envelope includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
-// The ciphertext follows without an embedded length field, as its length is part of the encrypted message header.
 
-import { Decoder, Encoder } from "./codec.ts";
+import { Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
-import { kdmBytes, sigBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { genKDM, IMessage } from "./message.ts";
 import type {
   ICrypto,
   IEnvelope,
-  IEnvelopeHeader,
   IHostCrypto,
   KeyPair,
   PublicKey,
@@ -33,15 +29,6 @@ export async function makeEnvelope(
     headCph,
     bodyCph,
   };
-}
-
-export function decodeEnvelopeHeader(encoded: Uint8Array): IEnvelopeHeader {
-  const dec = new Decoder(encoded);
-  const sig = dec.readBytes(sigBytes);
-  const kdm = dec.readBytes(kdmBytes);
-  const lenHeadCph = dec.readVarInt();
-  const lenBodyCph = dec.readVarInt();
-  return { sig, kdm, lenHeadCph, lenBodyCph };
 }
 
 export function envSigValid(

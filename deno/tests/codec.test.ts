@@ -3,7 +3,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Decoder } from "../../shared/codec.ts";
-import { encode_varint, decode_varint } from "../../shared/codec.ts";
+import { decodeVarInt, encodeVarInt } from "../../shared/codec.ts";
 import { concat } from "../../shared/lib.ts";
 
 Deno.test("Decoder readBytes", () => {
@@ -25,7 +25,7 @@ Deno.test("Decoder readBigInt", () => {
 });
 
 Deno.test("Decoder readVarInt", () => {
-  const varint = encode_varint(42);
+  const varint = encodeVarInt(42);
   const dec = new Decoder(varint);
   const num = dec.readVarInt();
   assertEquals(num, 42);
@@ -37,7 +37,7 @@ Deno.test("Decoder sequential reads", () => {
   const bytes4 = new Uint8Array([1, 2, 3, 4]);
   const bigintData = new Uint8Array(8);
   new DataView(bigintData.buffer).setBigUint64(0, 999n, false);
-  const varintData = encode_varint(5);
+  const varintData = encodeVarInt(5);
   const bytes2 = new Uint8Array([7, 8]);
   const all = concat(bytes4, bigintData);
   const temp = concat(all, varintData);
@@ -95,7 +95,7 @@ Deno.test("Encoder writeVarInt", () => {
   const enc = new Encoder();
   enc.writeVarInt(42);
   const result = enc.result();
-  assertEquals(result, encode_varint(42));
+  assertEquals(result, encodeVarInt(42));
 });
 
 Deno.test("Encoder sequential writes", () => {
@@ -109,7 +109,7 @@ Deno.test("Encoder sequential writes", () => {
   const bytes4 = new Uint8Array([1, 2]);
   const bigintData = new Uint8Array(8);
   new DataView(bigintData.buffer).setBigUint64(0, 999n, false);
-  const varintData = encode_varint(5);
+  const varintData = encodeVarInt(5);
   const bytes2 = new Uint8Array([7, 8]);
   const expected = concat(
     bytes4,
@@ -244,48 +244,48 @@ Deno.test("Decoder readBytes at exact end", () => {
 });
 
 Deno.test("encode_varint 0", () => {
-  const encoded = encode_varint(0);
+  const encoded = encodeVarInt(0);
   assertEquals(encoded, new Uint8Array([0]));
 });
 
 Deno.test("decode_varint 0", () => {
-  const { value, bytesRead } = decode_varint(new Uint8Array([0]));
+  const { value, bytesRead } = decodeVarInt(new Uint8Array([0]));
   assertEquals(value, 0);
   assertEquals(bytesRead, 1);
 });
 
 Deno.test("roundtrip small numbers", () => {
   for (let i = 1; i < 1000; i++) {
-    const encoded = encode_varint(i);
-    const { value } = decode_varint(encoded);
+    const encoded = encodeVarInt(i);
+    const { value } = decodeVarInt(encoded);
     assertEquals(value, i);
   }
 });
 
 Deno.test("roundtrip large number", () => {
   const n = 123456789;
-  const encoded = encode_varint(n);
-  const { value } = decode_varint(encoded);
+  const encoded = encodeVarInt(n);
+  const { value } = decodeVarInt(encoded);
   assertEquals(value, n);
 });
 
 Deno.test("encode_varint 32-bit max", () => {
   const n = 2 ** 32 - 1;
-  const encoded = encode_varint(n);
-  const { value } = decode_varint(encoded);
+  const encoded = encodeVarInt(n);
+  const { value } = decodeVarInt(encoded);
   assertEquals(value, n);
 });
 
 Deno.test("decode_varint with offset", () => {
   const data = new Uint8Array([0x80, 0x01, 0x00]); // varint 128 + data
-  const { value, bytesRead } = decode_varint(data, 0);
+  const { value, bytesRead } = decodeVarInt(data, 0);
   assertEquals(value, 128);
   assertEquals(bytesRead, 2);
 });
 
 Deno.test("decode_varint incomplete throws error", () => {
   assertThrows(() => {
-    decode_varint(new Uint8Array([0x80])); // incomplete
+    decodeVarInt(new Uint8Array([0x80])); // incomplete
   });
 });
 
@@ -294,7 +294,7 @@ Deno.test("decode_varint too long throws error", () => {
   longVarint.fill(0x80);
   assertThrows(
     () => {
-      decode_varint(longVarint);
+      decodeVarInt(longVarint);
     },
     Error,
     "Varint too long",

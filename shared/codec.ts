@@ -1,4 +1,4 @@
-export function encode_varint(n: number | bigint): Uint8Array {
+export function encodeVarInt(n: number | bigint): Uint8Array {
   if (typeof n !== "bigint") n = BigInt(n);
   const bytes: number[] = [];
   while (n > 0n) {
@@ -16,7 +16,7 @@ export function encode_varint(n: number | bigint): Uint8Array {
   return new Uint8Array(bytes);
 }
 
-export function decode_varint(
+export function decodeVarInt(
   bytes: Uint8Array,
   offset: number = 0,
 ): { value: number | bigint; bytesRead: number } {
@@ -77,7 +77,7 @@ export class Decoder {
     if (this.pos >= this.data.length) {
       throw new Error("Not enough data to read VarInt");
     }
-    const decode = decode_varint(this.data, this.pos);
+    const decode = decodeVarInt(this.data, this.pos);
     this.pos += decode.bytesRead;
     const val = decode.value;
     return typeof val === "bigint" ? Number(val) : val;
@@ -132,7 +132,7 @@ export class Encoder {
     if (n < 0) {
       throw new Error("Cannot write negative VarInt");
     }
-    this.parts.push(encode_varint(n));
+    this.parts.push(encodeVarInt(n));
   }
 
   writeBytes(bytes: Uint8Array): void {

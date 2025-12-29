@@ -1,4 +1,4 @@
-import type { IEnvelopePeekItem } from "./codecs/peekItem.ts";
+import type { IBagPeekItem } from "./codecs/peekItem.ts";
 
 export enum Verb {
   DELETE = 0,
@@ -49,10 +49,10 @@ export interface IOperationRequest {
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<void>;
   hasUser: (pubKey: PublicKey) => Promise<boolean>;
-  setEnvelope: (
+  setBag: (
     pubKey: PublicKey,
     recordedAt: Date,
-    env: IEnvelope,
+    bag: IBag,
     sha256: Uint8Array,
   ) => Promise<void>;
   getBody: (
@@ -63,7 +63,7 @@ export interface IStorage {
     pubKey: PublicKey,
     begin: string,
     end: string,
-  ) => Promise<IEnvelopePeekItem[]>;
+  ) => Promise<IBagPeekItem[]>;
 }
 
 export interface KeyPair {
@@ -131,16 +131,16 @@ export interface IWebsocketNotifier {
   notify: (pubKey: PublicKey) => Promise<void>;
 }
 
-export interface IEnvelopeHeader {
+export interface IBagHeader {
   sig: Uint8Array;
   kdm: Uint8Array;
   lenHeadCph: number;
   lenBodyCph: number;
 }
 
-export interface IEnvelope extends IEnvelopeHeader {
+export interface IBag extends IBagHeader {
   headCph: Uint8Array;
   bodyCph: Uint8Array;
 }
 
-export type EncodedEnvelope = Uint8Array;
+export type EncodedBag = Uint8Array;

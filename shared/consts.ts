@@ -9,7 +9,7 @@ export const clkBytes = 8;
 export const hshBytes = 32;
 
 export const tsAuthSize = pubKeyBytes + sigBytes + lenBytes;
-export const envelopeHeaderSize = sigBytes + kdmBytes + lenBytes + lenBytes;
+export const bagHeaderSize = sigBytes + kdmBytes + lenBytes + lenBytes;
 export const responseItemSize = 33; // status (1) + hash (32)
 export const clockToleranceMs = 30000;
 

@@ -1,11 +1,11 @@
 import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
 import { Encoder } from "./codec.ts";
-import { envelopeCodec } from "./codecs/envelope.ts";
-import { type IEnvelopePeekItem, peekItemCodec } from "./codecs/peekItem.ts";
-import { type IEnvelopePullItem, pullItemCodec } from "./codecs/pullItem.ts";
-import { type IEnvelopePushItem, pushItemCodec } from "./codecs/pushItem.ts";
+import { bagCodec } from "./codecs/bag.ts";
+import { type IBagPeekItem, peekItemCodec } from "./codecs/peekItem.ts";
+import { type IBagPullItem, pullItemCodec } from "./codecs/pullItem.ts";
+import { type IBagPushItem, pushItemCodec } from "./codecs/pushItem.ts";
 import { Enclave } from "./enclave.ts";
-import { envelopeFor } from "./envelope.ts";
+import { bagFor } from "./bag.ts";
 import { apiPaths, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
 import type { ICrypto, KeyPair } from "./types.ts";
@@ -70,7 +70,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IterableIterator<IEnvelopePushItem>> {
+  ): Promise<IterableIterator<IBagPushItem>> {
     const { crypto, enclave } = this;
     const { keyPair, tsAuth } = await this.authDataFor(now, keyPath, idx);
 
@@ -78,8 +78,8 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
 
     for (const op of ops) {
-      const env = await envelopeFor(op, keyPair, crypto, enclave);
-      enc.writeStruct(envelopeCodec, env);
+      const bag = await bagFor(op, keyPair, crypto, enclave);
+      enc.writeStruct(bagCodec, bag);
     }
 
     const url = new URL(apiPaths.push, hostURL);
@@ -93,7 +93,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IterableIterator<IEnvelopePullItem>> {
+  ): Promise<IterableIterator<IBagPullItem>> {
     const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();
@@ -111,7 +111,7 @@ export default class DiplomaticClientAPI {
     keyPath: string,
     idx: number,
     now: Date,
-  ): Promise<IterableIterator<IEnvelopePeekItem>> {
+  ): Promise<IterableIterator<IBagPeekItem>> {
     const { tsAuth } = await this.authDataFor(now, keyPath, idx);
 
     const enc = new Encoder();

@@ -1,6 +1,6 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
 import type { IEnvelope, IStorage } from "../../../shared/types.ts";
-import { htob, btoh, concat } from "../../../shared/lib.ts";
+import { btoh, concat, htob } from "../../../shared/lib.ts";
 import libsodiumCrypto from "../crypto.ts";
 
 const db = new DB("diplomatic.db");
@@ -10,7 +10,7 @@ db.query(`
   );
 `);
 db.query(`
-  CREATE TABLE IF NOT EXISTS envelopes (
+  CREATE TABLE IF NOT EXISTS bag (
       userPubKey TEXT,
       recordedAt TEXT,
       sha256 BLOB,
@@ -45,7 +45,7 @@ const sqliteStorage: IStorage = {
     const headCph = concat(concat(env.sig, env.kdm), env.headCph);
     const bodyCph = env.bodyCph;
     db.query(
-      "INSERT INTO envelopes (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+      "INSERT INTO bag (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
       [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
     );
   },
@@ -53,7 +53,7 @@ const sqliteStorage: IStorage = {
   async getBody(pubKey, sha256) {
     const pubKeyHex = btoh(pubKey);
     const rows = db.query<[Uint8Array]>(
-      "SELECT bodyCph FROM envelopes WHERE userPubKey = ? AND sha256 = ?",
+      "SELECT bodyCph FROM bag WHERE userPubKey = ? AND sha256 = ?",
       [pubKeyHex, sha256],
     );
     const row = rows[0];
@@ -66,7 +66,7 @@ const sqliteStorage: IStorage = {
   async listHeads(pubKey, begin, end) {
     const pubKeyHex = btoh(pubKey);
     const rows = db.query<[Uint8Array, string, Uint8Array]>(
-      "SELECT sha256, recordedAt, headCph FROM envelopes WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
+      "SELECT sha256, recordedAt, headCph FROM bag WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
       [pubKeyHex, begin, end],
     );
     return rows.map(([sha256, recordedAt, headCph]) => ({

@@ -1,13 +1,13 @@
 import { ICodecStruct } from "../codec.ts";
 import { hashBytes } from "../consts.ts";
 
-export interface IEnvelopePeekItem {
+export interface IBagPeekItem {
   hash: Uint8Array;
   recordedAt: Date;
   headCph: Uint8Array;
 }
 
-export const peekItemCodec: ICodecStruct<IEnvelopePeekItem> = {
+export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
     enc.writeDate(item.recordedAt);

@@ -1,15 +1,15 @@
 import { ICodecStruct } from "../codec.ts";
 import { kdmBytes, sigBytes } from "../consts.ts";
-import type { IEnvelope } from "../types.ts";
+import type { IBag } from "../types.ts";
 
-export const envelopeCodec: ICodecStruct<IEnvelope> = {
-  encode(enc, env) {
-    enc.writeBytes(env.sig);
-    enc.writeBytes(env.kdm);
-    enc.writeVarInt(env.lenHeadCph);
-    enc.writeVarInt(env.lenBodyCph);
-    enc.writeBytes(env.headCph);
-    enc.writeBytes(env.bodyCph);
+export const bagCodec: ICodecStruct<IBag> = {
+  encode(enc, bag) {
+    enc.writeBytes(bag.sig);
+    enc.writeBytes(bag.kdm);
+    enc.writeVarInt(bag.lenHeadCph);
+    enc.writeVarInt(bag.lenBodyCph);
+    enc.writeBytes(bag.headCph);
+    enc.writeBytes(bag.bodyCph);
   },
   decode(dec) {
     const sig = dec.readBytes(sigBytes);

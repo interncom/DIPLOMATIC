@@ -1,5 +1,5 @@
-// Envelope is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
-// The envelope includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
+// Bag is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
+// The bag includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 
 import { Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
@@ -7,20 +7,20 @@ import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { IMessage } from "./message.ts";
 import type {
+  IBag,
   ICrypto,
-  IEnvelope,
   IHostCrypto,
   KeyPair,
   PublicKey,
 } from "./types.ts";
 
-export async function makeEnvelope(
+export async function makeBag(
   keyPair: KeyPair,
   headCph: Uint8Array,
   bodyCph: Uint8Array,
   kdm: Uint8Array,
   crypto: ICrypto,
-): Promise<IEnvelope> {
+): Promise<IBag> {
   const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
   return {
     sig,
@@ -32,20 +32,20 @@ export async function makeEnvelope(
   };
 }
 
-export function envSigValid(
-  env: IEnvelope,
+export function bagSigValid(
+  bag: IBag,
   pubKey: PublicKey,
   crypto: IHostCrypto,
 ): Promise<boolean> {
-  return crypto.checkSigEd25519(env.sig, env.headCph, pubKey);
+  return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
 }
 
-export async function envelopeFor(
+export async function bagFor(
   op: IMessage,
   keyPair: KeyPair,
   crypto: ICrypto,
   enclave: Enclave,
-): Promise<IEnvelope> {
+): Promise<IBag> {
   let hsh: Uint8Array | undefined;
   if (op.bod && op.len > 0) {
     hsh = await crypto.blake3(op.bod);
@@ -73,8 +73,8 @@ export async function envelopeFor(
     ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
     : new Uint8Array(0);
 
-  // Wrap in envelope.
-  return makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+  // Wrap in bag.
+  return makeBag(keyPair, headCph, bodyCph, kdm, crypto);
 }
 
 export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {

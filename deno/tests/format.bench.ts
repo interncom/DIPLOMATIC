@@ -1,8 +1,8 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM, makeEnvelope } from "../../shared/envelope.ts";
+import { genKDM, makeBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
-import { envelopeCodec } from "../../shared/codecs/envelope.ts";
-import type { IEnvelope } from "../../shared/types.ts";
+import { bagCodec } from "../../shared/codecs/bag.ts";
+import type { IBag } from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
 import {
   type IMessageHead,
@@ -31,7 +31,7 @@ const op: IMessage = {
   bod,
 };
 
-async function fullyEncodeEnvelope(op: IMessage): Promise<Uint8Array> {
+async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
   const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
   const headStruct: IMessageHead = {
     eid: op.eid,
@@ -50,21 +50,21 @@ async function fullyEncodeEnvelope(op: IMessage): Promise<Uint8Array> {
     throw new Error("ahhh!");
   }
   const bodyCph = await crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey);
-  const env = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+  const bag = await makeBag(keyPair, headCph, bodyCph, kdm, crypto);
   const enc = new Encoder();
-  enc.writeStruct(envelopeCodec, env);
+  enc.writeStruct(bagCodec, bag);
   return enc.result();
 }
 
 Deno.bench("full encode op", async (b) => {
-  await fullyEncodeEnvelope(op);
+  await fullyEncodeBag(op);
 });
 
-const envelope = await fullyEncodeEnvelope(op);
+const bag = await fullyEncodeBag(op);
 
 Deno.bench("full decode op", async (b) => {
-  const decoder = new Decoder(envelope);
-  const decodedEnv: IEnvelope = decoder.readStruct(envelopeCodec);
+  const decoder = new Decoder(bag);
+  const decodedEnv: IBag = decoder.readStruct(bagCodec);
   const kdm = decodedEnv.kdm;
   const encKey = await enclave.deriveFromKDM(kdm);
   const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(

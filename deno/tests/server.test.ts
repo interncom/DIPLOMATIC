@@ -70,7 +70,7 @@ Deno.test("server", async (t) => {
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
     result = [...(await client.push(url, ops, hostID, hostIdx, now))];
-    assertEquals(result.length, 2); // Should return status-hash pairs for each envelope
+    assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);
       assertEquals(res.hash.length, 32);

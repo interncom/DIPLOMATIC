@@ -1,12 +1,20 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { makeEnvelope } from "../../shared/envelope.ts";
+import { genKDM, makeEnvelope } from "../../shared/envelope.ts";
 import { envelopeCodec } from "../../shared/codecs/envelope.ts";
 import type { IEnvelope, PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
+import { kdmBytes } from "../../shared/consts.ts";
 
 Deno.test("envelope", async (t) => {
   const crypto = libsodiumCrypto;
+
+  await t.step("genKDM", async () => {
+    const kdm = await genKDM(crypto);
+    assertEquals(kdm.length, 8);
+    // Now it's random, just check length
+    assertEquals(kdm.length, kdmBytes);
+  });
 
   await t.step("makeEnvelope", async () => {
     const headCph = new Uint8Array([1, 2, 3]);

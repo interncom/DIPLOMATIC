@@ -1,5 +1,5 @@
 import { ICodecStruct } from "../codec.ts";
-import { eidBytes, hshBytes } from "../message.ts";
+import { eidBytes, hshBytes } from "../consts.ts";
 
 export interface IMessageHead {
   eid: Uint8Array;

@@ -3,8 +3,9 @@
 
 import { Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
+import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { genKDM, IMessage } from "./message.ts";
+import { IMessage } from "./message.ts";
 import type {
   ICrypto,
   IEnvelope,
@@ -74,4 +75,9 @@ export async function envelopeFor(
 
   // Wrap in envelope.
   return makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+}
+
+export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {
+  const random = await crypto.gen128BitRandomID();
+  return random.slice(0, kdmBytes);
 }

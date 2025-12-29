@@ -1,24 +1,15 @@
 // Deno test file for sigProof functions
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { concat, uint8ArraysEqual } from "../../shared/lib.ts";
 import {
-  encodeSigProvenData,
   decodeSigProvenData,
-  sigProof,
+  encodeSigProvenData,
   type ISigProvenData,
+  sigProof,
 } from "../../shared/sigProof.ts";
-import { uint8ArraysEqual, btoh } from "../../shared/lib.ts";
-import { concat } from "../../shared/lib.ts";
 import type { DerivationSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-
-// function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-//   if (a.length !== b.length) return false;
-//   for (let i = 0; i < a.length; i++) {
-//     if (a[i] !== b[i]) return false;
-//   }
-//   return true;
-// }
 
 Deno.test(
   "encodeSigProvenData and decodeSigProvenData round-trip with real crypto",

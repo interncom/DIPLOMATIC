@@ -1,5 +1,3 @@
-import { concat } from "./lib.ts";
-
 export function encode_varint(n: number | bigint): Uint8Array {
   if (typeof n !== "bigint") n = BigInt(n);
   const bytes: number[] = [];

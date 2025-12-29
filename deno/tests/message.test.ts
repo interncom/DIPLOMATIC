@@ -1,12 +1,12 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import {
-  encodeOp,
   decodeOp,
-  IMessage,
-  genInsert,
+  encodeOp,
   genDelete,
-  genUpsert,
+  genInsert,
   genKDM,
+  genUpsert,
+  IMessage,
   kdmBytes,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
@@ -14,7 +14,6 @@ import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed
 const eidBytes = 16;
-const clkBytes = 8;
 
 // Helper to create a Uint8Array of given length filled with a value
 function createFilledArray(length: number, value: number): Uint8Array {
@@ -163,7 +162,16 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       false,
     );
     const invalidVarint = new Uint8Array([
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
     ]); // Too large varint
     const encoded = concat(eid, concat(clkBytes, invalidVarint));
     try {

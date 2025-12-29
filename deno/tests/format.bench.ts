@@ -1,17 +1,16 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { makeEnvelope } from "../../shared/envelope.ts";
-import { Encoder, Decoder } from "../../shared/codec.ts";
+import { Decoder, Encoder } from "../../shared/codec.ts";
 import { envelopeCodec } from "../../shared/protocol.ts";
 import {
-  kdmBytes,
-  encodeOp,
   decodeOp,
+  encodeOp,
   genKDM,
   type IMessage,
 } from "../../shared/message.ts";
 import { concat } from "../../shared/lib.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import type { MasterSeed, EncodedEnvelope } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/types.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
 // Setup crypto and keypair
@@ -33,7 +32,7 @@ const op: IMessage = {
 };
 
 async function fullyEncodeEnvelope(op: IMessage): Promise<Uint8Array> {
-  const [encMsg, msgHead] = await encodeOp(op, crypto);
+  const [, msgHead] = await encodeOp(op, crypto);
   const kdm = await genKDM(crypto);
   const encKey = await enclave.deriveFromKDM(kdm);
   const headCph = await crypto.encryptXSalsa20Poly1305Combined(msgHead, encKey);
@@ -57,7 +56,6 @@ Deno.bench("full decode op", async (b) => {
   const decoder = new Decoder(envelope);
   const decodedEnv = decoder.readStruct(envelopeCodec);
   const kdm = decodedEnv.kdm;
-  const cipherMsg = concat(decodedEnv.headCph, decodedEnv.bodyCph);
   const encKey = await enclave.deriveFromKDM(kdm);
   const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(
     decodedEnv.headCph,

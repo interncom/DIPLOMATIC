@@ -1,6 +1,6 @@
-import type { ICrypto, KeyPair } from "./types.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { concat } from "./lib.ts";
+import type { ICrypto } from "./types.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.

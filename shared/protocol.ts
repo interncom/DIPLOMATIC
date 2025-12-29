@@ -1,6 +1,6 @@
-import { Encoder, Decoder, ICodecStruct } from "./codec.ts";
-import { Status, hashBytes, sigBytes, kdmBytes } from "./consts.ts";
-import type { IEnvelope, IEnvelopeHeader } from "./types.ts";
+import { ICodecStruct } from "./codec.ts";
+import { hashBytes, kdmBytes, sigBytes, Status } from "./consts.ts";
+import type { IEnvelope } from "./types.ts";
 
 export interface IEnvelopePeekItem {
   hash: Uint8Array;

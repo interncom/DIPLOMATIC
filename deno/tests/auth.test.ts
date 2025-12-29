@@ -1,8 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@0.223.0";
-import { timestampAuthProof } from "../../shared/auth.ts";
+import { authTimestampCodec, timestampAuthProof } from "../../shared/auth.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { concat } from "../../shared/lib.ts";
-import { decodeSigProvenData } from "../../shared/sigProof.ts";
+import libsodiumCrypto from "../src/crypto.ts";
 import type {
   DerivationSeed,
   ICrypto,
@@ -138,20 +138,16 @@ Deno.test(
     const result = await timestampAuthProof(keyPair, ts, mockCrypto);
 
     // Decode the encoded data
-    const decoded = decodeSigProvenData(result);
+    const dec = new Decoder(result);
+    const decoded = authTimestampCodec.decode(dec);
 
     // Check decoded fields match inputs
 
     // Check that pubKey matches expected
     assertEquals(decoded.pubKey, publicKeyRaw as PublicKey);
 
-    // Check that data is the encoded timestamp
-    assertEquals(decoded.data, expectedEncodedTs);
-
-    // Check that the encoded timestamp can be roundtripped
-    const dec = new Decoder(decoded.data);
-    const decodedTs = dec.readDate();
-    assertEquals(decodedTs, ts);
+    // Check that timestamp matches
+    assertEquals(decoded.timestamp, ts);
   },
 );
 
@@ -173,15 +169,23 @@ Deno.test("timestampAuthProof works with different timestamp", async () => {
   );
   const result = await timestampAuthProof(keyPair, ts, mockCrypto);
 
-  const decoded = decodeSigProvenData(result);
+  const dec = new Decoder(result);
+  const decoded = authTimestampCodec.decode(dec);
 
-  const expectedEncodedTs = new Uint8Array(8);
-  new DataView(expectedEncodedTs.buffer).setBigUint64(0, BigInt(0), false);
-  assertEquals(decoded.data, expectedEncodedTs);
+  // Check that timestamp is correct
+  assertEquals(decoded.timestamp.getTime(), ts.getTime());
+});
 
-  // Check that the encoded timestamp can be roundtripped
-  const decodedTimestampMs = Number(
-    new DataView(decoded.data.buffer).getBigUint64(0, false),
-  );
-  assertEquals(decodedTimestampMs, ts.getTime());
+Deno.test("authTimestampCodec with invalid data length", () => {
+  const shortEncoded = new Uint8Array(90); // less than 96 (32+64+8)
+  try {
+    const dec = new Decoder(shortEncoded);
+    authTimestampCodec.decode(dec);
+    throw new Error("Should have thrown");
+  } catch (e) {
+    assertEquals(
+      (e as Error).message,
+      "Not enough data to read requested bytes",
+    );
+  }
 });

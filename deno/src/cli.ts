@@ -10,7 +10,7 @@ import {
   type IMessageHead,
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
-import type { IEnvelopeHeader } from "../../shared/envelope.ts";
+import type { IEnvelopeHeader } from "../../shared/bag.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
 export interface IMessageDecoded {
@@ -102,7 +102,7 @@ export class DiplomaticClientCLI {
   }
 
   async pull(hashes: Uint8Array[]): Promise<IMessageDecoded[]> {
-    const envelopes = await this.api.pull(
+    const bag = await this.api.pull(
       this.hostURL,
       hashes,
       this.seed,
@@ -111,7 +111,7 @@ export class DiplomaticClientCLI {
       new Date(),
     );
     const messages: IMessageDecoded[] = [];
-    for (const env of envelopes) {
+    for (const env of bag) {
       const encKey = await libsodiumCrypto.blake3(concat(this.seed, env.kdm));
       const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
         env.cipher,

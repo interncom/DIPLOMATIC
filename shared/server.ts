@@ -1,11 +1,11 @@
 import { validateTsAuth } from "./auth.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { envelopeCodec } from "./codecs/envelope.ts";
+import { bagCodec } from "./codecs/bag.ts";
 import { peekItemCodec } from "./codecs/peekItem.ts";
-import { type IEnvelopePullItem, pullItemCodec } from "./codecs/pullItem.ts";
-import { type IEnvelopePushItem, pushItemCodec } from "./codecs/pushItem.ts";
+import { type IBagPullItem, pullItemCodec } from "./codecs/pullItem.ts";
+import { type IBagPushItem, pushItemCodec } from "./codecs/pushItem.ts";
 import { hashBytes, Status, tsAuthSize } from "./consts.ts";
-import { envSigValid } from "./envelope.ts";
+import { bagSigValid } from "./bag.ts";
 import { apiPaths, binResp, cors, respFor } from "./http.ts";
 import type {
   IHostCrypto,
@@ -76,20 +76,20 @@ export class DiplomaticServer {
     const now = new Date();
     try {
       const enc = new Encoder();
-      for (const env of dec.readStructs(envelopeCodec)) {
-        const hash = await crypto.sha256Hash(env.headCph);
-        const sigValid = await envSigValid(env, pubKey, crypto);
+      for (const bag of dec.readStructs(bagCodec)) {
+        const hash = await crypto.sha256Hash(bag.headCph);
+        const sigValid = await bagSigValid(bag, pubKey, crypto);
         if (!sigValid) {
-          const item: IEnvelopePushItem = {
+          const item: IBagPushItem = {
             status: Status.InvalidSignature,
             hash,
           };
           enc.writeStruct(pushItemCodec, item);
           continue;
         }
-        await storage.setEnvelope(pubKey, now, env, hash);
+        await storage.setBag(pubKey, now, bag, hash);
         await notifier.notify(pubKey as PublicKey);
-        const item: IEnvelopePushItem = { status: Status.Success, hash };
+        const item: IBagPushItem = { status: Status.Success, hash };
         enc.writeStruct(pushItemCodec, item);
       }
       return binResp(enc);
@@ -105,7 +105,7 @@ export class DiplomaticServer {
       for (const headHash of dec.readBytesSeq(hashBytes)) {
         const bodyCph = await storage.getBody(pubKey, headHash);
         if (bodyCph) {
-          const item: IEnvelopePullItem = { hash: headHash, bodyCph };
+          const item: IBagPullItem = { hash: headHash, bodyCph };
           enc.writeStruct(pullItemCodec, item);
         }
       }

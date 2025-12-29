@@ -1,11 +1,10 @@
-import { htob, btoh, concat } from "../../../shared/lib.ts";
-import type { IEnvelope, IStorage, PublicKey } from "../../../shared/types.ts";
-import libsodiumCrypto from "../crypto.ts";
-import type { IEnvelopePeekItem } from "../../../shared/codecs/peekItem.ts";
+import { btoh, concat, htob } from "../../../shared/lib.ts";
+import type { IStorage } from "../../../shared/types.ts";
+import type { IBagPeekItem } from "../../../shared/codecs/peekItem.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
-  envelopes: Map<
+  bag: Map<
     string,
     {
       headCph: Uint8Array;
@@ -17,7 +16,7 @@ interface IMemoryStorage extends IStorage {
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
-  envelopes: new Map(), // Sha256Hex => envelope parts.
+  bag: new Map(), // Sha256Hex => bag parts.
 
   async addUser(pubKey) {
     const pubKeyHex = btoh(pubKey);
@@ -29,12 +28,12 @@ const memStorage: IMemoryStorage = {
     return this.users.has(pubKeyHex);
   },
 
-  async setEnvelope(pubKey, recordedAt, env, sha256) {
+  async setBag(pubKey, recordedAt, bag, sha256) {
     const pubKeyHex = btoh(pubKey);
     const storageKey = btoh(sha256);
-    const headCph = concat(concat(env.sig, env.kdm), env.headCph);
-    const bodyCph = env.bodyCph;
-    this.envelopes.set(storageKey, {
+    const headCph = concat(concat(bag.sig, bag.kdm), bag.headCph);
+    const bodyCph = bag.bodyCph;
+    this.bag.set(storageKey, {
       pubKeyHex,
       headCph,
       bodyCph,
@@ -45,7 +44,7 @@ const memStorage: IMemoryStorage = {
   async getBody(pubKey, sha256) {
     const pubKeyHex = btoh(pubKey);
     const sha256Hex = btoh(sha256);
-    const item = this.envelopes.get(sha256Hex);
+    const item = this.bag.get(sha256Hex);
     if (item?.pubKeyHex !== pubKeyHex) {
       return;
     }
@@ -54,8 +53,8 @@ const memStorage: IMemoryStorage = {
 
   async listHeads(pubKey, begin, end) {
     const pubKeyHex = btoh(pubKey);
-    const list: IEnvelopePeekItem[] = [];
-    for (const [key, item] of this.envelopes.entries()) {
+    const list: IBagPeekItem[] = [];
+    for (const [key, item] of this.bag.entries()) {
       const ts = item.recordedAt.toISOString();
       if (item.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
         const sha256 = htob(key);

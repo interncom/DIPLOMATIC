@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   pubKey TEXT PRIMARY KEY
 );
 
-DROP TABLE IF EXISTS envelopes;
-CREATE TABLE IF NOT EXISTS envelopes (
+DROP TABLE IF EXISTS bag;
+CREATE TABLE IF NOT EXISTS bag (
   userPubKey TEXT,
   recordedAt TEXT,
   sha256 BLOB,

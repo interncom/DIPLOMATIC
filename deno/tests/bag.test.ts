@@ -1,12 +1,12 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM, makeEnvelope } from "../../shared/envelope.ts";
-import { envelopeCodec } from "../../shared/codecs/envelope.ts";
-import type { IEnvelope, PrivateKey, PublicKey } from "../../shared/types.ts";
+import { genKDM, makeBag } from "../../shared/bag.ts";
+import { bagCodec } from "../../shared/codecs/bag.ts";
+import type { IBag, PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { kdmBytes } from "../../shared/consts.ts";
 
-Deno.test("envelope", async (t) => {
+Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
 
   await t.step("genKDM", async () => {
@@ -16,7 +16,7 @@ Deno.test("envelope", async (t) => {
     assertEquals(kdm.length, kdmBytes);
   });
 
-  await t.step("makeEnvelope", async () => {
+  await t.step("makeBag", async () => {
     const headCph = new Uint8Array([1, 2, 3]);
     const bodyCph = new Uint8Array([4, 5, 6]);
     const kdm = new Uint8Array(8).fill(0x44);
@@ -25,7 +25,7 @@ Deno.test("envelope", async (t) => {
       privateKey: new Uint8Array(64).fill(0x22) as PrivateKey,
       publicKey: new Uint8Array(32).fill(0x33) as PublicKey,
     };
-    const result = await makeEnvelope(keyPair, headCph, bodyCph, kdm, crypto);
+    const result = await makeBag(keyPair, headCph, bodyCph, kdm, crypto);
     // Compute expected sig: sign(headCph, privateKey)
     const expectedSig = await crypto.signEd25519(headCph, keyPair.privateKey);
     assertEquals(result.sig, expectedSig);
@@ -36,8 +36,8 @@ Deno.test("envelope", async (t) => {
     assertEquals(result.bodyCph, bodyCph);
   });
 
-  await t.step("encodeEnvelope", async () => {
-    const op: IEnvelope = {
+  await t.step("encodeBag", async () => {
+    const op: IBag = {
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
       lenHeadCph: 3,
@@ -46,7 +46,7 @@ Deno.test("envelope", async (t) => {
       bodyCph: new Uint8Array([13, 14]),
     };
     const enc = new Encoder();
-    enc.writeStruct(envelopeCodec, op);
+    enc.writeStruct(bagCodec, op);
     const encoded = enc.result();
     const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + kdm + varint(3) + varint(2) + headCph + bodyCph
     assertEquals(encoded.length, expectedLen);
@@ -64,8 +64,8 @@ Deno.test("envelope", async (t) => {
     assertEquals(encoded.slice(77, 79), op.bodyCph);
   });
 
-  await t.step("decodeEnvelope", async () => {
-    const op: IEnvelope = {
+  await t.step("decodeBag", async () => {
+    const op: IBag = {
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
       lenHeadCph: 3,
@@ -74,10 +74,10 @@ Deno.test("envelope", async (t) => {
       bodyCph: new Uint8Array([13, 14]),
     };
     const enc = new Encoder();
-    enc.writeStruct(envelopeCodec, op);
+    enc.writeStruct(bagCodec, op);
     const encoded = enc.result();
     const decoder = new Decoder(encoded);
-    const decoded = decoder.readStruct(envelopeCodec);
+    const decoded = decoder.readStruct(bagCodec);
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.lenHeadCph, op.lenHeadCph);
@@ -87,11 +87,11 @@ Deno.test("envelope", async (t) => {
     assertEquals(decoder.done(), true);
   });
 
-  await t.step("decodeEnvelope error on short input", async () => {
+  await t.step("decodeBag error on short input", async () => {
     const short = new Uint8Array(70); // less than minimum
     try {
       const decoder = new Decoder(short);
-      decoder.readStruct(envelopeCodec);
+      decoder.readStruct(bagCodec);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail on incomplete

@@ -1,12 +1,12 @@
 import { ICodecStruct } from "../codec.ts";
 import { hashBytes } from "../consts.ts";
 
-export interface IEnvelopePullItem {
+export interface IBagPullItem {
   hash: Uint8Array;
   bodyCph: Uint8Array;
 }
 
-export const pullItemCodec: ICodecStruct<IEnvelopePullItem> = {
+export const pullItemCodec: ICodecStruct<IBagPullItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
     enc.writeVarInt(item.bodyCph.length);

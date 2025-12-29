@@ -16,9 +16,6 @@ A suffix of "enc", e.g. "envEnc", indicates that the variable is encoded (binary
 
 # TODOS
 
-ARCH
-- index envelopes with a per-user SEQ on host, and use that for PEEK responses and PULL requests (with varints, saves almost 32 bytes per envelope until very large numbers of envelopes)
-
 NAMES
 - rename "envelope" to "parcel". shorter and connotes full package not just wrapper
 
@@ -41,3 +38,4 @@ PERF
 - stream data uploads from client (wire encoder to stream writer somehow)
 - stream response downloads in client (wire Decoder to stream reader)
 - check whether the indirection in encodeStruct causes a perf hit
+- index envelopes with a per-user SEQ on host, and use that for PEEK responses and PULL requests (with varints, saves almost 32 bytes per envelope until very large numbers of envelopes)

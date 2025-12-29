@@ -160,7 +160,6 @@ export class DiplomaticServer {
     if (url.pathname === apiPaths.host) {
       return this.handleHost(pubKey, dec);
     }
-
     if (url.pathname === apiPaths.user) {
       return this.handleUser(pubKey, dec);
     }

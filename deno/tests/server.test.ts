@@ -26,6 +26,9 @@ const hostIdx = 0;
 
 const hostKDM = await enclave.derive(hostID, hostIdx);
 const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(hostKDM);
+const pubKeyHash = await libsodiumCrypto.sha256Hash(keyPair.publicKey);
+const suffix = btoa(String.fromCharCode(...pubKeyHash.slice(0, 4)));
+const expectedHostID = hostID + "-" + suffix;
 
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
@@ -47,13 +50,13 @@ Deno.test("server", async (t) => {
 
   const client = new DiplomaticClientAPI(enclave, libsodiumCrypto);
 
-  await t.step("GET /id", async () => {
-    const id = await client.getHostID(url);
-    assertEquals(id, hostID);
-  });
-
   // Use a consistent now Date for all operations and auth
   const now = new Date();
+
+  await t.step("POST /id", async () => {
+    const id = await client.getHostID(url, hostID, hostIdx, now);
+    assertEquals(id, expectedHostID);
+  });
 
   await t.step("POST /users", async () => {
     await client.register(url, hostID, hostIdx, now);

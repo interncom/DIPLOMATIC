@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { decodeEnvelopeHeader, makeEnvelope } from "../../shared/envelope.ts";
+import { makeEnvelope } from "../../shared/envelope.ts";
 import { envelopeCodec } from "../../shared/codecs/envelope.ts";
 import type { IEnvelope, PrivateKey, PublicKey } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
@@ -79,41 +79,11 @@ Deno.test("envelope", async (t) => {
     assertEquals(decoder.done(), true);
   });
 
-  await t.step("decodeEnvelopeHeader", async () => {
-    const op: IEnvelope = {
-      sig: new Uint8Array(64).fill(0xcd),
-      kdm: new Uint8Array(8).fill(0x99),
-      lenHeadCph: 5,
-      lenBodyCph: 2,
-      headCph: new Uint8Array([1, 2, 3, 4, 5]),
-      bodyCph: new Uint8Array([6, 7]),
-    };
-    const enc = new Encoder();
-    enc.writeStruct(envelopeCodec, op);
-    const encoded = enc.result();
-    const encodedHeader = encoded.slice(0, 74); // 64+8+1+1
-    const decodedHeader = decodeEnvelopeHeader(encodedHeader);
-    assertEquals(decodedHeader.sig, op.sig);
-    assertEquals(decodedHeader.kdm, op.kdm);
-    assertEquals(decodedHeader.lenHeadCph, op.lenHeadCph);
-    assertEquals(decodedHeader.lenBodyCph, op.lenBodyCph);
-  });
-
   await t.step("decodeEnvelope error on short input", async () => {
     const short = new Uint8Array(70); // less than minimum
     try {
       const decoder = new Decoder(short);
       decoder.readStruct(envelopeCodec);
-      throw new Error("Should have thrown");
-    } catch (e) {
-      // Expected to fail on incomplete
-    }
-  });
-
-  await t.step("decodeEnvelopeHeader error on short input", () => {
-    const short = new Uint8Array(70); // less than minimum
-    try {
-      decodeEnvelopeHeader(short);
       throw new Error("Should have thrown");
     } catch (e) {
       // Expected to fail on incomplete

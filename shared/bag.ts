@@ -2,16 +2,16 @@
 // The bag includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 
 import { Decoder, Encoder } from "./codec.ts";
-import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
+import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { uint8ArraysEqual } from "./lib.ts";
 import { IMessage } from "./message.ts";
 import type {
+  HostSpecificKeyPair,
   IBag,
   ICrypto,
   IHostCrypto,
-  KeyPair,
   PublicKey,
 } from "./types.ts";
 
@@ -25,7 +25,7 @@ export function bagSigValid(
 
 export async function sealBag(
   msg: IMessage,
-  keyPair: KeyPair,
+  keyPair: HostSpecificKeyPair,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<IBag> {

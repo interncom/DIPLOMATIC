@@ -1,11 +1,10 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { sealBag } from "../../shared/bag.ts";
+import { openBag, sealBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import type { HostSpecificKeyPair, IBag } from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
-import { messageHeadCodec } from "../../shared/codecs/messageHead.ts";
-import { concat } from "../../shared/lib.ts";
+
 import libsodiumCrypto from "../src/crypto.ts";
 import type { MasterSeed } from "../../shared/types.ts";
 import { Enclave } from "../../shared/enclave.ts";
@@ -37,31 +36,23 @@ async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
   return enc.result();
 }
 
-Deno.bench("full encode op", async (b) => {
+Deno.bench("seal bag", async (b) => {
   await fullyEncodeBag(op);
 });
 
-const bag = await fullyEncodeBag(op);
+const bagEnc = await fullyEncodeBag(op);
 
-Deno.bench("full decode op", async (b) => {
-  const decoder = new Decoder(bag);
-  const decodedEnv: IBag = decoder.readStruct(bagCodec);
-  const kdm = decodedEnv.kdm;
-  const encKey = await enclave.deriveFromKDM(kdm);
-  const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(
-    decodedEnv.headCph,
-    encKey,
+Deno.bench("open bag", async (b) => {
+  const decoder = new Decoder(bagEnc);
+  const bag: IBag = decoder.readStruct(bagCodec);
+  const openedMsg = await openBag(
+    bag,
+    keyPair.publicKey,
+    crypto,
+    enclave,
   );
-  const decryptedBody = await crypto.decryptXSalsa20Poly1305Combined(
-    decodedEnv.bodyCph,
-    encKey,
-  );
-  const decryptedMsg = concat(decryptedHead, decryptedBody);
-  const dec = new Decoder(decryptedMsg);
-  const msgHead = messageHeadCodec.decode(dec);
-  const decodedBod = msgHead.len > 0 ? dec.readBytes(msgHead.len) : undefined;
 
   // Verify the body
-  const decodedBody = new TextDecoder().decode(decodedBod);
+  const decodedBody = new TextDecoder().decode(openedMsg.bod);
   assertEquals(decodedBody, "HELLO DIPLOMATIC");
 });

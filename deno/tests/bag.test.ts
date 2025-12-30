@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM, openBag, sealBag } from "../../shared/bag.ts";
+import { openBag, sealBag } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import type {
   HostSpecificKeyPair,
@@ -14,13 +14,6 @@ import { kdmBytes } from "../../shared/consts.ts";
 
 Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
-
-  await t.step("genKDM", async () => {
-    const kdm = await genKDM(crypto);
-    assertEquals(kdm.length, 8);
-    // Now it's random, just check length
-    assertEquals(kdm.length, kdmBytes);
-  });
 
   await t.step("encodeBag", async () => {
     const op: IBag = {

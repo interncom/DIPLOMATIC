@@ -5,6 +5,7 @@ import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
+import { uint8ArraysEqual } from "./lib.ts";
 import { IMessage } from "./message.ts";
 import type {
   IBag,
@@ -73,45 +74,32 @@ export async function openBag(
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<IMessage> {
-  // Verify signature.
-  const isValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
-  if (!isValid) {
+  const sigValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
+  if (!sigValid) {
     throw new Error("Invalid signature");
   }
 
-  // Derive encryption key.
   const key = await enclave.deriveFromKDM(bag.kdm);
-
-  // Decrypt header.
-  const decryptedHead = await crypto.decryptXSalsa20Poly1305Combined(
+  const bagHead = await crypto.decryptXSalsa20Poly1305Combined(
     bag.headCph,
     key,
   );
-
-  // Decrypt body if present.
-  const decryptedBody = bag.bodyCph.length > 0
+  const bagBody = bag.bodyCph.length > 0
     ? await crypto.decryptXSalsa20Poly1305Combined(bag.bodyCph, key)
     : undefined;
 
-  // Decode message head.
-  const dec = new Decoder(decryptedHead);
+  const dec = new Decoder(bagHead);
   const msgHead = messageHeadCodec.decode(dec);
 
   // Verify hash if body is present.
-  if (msgHead.hsh && decryptedBody) {
-    const computedHsh = await crypto.blake3(decryptedBody);
-    if (!computedHsh.every((byte, i) => byte === msgHead.hsh![i])) {
+  if (msgHead.hsh && bagBody) {
+    const bodyHash = await crypto.blake3(bagBody);
+    if (!uint8ArraysEqual(bodyHash, msgHead.hsh)) {
       throw new Error("Hash mismatch");
     }
   }
 
-  return {
-    eid: msgHead.eid,
-    clk: msgHead.clk,
-    ctr: msgHead.ctr,
-    len: msgHead.len,
-    bod: decryptedBody,
-  };
+  return { ...msgHead, bod: bagBody };
 }
 
 export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {

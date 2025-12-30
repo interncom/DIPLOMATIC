@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM, makeBag } from "../../shared/bag.ts";
+import { genKDM } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { IBag, PrivateKey, PublicKey } from "../../shared/types.ts";
+import type { IBag } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { kdmBytes } from "../../shared/consts.ts";
@@ -14,26 +14,6 @@ Deno.test("bag", async (t) => {
     assertEquals(kdm.length, 8);
     // Now it's random, just check length
     assertEquals(kdm.length, kdmBytes);
-  });
-
-  await t.step("makeBag", async () => {
-    const headCph = new Uint8Array([1, 2, 3]);
-    const bodyCph = new Uint8Array([4, 5, 6]);
-    const kdm = new Uint8Array(8).fill(0x44);
-    const keyPair = {
-      keyType: "private" as const,
-      privateKey: new Uint8Array(64).fill(0x22) as PrivateKey,
-      publicKey: new Uint8Array(32).fill(0x33) as PublicKey,
-    };
-    const result = await makeBag(keyPair, headCph, bodyCph, kdm, crypto);
-    // Compute expected sig: sign(headCph, privateKey)
-    const expectedSig = await crypto.signEd25519(headCph, keyPair.privateKey);
-    assertEquals(result.sig, expectedSig);
-    assertEquals(result.kdm, kdm);
-    assertEquals(result.lenHeadCph, headCph.length);
-    assertEquals(result.lenBodyCph, bodyCph.length);
-    assertEquals(result.headCph, headCph);
-    assertEquals(result.bodyCph, bodyCph);
   });
 
   await t.step("encodeBag", async () => {

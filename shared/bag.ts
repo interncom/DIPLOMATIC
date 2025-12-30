@@ -14,24 +14,6 @@ import type {
   PublicKey,
 } from "./types.ts";
 
-export async function makeBag(
-  keyPair: KeyPair,
-  headCph: Uint8Array,
-  bodyCph: Uint8Array,
-  kdm: Uint8Array,
-  crypto: ICrypto,
-): Promise<IBag> {
-  const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
-  return {
-    sig,
-    kdm,
-    lenHeadCph: headCph.length,
-    lenBodyCph: bodyCph.length,
-    headCph,
-    bodyCph,
-  };
-}
-
 export function bagSigValid(
   bag: IBag,
   pubKey: PublicKey,
@@ -40,21 +22,21 @@ export function bagSigValid(
   return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
 }
 
-export async function bagFor(
-  op: IMessage,
+export async function sealBag(
+  msg: IMessage,
   keyPair: KeyPair,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<IBag> {
   let hsh: Uint8Array | undefined;
-  if (op.bod && op.len > 0) {
-    hsh = await crypto.blake3(op.bod);
+  if (msg.bod && msg.len > 0) {
+    hsh = await crypto.blake3(msg.bod);
   }
   const msgHead: IMessageHead = {
-    eid: op.eid,
-    clk: op.clk,
-    ctr: op.ctr,
-    len: op.len,
+    eid: msg.eid,
+    clk: msg.clk,
+    ctr: msg.ctr,
+    len: msg.len,
     hsh,
   };
 
@@ -69,12 +51,20 @@ export async function bagFor(
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
   const headCph = await crypto.encryptXSalsa20Poly1305Combined(head, key);
-  const bodyCph = op.bod
-    ? await crypto.encryptXSalsa20Poly1305Combined(op.bod, key)
+  const bodyCph = msg.bod
+    ? await crypto.encryptXSalsa20Poly1305Combined(msg.bod, key)
     : new Uint8Array(0);
 
   // Wrap in bag.
-  return makeBag(keyPair, headCph, bodyCph, kdm, crypto);
+  const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
+  return {
+    sig,
+    kdm,
+    lenHeadCph: headCph.length,
+    lenBodyCph: bodyCph.length,
+    headCph,
+    bodyCph,
+  };
 }
 
 export async function genKDM(crypto: ICrypto): Promise<Uint8Array> {

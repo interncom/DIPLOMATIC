@@ -5,7 +5,7 @@ import { type IBagPeekItem, peekItemCodec } from "./codecs/peekItem.ts";
 import { type IBagPullItem, pullItemCodec } from "./codecs/pullItem.ts";
 import { type IBagPushItem, pushItemCodec } from "./codecs/pushItem.ts";
 import { Enclave } from "./enclave.ts";
-import { bagFor } from "./bag.ts";
+import { sealBag } from "./bag.ts";
 import { apiPaths, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
 import type { ICrypto, KeyPair } from "./types.ts";
@@ -78,7 +78,7 @@ export default class DiplomaticClientAPI {
     enc.writeBytes(tsAuth);
 
     for (const op of ops) {
-      const bag = await bagFor(op, keyPair, crypto, enclave);
+      const bag = await sealBag(op, keyPair, crypto, enclave);
       enc.writeStruct(bagCodec, bag);
     }
 

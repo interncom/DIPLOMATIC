@@ -1,13 +1,10 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM, makeBag } from "../../shared/bag.ts";
+import { sealBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import type { IBag } from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
-import {
-  type IMessageHead,
-  messageHeadCodec,
-} from "../../shared/codecs/messageHead.ts";
+import { messageHeadCodec } from "../../shared/codecs/messageHead.ts";
 import { concat } from "../../shared/lib.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import type { MasterSeed } from "../../shared/types.ts";
@@ -32,25 +29,7 @@ const op: IMessage = {
 };
 
 async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
-  const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
-  const headStruct: IMessageHead = {
-    eid: op.eid,
-    clk: op.clk,
-    ctr: op.ctr,
-    len: op.len,
-    hsh,
-  };
-  const encHeader = new Encoder();
-  messageHeadCodec.encode(encHeader, headStruct);
-  const msgHead = encHeader.result();
-  const kdm = await genKDM(crypto);
-  const encKey = await enclave.deriveFromKDM(kdm);
-  const headCph = await crypto.encryptXSalsa20Poly1305Combined(msgHead, encKey);
-  if (!op.bod) {
-    throw new Error("ahhh!");
-  }
-  const bodyCph = await crypto.encryptXSalsa20Poly1305Combined(op.bod, encKey);
-  const bag = await makeBag(keyPair, headCph, bodyCph, kdm, crypto);
+  const bag = await sealBag(op, keyPair, crypto, enclave);
   const enc = new Encoder();
   enc.writeStruct(bagCodec, bag);
   return enc.result();

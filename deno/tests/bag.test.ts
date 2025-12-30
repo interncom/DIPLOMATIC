@@ -1,7 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { genKDM } from "../../shared/bag.ts";
+import { genKDM, openBag, sealBag } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { IBag } from "../../shared/types.ts";
+import type { IBag, MasterSeed } from "../../shared/types.ts";
+import { type IMessage } from "../../shared/message.ts";
+import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { kdmBytes } from "../../shared/consts.ts";
@@ -76,5 +78,37 @@ Deno.test("bag", async (t) => {
     } catch (e) {
       // Expected to fail on incomplete
     }
+  });
+
+  await t.step("seal and open round trip", async () => {
+    // Setup enclave and keypair
+    const seed = (await crypto.gen256BitSecureRandomSeed()) as MasterSeed;
+    const enclave = new Enclave(seed, crypto);
+    const hostKDM = await enclave.derive("test-host", 0);
+    const keyPair = await crypto.deriveEd25519KeyPair(hostKDM);
+
+    // Create a test message
+    const eid = await crypto.gen128BitRandomID();
+    const bod = new TextEncoder().encode("HELLO DIPLOMATIC");
+    const msg: IMessage = {
+      eid,
+      clk: new Date(),
+      ctr: 1,
+      len: bod.length,
+      bod,
+    };
+
+    // Seal the message
+    const bag = await sealBag(msg, keyPair, crypto, enclave);
+
+    // Open the bag
+    const openedMsg = await openBag(bag, keyPair.publicKey, crypto, enclave);
+
+    // Verify contents
+    assertEquals(openedMsg.eid, msg.eid);
+    assertEquals(openedMsg.clk.getTime(), msg.clk.getTime());
+    assertEquals(openedMsg.ctr, msg.ctr);
+    assertEquals(openedMsg.len, msg.len);
+    assertEquals(openedMsg.bod, msg.bod);
   });
 });

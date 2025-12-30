@@ -2,7 +2,7 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { sealBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { IBag } from "../../shared/types.ts";
+import type { HostSpecificKeyPair, IBag } from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
 import { messageHeadCodec } from "../../shared/codecs/messageHead.ts";
 import { concat } from "../../shared/lib.ts";
@@ -15,7 +15,9 @@ const crypto = libsodiumCrypto;
 const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
 const enclave = new Enclave(seed, libsodiumCrypto);
 const hostKDM = await enclave.derive("benchmark-host", 0);
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(hostKDM);
+const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+  hostKDM,
+) as HostSpecificKeyPair;
 
 // Create the op containing "HELLO DIPLOMATIC"
 const eid = await crypto.gen128BitRandomID();

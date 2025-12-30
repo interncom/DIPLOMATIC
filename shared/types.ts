@@ -76,6 +76,7 @@ const masterSeedSymbol = Symbol("MasterSeed");
 const derivationSeedSymbol = Symbol("DerivationSeed");
 const publicKeySymbol = Symbol("PublicKey");
 const privateKeySymbol = Symbol("PrivateKey");
+const hostSpecificKeyPairSymbol = Symbol("HostSpecificKeyPair");
 
 export type MasterSeed = Uint8Array & { readonly [masterSeedSymbol]: true };
 export type DerivationSeed = Uint8Array & {
@@ -83,6 +84,9 @@ export type DerivationSeed = Uint8Array & {
 };
 export type PublicKey = Uint8Array & { readonly [publicKeySymbol]: true };
 export type PrivateKey = Uint8Array & { readonly [privateKeySymbol]: true };
+export type HostSpecificKeyPair = KeyPair & {
+  readonly [hostSpecificKeyPairSymbol]: true;
+};
 
 export interface IHostCrypto {
   checkSigEd25519: (

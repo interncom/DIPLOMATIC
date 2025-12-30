@@ -8,10 +8,10 @@ import { Enclave } from "./enclave.ts";
 import { sealBag } from "./bag.ts";
 import { apiPaths, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
-import type { ICrypto, KeyPair } from "./types.ts";
+import type { HostSpecificKeyPair, ICrypto } from "./types.ts";
 
 interface IAuthData {
-  keyPair: KeyPair;
+  keyPair: HostSpecificKeyPair;
   tsAuth: EncodedAuthTimestamp;
 }
 
@@ -30,7 +30,7 @@ export default class DiplomaticClientAPI {
     const derivSeed = await enclave.derive(keyPath, idx);
     const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, crypto);
-    return { keyPair, tsAuth };
+    return { keyPair: keyPair as HostSpecificKeyPair, tsAuth };
   }
 
   async getHostID(

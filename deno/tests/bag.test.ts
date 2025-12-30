@@ -1,7 +1,11 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { genKDM, openBag, sealBag } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { IBag, MasterSeed } from "../../shared/types.ts";
+import type {
+  HostSpecificKeyPair,
+  IBag,
+  MasterSeed,
+} from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
@@ -85,7 +89,9 @@ Deno.test("bag", async (t) => {
     const seed = (await crypto.gen256BitSecureRandomSeed()) as MasterSeed;
     const enclave = new Enclave(seed, crypto);
     const hostKDM = await enclave.derive("test-host", 0);
-    const keyPair = await crypto.deriveEd25519KeyPair(hostKDM);
+    const keyPair = await crypto.deriveEd25519KeyPair(
+      hostKDM,
+    ) as HostSpecificKeyPair;
 
     // Create a test message
     const eid = await crypto.gen128BitRandomID();

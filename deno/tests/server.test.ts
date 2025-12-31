@@ -25,7 +25,7 @@ const enclave = new Enclave(seed, libsodiumCrypto);
 const hostIdx = 0;
 
 const hostKDM = await enclave.derive(hostID, hostIdx);
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(hostKDM);
+const keyPair = await libsodiumCrypto.deriveSchnorrKeyPair(hostKDM);
 const pubKeyHash = await libsodiumCrypto.sha256Hash(keyPair.publicKey);
 const suffix = btoa(String.fromCharCode(...pubKeyHash.slice(0, 4)));
 const expectedHostID = hostID + "-" + suffix;

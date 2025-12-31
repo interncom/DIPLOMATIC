@@ -89,7 +89,7 @@ export type HostSpecificKeyPair = KeyPair & {
 };
 
 export interface IHostCrypto {
-  checkSigEd25519: (
+  checkSigSchnorr: (
     sig: Uint8Array,
     message: Uint8Array | string,
     pubKey: PublicKey,
@@ -113,8 +113,8 @@ export interface ICrypto extends IHostCrypto {
     headerAndCipher: Uint8Array,
     key: Uint8Array,
   ) => Promise<Uint8Array>;
-  deriveEd25519KeyPair: (derivationSeed: DerivationSeed) => Promise<KeyPair>;
-  signEd25519: (
+  deriveSchnorrKeyPair: (derivationSeed: DerivationSeed) => Promise<KeyPair>;
+  signSchnorr: (
     message: Uint8Array | string,
     secKey: PrivateKey,
   ) => Promise<Uint8Array>;

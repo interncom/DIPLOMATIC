@@ -3,7 +3,9 @@
   "specifiers": {
     "jsr:@noble/hashes@^2.0.1": "2.0.1",
     "jsr:@std/assert@0.223.0": "0.223.0",
-    "jsr:@std/fmt@0.223": "0.223.0"
+    "jsr:@std/fmt@0.223": "0.223.0",
+    "npm:@noble/secp256k1@*": "1.7.1",
+    "npm:@noble/secp256k1@1.7.1": "1.7.1"
   },
   "jsr": {
     "@noble/hashes@2.0.1": {
@@ -17,6 +19,11 @@
     },
     "@std/fmt@0.223.0": {
       "integrity": "6deb37794127dfc7d7bded2586b9fc6f5d50e62a8134846608baf71ffc1a5208"
+    }
+  },
+  "npm": {
+    "@noble/secp256k1@1.7.1": {
+      "integrity": "sha512-hOUk6AyBFmqVrv7k5WAw/LpszxVbj9gGN4JRkIX52fdFAj1UA61KXmZDvqVEm+pOyec3+fIeZB02LYa/pWOArw=="
     }
   },
   "redirects": {
@@ -118,7 +125,8 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@noble/hashes@^2.0.1"
+      "jsr:@noble/hashes@^2.0.1",
+      "npm:@noble/secp256k1@1.7.1"
     ]
   }
 }

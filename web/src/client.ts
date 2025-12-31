@@ -107,8 +107,9 @@ export default class DiplomaticClient {
     await this.store.init?.();
 
     if (params.seed) {
-      const bytes =
-        typeof params.seed === "string" ? htob(params.seed) : params.seed;
+      const bytes = typeof params.seed === "string"
+        ? htob(params.seed)
+        : params.seed;
       await this.store.setSeed(bytes);
     }
     await this.loadSeed();
@@ -158,22 +159,19 @@ export default class DiplomaticClient {
       return;
     }
     this.hostURL = new URL(hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+    this.hostKeyPair = await libsodiumCrypto.deriveSchnorrKeyPair(
       this.seed,
-      hostID,
     );
   }
 
-  // TODO: dedupe with loadHost.
   async register(hostURL: string) {
     if (!this.seed) {
       return;
     }
     this.hostURL = new URL(hostURL);
     const hostID = await webClientAPI.getHostID(this.hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+    this.hostKeyPair = await libsodiumCrypto.deriveSchnorrKeyPair(
       this.seed,
-      hostID,
     );
     await webClientAPI.register(
       this.hostURL,
@@ -221,12 +219,11 @@ export default class DiplomaticClient {
 
   async getState(): Promise<IDiplomaticClientState> {
     const hasSeed = this.seed !== undefined && this.encKey !== undefined;
-    const hasHost =
-      this.hostURL !== undefined && this.hostKeyPair !== undefined;
-    const connected =
-      this.websocket === undefined
-        ? false
-        : this.websocket.readyState === this.websocket.OPEN;
+    const hasHost = this.hostURL !== undefined &&
+      this.hostKeyPair !== undefined;
+    const connected = this.websocket === undefined
+      ? false
+      : this.websocket.readyState === this.websocket.OPEN;
     return { hasSeed, hasHost, connected };
   }
 

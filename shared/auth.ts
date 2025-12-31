@@ -24,7 +24,7 @@ export async function timestampAuthProof(
   const enc = new Encoder();
   enc.writeDate(ts);
   const encodedTs = enc.result();
-  const sig = await crypto.signEd25519(encodedTs, keyPair.privateKey);
+  const sig = await crypto.signSchnorr(encodedTs, keyPair.privateKey);
   const authTs: IAuthTimestamp = {
     pubKey: keyPair.publicKey,
     sig,
@@ -50,7 +50,7 @@ export async function validateTsAuth(
   const enc = new Encoder();
   enc.writeDate(authTs.timestamp);
   const data = enc.result();
-  const sigValid = await crypto.checkSigEd25519(
+  const sigValid = await crypto.checkSigSchnorr(
     authTs.sig,
     data,
     authTs.pubKey,

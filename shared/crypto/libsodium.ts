@@ -1,5 +1,12 @@
-import type { ICrypto, KeyPair, DerivationSeed } from "../types.ts";
+import type {
+  DerivationSeed,
+  ICrypto,
+  KeyPair,
+  PrivateKey,
+  PublicKey,
+} from "../types.ts";
 import { blake3 } from "@noble/hashes/blake3.js";
+import * as nobleSecp from "npm:@noble/secp256k1";
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 type Libsodium = any;
@@ -64,33 +71,39 @@ export class LibsodiumCrypto implements ICrypto {
     return dec;
   }
 
-  async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
-    const keyPair = this.sodium.crypto_sign_seed_keypair(
-      derivationSeed,
-    ) as KeyPair;
-    return keyPair;
+  async deriveSchnorrKeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
+    const priv = new Uint8Array(derivationSeed);
+    const pub = nobleSecp.schnorr.getPublicKey(priv);
+    return {
+      keyType: "private",
+      privateKey: priv as unknown as PrivateKey,
+      publicKey: pub as unknown as PublicKey,
+    };
   }
 
-  async signEd25519(
+  async signSchnorr(
     message: Uint8Array | string,
-    secKey: Uint8Array,
+    secKey: PrivateKey,
   ): Promise<Uint8Array> {
-    const sig = this.sodium.crypto_sign_detached(
-      message,
-      secKey,
-      "uint8array",
-    ) as Uint8Array;
-    return sig;
+    const msg = typeof message === "string"
+      ? new TextEncoder().encode(message)
+      : message;
+    return nobleSecp.schnorr.sign(msg, secKey as Uint8Array);
   }
 
-  async checkSigEd25519(
+  async checkSigSchnorr(
     sig: Uint8Array,
     message: Uint8Array | string,
-    pubKey: Uint8Array,
+    pubKey: PublicKey,
   ): Promise<boolean> {
-    // Separate the sig for easier interop with other implementations, e.g. Noble or WebCrypto.
-    const valid = this.sodium.crypto_sign_verify_detached(sig, message, pubKey);
-    return valid;
+    const msg = typeof message === "string"
+      ? new TextEncoder().encode(message)
+      : message;
+    try {
+      return nobleSecp.schnorr.verify(sig, msg, pubKey);
+    } catch {
+      return false;
+    }
   }
 
   async blake3(data: Uint8Array): Promise<Uint8Array> {

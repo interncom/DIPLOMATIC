@@ -67,7 +67,7 @@ export class DiplomaticClientCLI {
     const now = new Date();
     await this.api.register(this.hostURL, hostID, 0, now);
     const derivationSeed = await this.enclave.derive(hostID, idx);
-    this.hostKeyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
+    this.hostKeyPair = await this.crypto.deriveSchnorrKeyPair(derivationSeed);
   }
 
   async push(msg: IMessage, idx: number = 0) {

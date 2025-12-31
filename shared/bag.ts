@@ -20,7 +20,7 @@ export function bagSigValid(
   pubKey: PublicKey,
   crypto: IHostCrypto,
 ): Promise<boolean> {
-  return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
+  return crypto.checkSigSchnorr(bag.sig, bag.headCph, pubKey);
 }
 
 export async function sealBag(
@@ -58,7 +58,7 @@ export async function sealBag(
     : new Uint8Array(0);
 
   // Wrap in bag.
-  const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
+  const sig = await crypto.signSchnorr(headCph, keyPair.privateKey);
   return {
     sig,
     kdm,
@@ -76,7 +76,7 @@ export async function openBag(
   enclave: Enclave,
 ): Promise<IMessage> {
   // Check sig.
-  const sigValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
+  const sigValid = await crypto.checkSigSchnorr(bag.sig, bag.headCph, pubKey);
   if (!sigValid) {
     throw new Error("Invalid signature");
   }

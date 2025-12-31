@@ -2,6 +2,7 @@
   "nodeModulesDir": "auto",
   "vendor": false,
   "imports": {
-    "@noble/hashes": "jsr:@noble/hashes@^2.0.1"
+    "@noble/hashes": "jsr:@noble/hashes@^2.0.1",
+    "@noble/secp256k1": "npm:@noble/secp256k1@1.7.1"
   }
 }

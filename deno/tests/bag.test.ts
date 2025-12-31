@@ -82,7 +82,7 @@ Deno.test("bag", async (t) => {
     const seed = (await crypto.gen256BitSecureRandomSeed()) as MasterSeed;
     const enclave = new Enclave(seed, crypto);
     const hostKDM = await enclave.derive("test-host", 0);
-    const keyPair = await crypto.deriveEd25519KeyPair(
+    const keyPair = await crypto.deriveSchnorrKeyPair(
       hostKDM,
     ) as HostSpecificKeyPair;
 

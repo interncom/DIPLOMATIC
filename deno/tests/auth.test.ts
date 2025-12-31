@@ -95,7 +95,7 @@ const mockCrypto: ICrypto = {
       .digest("SHA-256", data.slice())
       .then((hash) => new Uint8Array(hash)),
 
-  deriveEd25519KeyPair: async (derivationSeed): Promise<KeyPair> => {
+  deriveSchnorrKeyPair: async (derivationSeed): Promise<KeyPair> => {
     // Return fixed keys for testing
     return {
       keyType: "private",
@@ -104,11 +104,11 @@ const mockCrypto: ICrypto = {
     };
   },
 
-  signEd25519: async (message, secKey) => {
+  signSchnorr: async (message, secKey) => {
     return new Uint8Array(64).fill(0);
   },
 
-  checkSigEd25519: async (sig, message, pubKey) => {
+  checkSigSchnorr: async (sig, message, pubKey) => {
     return true;
   },
 };
@@ -132,7 +132,7 @@ Deno.test(
     enc.writeDate(ts);
     const expectedEncodedTs = enc.result();
 
-    const keyPair = await mockCrypto.deriveEd25519KeyPair(
+    const keyPair = await mockCrypto.deriveSchnorrKeyPair(
       derivationSeed as DerivationSeed,
     );
     const result = await timestampAuthProof(keyPair, ts, mockCrypto);
@@ -164,7 +164,7 @@ Deno.test("timestampAuthProof works with different timestamp", async () => {
   const data = concat(seed, kdm);
   const derivationSeed = await mockCrypto.blake3(data);
 
-  const keyPair = await mockCrypto.deriveEd25519KeyPair(
+  const keyPair = await mockCrypto.deriveSchnorrKeyPair(
     derivationSeed as DerivationSeed,
   );
   const result = await timestampAuthProof(keyPair, ts, mockCrypto);

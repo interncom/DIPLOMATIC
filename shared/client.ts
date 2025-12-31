@@ -28,7 +28,7 @@ export default class DiplomaticClientAPI {
   ): Promise<IAuthData> {
     const { crypto, enclave } = this;
     const derivSeed = await enclave.derive(keyPath, idx);
-    const keyPair = await crypto.deriveEd25519KeyPair(derivSeed);
+    const keyPair = await crypto.deriveSchnorrKeyPair(derivSeed);
     const tsAuth = await timestampAuthProof(keyPair, now, crypto);
     return { keyPair: keyPair as HostSpecificKeyPair, tsAuth };
   }

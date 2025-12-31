@@ -14,7 +14,7 @@ const crypto = libsodiumCrypto;
 const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
 const enclave = new Enclave(seed, libsodiumCrypto);
 const hostKDM = await enclave.derive("benchmark-host", 0);
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(
+const keyPair = await libsodiumCrypto.deriveSchnorrKeyPair(
   hostKDM,
 ) as HostSpecificKeyPair;
 

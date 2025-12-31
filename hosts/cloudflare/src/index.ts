@@ -23,28 +23,29 @@ import { DiplomaticServer } from "../../../shared/server";
 import { decode, decodeAsync, encode } from "@msgpack/msgpack";
 import { DurableObject } from "cloudflare:workers";
 import { btoh, concat, htob } from "../../../shared/lib";
+import { schnorr } from "@noble/secp256k1";
+import { blake3 } from "@noble/hashes/blake3.js";
 
 const cloudflareCrypto: IHostCrypto = {
-	async checkSigEd25519(sig, message, pubKey) {
-		const cryptoKey = await crypto.subtle.importKey(
-			"raw",
-			pubKey,
-			"ED25519",
-			true,
-			["verify"],
-		);
-		if (typeof message === "string") {
-			const encoder = new TextEncoder();
-			const encMsg = encoder.encode(message);
-			return await crypto.subtle.verify("ED25519", cryptoKey, sig, encMsg);
+	async checkSigSchnorr(sig, message, pubKey) {
+		const msg = typeof message === "string"
+			? new TextEncoder().encode(message)
+			: message;
+		try {
+			return schnorr.verify(pubKey, sig, msg);
+		} catch {
+			return false;
 		}
-		return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
 	},
 
 	async sha256Hash(data) {
 		const buf = await crypto.subtle.digest("SHA-256", data);
 		const arr = new Uint8Array(buf);
 		return arr;
+	},
+
+	async blake3(data) {
+		return blake3(data);
 	},
 };
 

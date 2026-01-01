@@ -13,12 +13,8 @@ export const userEnd: IAuthenticatedEndpoint<never> = {
     if (!dec.done()) {
       return Status.ExtraBodyContent;
     }
-    try {
-      await storage.addUser(pubKey);
-      const enc = new Encoder();
-      return enc;
-    } catch {
-      return Status.InternalError;
-    }
+    await storage.addUser(pubKey);
+    const enc = new Encoder();
+    return enc;
   },
 };

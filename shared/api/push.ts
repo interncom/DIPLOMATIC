@@ -21,27 +21,23 @@ export const pushEnd: IAuthenticatedEndpoint<IMessage> = {
   requiresRegisteredUser: true,
   async handleReq(pubKey, dec, _hostID, storage, crypto, notifier) {
     const now = new Date();
-    try {
-      const enc = new Encoder();
-      for (const bag of dec.readStructs(bagCodec)) {
-        const hash = await crypto.sha256Hash(bag.headCph);
-        const sigValid = await bagSigValid(bag, pubKey, crypto);
-        if (!sigValid) {
-          const item: IBagPushItem = {
-            status: Status.InvalidSignature,
-            hash,
-          };
-          enc.writeStruct(pushItemCodec, item);
-          continue;
-        }
-        await storage.setBag(pubKey, now, bag, hash);
-        await notifier.notify(pubKey);
-        const item: IBagPushItem = { status: Status.Success, hash };
+    const enc = new Encoder();
+    for (const bag of dec.readStructs(bagCodec)) {
+      const hash = await crypto.sha256Hash(bag.headCph);
+      const sigValid = await bagSigValid(bag, pubKey, crypto);
+      if (!sigValid) {
+        const item: IBagPushItem = {
+          status: Status.InvalidSignature,
+          hash,
+        };
         enc.writeStruct(pushItemCodec, item);
+        continue;
       }
-      return enc;
-    } catch {
-      return Status.InternalError;
+      await storage.setBag(pubKey, now, bag, hash);
+      await notifier.notify(pubKey);
+      const item: IBagPushItem = { status: Status.Success, hash };
+      enc.writeStruct(pushItemCodec, item);
     }
+    return enc;
   },
 };

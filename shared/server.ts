@@ -73,18 +73,22 @@ export class DiplomaticServer {
       }
     }
 
-    const ret = await endpoint.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
+    try {
+      const ret = await endpoint.handleReq(
+        pubKey,
+        dec,
+        this.hostID,
+        this.storage,
+        this.crypto,
+        this.notifier,
+      );
+      if (ret instanceof Encoder) {
+        return binResp(ret);
+      } else {
+        return respFor(ret);
+      }
+    } catch {
+      return respFor(Status.InternalError);
     }
   };
 }

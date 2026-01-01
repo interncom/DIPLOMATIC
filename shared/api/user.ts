@@ -1,4 +1,5 @@
 import { Encoder } from "../codec.ts";
+import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never> = {
@@ -6,5 +7,17 @@ export const userEnd: IAuthenticatedEndpoint<never> = {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
     return enc;
+  },
+  async createResp(pubKey, dec, _hostID, storage, _crypto, _notifier) {
+    if (!dec.done()) {
+      return Status.ExtraBodyContent;
+    }
+    try {
+      await storage.addUser(pubKey);
+      const enc = new Encoder();
+      return enc;
+    } catch {
+      return Status.InternalError;
+    }
   },
 };

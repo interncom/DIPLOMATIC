@@ -1,6 +1,6 @@
 import { bagSigValid, sealBag } from "../bag.ts";
 import { Encoder } from "../codec.ts";
-import { hashBytes, Status } from "../consts.ts";
+import { Status } from "../consts.ts";
 import { bagCodec } from "../codecs/bag.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IMessage } from "../message.ts";
@@ -18,6 +18,7 @@ export const pushEnd: IAuthenticatedEndpoint<IMessage> = {
 
     return enc;
   },
+  requiresRegisteredUser: true,
   async handleReq(pubKey, dec, _hostID, storage, crypto, notifier) {
     const now = new Date();
     try {

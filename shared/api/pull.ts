@@ -11,6 +11,7 @@ export const pullEnd: IAuthenticatedEndpoint<BagHash> = {
     enc.writeBytesSeq(hashes);
     return enc;
   },
+  requiresRegisteredUser: true,
   async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
     try {
       const enc = new Encoder();

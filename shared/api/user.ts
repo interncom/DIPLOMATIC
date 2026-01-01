@@ -8,6 +8,7 @@ export const userEnd: IAuthenticatedEndpoint<never> = {
     enc.writeBytes(tsAuth);
     return enc;
   },
+  requiresRegisteredUser: false,
   async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
     if (!dec.done()) {
       return Status.ExtraBodyContent;

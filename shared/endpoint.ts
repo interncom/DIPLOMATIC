@@ -12,6 +12,7 @@ import { EncodedAuthTimestamp } from "./auth.ts";
 import { Status } from "./consts.ts";
 
 export interface IAuthenticatedEndpoint<ReqItem> {
+  requiresRegisteredUser: boolean;
   encodeReq(
     tsAuth: EncodedAuthTimestamp,
     body: Iterable<ReqItem>,

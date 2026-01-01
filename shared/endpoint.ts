@@ -19,7 +19,7 @@ export interface IAuthenticatedEndpoint<ReqItem> {
     crypto: ICrypto,
     enclave: Enclave,
   ): Promise<Encoder>;
-  createResp(
+  handleReq(
     pubKey: PublicKey,
     dec: Decoder,
     hostID: string,

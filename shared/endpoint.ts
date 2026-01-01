@@ -1,7 +1,15 @@
-import { Encoder } from "./codec.ts";
-import { HostSpecificKeyPair, ICrypto } from "./types.ts";
+import { Decoder, Encoder } from "./codec.ts";
+import {
+  HostSpecificKeyPair,
+  ICrypto,
+  IHostCrypto,
+  IStorage,
+  IWebsocketNotifier,
+  PublicKey,
+} from "./types.ts";
 import { Enclave } from "./enclave.ts";
 import { EncodedAuthTimestamp } from "./auth.ts";
+import { Status } from "./consts.ts";
 
 export interface IAuthenticatedEndpoint<ReqItem> {
   encodeReq(
@@ -11,5 +19,13 @@ export interface IAuthenticatedEndpoint<ReqItem> {
     crypto: ICrypto,
     enclave: Enclave,
   ): Promise<Encoder>;
-  // encodeResp(items: Iterable<ReqItem>): Promise<Encoder>;
+  createResp(
+    pubKey: PublicKey,
+    dec: Decoder,
+    hostID: string,
+    storage: IStorage,
+    crypto: IHostCrypto,
+    notifier: IWebsocketNotifier,
+  ): Promise<Encoder | Status>;
+  // decodeResp(dec: Decoder): Promise<IterableIterator<RespItem>>;
 }

@@ -13,6 +13,7 @@ import type {
   IWebsocketNotifier,
   PublicKey,
 } from "./types.ts";
+import { hostEnd } from "./api/host.ts";
 
 export class DiplomaticServer {
   constructor(
@@ -42,19 +43,20 @@ export class DiplomaticServer {
   };
 
   handleHost = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    if (!this.hostID) {
-      return respFor(Status.ServerMisconfigured);
+    const { hostID, storage, crypto, notifier } = this;
+    const ret = await hostEnd.createResp(
+      pubKey,
+      dec,
+      hostID,
+      storage,
+      crypto,
+      notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
-    if (!dec.done()) {
-      return respFor(Status.ExtraBodyContent);
-    }
-    const hash = await this.crypto.sha256Hash(pubKey);
-    const suffix = btoa(String.fromCharCode(...hash.slice(0, 4)));
-    const uniqueHostID = this.hostID + "-" + suffix;
-    const enc = new Encoder();
-    enc.writeVarInt(uniqueHostID.length);
-    enc.writeBytes(new TextEncoder().encode(uniqueHostID));
-    return binResp(enc);
   };
 
   handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {

@@ -1,7 +1,6 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import type { IEnvelope, IStorage } from "../../../shared/types.ts";
-import { btoh, concat, htob } from "../../../shared/lib.ts";
-import libsodiumCrypto from "../crypto.ts";
+import { btoh, concat } from "../../../shared/lib.ts";
+import type { IStorage } from "../../../shared/types.ts";
 
 const db = new DB("diplomatic.db");
 db.query(`

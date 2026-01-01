@@ -1,11 +1,8 @@
 import { validateTsAuth } from "./auth.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { bagCodec } from "./codecs/bag.ts";
-import { peekItemCodec } from "./codecs/peekItem.ts";
-import { type IBagPullItem, pullItemCodec } from "./codecs/pullItem.ts";
-import { type IBagPushItem, pushItemCodec } from "./codecs/pushItem.ts";
-import { hashBytes, Status, tsAuthSize } from "./consts.ts";
-import { bagSigValid } from "./bag.ts";
+
+import { Status, tsAuthSize } from "./consts.ts";
+
 import { apiPaths, binResp, cors, respFor } from "./http.ts";
 import type {
   IHostCrypto,
@@ -14,6 +11,10 @@ import type {
   PublicKey,
 } from "./types.ts";
 import { hostEnd } from "./api/host.ts";
+import { peekEnd } from "./api/peek.ts";
+import { pullEnd } from "./api/pull.ts";
+import { pushEnd } from "./api/push.ts";
+import { userEnd } from "./api/user.ts";
 
 export class DiplomaticServer {
   constructor(
@@ -43,14 +44,13 @@ export class DiplomaticServer {
   };
 
   handleHost = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const { hostID, storage, crypto, notifier } = this;
     const ret = await hostEnd.createResp(
       pubKey,
       dec,
-      hostID,
-      storage,
-      crypto,
-      notifier,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
     );
     if (ret instanceof Encoder) {
       return binResp(ret);
@@ -60,80 +60,66 @@ export class DiplomaticServer {
   };
 
   handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const { storage } = this;
-    if (!dec.done()) {
-      return respFor(Status.ExtraBodyContent);
-    }
-    try {
-      // Register the public key
-      await storage.addUser(pubKey);
-      return new Response("", { status: 200 });
-    } catch (_err) {
-      return respFor(Status.InternalError);
+    const ret = await userEnd.createResp(
+      pubKey,
+      dec,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
   };
 
   handlePush = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const { crypto, notifier, storage } = this;
-    const now = new Date();
-    try {
-      const enc = new Encoder();
-      for (const bag of dec.readStructs(bagCodec)) {
-        const hash = await crypto.sha256Hash(bag.headCph);
-        const sigValid = await bagSigValid(bag, pubKey, crypto);
-        if (!sigValid) {
-          const item: IBagPushItem = {
-            status: Status.InvalidSignature,
-            hash,
-          };
-          enc.writeStruct(pushItemCodec, item);
-          continue;
-        }
-        await storage.setBag(pubKey, now, bag, hash);
-        await notifier.notify(pubKey as PublicKey);
-        const item: IBagPushItem = { status: Status.Success, hash };
-        enc.writeStruct(pushItemCodec, item);
-      }
-      return binResp(enc);
-    } catch (_err) {
-      return respFor(Status.InternalError);
+    const ret = await pushEnd.createResp(
+      pubKey,
+      dec,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
   };
 
   handlePull = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const { storage } = this;
-    try {
-      const enc = new Encoder();
-      for (const headHash of dec.readBytesSeq(hashBytes)) {
-        const bodyCph = await storage.getBody(pubKey, headHash);
-        if (bodyCph) {
-          const item: IBagPullItem = { hash: headHash, bodyCph };
-          enc.writeStruct(pullItemCodec, item);
-        }
-      }
-      return binResp(enc);
-    } catch (_err) {
-      return respFor(Status.InternalError);
+    const ret = await pullEnd.createResp(
+      pubKey,
+      dec,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
   };
 
   handlePeek = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const { storage } = this;
-    try {
-      const from = dec.readDate();
-      if (!dec.done()) {
-        return respFor(Status.ExtraBodyContent);
-      }
-
-      const begin = from.toISOString();
-      const end = new Date().toISOString();
-      const items = await storage.listHeads(pubKey, begin, end);
-
-      const enc = new Encoder();
-      enc.writeStructs(peekItemCodec, items);
-      return binResp(enc);
-    } catch (_err) {
-      return respFor(Status.InternalError);
+    const ret = await peekEnd.createResp(
+      pubKey,
+      dec,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
   };
 

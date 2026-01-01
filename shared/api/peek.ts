@@ -12,6 +12,7 @@ export const peekEnd: IAuthenticatedEndpoint<Date> = {
     }
     return enc;
   },
+  requiresRegisteredUser: true,
   async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
     try {
       const from = dec.readDate();

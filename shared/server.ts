@@ -1,15 +1,8 @@
 import { validateTsAuth } from "./auth.ts";
 import { Decoder, Encoder } from "./codec.ts";
-
 import { Status, tsAuthSize } from "./consts.ts";
-
 import { apiPaths, binResp, cors, respFor } from "./http.ts";
-import type {
-  IHostCrypto,
-  IStorage,
-  IWebsocketNotifier,
-  PublicKey,
-} from "./types.ts";
+import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
 import { hostEnd } from "./api/host.ts";
 import { peekEnd } from "./api/peek.ts";
 import { pullEnd } from "./api/pull.ts";
@@ -43,86 +36,6 @@ export class DiplomaticServer {
     return cors(resp);
   };
 
-  handleHost = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await hostEnd.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
-    }
-  };
-
-  handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await userEnd.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
-    }
-  };
-
-  handlePush = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await pushEnd.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
-    }
-  };
-
-  handlePull = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await pullEnd.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
-    }
-  };
-
-  handlePeek = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await peekEnd.handleReq(
-      pubKey,
-      dec,
-      this.hostID,
-      this.storage,
-      this.crypto,
-      this.notifier,
-    );
-    if (ret instanceof Encoder) {
-      return binResp(ret);
-    } else {
-      return respFor(ret);
-    }
-  };
-
   handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -144,33 +57,42 @@ export class DiplomaticServer {
       return respFor(status);
     }
 
-    if (url.pathname === apiPaths.host) {
-      return this.handleHost(pubKey, dec);
+    const path = url.pathname as keyof typeof endpoints;
+    const endpoint = endpoints[path];
+    if (!endpoint) {
+      return respFor(Status.NotFound);
     }
-    if (url.pathname === apiPaths.user) {
-      return this.handleUser(pubKey, dec);
-    }
-
-    // Registered user required beyond this point.
-    try {
-      const userRegistered = await this.storage.hasUser(pubKey);
-      if (!userRegistered) {
-        return respFor(Status.UserNotRegistered);
+    if (endpoint.requiresRegisteredUser) {
+      try {
+        const userRegistered = await this.storage.hasUser(pubKey);
+        if (!userRegistered) {
+          return respFor(Status.UserNotRegistered);
+        }
+      } catch {
+        return respFor(Status.InternalError);
       }
-    } catch {
-      return respFor(Status.InternalError);
     }
 
-    if (url.pathname === apiPaths.push) {
-      return this.handlePush(pubKey, dec);
+    const ret = await endpoint.handleReq(
+      pubKey,
+      dec,
+      this.hostID,
+      this.storage,
+      this.crypto,
+      this.notifier,
+    );
+    if (ret instanceof Encoder) {
+      return binResp(ret);
+    } else {
+      return respFor(ret);
     }
-    if (url.pathname === apiPaths.pull) {
-      return this.handlePull(pubKey, dec);
-    }
-    if (url.pathname === apiPaths.peek) {
-      return this.handlePeek(pubKey, dec);
-    }
-
-    return respFor(Status.NotFound);
   };
 }
+
+const endpoints = {
+  [apiPaths.host]: hostEnd,
+  [apiPaths.user]: userEnd,
+  [apiPaths.push]: pushEnd,
+  [apiPaths.peek]: peekEnd,
+  [apiPaths.pull]: pullEnd,
+} as const;

@@ -44,7 +44,7 @@ export class DiplomaticServer {
   };
 
   handleHost = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await hostEnd.createResp(
+    const ret = await hostEnd.handleReq(
       pubKey,
       dec,
       this.hostID,
@@ -60,7 +60,7 @@ export class DiplomaticServer {
   };
 
   handleUser = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await userEnd.createResp(
+    const ret = await userEnd.handleReq(
       pubKey,
       dec,
       this.hostID,
@@ -76,7 +76,7 @@ export class DiplomaticServer {
   };
 
   handlePush = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await pushEnd.createResp(
+    const ret = await pushEnd.handleReq(
       pubKey,
       dec,
       this.hostID,
@@ -92,7 +92,7 @@ export class DiplomaticServer {
   };
 
   handlePull = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await pullEnd.createResp(
+    const ret = await pullEnd.handleReq(
       pubKey,
       dec,
       this.hostID,
@@ -108,7 +108,7 @@ export class DiplomaticServer {
   };
 
   handlePeek = async (pubKey: PublicKey, dec: Decoder): Promise<Response> => {
-    const ret = await peekEnd.createResp(
+    const ret = await peekEnd.handleReq(
       pubKey,
       dec,
       this.hostID,

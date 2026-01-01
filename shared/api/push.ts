@@ -18,7 +18,7 @@ export const pushEnd: IAuthenticatedEndpoint<IMessage> = {
 
     return enc;
   },
-  async createResp(pubKey, dec, _hostID, storage, crypto, notifier) {
+  async handleReq(pubKey, dec, _hostID, storage, crypto, notifier) {
     const now = new Date();
     try {
       const enc = new Encoder();

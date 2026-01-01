@@ -8,7 +8,7 @@ export const hostEnd: IAuthenticatedEndpoint<never> = {
     enc.writeBytes(tsAuth);
     return enc;
   },
-  async createResp(pubKey, dec, hostID, _storage, crypto, _notifier) {
+  async handleReq(pubKey, dec, hostID, _storage, crypto, _notifier) {
     if (!hostID) {
       return Status.ServerMisconfigured;
     }

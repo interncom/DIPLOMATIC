@@ -12,7 +12,7 @@ export const peekEnd: IAuthenticatedEndpoint<Date> = {
     }
     return enc;
   },
-  async createResp(pubKey, dec, _hostID, storage, _crypto, _notifier) {
+  async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
     try {
       const from = dec.readDate();
       if (!dec.done()) {

@@ -9,6 +9,7 @@ import { sealBag } from "./bag.ts";
 import { apiPaths, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
 import type { HostSpecificKeyPair, ICrypto } from "./types.ts";
+import { pushEnd } from "./api/push.ts";
 
 interface IAuthData {
   keyPair: HostSpecificKeyPair;
@@ -74,14 +75,7 @@ export default class DiplomaticClientAPI {
     const { crypto, enclave } = this;
     const { keyPair, tsAuth } = await this.authDataFor(now, keyPath, idx);
 
-    const enc = new Encoder();
-    enc.writeBytes(tsAuth);
-
-    for (const op of ops) {
-      const bag = await sealBag(op, keyPair, crypto, enclave);
-      enc.writeStruct(bagCodec, bag);
-    }
-
+    const enc = await pushEnd.encodeReq(tsAuth, ops, keyPair, crypto, enclave);
     const url = new URL(apiPaths.push, hostURL);
     const dec = await post(url, enc);
     return dec.readStructs(pushItemCodec);

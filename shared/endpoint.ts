@@ -7,7 +7,7 @@ export interface IAuthenticatedEndpoint<ReqItem> {
   encodeReq(
     tsAuth: EncodedAuthTimestamp,
     body: Iterable<ReqItem>,
-    keyPair: HostSpecificKeyPair,
+    keys: HostSpecificKeyPair,
     crypto: ICrypto,
     enclave: Enclave,
   ): Promise<Encoder>;

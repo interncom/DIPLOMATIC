@@ -9,7 +9,6 @@ ERRORS
 - error handling for decoders
 
 TESTS
-- refactor so that HTTP layer is separate and built on top of protocol layer (protocol itself doesn't care about URLs and HTTP response codes)
 - test protocol client against binary test vector responses. make them thorough enough and can generate clients in other lanuages via LLM
 - mock clock and storage and test server protocol handlers
 - add tests for PUSH, PEEK, and PULL that round-trip a couple bags and check their contents

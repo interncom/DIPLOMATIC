@@ -2,6 +2,7 @@
 
 ARCH
 - let hosts maintain multiple ID keys to mitigate loss risk (could be Schnorr signatures or just a list of Ed25519 public keys that host may use)
+- work out host-specific keypair. Does client mix host pubkey(s) in to client keypair derivation? if so need to remove authentication on host endpoint
 
 ERRORS
 - make client error handling use status enum too. the standard is zero string-based errors

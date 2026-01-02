@@ -1,7 +1,11 @@
 import { Status } from "./consts.ts";
-import { Encoder, Decoder } from "./codec.ts";
+import { Decoder, Encoder } from "./codec.ts";
+import { hostEnd } from "./api/host.ts";
+import { peekEnd } from "./api/peek.ts";
+import { pullEnd } from "./api/pull.ts";
+import { pushEnd } from "./api/push.ts";
+import { userEnd } from "./api/user.ts";
 
-// Named constants for API endpoint paths
 export const apiPaths = {
   host: "/id",
   user: "/users",
@@ -9,6 +13,37 @@ export const apiPaths = {
   pull: "/pull",
   peek: "/peek",
 } as const;
+
+export const api = {
+  host: {
+    path: apiPaths.host,
+    endpoint: hostEnd,
+  },
+  user: {
+    path: apiPaths.user,
+    endpoint: userEnd,
+  },
+  push: {
+    path: apiPaths.push,
+    endpoint: pushEnd,
+  },
+  peek: {
+    path: apiPaths.peek,
+    endpoint: peekEnd,
+  },
+  pull: {
+    path: apiPaths.pull,
+    endpoint: pullEnd,
+  },
+} as const;
+
+export const callPaths = {
+  [apiPaths.host]: api.host,
+  [apiPaths.user]: api.user,
+  [apiPaths.push]: api.push,
+  [apiPaths.peek]: api.peek,
+  [apiPaths.pull]: api.pull,
+};
 
 export function respFor(status: Status): Response {
   switch (status) {

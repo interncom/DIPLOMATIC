@@ -2,7 +2,7 @@ import { Encoder } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
-export const hostEnd: IAuthenticatedEndpoint<never> = {
+export const hostEnd: IAuthenticatedEndpoint<never, string> = {
   async encodeReq(tsAuth, _body, _keys, _crypto, _enclave) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -23,5 +23,10 @@ export const hostEnd: IAuthenticatedEndpoint<never> = {
     enc.writeVarInt(uniqueHostID.length);
     enc.writeBytes(new TextEncoder().encode(uniqueHostID));
     return enc;
+  },
+  decodeResp(dec) {
+    const len = dec.readVarInt();
+    const bytes = dec.readBytes(len);
+    return new TextDecoder().decode(bytes);
   },
 };

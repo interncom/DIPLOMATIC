@@ -41,14 +41,13 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<string> {
+    const endpoint = hostEnd;
     const { crypto, enclave } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
-    const enc = await hostEnd.encodeReq(tsAuth, [], keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(tsAuth, [], keys, crypto, enclave);
     const url = new URL(apiPaths.host, hostURL);
     const dec = await post(url, enc);
-    const len = dec.readVarInt();
-    const bytes = dec.readBytes(len);
-    return new TextDecoder().decode(bytes);
+    return hostEnd.decodeResp(dec);
   }
 
   async register(
@@ -57,9 +56,10 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<void> {
+    const endpoint = userEnd;
     const { crypto, enclave } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
-    const enc = await userEnd.encodeReq(tsAuth, [], keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(tsAuth, [], keys, crypto, enclave);
     const url = new URL(apiPaths.user, hostURL);
     await post(url, enc);
   }
@@ -71,12 +71,13 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IBagPushItem>> {
+    const endpoint = pushEnd;
     const { crypto, enclave } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
-    const enc = await pushEnd.encodeReq(tsAuth, ops, keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(tsAuth, ops, keys, crypto, enclave);
     const url = new URL(apiPaths.push, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(pushItemCodec);
+    return endpoint.decodeResp(dec);
   }
 
   async pull(
@@ -86,12 +87,13 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IBagPullItem>> {
+    const endpoint = pullEnd;
     const { crypto, enclave } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
-    const enc = await pullEnd.encodeReq(tsAuth, hashes, keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(tsAuth, hashes, keys, crypto, enclave);
     const url = new URL(apiPaths.pull, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(pullItemCodec);
+    return endpoint.decodeResp(dec);
   }
 
   async peek(
@@ -101,11 +103,12 @@ export default class DiplomaticClientAPI {
     idx: number,
     now: Date,
   ): Promise<IterableIterator<IBagPeekItem>> {
+    const endpoint = peekEnd;
     const { crypto, enclave } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
-    const enc = await peekEnd.encodeReq(tsAuth, [from], keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(tsAuth, [from], keys, crypto, enclave);
     const url = new URL(apiPaths.peek, hostURL);
     const dec = await post(url, enc);
-    return dec.readStructs(peekItemCodec);
+    return endpoint.decodeResp(dec);
   }
 }

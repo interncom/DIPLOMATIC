@@ -11,7 +11,7 @@ import { Enclave } from "./enclave.ts";
 import { EncodedAuthTimestamp } from "./auth.ts";
 import { Status } from "./consts.ts";
 
-export interface IAuthenticatedEndpoint<ReqItem> {
+export interface IAuthenticatedEndpoint<ReqItem, Resp> {
   requiresRegisteredUser: boolean;
   encodeReq(
     tsAuth: EncodedAuthTimestamp,
@@ -28,5 +28,5 @@ export interface IAuthenticatedEndpoint<ReqItem> {
     crypto: IHostCrypto,
     notifier: IWebsocketNotifier,
   ): Promise<Encoder | Status>;
-  // decodeResp(dec: Decoder): Promise<IterableIterator<RespItem>>;
+  decodeResp(dec: Decoder): Resp;
 }

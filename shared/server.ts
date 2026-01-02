@@ -6,10 +6,10 @@ import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
 
 export class DiplomaticServer {
   constructor(
-    private hostID: string,
-    private storage: IStorage,
-    private crypto: IHostCrypto,
-    private notifier: IWebsocketNotifier,
+    public hostID: string,
+    public storage: IStorage,
+    public crypto: IHostCrypto,
+    public notifier: IWebsocketNotifier,
   ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
@@ -69,14 +69,7 @@ export class DiplomaticServer {
     }
 
     try {
-      const ret = await endpoint.handleReq(
-        pubKey,
-        dec,
-        this.hostID,
-        this.storage,
-        this.crypto,
-        this.notifier,
-      );
+      const ret = await endpoint.handleReq(this, pubKey, dec);
       if (ret instanceof Encoder) {
         return binResp(ret);
       } else {

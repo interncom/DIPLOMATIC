@@ -3,13 +3,14 @@ import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
-  async encodeReq(tsAuth, _body, _keys, _crypto, _enclave) {
+  async encodeReq(_client, _keys, tsAuth, _body) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
     return enc;
   },
   requiresRegisteredUser: false,
-  async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
+  async handleReq(host, pubKey, dec) {
+    const { storage } = host;
     if (!dec.done()) {
       return Status.ExtraBodyContent;
     }

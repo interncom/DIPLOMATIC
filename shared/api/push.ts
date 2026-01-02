@@ -6,7 +6,10 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IMessage } from "../message.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 
-export const pushEnd: IAuthenticatedEndpoint<IMessage> = {
+export const pushEnd: IAuthenticatedEndpoint<
+  IMessage,
+  IterableIterator<IBagPushItem>
+> = {
   async encodeReq(tsAuth, msgs, keys, crypto, enclave) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -39,5 +42,8 @@ export const pushEnd: IAuthenticatedEndpoint<IMessage> = {
       enc.writeStruct(pushItemCodec, item);
     }
     return enc;
+  },
+  decodeResp(dec) {
+    return dec.readStructs(pushItemCodec);
   },
 };

@@ -4,7 +4,10 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
 
 type BagHash = Uint8Array;
-export const pullEnd: IAuthenticatedEndpoint<BagHash> = {
+export const pullEnd: IAuthenticatedEndpoint<
+  BagHash,
+  IterableIterator<IBagPullItem>
+> = {
   async encodeReq(tsAuth, hashes, _keys, _crypto, _enclave) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
@@ -22,5 +25,8 @@ export const pullEnd: IAuthenticatedEndpoint<BagHash> = {
       }
     }
     return enc;
+  },
+  decodeResp(dec) {
+    return dec.readStructs(pullItemCodec);
   },
 };

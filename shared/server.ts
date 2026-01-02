@@ -1,13 +1,8 @@
 import { validateTsAuth } from "./auth.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { Status, tsAuthSize } from "./consts.ts";
-import { apiPaths, binResp, cors, respFor } from "./http.ts";
+import { binResp, callPaths, cors, respFor } from "./http.ts";
 import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
-import { hostEnd } from "./api/host.ts";
-import { peekEnd } from "./api/peek.ts";
-import { pullEnd } from "./api/pull.ts";
-import { pushEnd } from "./api/push.ts";
-import { userEnd } from "./api/user.ts";
 
 export class DiplomaticServer {
   constructor(
@@ -57,8 +52,8 @@ export class DiplomaticServer {
       return respFor(status);
     }
 
-    const path = url.pathname as keyof typeof endpoints;
-    const endpoint = endpoints[path];
+    const path = url.pathname as keyof typeof callPaths;
+    const endpoint = callPaths[path]?.endpoint;
     if (!endpoint) {
       return respFor(Status.NotFound);
     }
@@ -92,11 +87,3 @@ export class DiplomaticServer {
     }
   };
 }
-
-const endpoints = {
-  [apiPaths.host]: hostEnd,
-  [apiPaths.user]: userEnd,
-  [apiPaths.push]: pushEnd,
-  [apiPaths.peek]: peekEnd,
-  [apiPaths.pull]: pullEnd,
-} as const;

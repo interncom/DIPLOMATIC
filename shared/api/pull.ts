@@ -1,5 +1,4 @@
-import { Encoder } from "../codec.ts";
-import { hashBytes } from "../consts.ts";
+import { hashBytes, Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
 
@@ -8,26 +7,23 @@ export const pullEnd: IAuthenticatedEndpoint<
   BagHash,
   IterableIterator<IBagPullItem>
 > = {
-  async encodeReq(_client, _keys, tsAuth, hashes) {
-    const enc = new Encoder();
-    enc.writeBytes(tsAuth);
-    enc.writeBytesSeq(hashes);
-    return enc;
+  async encodeReq(_client, _keys, tsAuth, hashes, reqEnc) {
+    reqEnc.writeBytes(tsAuth);
+    reqEnc.writeBytesSeq(hashes);
   },
   requiresRegisteredUser: true,
-  async handleReq(host, pubKey, dec) {
+  async handleReq(host, pubKey, reqDec, respEnc) {
     const { storage } = host;
-    const enc = new Encoder();
-    for (const headHash of dec.readBytesSeq(hashBytes)) {
+    for (const headHash of reqDec.readBytesSeq(hashBytes)) {
       const bodyCph = await storage.getBody(pubKey, headHash);
       if (bodyCph) {
         const item: IBagPullItem = { hash: headHash, bodyCph };
-        enc.writeStruct(pullItemCodec, item);
+        respEnc.writeStruct(pullItemCodec, item);
       }
     }
-    return enc;
+    return Status.Success;
   },
-  decodeResp(dec) {
-    return dec.readStructs(pullItemCodec);
+  decodeResp(respDec) {
+    return respDec.readStructs(pullItemCodec);
   },
 };

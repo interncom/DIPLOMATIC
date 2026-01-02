@@ -1,24 +1,20 @@
-import { Encoder } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
-  async encodeReq(_client, _keys, tsAuth, _body) {
-    const enc = new Encoder();
-    enc.writeBytes(tsAuth);
-    return enc;
+  async encodeReq(_client, _keys, tsAuth, _body, reqEnc) {
+    reqEnc.writeBytes(tsAuth);
   },
   requiresRegisteredUser: false,
-  async handleReq(host, pubKey, dec) {
+  async handleReq(host, pubKey, reqDec, _respEnc) {
     const { storage } = host;
-    if (!dec.done()) {
+    if (!reqDec.done()) {
       return Status.ExtraBodyContent;
     }
     await storage.addUser(pubKey);
-    const enc = new Encoder();
-    return enc;
+    return Status.Success;
   },
-  decodeResp(_dec) {
+  decodeResp(_respDec) {
     return;
   },
 };

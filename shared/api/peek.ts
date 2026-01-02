@@ -1,4 +1,3 @@
-import { Encoder } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IBagPeekItem, peekItemCodec } from "../codecs/peekItem.ts";
@@ -7,19 +6,17 @@ export const peekEnd: IAuthenticatedEndpoint<
   Date,
   IterableIterator<IBagPeekItem>
 > = {
-  async encodeReq(_client, _keys, tsAuth, body) {
-    const enc = new Encoder();
-    enc.writeBytes(tsAuth);
+  async encodeReq(_client, _keys, tsAuth, body, reqEnc) {
+    reqEnc.writeBytes(tsAuth);
     for (const from of body) {
-      enc.writeDate(from);
+      reqEnc.writeDate(from);
     }
-    return enc;
   },
   requiresRegisteredUser: true,
-  async handleReq(host, pubKey, dec) {
+  async handleReq(host, pubKey, reqDec, respEnc) {
     const { storage } = host;
-    const from = dec.readDate();
-    if (!dec.done()) {
+    const from = reqDec.readDate();
+    if (!reqDec.done()) {
       return Status.ExtraBodyContent;
     }
 
@@ -27,11 +24,10 @@ export const peekEnd: IAuthenticatedEndpoint<
     const end = new Date().toISOString();
     const items = await storage.listHeads(pubKey, begin, end);
 
-    const enc = new Encoder();
-    enc.writeStructs(peekItemCodec, items);
-    return enc;
+    respEnc.writeStructs(peekItemCodec, items);
+    return Status.Success;
   },
-  decodeResp(dec) {
-    return dec.readStructs(peekItemCodec);
+  decodeResp(respDec) {
+    return respDec.readStructs(peekItemCodec);
   },
 };

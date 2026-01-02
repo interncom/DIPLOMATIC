@@ -15,7 +15,6 @@ TESTS
 - add tests for PUSH, PEEK, and PULL that round-trip a couple bags and check their contents
 
 TIME
-- make a Clock abstraction rather than passing now to each client method
 - server can use Clock abstraction too. use it to make tests of clocks out of sync
 
 PERF

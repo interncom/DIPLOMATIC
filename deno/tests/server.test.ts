@@ -11,6 +11,7 @@ import memStorage from "../src/storage/memory.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { MasterSeed } from "../../shared/types.ts";
+import { MockClock } from "../../shared/clock.ts";
 
 // Server config.
 const port = 3331;
@@ -35,11 +36,17 @@ Deno.test("server", async (t) => {
     handler: async () => new Response(),
     notify: async () => {},
   };
+
+  // Use a consistent now Date for all operations and auth
+  const now = new Date();
+  const clock = new MockClock(now);
+
   const server = new DiplomaticServer(
     hostID,
     memStorage,
     libsodiumCrypto,
     websocketHandler,
+    clock,
   );
   const httpServer = Deno.serve({ port }, server.corsHandler);
 
@@ -47,18 +54,21 @@ Deno.test("server", async (t) => {
     throw "a fit";
   }
   const url = new URL(`http://localhost:${port}`);
-  const client = new DiplomaticClientAPI(enclave, libsodiumCrypto, url, idx);
-
-  // Use a consistent now Date for all operations and auth
-  const now = new Date();
+  const client = new DiplomaticClientAPI(
+    enclave,
+    libsodiumCrypto,
+    url,
+    idx,
+    clock,
+  );
 
   await t.step("POST /id", async () => {
-    const id = await client.getHostID(hostID, now);
+    const id = await client.getHostID(hostID);
     assertEquals(id, expectedHostID);
   });
 
   await t.step("POST /users", async () => {
-    await client.register(hostID, now);
+    await client.register(hostID);
   });
 
   // Test PUSH
@@ -68,7 +78,7 @@ Deno.test("server", async (t) => {
   const ops = [op1, op2];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = [...(await client.push(ops, hostID, now))];
+    result = [...(await client.push(ops, hostID))];
     assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);
@@ -79,7 +89,7 @@ Deno.test("server", async (t) => {
   await t.step("POST /pull", async () => {
     const hashes = result.map((r) => r.hash);
     const pulledItems = [
-      ...(await client.pull(hashes, hostID, now)),
+      ...(await client.pull(hashes, hostID)),
     ];
     assertEquals(pulledItems.length, 2);
 
@@ -92,7 +102,7 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /peek", async () => {
     const peekedHeaders = [
-      ...(await client.peek(new Date(0), hostID, now)),
+      ...(await client.peek(new Date(0), hostID)),
     ];
     assertEquals(peekedHeaders.length, 2);
     // Verify header structure

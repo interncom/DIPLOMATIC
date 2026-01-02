@@ -65,7 +65,7 @@ const sqliteStorage: IStorage = {
   async listHeads(pubKey, begin, end) {
     const pubKeyHex = btoh(pubKey);
     const rows = db.query<[Uint8Array, string, Uint8Array]>(
-      "SELECT sha256, recordedAt, headCph FROM bag WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt < ?",
+      "SELECT sha256, recordedAt, headCph FROM bag WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt <= ?",
       [pubKeyHex, begin, end],
     );
     return rows.map(([sha256, recordedAt, headCph]) => ({

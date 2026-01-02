@@ -20,8 +20,8 @@ export const pushEnd: IAuthenticatedEndpoint<
     }
   },
   async handleReq(host, pubKey, reqDec, respEnc) {
-    const { crypto, storage, notifier } = host;
-    const now = new Date();
+    const { clock, crypto, storage, notifier } = host;
+    const now = clock.now();
     for (const bag of reqDec.readStructs(bagCodec)) {
       const hash = await crypto.sha256Hash(bag.headCph);
       const sigValid = await bagSigValid(bag, pubKey, crypto);

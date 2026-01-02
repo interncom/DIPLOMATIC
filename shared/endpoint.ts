@@ -10,10 +10,12 @@ import {
 import { Enclave } from "./enclave.ts";
 import { EncodedAuthTimestamp } from "./auth.ts";
 import { Status } from "./consts.ts";
+import { IClock } from "./clock.ts";
 
 interface IProtoClient {
   crypto: ICrypto;
   enclave: Enclave;
+  clock: IClock;
 }
 
 interface IProtoHost {
@@ -21,6 +23,7 @@ interface IProtoHost {
   storage: IStorage;
   crypto: IHostCrypto;
   notifier: IWebsocketNotifier;
+  clock: IClock;
 }
 
 export interface IAuthenticatedEndpoint<ReqItem, Resp> {

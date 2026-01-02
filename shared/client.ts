@@ -1,4 +1,5 @@
 import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
+import { Clock, IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { type IBagPeekItem } from "./codecs/peekItem.ts";
 import { type IBagPullItem } from "./codecs/pullItem.ts";
@@ -20,6 +21,7 @@ export default class DiplomaticClientAPI {
     public crypto: ICrypto,
     private hostURL: URL,
     private idx: number,
+    public clock: IClock,
   ) {}
 
   private async authDataFor(
@@ -37,11 +39,10 @@ export default class DiplomaticClientAPI {
   private async call<ReqItem, Resp>(
     apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
     keyPath: string,
-    now: Date,
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { hostURL, idx } = this;
-    const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
+    const { clock, hostURL, idx } = this;
+    const { keys, tsAuth } = await this.authDataFor(clock.now(), keyPath, idx);
     const { endpoint, path } = apiCall;
     const enc = new Encoder();
     await endpoint.encodeReq(this, keys, tsAuth, items, enc);
@@ -50,41 +51,32 @@ export default class DiplomaticClientAPI {
     return endpoint.decodeResp(dec);
   }
 
-  async getHostID(
-    keyPath: string,
-    now: Date,
-  ): Promise<string> {
-    return this.call(api.host, keyPath, now, []);
+  async getHostID(keyPath: string): Promise<string> {
+    return this.call(api.host, keyPath, []);
   }
 
-  async register(
-    keyPath: string,
-    now: Date,
-  ): Promise<void> {
-    return this.call(api.user, keyPath, now, []);
+  async register(keyPath: string): Promise<void> {
+    return this.call(api.user, keyPath, []);
   }
 
   async push(
     ops: IMessage[],
     keyPath: string,
-    now: Date,
   ): Promise<IterableIterator<IBagPushItem>> {
-    return this.call(api.push, keyPath, now, ops);
+    return this.call(api.push, keyPath, ops);
   }
 
   async pull(
     hashes: Uint8Array[],
     keyPath: string,
-    now: Date,
   ): Promise<IterableIterator<IBagPullItem>> {
-    return this.call(api.pull, keyPath, now, hashes);
+    return this.call(api.pull, keyPath, hashes);
   }
 
   async peek(
     from: Date,
     keyPath: string,
-    now: Date,
   ): Promise<IterableIterator<IBagPeekItem>> {
-    return this.call(api.peek, keyPath, now, [from]);
+    return this.call(api.peek, keyPath, [from]);
   }
 }

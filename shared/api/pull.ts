@@ -7,11 +7,11 @@ export const pullEnd: IAuthenticatedEndpoint<
   BagHash,
   IterableIterator<IBagPullItem>
 > = {
+  requiresRegisteredUser: true,
   async encodeReq(_client, _keys, tsAuth, hashes, reqEnc) {
     reqEnc.writeBytes(tsAuth);
     reqEnc.writeBytesSeq(hashes);
   },
-  requiresRegisteredUser: true,
   async handleReq(host, pubKey, reqDec, respEnc) {
     const { storage } = host;
     for (const headHash of reqDec.readBytesSeq(hashBytes)) {

@@ -2,10 +2,10 @@ import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
+  requiresRegisteredUser: false,
   async encodeReq(_client, _keys, tsAuth, _body, reqEnc) {
     reqEnc.writeBytes(tsAuth);
   },
-  requiresRegisteredUser: false,
   async handleReq(host, pubKey, reqDec, _respEnc) {
     const { storage } = host;
     if (!reqDec.done()) {

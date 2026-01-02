@@ -2,10 +2,10 @@ import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const hostEnd: IAuthenticatedEndpoint<never, string> = {
+  requiresRegisteredUser: false,
   async encodeReq(_client, _keys, tsAuth, _body, reqEnc) {
     reqEnc.writeBytes(tsAuth);
   },
-  requiresRegisteredUser: false,
   async handleReq(host, pubKey, reqDec, respEnc) {
     const { crypto, hostID } = host;
     if (!hostID) {

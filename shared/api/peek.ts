@@ -14,14 +14,14 @@ export const peekEnd: IAuthenticatedEndpoint<
     }
   },
   async handleReq(host, pubKey, reqDec, respEnc) {
-    const { storage } = host;
+    const { clock, storage } = host;
     const from = reqDec.readDate();
     if (!reqDec.done()) {
       return Status.ExtraBodyContent;
     }
 
     const begin = from.toISOString();
-    const end = new Date().toISOString();
+    const end = clock.now().toISOString();
     const items = await storage.listHeads(pubKey, begin, end);
 
     respEnc.writeStructs(peekItemCodec, items);

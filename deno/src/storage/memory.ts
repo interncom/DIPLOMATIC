@@ -56,7 +56,7 @@ const memStorage: IMemoryStorage = {
     const list: IBagPeekItem[] = [];
     for (const [key, item] of this.bag.entries()) {
       const ts = item.recordedAt.toISOString();
-      if (item.pubKeyHex === pubKeyHex && ts >= begin && ts < end) {
+      if (item.pubKeyHex === pubKeyHex && ts >= begin && ts <= end) {
         const sha256 = htob(key);
         list.push({
           hash: sha256,

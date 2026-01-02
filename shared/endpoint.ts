@@ -24,17 +24,26 @@ interface IProtoHost {
 }
 
 export interface IAuthenticatedEndpoint<ReqItem, Resp> {
+  // requiresRegisteredUser indicates if this endpoint requires a user.
   requiresRegisteredUser: boolean;
+
+  // encodeReq writes request data to the provided reqEnc.
   encodeReq(
     client: IProtoClient,
     keys: HostSpecificKeyPair,
     tsAuth: EncodedAuthTimestamp,
     body: Iterable<ReqItem>,
-  ): Promise<Encoder>;
+    reqEnc: Encoder,
+  ): Promise<void>;
+
+  // handleReq reads request data from reqDec and writes to respEnc.
   handleReq(
     host: IProtoHost,
     pubKey: PublicKey,
-    dec: Decoder,
-  ): Promise<Encoder | Status>;
-  decodeResp(dec: Decoder): Resp;
+    reqDec: Decoder,
+    respEnc: Encoder,
+  ): Promise<Status>;
+
+  // decodeResp reads response data from respDeck and parses it.
+  decodeResp(respDec: Decoder): Resp;
 }

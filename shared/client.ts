@@ -1,4 +1,5 @@
 import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
+import { Encoder } from "./codec.ts";
 import { type IBagPeekItem } from "./codecs/peekItem.ts";
 import { type IBagPullItem } from "./codecs/pullItem.ts";
 import { type IBagPushItem } from "./codecs/pushItem.ts";
@@ -42,7 +43,8 @@ export default class DiplomaticClientAPI {
     const { hostURL, idx } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
     const { endpoint, path } = apiCall;
-    const enc = await endpoint.encodeReq(this, keys, tsAuth, items);
+    const enc = new Encoder();
+    await endpoint.encodeReq(this, keys, tsAuth, items, enc);
     const url = new URL(path, hostURL);
     const dec = await post(url, enc);
     return endpoint.decodeResp(dec);

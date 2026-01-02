@@ -69,12 +69,12 @@ export class DiplomaticServer {
     }
 
     try {
-      const ret = await endpoint.handleReq(this, pubKey, dec);
-      if (ret instanceof Encoder) {
-        return binResp(ret);
-      } else {
-        return respFor(ret);
+      const enc = new Encoder();
+      const status = await endpoint.handleReq(this, pubKey, dec, enc);
+      if (status !== Status.Success) {
+        return respFor(status);
       }
+      return binResp(enc);
     } catch {
       return respFor(Status.InternalError);
     }

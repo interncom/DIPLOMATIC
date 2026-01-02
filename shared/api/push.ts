@@ -10,7 +10,8 @@ export const pushEnd: IAuthenticatedEndpoint<
   IMessage,
   IterableIterator<IBagPushItem>
 > = {
-  async encodeReq(tsAuth, msgs, keys, crypto, enclave) {
+  async encodeReq(client, keys, tsAuth, msgs) {
+    const { crypto, enclave } = client;
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
 
@@ -22,7 +23,8 @@ export const pushEnd: IAuthenticatedEndpoint<
     return enc;
   },
   requiresRegisteredUser: true,
-  async handleReq(pubKey, dec, _hostID, storage, crypto, notifier) {
+  async handleReq(host, pubKey, dec) {
+    const { crypto, storage, notifier } = host;
     const now = new Date();
     const enc = new Encoder();
     for (const bag of dec.readStructs(bagCodec)) {

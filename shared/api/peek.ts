@@ -7,7 +7,7 @@ export const peekEnd: IAuthenticatedEndpoint<
   Date,
   IterableIterator<IBagPeekItem>
 > = {
-  async encodeReq(tsAuth, body, _keys, _crypto, _enclave) {
+  async encodeReq(_client, _keys, tsAuth, body) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
     for (const from of body) {
@@ -16,7 +16,8 @@ export const peekEnd: IAuthenticatedEndpoint<
     return enc;
   },
   requiresRegisteredUser: true,
-  async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
+  async handleReq(host, pubKey, dec) {
+    const { storage } = host;
     const from = dec.readDate();
     if (!dec.done()) {
       return Status.ExtraBodyContent;

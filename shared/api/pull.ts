@@ -8,14 +8,15 @@ export const pullEnd: IAuthenticatedEndpoint<
   BagHash,
   IterableIterator<IBagPullItem>
 > = {
-  async encodeReq(tsAuth, hashes, _keys, _crypto, _enclave) {
+  async encodeReq(_client, _keys, tsAuth, hashes) {
     const enc = new Encoder();
     enc.writeBytes(tsAuth);
     enc.writeBytesSeq(hashes);
     return enc;
   },
   requiresRegisteredUser: true,
-  async handleReq(pubKey, dec, _hostID, storage, _crypto, _notifier) {
+  async handleReq(host, pubKey, dec) {
+    const { storage } = host;
     const enc = new Encoder();
     for (const headHash of dec.readBytesSeq(hashBytes)) {
       const bodyCph = await storage.getBody(pubKey, headHash);

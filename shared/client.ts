@@ -20,8 +20,8 @@ interface IAuthData {
 
 export default class DiplomaticClientAPI {
   constructor(
-    private enclave: Enclave,
-    private crypto: ICrypto,
+    public enclave: Enclave,
+    public crypto: ICrypto,
     private hostURL: URL,
     private idx: number,
   ) {}
@@ -44,10 +44,10 @@ export default class DiplomaticClientAPI {
     now: Date,
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { crypto, enclave, hostURL, idx } = this;
+    const { hostURL, idx } = this;
     const { keys, tsAuth } = await this.authDataFor(now, keyPath, idx);
     const { endpoint, path } = apiCall;
-    const enc = await endpoint.encodeReq(tsAuth, items, keys, crypto, enclave);
+    const enc = await endpoint.encodeReq(this, keys, tsAuth, items);
     const url = new URL(path, hostURL);
     const dec = await post(url, enc);
     return endpoint.decodeResp(dec);

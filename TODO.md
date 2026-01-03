@@ -11,8 +11,8 @@ ERRORS
 
 TESTS
 - test protocol client against binary test vector responses. make them thorough enough and can generate clients in other lanuages via LLM
-- mock clock and storage and test server protocol handlers
 - add tests for PUSH, PEEK, and PULL that round-trip a couple bags and check their contents
+- document tests, refactor, and ensure each serves a purpose
 
 TIME
 - server can use Clock abstraction too. use it to make tests of clocks out of sync

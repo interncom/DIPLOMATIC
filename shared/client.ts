@@ -1,5 +1,5 @@
 import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
-import { Clock, IClock } from "./clock.ts";
+import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { type IBagPeekItem } from "./codecs/peekItem.ts";
 import { type IBagPullItem } from "./codecs/pullItem.ts";

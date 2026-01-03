@@ -1,6 +1,7 @@
-import { type EncodedAuthTimestamp, timestampAuthProof } from "./auth.ts";
+import { makeAuthTimestamp } from "./auth.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
+import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { type IBagPeekItem } from "./codecs/peekItem.ts";
 import { type IBagPullItem } from "./codecs/pullItem.ts";
 import { type IBagPushItem } from "./codecs/pushItem.ts";
@@ -12,7 +13,7 @@ import type { HostSpecificKeyPair, ICrypto } from "./types.ts";
 
 interface IAuthData {
   keys: HostSpecificKeyPair;
-  tsAuth: EncodedAuthTimestamp;
+  authTS: IAuthTimestamp;
 }
 
 export default class DiplomaticClientAPI {
@@ -32,8 +33,8 @@ export default class DiplomaticClientAPI {
     const { crypto, enclave } = this;
     const derivSeed = await enclave.derive(keyPath, idx);
     const keys = await crypto.deriveEd25519KeyPair(derivSeed);
-    const tsAuth = await timestampAuthProof(keys, now, crypto);
-    return { keys: keys as HostSpecificKeyPair, tsAuth };
+    const authTS = await makeAuthTimestamp(keys, now, crypto);
+    return { keys: keys as HostSpecificKeyPair, authTS };
   }
 
   private async call<ReqItem, Resp>(
@@ -42,10 +43,10 @@ export default class DiplomaticClientAPI {
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
     const { clock, hostURL, idx } = this;
-    const { keys, tsAuth } = await this.authDataFor(clock.now(), keyPath, idx);
+    const { keys, authTS } = await this.authDataFor(clock.now(), keyPath, idx);
     const { endpoint, path } = apiCall;
     const enc = new Encoder();
-    await endpoint.encodeReq(this, keys, tsAuth, items, enc);
+    await endpoint.encodeReq(this, keys, authTS, items, enc);
     const url = new URL(path, hostURL);
     const dec = await post(url, enc);
     return endpoint.decodeResp(dec);

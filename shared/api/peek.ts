@@ -1,14 +1,15 @@
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IBagPeekItem, peekItemCodec } from "../codecs/peekItem.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 
 export const peekEnd: IAuthenticatedEndpoint<
   Date,
   IterableIterator<IBagPeekItem>
 > = {
   requiresRegisteredUser: true,
-  async encodeReq(_client, _keys, tsAuth, body, reqEnc) {
-    reqEnc.writeBytes(tsAuth);
+  async encodeReq(_client, _keys, authTS, body, reqEnc) {
+    reqEnc.writeStruct(authTimestampCodec, authTS);
     for (const from of body) {
       reqEnc.writeDate(from);
     }

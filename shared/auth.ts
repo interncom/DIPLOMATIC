@@ -7,7 +7,6 @@ import {
 } from "./codecs/authTimestamp.ts";
 
 export type EncodedAuthTimestamp = Uint8Array;
-export { authTimestampCodec, type IAuthTimestamp };
 
 // timestampAuthProof authenticates with a sigproven timestamp.
 // The sigproof demonstrates control of the pubKey.
@@ -16,23 +15,20 @@ export { authTimestampCodec, type IAuthTimestamp };
 // In that case, signal to user that clock is out of sync.
 // Clocks must be synchronized to ensure correct op order.
 
-export async function timestampAuthProof(
-  keyPair: KeyPair,
+export async function makeAuthTimestamp(
+  keys: KeyPair,
   ts: Date,
   crypto: ICrypto,
-): Promise<EncodedAuthTimestamp> {
+): Promise<IAuthTimestamp> {
   const enc = new Encoder();
   enc.writeDate(ts);
   const encodedTs = enc.result();
-  const sig = await crypto.signEd25519(encodedTs, keyPair.privateKey);
-  const authTs: IAuthTimestamp = {
-    pubKey: keyPair.publicKey,
+  const sig = await crypto.signEd25519(encodedTs, keys.privateKey);
+  return {
+    pubKey: keys.publicKey,
     sig,
     timestamp: ts,
   };
-  const finalEnc = new Encoder();
-  authTimestampCodec.encode(finalEnc, authTs);
-  return finalEnc.result();
 }
 
 export async function validateTsAuth(

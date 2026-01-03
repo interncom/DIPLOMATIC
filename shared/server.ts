@@ -47,32 +47,16 @@ export class DiplomaticServer {
     }
     const data = new Uint8Array(await request.arrayBuffer());
     const dec = new Decoder(data);
-    const tsAuthBytes = dec.readBytes(tsAuthSize);
-
-    const [pubKey, status] = await validateTsAuth(tsAuthBytes, this.crypto);
-    if (status !== Status.Success) {
-      return respFor(status);
-    }
 
     const path = url.pathname as keyof typeof callPaths;
     const endpoint = callPaths[path]?.endpoint;
     if (!endpoint) {
       return respFor(Status.NotFound);
     }
-    if (endpoint.requiresRegisteredUser) {
-      try {
-        const userRegistered = await this.storage.hasUser(pubKey);
-        if (!userRegistered) {
-          return respFor(Status.UserNotRegistered);
-        }
-      } catch {
-        return respFor(Status.InternalError);
-      }
-    }
 
     try {
       const enc = new Encoder();
-      const status = await endpoint.handleReq(this, pubKey, dec, enc);
+      const status = await endpoint.handleReq(this, dec, enc);
       if (status !== Status.Success) {
         return respFor(status);
       }

@@ -5,12 +5,12 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IMessage } from "../message.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 import { authTimestampCodec } from "../codecs/authTimestamp.ts";
+import { validateAuthTimestamp } from "../auth.ts";
 
 export const pushEnd: IAuthenticatedEndpoint<
   IMessage,
   IterableIterator<IBagPushItem>
 > = {
-  requiresRegisteredUser: true,
   async encodeReq(client, keys, authTS, msgs, reqEnc) {
     const { crypto, enclave } = client;
     reqEnc.writeStruct(authTimestampCodec, authTS);
@@ -20,9 +20,21 @@ export const pushEnd: IAuthenticatedEndpoint<
       reqEnc.writeStruct(bagCodec, bag);
     }
   },
-  async handleReq(host, pubKey, reqDec, respEnc) {
+  async handleReq(host, reqDec, respEnc) {
     const { clock, crypto, storage, notifier } = host;
     const now = clock.now();
+
+    const authTS = reqDec.readStruct(authTimestampCodec);
+    const status = await validateAuthTimestamp(authTS, host.crypto);
+    if (status !== Status.Success) {
+      return status;
+    }
+    const { pubKey } = authTS;
+
+    if (!storage.hasUser(pubKey)) {
+      return Status.UserNotRegistered;
+    }
+
     for (const bag of reqDec.readStructs(bagCodec)) {
       const hash = await crypto.sha256Hash(bag.headCph);
       const sigValid = await bagSigValid(bag, pubKey, crypto);

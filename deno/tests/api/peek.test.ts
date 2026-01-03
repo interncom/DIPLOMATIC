@@ -65,7 +65,6 @@ Deno.test("peekEnd.handleReq - success", async () => {
 
   const status = await peekEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );
@@ -91,7 +90,6 @@ Deno.test("peekEnd.handleReq - extra body content", async () => {
 
   const status = await peekEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );

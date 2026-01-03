@@ -1,4 +1,3 @@
-import { validateTsAuth } from "./auth.ts";
 import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { Status, tsAuthSize } from "./consts.ts";

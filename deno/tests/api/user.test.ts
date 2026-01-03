@@ -3,6 +3,10 @@ import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { Status } from "../../../shared/consts.ts";
 import { userEnd } from "../../../shared/api/user.ts";
 import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
+import {
+  authTimestampCodec,
+  type IAuthTimestamp,
+} from "../../../shared/codecs/authTimestamp.ts";
 
 // Mock storage for testing
 const mockStorage = {
@@ -10,19 +14,25 @@ const mockStorage = {
 };
 
 const mockHost = { storage: mockStorage };
-const pubKey = new Uint8Array([0, 1, 2, 3]) as PublicKey;
+const pubKey = new Uint8Array(32).fill(0) as PublicKey;
 
 Deno.test("userEnd.encodeReq", () => {
   const client = {}; // Mock, not used
   const keys = {} as HostSpecificKeyPair; // Mock, not used
-  const tsAuth = new Uint8Array([10, 20, 30]);
+  const tsAuth: IAuthTimestamp = {
+    pubKey: new Uint8Array(32).fill(1) as PublicKey,
+    sig: new Uint8Array(64).fill(2),
+    timestamp: new Date("2023-01-01T00:00:00.000Z"),
+  };
   const body = [] as Iterable<never>;
   const reqEnc = new Encoder();
 
   userEnd.encodeReq(client as any, keys, tsAuth, body, reqEnc);
 
   const encoded = reqEnc.result();
-  assertEquals(encoded, tsAuth);
+  const expectedEnc = new Encoder();
+  expectedEnc.writeStruct(authTimestampCodec, tsAuth);
+  assertEquals(encoded, expectedEnc.result());
 });
 
 Deno.test("userEnd.handleReq - success", async () => {

@@ -62,11 +62,6 @@ Deno.test("server", async (t) => {
     clock,
   );
 
-  await t.step("POST /id", async () => {
-    const id = await client.getHostID(hostID);
-    assertEquals(id, expectedHostID);
-  });
-
   await t.step("POST /users", async () => {
     await client.register(hostID);
   });

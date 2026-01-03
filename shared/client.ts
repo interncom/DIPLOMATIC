@@ -51,10 +51,6 @@ export default class DiplomaticClientAPI {
     return endpoint.decodeResp(dec);
   }
 
-  async getHostID(keyPath: string): Promise<string> {
-    return this.call(api.host, keyPath, []);
-  }
-
   async register(keyPath: string): Promise<void> {
     return this.call(api.user, keyPath, []);
   }

@@ -1,13 +1,12 @@
 import { Status } from "./consts.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { hostEnd } from "./api/host.ts";
+
 import { peekEnd } from "./api/peek.ts";
 import { pullEnd } from "./api/pull.ts";
 import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
 
 export const apiPaths = {
-  host: "/id",
   user: "/users",
   push: "/ops",
   pull: "/pull",
@@ -15,10 +14,6 @@ export const apiPaths = {
 } as const;
 
 export const api = {
-  host: {
-    path: apiPaths.host,
-    endpoint: hostEnd,
-  },
   user: {
     path: apiPaths.user,
     endpoint: userEnd,
@@ -38,7 +33,6 @@ export const api = {
 } as const;
 
 export const callPaths = {
-  [apiPaths.host]: api.host,
   [apiPaths.user]: api.user,
   [apiPaths.push]: api.push,
   [apiPaths.peek]: api.peek,

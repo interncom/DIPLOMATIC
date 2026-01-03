@@ -1,8 +1,5 @@
 # TODOS
 
-ARCH
-- split ProtoClient from HttpClient and do same for server. HttpServer handles CORS, routing, response codes, but that's it. Maybe should even use a preliminary byte for routing (API method selection)
-
 ERRORS
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)

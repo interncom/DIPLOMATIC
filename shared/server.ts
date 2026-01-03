@@ -1,6 +1,6 @@
 import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { Status, tsAuthSize } from "./consts.ts";
+import { Status } from "./consts.ts";
 import { binResp, callPaths, cors, respFor } from "./http.ts";
 import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
 

@@ -5,6 +5,7 @@ import {
 } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pushEnd } from "../../../shared/api/push.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
+import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { bagCodec } from "../../../shared/codecs/bag.ts";
 import { pushItemCodec } from "../../../shared/codecs/pushItem.ts";
 import {
@@ -14,9 +15,15 @@ import {
   Status,
 } from "../../../shared/consts.ts";
 import { IBag, PublicKey } from "../../../shared/types.ts";
+import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 
 Deno.test("pushEnd.handleReq - success", async () => {
-  const pubKey = new Uint8Array([0, 1, 2, 3]) as PublicKey;
+  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
+  const tsAuth: IAuthTimestamp = {
+    pubKey,
+    sig: new Uint8Array(64).fill(1),
+    timestamp: new Date(1640995200000),
+  };
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
@@ -26,6 +33,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
     bodyCph: new Uint8Array([4, 5, 6]),
   };
   const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
   reqEnc.writeStruct(bagCodec, bag);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -42,8 +50,13 @@ Deno.test("pushEnd.handleReq - success", async () => {
       message: Uint8Array | string,
       pubKey: PublicKey,
     ) => Promise.resolve(true),
+    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
   };
   const mockStorage = {
+    hasUser: () => Promise.resolve(true),
+    addUser: () => Promise.resolve(),
+    getBody: () => Promise.resolve(undefined),
+    listHeads: () => Promise.resolve([]),
     setBag: () => Promise.resolve(),
   };
   const mockNotifier = {
@@ -51,9 +64,14 @@ Deno.test("pushEnd.handleReq - success", async () => {
       notified = true;
       return Promise.resolve();
     },
+    handler: (
+      request: Request,
+      hasUser: (pubKey: PublicKey) => Promise<boolean>,
+    ) => Promise.resolve(new Response()),
   };
-  const mockClock = { now: () => new Date() };
+  const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
+    hostID: "test",
     crypto: mockCrypto,
     storage: mockStorage,
     notifier: mockNotifier,
@@ -61,7 +79,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
   };
 
   const status = await pushEnd.handleReq(
-    mockHost as any,
+    mockHost,
     reqDec,
     respEnc,
   );
@@ -78,7 +96,12 @@ Deno.test("pushEnd.handleReq - success", async () => {
 });
 
 Deno.test("pushEnd.handleReq - invalid signature", async () => {
-  const pubKey = new Uint8Array([0, 1, 2, 3]) as PublicKey;
+  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
+  const tsAuth: IAuthTimestamp = {
+    pubKey,
+    sig: new Uint8Array(64).fill(1),
+    timestamp: new Date(1640995200000),
+  };
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
@@ -88,6 +111,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
     bodyCph: new Uint8Array([4, 5, 6]),
   };
   const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
   reqEnc.writeStruct(bagCodec, bag);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -102,16 +126,26 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
       sig: Uint8Array,
       message: Uint8Array | string,
       pubKey: PublicKey,
-    ) => Promise.resolve(false),
+    ) => Promise.resolve((message as Uint8Array).length === 8),
+    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
   };
   const mockStorage = {
+    hasUser: () => Promise.resolve(true),
+    addUser: () => Promise.resolve(),
+    getBody: () => Promise.resolve(undefined),
+    listHeads: () => Promise.resolve([]),
     setBag: () => Promise.resolve(),
   };
   const mockNotifier = {
     notify: () => Promise.resolve(),
+    handler: (
+      request: Request,
+      hasUser: (pubKey: PublicKey) => Promise<boolean>,
+    ) => Promise.resolve(new Response()),
   };
-  const mockClock = { now: () => new Date() };
+  const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
+    hostID: "test",
     crypto: mockCrypto,
     storage: mockStorage,
     notifier: mockNotifier,
@@ -119,7 +153,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   };
 
   const status = await pushEnd.handleReq(
-    mockHost as any,
+    mockHost,
     reqDec,
     respEnc,
   );

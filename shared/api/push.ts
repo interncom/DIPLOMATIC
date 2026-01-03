@@ -4,15 +4,16 @@ import { bagCodec } from "../codecs/bag.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IMessage } from "../message.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 
 export const pushEnd: IAuthenticatedEndpoint<
   IMessage,
   IterableIterator<IBagPushItem>
 > = {
   requiresRegisteredUser: true,
-  async encodeReq(client, keys, tsAuth, msgs, reqEnc) {
+  async encodeReq(client, keys, authTS, msgs, reqEnc) {
     const { crypto, enclave } = client;
-    reqEnc.writeBytes(tsAuth);
+    reqEnc.writeStruct(authTimestampCodec, authTS);
 
     for (const msg of msgs) {
       const bag = await sealBag(msg, keys, crypto, enclave);

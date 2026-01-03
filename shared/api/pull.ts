@@ -1,6 +1,7 @@
 import { hashBytes, Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 
 type BagHash = Uint8Array;
 export const pullEnd: IAuthenticatedEndpoint<
@@ -8,8 +9,8 @@ export const pullEnd: IAuthenticatedEndpoint<
   IterableIterator<IBagPullItem>
 > = {
   requiresRegisteredUser: true,
-  async encodeReq(_client, _keys, tsAuth, hashes, reqEnc) {
-    reqEnc.writeBytes(tsAuth);
+  async encodeReq(_client, _keys, authTS, hashes, reqEnc) {
+    reqEnc.writeStruct(authTimestampCodec, authTS);
     reqEnc.writeBytesSeq(hashes);
   },
   async handleReq(host, pubKey, reqDec, respEnc) {

@@ -8,9 +8,9 @@ import {
   PublicKey,
 } from "./types.ts";
 import { Enclave } from "./enclave.ts";
-import { EncodedAuthTimestamp } from "./auth.ts";
 import { Status } from "./consts.ts";
 import { IClock } from "./clock.ts";
+import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 
 interface IProtoClient {
   crypto: ICrypto;
@@ -34,7 +34,7 @@ export interface IAuthenticatedEndpoint<ReqItem, Resp> {
   encodeReq(
     client: IProtoClient,
     keys: HostSpecificKeyPair,
-    tsAuth: EncodedAuthTimestamp,
+    authTS: IAuthTimestamp,
     body: Iterable<ReqItem>,
     reqEnc: Encoder,
   ): Promise<void>;

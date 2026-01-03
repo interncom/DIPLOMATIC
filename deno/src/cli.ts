@@ -2,15 +2,15 @@ import DiplomaticClientAPI from "../../shared/client.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
 import { concat, htob } from "../../shared/lib.ts";
+import { kdmBytes } from "../../shared/consts.ts";
 import type { KeyPair } from "../../shared/types.ts";
-import type { IMessage } from "../../shared/message.ts";
 import { Decoder } from "../../shared/codec.ts";
-import { type IMessage } from "../../shared/message.ts";
+import type { IMessage } from "../../shared/message.ts";
 import {
   type IMessageHead,
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
-import type { IEnvelopeHeader } from "../../shared/bag.ts";
+import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import { Enclave } from "../../shared/enclave.ts";
 
 export interface IMessageDecoded {
@@ -33,9 +33,10 @@ export async function initCLI() {
 
   const seed = htob(seedHex);
   const encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
-
-  const api = new DiplomaticClientAPI(libsodiumCrypto);
   const url = new URL(hostURL);
+  const enclave = new Enclave(seed as MasterSeed, libsodiumCrypto);
+  const clock = { now: () => new Date() };
+  const api = new DiplomaticClientAPI(enclave, libsodiumCrypto, url, 0, clock);
 
   const client = new DiplomaticClientCLI(api, seed, encKey, url);
   await client.register();
@@ -49,6 +50,8 @@ export class DiplomaticClientCLI {
   hostURL: URL;
   hostID?: string;
   hostKeyPair?: KeyPair;
+  seed: Uint8Array;
+  crypto: ICrypto;
   constructor(
     api: DiplomaticClientAPI,
     seed: Uint8Array,
@@ -56,66 +59,40 @@ export class DiplomaticClientCLI {
     hostURL: URL,
   ) {
     this.api = api;
+    this.seed = seed;
+    this.crypto = libsodiumCrypto;
     this.enclave = new Enclave(seed as MasterSeed, libsodiumCrypto);
     this.encKey = encKey;
     this.hostURL = hostURL;
   }
 
   async register() {
-    const hostID = await this.api.getHostID(this.hostURL);
-    this.hostID = hostID;
-    const now = new Date();
-    await this.api.register(this.hostURL, hostID, 0, now);
-    const derivationSeed = await this.enclave.derive(hostID, idx);
+    this.hostID = this.hostURL.href;
+    await this.api.register(this.hostID);
+    const derivationSeed = await this.enclave.derive(this.hostID, 0);
     this.hostKeyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async push(msg: IMessage, idx: number = 0) {
-    const now = new Date();
-    const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
-    const results = [
-      ...(await this.api.push(
-        this.hostURL,
-        [msg],
-        this.seed,
-        hostID,
-        idx,
-        now,
-      )),
-    ];
+    const hostID = this.hostID || this.hostURL.href;
+    const results = [...(await this.api.push([msg], hostID))];
     return results[0];
   }
 
-  async peek(begin: Date, idx: number = 0): Promise<IEnvelopeHeader[]> {
-    const hostID = this.hostID || (await this.api.getHostID(this.hostURL));
-    const now = new Date();
-    return [
-      ...(await this.api.peek(
-        this.hostURL,
-        begin.getTime(),
-        this.seed,
-        hostID,
-        idx,
-        now,
-      )),
-    ];
+  async peek(begin: Date, idx: number = 0): Promise<IBagPeekItem[]> {
+    const hostID = this.hostID || this.hostURL.href;
+    return [...(await this.api.peek(begin, hostID))];
   }
 
   async pull(hashes: Uint8Array[]): Promise<IMessageDecoded[]> {
-    const bag = await this.api.pull(
-      this.hostURL,
-      hashes,
-      this.seed,
-      this.hostID || (await this.api.getHostID(this.hostURL)),
-      0,
-      new Date(),
-    );
+    const bag = await this.api.pull(hashes, this.hostID || this.hostURL.href);
     const messages: IMessageDecoded[] = [];
     for (const env of bag) {
-      const encKey = await libsodiumCrypto.blake3(concat(this.seed, env.kdm));
-      const decrypted = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-        env.cipher,
+      const kdm = env.hash.slice(0, kdmBytes);
+      const encKey = await libsodiumCrypto.blake3(concat(this.seed, kdm));
+      const body = await libsodiumCrypto.decryptXSalsa20Poly1305(
         encKey,
+        env.bodyCph,
       );
       const dec = new Decoder(decrypted);
       const msgHead: IMessageHead = messageHeadCodec.decode(dec);

@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@0.223.0": "0.223.0",
     "jsr:@std/fmt@0.223": "0.223.0",
-    "npm:@noble/hashes@^1.8.0": "1.8.0"
+    "npm:@noble/hashes@^1.8.0": "1.8.0",
+    "npm:@types/node@*": "24.2.0"
   },
   "jsr": {
     "@std/assert@0.223.0": {
@@ -19,6 +20,15 @@
   "npm": {
     "@noble/hashes@1.8.0": {
       "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
+    },
+    "@types/node@24.2.0": {
+      "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
+      "dependencies": [
+        "undici-types"
+      ]
+    },
+    "undici-types@7.10.0": {
+      "integrity": "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="
     }
   },
   "redirects": {

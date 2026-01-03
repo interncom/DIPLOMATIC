@@ -1,9 +1,6 @@
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
-import { type IBagPeekItem } from "./codecs/peekItem.ts";
-import { type IBagPullItem } from "./codecs/pullItem.ts";
-import { type IBagPushItem } from "./codecs/pushItem.ts";
 import { Enclave } from "./enclave.ts";
 import { authData, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api, post } from "./http.ts";
@@ -40,25 +37,19 @@ export default class DiplomaticClientAPI {
     return apiCall.endpoint.decodeResp(dec);
   }
 
-  async register(): Promise<void> {
+  async register() {
     return this.call(api.user, []);
   }
 
-  async push(
-    ops: IMessage[],
-  ): Promise<IterableIterator<IBagPushItem>> {
+  async push(ops: IMessage[]) {
     return this.call(api.push, ops);
   }
 
-  async pull(
-    hashes: Uint8Array[],
-  ): Promise<IterableIterator<IBagPullItem>> {
+  async pull(hashes: Uint8Array[]) {
     return this.call(api.pull, hashes);
   }
 
-  async peek(
-    from: Date,
-  ): Promise<IterableIterator<IBagPeekItem>> {
+  async peek(from: Date) {
     return this.call(api.peek, [from]);
   }
 }

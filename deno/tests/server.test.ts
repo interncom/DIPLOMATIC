@@ -53,11 +53,12 @@ Deno.test("server", async (t) => {
     libsodiumCrypto,
     url,
     idx,
+    hostID,
     clock,
   );
 
   await t.step("POST /users", async () => {
-    await client.register(hostID);
+    await client.register();
   });
 
   // Test PUSH
@@ -67,7 +68,7 @@ Deno.test("server", async (t) => {
   const ops = [op1, op2];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = [...(await client.push(ops, hostID))];
+    result = [...(await client.push(ops))];
     assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);
@@ -78,7 +79,7 @@ Deno.test("server", async (t) => {
   await t.step("POST /pull", async () => {
     const hashes = result.map((r) => r.hash);
     const pulledItems = [
-      ...(await client.pull(hashes, hostID)),
+      ...(await client.pull(hashes)),
     ];
     assertEquals(pulledItems.length, 2);
 
@@ -91,7 +92,7 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /peek", async () => {
     const peekedHeaders = [
-      ...(await client.peek(new Date(0), hostID)),
+      ...(await client.peek(new Date(0))),
     ];
     assertEquals(peekedHeaders.length, 2);
     // Verify header structure

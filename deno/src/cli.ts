@@ -36,7 +36,14 @@ export async function initCLI() {
   const url = new URL(hostURL);
   const enclave = new Enclave(seed as MasterSeed, libsodiumCrypto);
   const clock = { now: () => new Date() };
-  const api = new DiplomaticClientAPI(enclave, libsodiumCrypto, url, 0, clock);
+  const api = new DiplomaticClientAPI(
+    enclave,
+    libsodiumCrypto,
+    url,
+    0,
+    url.href,
+    clock,
+  );
 
   const client = new DiplomaticClientCLI(api, seed, encKey, url);
   await client.register();
@@ -68,24 +75,22 @@ export class DiplomaticClientCLI {
 
   async register() {
     this.hostID = this.hostURL.href;
-    await this.api.register(this.hostID);
+    await this.api.register();
     const derivationSeed = await this.enclave.derive(this.hostID, 0);
     this.hostKeyPair = await this.crypto.deriveEd25519KeyPair(derivationSeed);
   }
 
   async push(msg: IMessage, idx: number = 0) {
-    const hostID = this.hostID || this.hostURL.href;
-    const results = [...(await this.api.push([msg], hostID))];
+    const results = [...(await this.api.push([msg]))];
     return results[0];
   }
 
   async peek(begin: Date, idx: number = 0): Promise<IBagPeekItem[]> {
-    const hostID = this.hostID || this.hostURL.href;
-    return [...(await this.api.peek(begin, hostID))];
+    return [...(await this.api.peek(begin))];
   }
 
   async pull(hashes: Uint8Array[]): Promise<IMessageDecoded[]> {
-    const bag = await this.api.pull(hashes, this.hostID || this.hostURL.href);
+    const bag = await this.api.pull(hashes);
     const messages: IMessageDecoded[] = [];
     for (const env of bag) {
       const kdm = env.hash.slice(0, kdmBytes);

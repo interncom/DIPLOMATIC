@@ -22,15 +22,14 @@ export default class DiplomaticClientAPI {
     public crypto: ICrypto,
     private hostURL: URL,
     private idx: number,
+    private keyPath: string,
     public clock: IClock,
   ) {}
 
   private async authDataFor(
     now: Date,
-    keyPath: string,
-    idx: number,
   ): Promise<IAuthData> {
-    const { crypto, enclave } = this;
+    const { crypto, enclave, keyPath, idx } = this;
     const derivSeed = await enclave.derive(keyPath, idx);
     const keys = await crypto.deriveEd25519KeyPair(derivSeed);
     const authTS = await makeAuthTimestamp(keys, now, crypto);
@@ -39,11 +38,10 @@ export default class DiplomaticClientAPI {
 
   private async call<ReqItem, Resp>(
     apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
-    keyPath: string,
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { clock, hostURL, idx } = this;
-    const { keys, authTS } = await this.authDataFor(clock.now(), keyPath, idx);
+    const { clock, hostURL } = this;
+    const { keys, authTS } = await this.authDataFor(clock.now());
     const { endpoint, path } = apiCall;
     const enc = new Encoder();
     await endpoint.encodeReq(this, keys, authTS, items, enc);
@@ -52,28 +50,25 @@ export default class DiplomaticClientAPI {
     return endpoint.decodeResp(dec);
   }
 
-  async register(keyPath: string): Promise<void> {
-    return this.call(api.user, keyPath, []);
+  async register(): Promise<void> {
+    return this.call(api.user, []);
   }
 
   async push(
     ops: IMessage[],
-    keyPath: string,
   ): Promise<IterableIterator<IBagPushItem>> {
-    return this.call(api.push, keyPath, ops);
+    return this.call(api.push, ops);
   }
 
   async pull(
     hashes: Uint8Array[],
-    keyPath: string,
   ): Promise<IterableIterator<IBagPullItem>> {
-    return this.call(api.pull, keyPath, hashes);
+    return this.call(api.pull, hashes);
   }
 
   async peek(
     from: Date,
-    keyPath: string,
   ): Promise<IterableIterator<IBagPeekItem>> {
-    return this.call(api.peek, keyPath, [from]);
+    return this.call(api.peek, [from]);
   }
 }

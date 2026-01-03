@@ -62,7 +62,6 @@ Deno.test("pushEnd.handleReq - success", async () => {
 
   const status = await pushEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );
@@ -121,7 +120,6 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
 
   const status = await pushEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );

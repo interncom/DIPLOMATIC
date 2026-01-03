@@ -41,7 +41,6 @@ Deno.test("userEnd.handleReq - success", async () => {
 
   const status = await userEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );
@@ -60,7 +59,6 @@ Deno.test("userEnd.handleReq - extra body content", async () => {
 
   const status = await userEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );

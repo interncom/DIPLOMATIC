@@ -63,7 +63,6 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
 
   const status = await pullEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );
@@ -89,7 +88,6 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
 
   const status = await pullEnd.handleReq(
     mockHost as any,
-    pubKey,
     reqDec,
     respEnc,
   );

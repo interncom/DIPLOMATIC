@@ -31,28 +31,36 @@ export async function makeAuthTimestamp(
   };
 }
 
+export async function validateAuthTimestamp(
+  authTS: IAuthTimestamp,
+  crypto: IHostCrypto,
+): Promise<Status> {
+  const currentTime = Date.now();
+  const tsTime = authTS.timestamp.getTime();
+  const diff = Math.abs(currentTime - tsTime);
+  if (diff > clockToleranceMs) {
+    return Status.ClockOutOfSync;
+  }
+  const enc = new Encoder();
+  enc.writeDate(authTS.timestamp);
+  const data = enc.result();
+  const sigValid = await crypto.checkSigEd25519(
+    authTS.sig,
+    data,
+    authTS.pubKey,
+  );
+  if (!sigValid) {
+    return Status.InvalidSignature;
+  }
+  return Status.Success;
+}
+
 export async function validateTsAuth(
   tsAuthBytes: Uint8Array,
   crypto: IHostCrypto,
 ): Promise<[PublicKey, Status]> {
   const dec = new Decoder(tsAuthBytes);
-  const authTs = authTimestampCodec.decode(dec);
-  const currentTime = Date.now();
-  const tsTime = authTs.timestamp.getTime();
-  const diff = Math.abs(currentTime - tsTime);
-  if (diff > clockToleranceMs) {
-    return [new Uint8Array(0) as PublicKey, Status.ClockOutOfSync];
-  }
-  const enc = new Encoder();
-  enc.writeDate(authTs.timestamp);
-  const data = enc.result();
-  const sigValid = await crypto.checkSigEd25519(
-    authTs.sig,
-    data,
-    authTs.pubKey,
-  );
-  if (!sigValid) {
-    return [new Uint8Array(0) as PublicKey, Status.InvalidSignature];
-  }
-  return [authTs.pubKey, Status.Success];
+  const authTS = authTimestampCodec.decode(dec);
+  const status = await validateAuthTimestamp(authTS, crypto);
+  return [authTS.pubKey, status];
 }

@@ -137,3 +137,30 @@ Deno.test("peekEnd.decodeResp", () => {
   assertEquals(results.length, 1);
   assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
 });
+
+Deno.test("peekEnd.handleReq - clock out of sync", async () => {
+  const tsAuth: IAuthTimestamp = {
+    pubKey,
+    sig: new Uint8Array(64).fill(2),
+    timestamp: new Date(946713599000),
+  };
+  const from = new Date("2023-01-01T00:00:00.000Z");
+  const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeDate(from);
+  const reqData = reqEnc.result();
+  const reqDec = new Decoder(reqData);
+
+  const respEnc = new Encoder();
+
+  // Mock with clock far from timestamp
+  const mockClockOutOfSync = { now: () => new Date(946713599000 + 40000) }; // > 30000ms diff
+  const mockHostOutOfSync = { ...mockHost, clock: mockClockOutOfSync };
+
+  const status = await peekEnd.handleReq(
+    mockHostOutOfSync,
+    reqDec,
+    respEnc,
+  );
+  assertEquals(status, Status.ClockOutOfSync);
+});

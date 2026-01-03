@@ -13,9 +13,6 @@ TESTS
 - add tests for PUSH, PEEK, and PULL that round-trip a couple bags and check their contents
 - document tests, refactor, and ensure each serves a purpose
 
-TIME
-- server can use Clock abstraction too. use it to make tests of clocks out of sync
-
 PERF
 - stream data uploads from client (wire encoder to stream writer somehow)
 - stream response downloads in client (wire Decoder to stream reader)

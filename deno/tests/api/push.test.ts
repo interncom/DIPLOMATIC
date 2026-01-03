@@ -182,3 +182,68 @@ Deno.test("pushEnd.decodeResp", () => {
   assertEquals(results[0].status, Status.Success);
   assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
 });
+
+Deno.test("pushEnd.handleReq - clock out of sync", async () => {
+  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
+  const tsAuth: IAuthTimestamp = {
+    pubKey,
+    sig: new Uint8Array(64).fill(1),
+    timestamp: new Date(1640995200000),
+  };
+  const bag: IBag = {
+    sig: new Uint8Array(sigBytes).fill(7),
+    kdm: new Uint8Array(kdmBytes).fill(10),
+    lenHeadCph: 3,
+    lenBodyCph: 3,
+    headCph: new Uint8Array([1, 2, 3]),
+    bodyCph: new Uint8Array([4, 5, 6]),
+  };
+  const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeStruct(bagCodec, bag);
+  const reqData = reqEnc.result();
+  const reqDec = new Decoder(reqData);
+
+  const respEnc = new Encoder();
+
+  // Mocks
+  const mockCrypto = {
+    sha256Hash: (data: Uint8Array) =>
+      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
+    checkSigEd25519: (
+      sig: Uint8Array,
+      message: Uint8Array | string,
+      pubKey: PublicKey,
+    ) => Promise.resolve(true),
+    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
+  };
+  const mockStorage = {
+    hasUser: () => Promise.resolve(true),
+    addUser: () => Promise.resolve(),
+    getBody: () => Promise.resolve(undefined),
+    listHeads: () => Promise.resolve([]),
+    setBag: () => Promise.resolve(),
+  };
+  const mockNotifier = {
+    notify: () => Promise.resolve(),
+    handler: (
+      request: Request,
+      hasUser: (pubKey: PublicKey) => Promise<boolean>,
+    ) => Promise.resolve(new Response()),
+  };
+  const mockClockOutOfSync = { now: () => new Date(1640995200000 + 40000) }; // > 30000ms diff
+  const mockHostOutOfSync = {
+    hostID: "test",
+    crypto: mockCrypto,
+    storage: mockStorage,
+    notifier: mockNotifier,
+    clock: mockClockOutOfSync,
+  };
+
+  const status = await pushEnd.handleReq(
+    mockHostOutOfSync,
+    reqDec,
+    respEnc,
+  );
+  assertEquals(status, Status.ClockOutOfSync);
+});

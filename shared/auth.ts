@@ -5,6 +5,7 @@ import {
   authTimestampCodec,
   type IAuthTimestamp,
 } from "./codecs/authTimestamp.ts";
+import { IClock } from "./clock.ts";
 
 export type EncodedAuthTimestamp = Uint8Array;
 
@@ -34,8 +35,9 @@ export async function makeAuthTimestamp(
 export async function validateAuthTimestamp(
   authTS: IAuthTimestamp,
   crypto: IHostCrypto,
+  clock: IClock,
 ): Promise<Status> {
-  const currentTime = Date.now();
+  const currentTime = clock.now().getTime();
   const tsTime = authTS.timestamp.getTime();
   const diff = Math.abs(currentTime - tsTime);
   if (diff > clockToleranceMs) {
@@ -53,14 +55,4 @@ export async function validateAuthTimestamp(
     return Status.InvalidSignature;
   }
   return Status.Success;
-}
-
-export async function validateTsAuth(
-  tsAuthBytes: Uint8Array,
-  crypto: IHostCrypto,
-): Promise<[PublicKey, Status]> {
-  const dec = new Decoder(tsAuthBytes);
-  const authTS = authTimestampCodec.decode(dec);
-  const status = await validateAuthTimestamp(authTS, crypto);
-  return [authTS.pubKey, status];
 }

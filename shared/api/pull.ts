@@ -17,7 +17,7 @@ export const pullEnd: IAuthenticatedEndpoint<
     const { storage } = host;
 
     const authTS = reqDec.readStruct(authTimestampCodec);
-    const status = await validateAuthTimestamp(authTS, host.crypto);
+    const status = await validateAuthTimestamp(authTS, host.crypto, host.clock);
     if (status !== Status.Success) {
       return status;
     }

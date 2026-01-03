@@ -25,12 +25,6 @@ const enclave = new Enclave(seed, libsodiumCrypto);
 // Increments as part of host keypair rotation.
 const idx = 0;
 
-const hostKDM = await enclave.derive(hostID, idx);
-const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(hostKDM);
-const pubKeyHash = await libsodiumCrypto.sha256Hash(keyPair.publicKey);
-const suffix = btoa(String.fromCharCode(...pubKeyHash.slice(0, 4)));
-const expectedHostID = hostID + "-" + suffix;
-
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
     handler: async () => new Response(),

@@ -139,3 +139,27 @@ Deno.test("pullEnd.decodeResp", () => {
   assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
   assertEquals(results[0].bodyCph, new Uint8Array([10, 20, 30]));
 });
+
+Deno.test("pullEnd.handleReq - clock out of sync", async () => {
+  const hashes: Uint8Array[] = [
+    new Uint8Array(hashBytes).fill(1),
+  ];
+  const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytesSeq(hashes);
+  const reqData = reqEnc.result();
+  const reqDec = new Decoder(reqData);
+
+  const respEnc = new Encoder();
+
+  // Mock with clock far from timestamp
+  const mockClockOutOfSync = { now: () => new Date(946713599000 + 40000) };
+  const mockHostOutOfSync = { ...mockHost, clock: mockClockOutOfSync };
+
+  const status = await pullEnd.handleReq(
+    mockHostOutOfSync,
+    reqDec,
+    respEnc,
+  );
+  assertEquals(status, Status.ClockOutOfSync);
+});

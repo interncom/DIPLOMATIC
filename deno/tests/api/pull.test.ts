@@ -11,20 +11,42 @@ import {
 
 // Mock storage
 const mockStorage = {
+  hasUser: () => Promise.resolve(true),
+  addUser: () => Promise.resolve(),
   getBody: (
     pubKey: Uint8Array,
     headHash: Uint8Array,
-  ): Promise<Uint8Array | null> => {
-    // Mock: return some data for one hash, null for others
+  ): Promise<Uint8Array | undefined> => {
+    // Mock: return some data for one hash, undefined for others
     if (headHash[0] === 1) {
       return Promise.resolve(new Uint8Array([10, 20, 30]));
     }
-    return Promise.resolve(null);
+    return Promise.resolve(undefined);
   },
+  listHeads: () => Promise.resolve([]),
+  setBag: () => Promise.resolve(),
 };
 
-const mockHost = { storage: mockStorage };
+const mockCrypto = {
+  checkSigEd25519: () => Promise.resolve(true),
+  sha256Hash: () => Promise.resolve(new Uint8Array(32)),
+  blake3: () => Promise.resolve(new Uint8Array(32)),
+};
+
+const mockNotifier = {
+  notify: () => Promise.resolve(),
+  handler: (request: Request, hasUser: (pubKey: PublicKey) => Promise<boolean>) => Promise.resolve(new Response()),
+};
+
+const mockClock = { now: () => new Date(946713599000 + 1000) };
+const mockHost = { hostID: "test", storage: mockStorage, crypto: mockCrypto, clock: mockClock, notifier: mockNotifier };
 const pubKey = new Uint8Array(32).fill(0) as PublicKey;
+
+const tsAuth: IAuthTimestamp = {
+  pubKey,
+  sig: new Uint8Array(64).fill(2),
+  timestamp: new Date(946713599000),
+};
 
 Deno.test("pullEnd.encodeReq", () => {
   const client = {}; // Mock
@@ -55,6 +77,7 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
     new Uint8Array(hashBytes).fill(4),
   ];
   const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
   reqEnc.writeBytesSeq(hashes);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -62,7 +85,7 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   const respEnc = new Encoder();
 
   const status = await pullEnd.handleReq(
-    mockHost as any,
+    mockHost,
     reqDec,
     respEnc,
   );
@@ -80,6 +103,7 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
 Deno.test("pullEnd.handleReq - no bodies", async () => {
   const hashes: Uint8Array[] = [new Uint8Array(hashBytes).fill(0)]; // No body
   const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
   reqEnc.writeBytesSeq(hashes);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -87,7 +111,7 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
   const respEnc = new Encoder();
 
   const status = await pullEnd.handleReq(
-    mockHost as any,
+    mockHost,
     reqDec,
     respEnc,
   );

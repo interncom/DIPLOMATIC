@@ -6,6 +6,10 @@ import {
   IBagPeekItem,
   peekItemCodec,
 } from "../../../shared/codecs/peekItem.ts";
+import {
+  authTimestampCodec,
+  type IAuthTimestamp,
+} from "../../../shared/codecs/authTimestamp.ts";
 import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
 
 // Mock storage
@@ -28,12 +32,16 @@ const mockStorage = {
 
 const mockClock = { now: () => new Date() };
 const mockHost = { storage: mockStorage, clock: mockClock };
-const pubKey = new Uint8Array([0, 1, 2, 3]) as PublicKey;
+const pubKey = new Uint8Array(32).fill(0) as PublicKey;
 
 Deno.test("peekEnd.encodeReq", () => {
   const client = {}; // Mock
   const keys = {} as HostSpecificKeyPair; // Mock
-  const tsAuth = new Uint8Array([10, 20, 30]);
+  const tsAuth: IAuthTimestamp = {
+    pubKey: new Uint8Array(32).fill(1) as PublicKey,
+    sig: new Uint8Array(64).fill(2),
+    timestamp: new Date("2023-01-01T00:00:00.000Z"),
+  };
   const body: Date[] = [new Date("2023-01-01T00:00:00.000Z")];
   const reqEnc = new Encoder();
 
@@ -41,7 +49,7 @@ Deno.test("peekEnd.encodeReq", () => {
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();
-  expectedEnc.writeBytes(tsAuth);
+  expectedEnc.writeStruct(authTimestampCodec, tsAuth);
   expectedEnc.writeDate(body[0]);
   assertEquals(encoded, expectedEnc.result());
 });

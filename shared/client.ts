@@ -1,17 +1,11 @@
 import { makeAuthTimestamp } from "./auth.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
-import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
-import type { HostSpecificKeyPair, ICrypto } from "./types.ts";
-
-interface IAuthData {
-  keys: HostSpecificKeyPair;
-  authTS: IAuthTimestamp;
-}
+import type { ICrypto } from "./types.ts";
 
 export default class DiplomaticClientAPI {
   constructor(

@@ -1,5 +1,10 @@
 # TODOS
 
+ARCH
+- refactor websocket client into separate object/class
+- send authTS to connect websocket
+- get web client working on new foundation
+
 ERRORS
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)

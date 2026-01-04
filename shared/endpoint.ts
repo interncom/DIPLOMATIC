@@ -10,7 +10,6 @@ import { Enclave } from "./enclave.ts";
 import { Status } from "./consts.ts";
 import { IClock } from "./clock.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
-import { makeAuthTimestamp } from "./auth.ts";
 
 interface IProtoClient {
   crypto: ICrypto;
@@ -52,15 +51,13 @@ export interface IAuthData {
   authTS: IAuthTimestamp;
 }
 
-export async function authData(
+export async function hostKeys(
   host: IProtoClient,
   keyPath: string,
   idx: number,
-): Promise<IAuthData> {
-  const { clock, crypto, enclave } = host;
-  const now = clock.now();
+): Promise<HostSpecificKeyPair> {
+  const { crypto, enclave } = host;
   const derivSeed = await enclave.derive(keyPath, idx);
   const keys = await crypto.deriveEd25519KeyPair(derivSeed);
-  const authTS = await makeAuthTimestamp(keys, now, crypto);
-  return { keys: keys as HostSpecificKeyPair, authTS };
+  return keys as HostSpecificKeyPair;
 }

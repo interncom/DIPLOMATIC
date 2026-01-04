@@ -13,6 +13,7 @@ import { genDeleteOp, genUpsertOp } from "./shared/ops";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import TypedEventEmitter from "./typedEventEmitter";
+import { WebsocketManager } from "./websockets";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;
@@ -33,12 +34,14 @@ export default class DiplomaticClient {
   encKey?: Uint8Array;
   hostURL?: URL;
   hostKeyPair?: KeyPair;
+  private websocketManager: WebsocketManager;
 
   constructor(params: IDiplomaticClientParams) {
     this.stateEmitter = new TypedEventEmitter();
     this.xferStateEmitter = new TypedEventEmitter();
     this.store = params.store;
     this.stateManager = params.stateManager;
+    this.websocketManager = new WebsocketManager(this);
     this.init(params);
   }
 
@@ -55,52 +58,14 @@ export default class DiplomaticClient {
     this.encKey = undefined;
     this.hostURL = undefined;
     this.hostKeyPair = undefined;
-    this.websocket?.close();
-    this.websocket = undefined;
+    this.websocketManager.disconnect();
     await this.stateManager.clear();
     await this.store.wipe();
     this.emitUpdate();
   };
 
-  websocket?: WebSocket;
-  connect = async (hostURL: URL) => {
-    if (!this.hostKeyPair) {
-      return;
-    }
-
-    const url = new URL(hostURL);
-    if (window.location.protocol === "https:") {
-      url.protocol = "wss";
-    } else {
-      url.protocol = "ws";
-    }
-
-    // TODO: sign something (current timestamp).
-    const keyHex = btoh(this.hostKeyPair?.publicKey);
-    url.searchParams.set("key", keyHex);
-    this.websocket = new WebSocket(url);
-
-    this.websocket.onopen = (e) => {
-      console.log("CONNECTED");
-      this.emitUpdate();
-    };
-
-    this.websocket.onclose = (e) => {
-      console.log("DISCONNECTED");
-      if (navigator.onLine) {
-        this.connect(hostURL);
-        this.emitUpdate();
-      }
-    };
-
-    this.websocket.onmessage = (e) => {
-      console.log(`RECEIVED: ${e.data}`);
-      this.processOps();
-    };
-
-    this.websocket.onerror = (e) => {
-      console.log(`ERROR: ${e}`);
-    };
+  connect = (hostURL: URL) => {
+    this.websocketManager.connect(hostURL);
   };
 
   async init(params: IDiplomaticClientParams) {
@@ -192,9 +157,7 @@ export default class DiplomaticClient {
   disconnect = () => {
     this.hostURL = undefined;
     this.hostKeyPair = undefined;
-    this.websocket?.close();
-    this.websocket = undefined;
-    this.emitUpdate();
+    this.websocketManager.disconnect();
   };
 
   async registerAndConnect(hostURL: string) {
@@ -224,9 +187,7 @@ export default class DiplomaticClient {
     const hasSeed = this.seed !== undefined && this.encKey !== undefined;
     const hasHost = this.hostURL !== undefined &&
       this.hostKeyPair !== undefined;
-    const connected = this.websocket === undefined
-      ? false
-      : this.websocket.readyState === this.websocket.OPEN;
+    const connected = this.websocketManager.isConnected();
     return { hasSeed, hasHost, connected };
   }
 

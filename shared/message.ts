@@ -59,15 +59,3 @@ export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
     len: 0,
   };
 }
-
-// The kdm should be random. Wait.
-// That allows attacker to reuse a compromised key.
-// It needs to be based on data an attacker cannot know.
-// It can't be the hash of meaningful data within the ciphertext.
-// That would leak private information.
-// Therefore, it must be derived from meaningless data.
-// In other words, a random nonce.
-// The benefit of the key-per-message is that with a proper HSM,
-// the seed never needs to be directly accessible in memory.
-// You just feed the KDM into the HSM and get the derived key out.
-// Then symmetrically encrypt/decrypt using that derived key.

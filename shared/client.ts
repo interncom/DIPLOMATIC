@@ -27,18 +27,21 @@ export default class DiplomaticClientAPI {
     apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const keys = await hostKeys(this, this.keyPath, this.idx);
+    const { clock, crypto, hostURL, idx, keyPath } = this;
+    const { endpoint, path } = apiCall;
 
-    const now = this.clock.now();
-    const authTS = await makeAuthTimestamp(keys, now, this.crypto);
+    const keys = await hostKeys(this, keyPath, idx);
+
+    const now = clock.now();
+    const authTS = await makeAuthTimestamp(keys, now, crypto);
 
     const enc = new Encoder();
-    await apiCall.endpoint.encodeReq(this, keys, authTS, items, enc);
+    await endpoint.encodeReq(this, keys, authTS, items, enc);
 
-    const url = new URL(apiCall.path, this.hostURL);
+    const url = new URL(path, hostURL);
     const dec = await post(url, enc);
 
-    return apiCall.endpoint.decodeResp(dec);
+    return endpoint.decodeResp(dec);
   }
 
   async register() {

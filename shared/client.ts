@@ -44,19 +44,8 @@ export default class DiplomaticClientAPI {
     return endpoint.decodeResp(dec);
   }
 
-  async register() {
-    return this.call(api.user, []);
-  }
-
-  async push(ops: IMessage[]) {
-    return this.call(api.push, ops);
-  }
-
-  async pull(hashes: Uint8Array[]) {
-    return this.call(api.pull, hashes);
-  }
-
-  async peek(from: Date) {
-    return this.call(api.peek, [from]);
-  }
+  register = () => this.call(api.user, []);
+  peek = (from: Date) => this.call(api.peek, [from]);
+  push = (ops: IMessage[]) => this.call(api.push, ops);
+  pull = (hashes: Uint8Array[]) => this.call(api.pull, hashes);
 }

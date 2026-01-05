@@ -1,4 +1,4 @@
-import type { ICrypto, MasterSeed, DerivationSeed } from "./types.ts";
+import type { DerivationSeed, ICrypto, MasterSeed } from "./types.ts";
 import { concat } from "./lib.ts";
 
 export class Enclave {
@@ -12,7 +12,7 @@ export class Enclave {
 
   async deriveFromKDM(kdm: Uint8Array): Promise<DerivationSeed> {
     const data = concat(this.seed, kdm);
-    return (await this.crypto.blake3(data)) as DerivationSeed;
+    return (await this.crypto.blake3(data)) as Uint8Array as DerivationSeed;
   }
 
   async derive(keyPath: string, idx = 0): Promise<DerivationSeed> {

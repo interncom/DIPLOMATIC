@@ -6,7 +6,7 @@ import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { concat, uint8ArraysEqual } from "./lib.ts";
-import { IMessage } from "./message.ts";
+import { IMessage, IMessageWithHash } from "./message.ts";
 import type {
   HostSpecificKeyPair,
   IBag,
@@ -74,7 +74,7 @@ export async function openBag(
   pubKey: PublicKey,
   crypto: ICrypto,
   enclave: Enclave,
-): Promise<IMessage> {
+): Promise<IMessageWithHash> {
   // Check sig.
   const sigValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
   if (!sigValid) {
@@ -105,6 +105,9 @@ export async function openBag(
     }
   }
 
+  // Compute message hash (hash of head, which includes body hash).
+  const headHash = await crypto.blake3(msgHeadEnc);
+
   // Reconstruct message.
-  return { ...msgHead, bod: msgBody };
+  return { ...msgHead, bod: msgBody, headHash };
 }

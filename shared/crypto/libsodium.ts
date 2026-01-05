@@ -1,4 +1,4 @@
-import type { ICrypto, KeyPair, DerivationSeed } from "../types.ts";
+import type { DerivationSeed, Hash, ICrypto, KeyPair } from "../types.ts";
 import { blake3 } from "@noble/hashes/blake3.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -93,8 +93,8 @@ export class LibsodiumCrypto implements ICrypto {
     return valid;
   }
 
-  async blake3(data: Uint8Array): Promise<Uint8Array> {
-    return blake3(data);
+  async blake3(data: Uint8Array): Promise<Hash> {
+    return blake3(data) as Hash;
   }
 
   async sha256Hash(data: Uint8Array): Promise<Uint8Array> {

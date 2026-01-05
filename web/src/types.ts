@@ -94,7 +94,7 @@ export interface IDownloadMessage {
 export interface IDownloadQueue {
   init: () => Promise<void>;
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
-  deq: (hash: Hash) => Promise<void>;
+  deq: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<IMessageHead[]>;
   count: () => Promise<number>;
 }

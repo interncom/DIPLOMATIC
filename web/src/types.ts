@@ -80,40 +80,34 @@ export interface IHostStore {
 
 export interface IUploadQueue {
   init: () => Promise<void>;
-  enq: (hashes: Hash[]) => Promise<void>;
-  deq: (hashes: Hash[]) => Promise<void>;
+  enq: (hshs: Hash[]) => Promise<void>;
+  deq: (hshs: Hash[]) => Promise<void>;
   list: () => Promise<Uint8Array[]>;
   count: () => Promise<number>;
 }
 
-// Separate table for download queue?
-// Or just split message head and body into separate tables.
-// Then downloaded could be a flag on the heads table.
-// And PEEK would just fill the heads table.
-// Otherwise PULLs will mutate the messages table,
-// when they could just append to the bodies table.
-// No. They would have to flip the downloaded flag on heads anyway.
-// Think through this arch...
-interface IDownload {
+export interface IDownloadMessage {
+  hash: Hash;
+  head: IMessageHead;
   host: string;
 }
 export interface IDownloadQueue {
   init: () => Promise<void>;
-  enq: (hash: Hash, head: IMessageHead, hostLabel: string) => Promise<void>;
+  enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
   deq: (hash: Hash) => Promise<void>;
   list: () => Promise<IMessageHead[]>;
   count: () => Promise<number>;
 }
 
-interface IStoredMessage {
+export interface IStoredMessage {
   hash: Hash;
   head: IMessageHead;
   body?: EncodedMessage;
 }
 export interface IMessageStore {
   init: () => Promise<void>;
-  add: (messages: Iterable<IStoredMessage>) => Promise<void>;
-  del: (hashes: Iterable<Hash>) => Promise<void>;
+  add: (msgs: Iterable<IStoredMessage>) => Promise<void>;
+  del: (hshs: Iterable<Hash>) => Promise<void>;
   has: (hash: Hash) => Promise<boolean>;
   list: () => Promise<IStoredMessage[]>;
 }

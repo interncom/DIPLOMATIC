@@ -1,5 +1,5 @@
 import type { Hash, IOp, MasterSeed } from "./shared/types";
-import type { SerializedContent } from "./shared/message";
+import type { EncodedMessage, IMessageHead, SerializedContent } from "./shared/message";
 import type { Enclave } from "./shared/enclave";
 
 export interface IClientStateStore {
@@ -52,12 +52,12 @@ export type Applier = (op: IOp) => Promise<void>;
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {
   init: () => Promise<void>;
-  save: (seed: MasterSeed) => Promise<void>;
-  load: () => Promise<Enclave>;
+  save: (seed: MasterSeed) => Promise<Enclave>;
+  load: () => Promise<Enclave | void>;
   wipe: () => Promise<void>;
 }
 
-interface IHost {
+export interface IHost {
   label: string;
   url: URL;
   lastSyncedAt: Date;
@@ -68,7 +68,7 @@ export interface IHostStore {
   init: () => Promise<void>;
   add: (label: string, url: URL) => Promise<void>;
   del: (label: string) => Promise<void>;
-  list: () => Promise<IHost[]>;
+  list: () => Promise<Iterable<IHost>>;
   wipe: () => Promise<void>;
 }
 
@@ -80,9 +80,9 @@ export interface IHostStore {
 
 export interface IUploadQueue {
   init: () => Promise<void>;
-  enq: (hshs: Hash[]) => Promise<void>;
-  deq: (hshs: Hash[]) => Promise<void>;
-  list: () => Promise<Uint8Array[]>;
+  enq: (hshs: Iterable<Hash>) => Promise<void>;
+  deq: (hshs: Iterable<Hash>) => Promise<void>;
+  list: () => Promise<Iterable<Hash>>;
   count: () => Promise<number>;
 }
 
@@ -95,7 +95,7 @@ export interface IDownloadQueue {
   init: () => Promise<void>;
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
   deq: (hshs: Iterable<Hash>) => Promise<void>;
-  list: () => Promise<IMessageHead[]>;
+  list: () => Promise<Iterable<IMessageHead>>;
   count: () => Promise<number>;
 }
 
@@ -109,5 +109,5 @@ export interface IMessageStore {
   add: (msgs: Iterable<IStoredMessage>) => Promise<void>;
   del: (hshs: Iterable<Hash>) => Promise<void>;
   has: (hash: Hash) => Promise<boolean>;
-  list: () => Promise<IStoredMessage[]>;
+  list: () => Promise<Iterable<IStoredMessage>>;
 }

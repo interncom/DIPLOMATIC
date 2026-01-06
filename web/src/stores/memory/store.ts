@@ -1,10 +1,11 @@
+import { IStore } from "../../types";
 import { MemoryDownloadQueue } from "./dnlds";
 import { MemoryHostStore } from "./hosts";
 import { MemoryMessageStore } from "./msgs";
 import { MemorySeedStore } from "./seed"
 import { MemoryUploadQueue } from "./uplds";
 
-export class MemoryStore {
+export class MemoryStore implements IStore {
   seed = new MemorySeedStore();
   hosts = new MemoryHostStore();
   uploads = new MemoryUploadQueue();

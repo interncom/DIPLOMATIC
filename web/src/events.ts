@@ -1,13 +1,39 @@
-type Listener<T> = (data: T) => void;
+type Listener = () => void;
+
+export class EventEmitter {
+  private events: { [key: string]: Listener[] } = {};
+
+  on(event: string, listener: Listener): void {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+  }
+
+  off(event: string, listener: Listener): void {
+    if (!this.events[event]) return;
+    this.events[event] = this.events[event].filter(l => l !== listener);
+  }
+
+  // Method to emit an event
+  emit(event: string): void {
+    if (!this.events[event]) return;
+    for (const listener of this.events[event]) {
+      listener();
+    }
+  }
+}
+
+type TypedListener<T> = (data: T) => void;
 
 // TODO: consolidate with eventEmitter.
-export default class TypedEventEmitter<T> {
-  private listeners: Map<string, Set<Listener<T>>> = new Map();
+export class TypedEventEmitter<T> {
+  private listeners: Map<string, Set<TypedListener<T>>> = new Map();
 
   // Add an event listener for a specific event type
   public addEventListener(
     eventType: string,
-    listener: Listener<T>,
+    listener: TypedListener<T>,
   ): () => void {
     let listeners = this.listeners.get(eventType);
     if (!listeners) {
@@ -24,7 +50,7 @@ export default class TypedEventEmitter<T> {
   }
 
   // Remove an event listener
-  public removeEventListener(eventType: string, listener: Listener<T>): void {
+  public removeEventListener(eventType: string, listener: TypedListener<T>): void {
     const listenerSet = this.listeners.get(eventType);
     if (listenerSet) {
       listenerSet.delete(listener);

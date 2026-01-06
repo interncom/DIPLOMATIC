@@ -1,4 +1,4 @@
-import { EventEmitter } from "./eventEmitter";
+import { EventEmitter } from "./events";
 import type { Applier } from "./types";
 import type { IOp } from "./shared/types";
 

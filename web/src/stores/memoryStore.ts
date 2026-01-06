@@ -1,5 +1,5 @@
-import { btoh, htob } from "./shared/lib";
-import type { IClientStateStore } from "./types";
+import { btoh, htob } from "../shared/lib";
+import type { IClientStateStore } from "../types";
 
 class MemoryStore implements IClientStateStore {
   seed?: Uint8Array;

@@ -13,7 +13,7 @@ export default class DiplomaticClientAPI {
     public crypto: ICrypto,
     private host: IHostConnectionInfo,
     public clock: IClock,
-  ) {}
+  ) { }
 
   private async call<ReqItem, Resp>(
     apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
@@ -41,3 +41,5 @@ export default class DiplomaticClientAPI {
   push = (ops: IMessage[]) => this.call(api.push, ops);
   pull = (hashes: Uint8Array[]) => this.call(api.pull, hashes);
 }
+
+// Connect to websocket here.

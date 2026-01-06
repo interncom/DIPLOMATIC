@@ -5,15 +5,13 @@ import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api, post } from "./http.ts";
 import { type IMessage } from "./message.ts";
-import type { ICrypto } from "./types.ts";
+import type { ICrypto, IHostConnectionInfo } from "./types.ts";
 
 export default class DiplomaticClientAPI {
   constructor(
     public enclave: Enclave,
     public crypto: ICrypto,
-    private hostURL: URL,
-    private idx: number,
-    private keyPath: string,
+    private host: IHostConnectionInfo,
     public clock: IClock,
   ) {}
 
@@ -21,10 +19,10 @@ export default class DiplomaticClientAPI {
     apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { clock, crypto, hostURL, idx, keyPath } = this;
+    const { clock, crypto, host } = this;
     const { endpoint, path } = apiCall;
 
-    const keys = await hostKeys(this, keyPath, idx);
+    const keys = await hostKeys(this, host.label, host.idx);
 
     const now = clock.now();
     const authTS = await makeAuthTimestamp(keys, now, crypto);
@@ -32,7 +30,7 @@ export default class DiplomaticClientAPI {
     const enc = new Encoder();
     await endpoint.encodeReq(this, keys, authTS, items, enc);
 
-    const url = new URL(path, hostURL);
+    const url = new URL(path, host.url);
     const dec = await post(url, enc);
 
     return endpoint.decodeResp(dec);

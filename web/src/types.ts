@@ -1,5 +1,14 @@
-import type { Hash, IOp, MasterSeed } from "./shared/types";
-import type { EncodedMessage, IMessageHead, SerializedContent } from "./shared/message";
+import type {
+  Hash,
+  IHostConnectionInfo,
+  IOp,
+  MasterSeed,
+} from "./shared/types";
+import type {
+  EncodedMessage,
+  IMessageHead,
+  SerializedContent,
+} from "./shared/message";
 import type { Enclave } from "./shared/enclave";
 
 export interface IClientStateStore {
@@ -57,9 +66,7 @@ export interface ISeedStore {
   wipe: () => Promise<void>;
 }
 
-export interface IHost {
-  label: string;
-  url: URL;
+export interface IHostRow extends IHostConnectionInfo {
   lastSyncedAt: Date;
 }
 
@@ -68,7 +75,7 @@ export interface IHostStore {
   init: () => Promise<void>;
   add: (label: string, url: URL) => Promise<void>;
   del: (label: string) => Promise<void>;
-  list: () => Promise<Iterable<IHost>>;
+  list: () => Promise<Iterable<IHostRow>>;
   wipe: () => Promise<void>;
 }
 

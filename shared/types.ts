@@ -150,3 +150,9 @@ export interface IBag extends IBagHeader {
 }
 
 export type EncodedBag = Uint8Array;
+
+export interface IHostConnectionInfo {
+  url: URL;
+  label: string;
+  idx: number;
+}

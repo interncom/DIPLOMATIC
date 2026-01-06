@@ -39,7 +39,7 @@ const mockNotifier = {
 };
 
 const mockClock = { now: () => new Date(946713599000 + 1000) };
-const mockHost = { hostID: "test", storage: mockStorage, crypto: mockCrypto, clock: mockClock, notifier: mockNotifier };
+const mockHost = { storage: mockStorage, crypto: mockCrypto, clock: mockClock, notifier: mockNotifier };
 const pubKey = new Uint8Array(32).fill(0) as PublicKey;
 
 const tsAuth: IAuthTimestamp = {

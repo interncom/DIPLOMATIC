@@ -71,7 +71,6 @@ Deno.test("pushEnd.handleReq - success", async () => {
   };
   const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
-    hostID: "test",
     crypto: mockCrypto,
     storage: mockStorage,
     notifier: mockNotifier,
@@ -145,7 +144,6 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   };
   const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
-    hostID: "test",
     crypto: mockCrypto,
     storage: mockStorage,
     notifier: mockNotifier,
@@ -233,7 +231,6 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
   };
   const mockClockOutOfSync = { now: () => new Date(1640995200000 + 40000) }; // > 30000ms diff
   const mockHostOutOfSync = {
-    hostID: "test",
     crypto: mockCrypto,
     storage: mockStorage,
     notifier: mockNotifier,

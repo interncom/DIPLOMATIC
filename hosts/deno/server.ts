@@ -1,4 +1,4 @@
-import { DiplomaticServer } from "../../shared/server2.ts";
+import { DiplomaticServer } from "../../shared/server.ts";
 import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";
 import denoWebsocketNotifer from "../../deno/src/websockets.ts";

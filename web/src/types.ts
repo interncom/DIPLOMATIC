@@ -111,3 +111,12 @@ export interface IMessageStore {
   has: (hash: Hash) => Promise<boolean>;
   list: () => Promise<Iterable<IStoredMessage>>;
 }
+
+export interface IStore {
+  init: () => Promise<void>;
+  seed: ISeedStore;
+  hosts: IHostStore;
+  uploads: IUploadQueue;
+  downloads: IDownloadQueue;
+  messages: IMessageStore;
+}

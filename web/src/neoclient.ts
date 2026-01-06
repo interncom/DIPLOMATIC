@@ -1,27 +1,63 @@
 import libsodiumCrypto from "./crypto";
+import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { EntityID, IHostConnectionInfo, IOp } from "./shared/types";
 import { StateManager } from "./state";
-import { IDiplomaticClientState, IDiplomaticClientXferState, IStore, IWebClient } from "./types";
+import { IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IWebClient } from "./types";
 
 export class NeoClient implements IWebClient {
   connections = new Map<string, DiplomaticClientAPI>();
+
+  public clientState: IStateEmitter<IDiplomaticClientState>;
+  public xferState: IStateEmitter<IDiplomaticClientXferState>;
 
   constructor(
     private clock: IClock,
     private state: StateManager,
     private store: IStore
-  ) { }
+  ) {
+    this.clientState = new StateEmitter(this.getClientState);
+    this.xferState = new StateEmitter(this.getXferState);
+  }
+
+  private async getClientState(): Promise<IDiplomaticClientState> {
+    const { store } = this;
+    const enclave = await store.seed.load();
+    const hosts = await store.hosts.list();
+    return {
+      hasSeed: enclave !== undefined,
+      hasHost: Array.from(hosts).length > 0,
+      connected: false, // TODO
+    }
+  }
+
+  private async getXferState(): Promise<IDiplomaticClientXferState> {
+    const { uploads, downloads } = this.store;
+    const numUploads = await uploads.count();
+    const numDownloads = await downloads.count();
+    return { numDownloads, numUploads };
+  }
 
   private async apply(op: IOp) {
     // TODO: implement.
   }
-
   public async upsert() { }
   public async delete(eid: EntityID) { }
 
   public async sync() {
+    // TODO: implement.
+  }
+
+  public async wipe() {
+    // TODO: implement (with precautions).
+  }
+
+  public async import(file: File) {
+    // TODO: implement.
+  }
+
+  public async export(filename: string, extension?: string) {
     // TODO: implement.
   }
 
@@ -47,29 +83,9 @@ export class NeoClient implements IWebClient {
       this.connections.set(host.label, conn);
     }
   }
-  
+
   public async disconnect() {
     this.connections.clear();
   }
 
-  public async clientState(): Promise<IDiplomaticClientState> {
-    const { store } = this;
-    const enclave = await store.seed.load();
-    const hosts = await store.hosts.list();
-    return {
-      hasSeed: enclave !== undefined,
-      hasHost: Array.from(hosts).length > 0,
-      connected: false, // TODO
-    }
-  }
-
-  public async xferState(): Promise<IDiplomaticClientXferState> {
-    const { uploads, downloads } = this.store;
-    const numUploads = await uploads.count();
-    const numDownloads = await downloads.count();
-    return { numDownloads, numUploads };
-  }
-
 }
-
-// Define client API

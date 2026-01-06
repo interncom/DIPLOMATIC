@@ -128,9 +128,9 @@ export interface IStore {
   messages: IMessageStore;
 }
 
-interface IStateEmitter<T> {
-  get(): T;
-  emit(state: T): void;
+export interface IStateEmitter<T> {
+  get(): Promise<T>;
+  emit(): void;
   listen(listener: (state: T) => void): void;
 }
 

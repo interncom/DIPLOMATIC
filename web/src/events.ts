@@ -1,3 +1,5 @@
+import { IStateEmitter } from "./types";
+
 type Listener = () => void;
 
 export class EventEmitter {
@@ -71,5 +73,24 @@ export class TypedEventEmitter<T> {
         listener(data);
       }
     }
+  }
+}
+
+export class StateEmitter<T> implements IStateEmitter<T> {
+  static eventName = "update";
+  emitter: TypedEventEmitter<T>;
+  constructor(private getter: () => Promise<T>) {
+    this.emitter = new TypedEventEmitter();
+  }
+
+  get = () => this.getter();
+
+  async emit() {
+    const state = await this.getter();
+    this.emitter.emit(StateEmitter.eventName, state);
+  }
+
+  listen(func: (state: T) => void) {
+    this.emitter.addEventListener(StateEmitter.eventName, func);
   }
 }

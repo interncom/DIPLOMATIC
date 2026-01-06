@@ -7,7 +7,6 @@ import type {
 import type {
   EncodedMessage,
   IMessageHead,
-  SerializedContent,
 } from "./shared/message";
 import type { Enclave } from "./shared/enclave";
 

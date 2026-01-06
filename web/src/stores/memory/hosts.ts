@@ -1,12 +1,12 @@
-import type { IHost, IHostStore } from "../../types";
+import type { IHostRow, IHostStore } from "../../types";
 
 export class MemoryHostStore implements IHostStore {
-  hosts = new Map<string, IHost>();
+  hosts = new Map<string, IHostRow>();
 
   async init() { }
 
   async add(label: string, url: URL) {
-    const host: IHost = {
+    const host: IHostRow = {
       label,
       url,
       lastSyncedAt: new Date(0),

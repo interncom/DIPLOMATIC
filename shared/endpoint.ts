@@ -18,7 +18,6 @@ interface IProtoClient {
 }
 
 interface IProtoHost {
-  hostID: string;
   storage: IStorage;
   crypto: IHostCrypto;
   notifier: IWebsocketNotifier;

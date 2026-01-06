@@ -45,7 +45,7 @@ const mockNotifier = {
   handler: (request: Request, hasUser: (pubKey: PublicKey) => Promise<boolean>) => Promise.resolve(new Response()),
 };
 const mockClock = { now: () => new Date(946713599000 + 1000) };
-const mockHost = { hostID: "test", storage: mockStorage, clock: mockClock, crypto: mockCrypto, notifier: mockNotifier };
+const mockHost = { storage: mockStorage, clock: mockClock, crypto: mockCrypto, notifier: mockNotifier };
 const pubKey = new Uint8Array(32).fill(0) as PublicKey;
 
 Deno.test("peekEnd.encodeReq", () => {

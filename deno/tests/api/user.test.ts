@@ -34,7 +34,6 @@ const mockNotifier = {
 const mockClock = { now: () => new Date(1640995200000) };
 
 const mockHost = {
-  hostID: "test",
   storage: mockStorage,
   crypto: mockCrypto,
   clock: mockClock,

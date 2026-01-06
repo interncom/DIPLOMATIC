@@ -10,12 +10,11 @@ import memStorage from "../src/storage/memory.ts";
 
 import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { MasterSeed } from "../../shared/types.ts";
+import { MasterSeed, IHostConnectionInfo } from "../../shared/types.ts";
 import { MockClock } from "../../shared/clock.ts";
 
 // Server config.
 const port = 3331;
-const hostID = "id123456";
 
 // Client config.
 const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
@@ -28,7 +27,7 @@ const idx = 0;
 Deno.test("server", async (t) => {
   const websocketHandler: IWebsocketNotifier = {
     handler: async () => new Response(),
-    notify: async () => {},
+    notify: async () => { },
   };
 
   // Use a consistent now Date for all operations and auth
@@ -36,7 +35,6 @@ Deno.test("server", async (t) => {
   const clock = new MockClock(now);
 
   const server = new DiplomaticServer(
-    hostID,
     memStorage,
     libsodiumCrypto,
     websocketHandler,
@@ -47,13 +45,15 @@ Deno.test("server", async (t) => {
   if (!server) {
     throw "a fit";
   }
-  const url = new URL(`http://localhost:${port}`);
+  const host: IHostConnectionInfo = {
+    url: new URL(`http://localhost:${port}`),
+    label: "id123456",
+    idx: 0,
+  };
   const client = new DiplomaticClientAPI(
     enclave,
     libsodiumCrypto,
-    url,
-    idx,
-    hostID,
+    host,
     clock,
   );
 

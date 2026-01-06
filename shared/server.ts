@@ -6,7 +6,6 @@ import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
 
 export class DiplomaticServer {
   constructor(
-    public hostID: string,
     public storage: IStorage,
     public crypto: IHostCrypto,
     public notifier: IWebsocketNotifier,

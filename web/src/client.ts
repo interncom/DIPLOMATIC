@@ -1,6 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 import type { EntityID, GroupID, IOp, KeyPair } from "./shared/types";
-import { btoh, htob } from "./shared/lib";
+import { htob } from "./shared/lib";
 import webClientAPI from "./api";
 import type {
   IClientStateStore,
@@ -13,7 +13,7 @@ import { genDeleteOp, genUpsertOp } from "./shared/ops";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import TypedEventEmitter from "./typedEventEmitter";
-import { WebsocketManager } from "./websockets";
+import { WebsocketManager } from "./sockets";
 
 export interface IDiplomaticClientParams {
   store: IClientStateStore;

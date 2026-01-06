@@ -1,8 +1,11 @@
+import DiplomaticClient from "./client";
+import { btoh } from "./shared/lib";
+
 export class WebsocketManager {
   private websocket?: WebSocket;
   private hostURLForReconnect?: URL;
 
-  constructor(private client: DiplomaticClient) {}
+  constructor(private client: DiplomaticClient) { }
 
   isConnected(): boolean {
     return this.websocket !== undefined &&

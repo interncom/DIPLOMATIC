@@ -16,7 +16,7 @@ import useStateWatcher, {
 } from "./react/useStateWatcher";
 import InitSeedView from "./react/initSeedView";
 import ClientStatusBar from "./react/statusBar";
-import * as EntityDB from "./entityDB";
+import * as EntityDB from "./entdb";
 
 export {
   btoh,

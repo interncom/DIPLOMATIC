@@ -12,7 +12,7 @@ import type { StateManager } from "./state";
 import { genDeleteOp, genUpsertOp } from "./shared/ops";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import TypedEventEmitter from "./typedEventEmitter";
+import { TypedEventEmitter } from "./events";
 import { WebsocketManager } from "./sockets";
 
 export interface IDiplomaticClientParams {

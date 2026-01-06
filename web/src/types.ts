@@ -1,4 +1,5 @@
 import type {
+  EntityID,
   Hash,
   IHostConnectionInfo,
   IOp,
@@ -72,7 +73,7 @@ export interface IHostRow extends IHostConnectionInfo {
 // IHostStore handles persistence of hosts table.
 export interface IHostStore {
   init: () => Promise<void>;
-  add: (label: string, url: URL) => Promise<void>;
+  add: (host: IHostConnectionInfo) => Promise<void>;
   del: (label: string) => Promise<void>;
   list: () => Promise<Iterable<IHostRow>>;
   wipe: () => Promise<void>;
@@ -125,4 +126,31 @@ export interface IStore {
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
+}
+
+interface IStateEmitter<T> {
+  get(): T;
+  emit(state: T): void;
+  listen(listener: (state: T) => void): void;
+}
+
+export interface IWebClient {
+  link(host: IHostConnectionInfo): Promise<void>;
+  unlink(label: string): Promise<void>;
+
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+
+  upsert(op: IOp): Promise<void>;
+  delete(eid: EntityID): Promise<void>;
+
+  sync(): Promise<void>;
+
+  wipe(): Promise<void>;
+
+  import(file: File): Promise<void>;
+  export(filename: string, extension?: string): Promise<void>;
+
+  clientState: IStateEmitter<IDiplomaticClientState>;
+  xferState: IStateEmitter<IDiplomaticClientXferState>;
 }

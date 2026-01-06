@@ -87,5 +87,4 @@ export class NeoClient implements IWebClient {
   public async disconnect() {
     this.connections.clear();
   }
-
 }

@@ -4,8 +4,8 @@ import {
   useSyncOnResume,
 } from "./react/useClient";
 import { opMapApplier, StateManager } from "./state";
-import { localStorageStore } from "./localStorageStore";
-import { idbStore } from "./idbStore";
+import { localStorageStore } from "./stores/localStorageStore";
+import { idbStore } from "./stores/idbStore";
 import type { IDiplomaticClientState } from "./types";
 import DiplomaticClient from "./client";
 import libsodiumCrypto from "./crypto";

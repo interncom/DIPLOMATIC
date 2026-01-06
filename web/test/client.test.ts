@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import DiplomaticClient from '../src/client'
-import { memoryStore } from '../src/memoryStore';
+import { memoryStore } from '../src/stores/memoryStore';
 import { StateManager } from '../src/state';
 import { Verb, type IOp } from '../src/shared/types';
 import { htob } from '../src/shared/lib';

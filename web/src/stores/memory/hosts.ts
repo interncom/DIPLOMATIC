@@ -1,3 +1,4 @@
+import { IHostConnectionInfo } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 
 export class MemoryHostStore implements IHostStore {
@@ -5,13 +6,12 @@ export class MemoryHostStore implements IHostStore {
 
   async init() { }
 
-  async add(label: string, url: URL) {
+  async add(info: IHostConnectionInfo) {
     const host: IHostRow = {
-      label,
-      url,
+      ...info,
       lastSyncedAt: new Date(0),
     };
-    this.hosts.set(label, host);
+    this.hosts.set(info.label, host);
   };
 
   async del(label: string) {

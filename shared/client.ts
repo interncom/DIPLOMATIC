@@ -1,11 +1,12 @@
 import { makeAuthTimestamp } from "./auth.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
+import { APICallName } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
-import { api, post } from "./http.ts";
+import { api } from "./http.ts";
 import { type IMessage } from "./message.ts";
-import type { ICrypto, IHostConnectionInfo } from "./types.ts";
+import type { ICrypto, IHostConnectionInfo, ITransport } from "./types.ts";
 
 export default class DiplomaticClientAPI {
   constructor(
@@ -13,14 +14,18 @@ export default class DiplomaticClientAPI {
     public crypto: ICrypto,
     private host: IHostConnectionInfo,
     public clock: IClock,
-  ) { }
+    private transport: ITransport,
+  ) {}
 
   private async call<ReqItem, Resp>(
-    apiCall: { path: string; endpoint: IAuthenticatedEndpoint<ReqItem, Resp> },
+    apiCall: {
+      endpoint: IAuthenticatedEndpoint<ReqItem, Resp>;
+      name: APICallName;
+    },
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { clock, crypto, host } = this;
-    const { endpoint, path } = apiCall;
+    const { clock, crypto, host, transport } = this;
+    const { endpoint, name } = apiCall;
 
     const keys = await hostKeys(this, host.label, host.idx);
 
@@ -30,8 +35,8 @@ export default class DiplomaticClientAPI {
     const enc = new Encoder();
     await endpoint.encodeReq(this, keys, authTS, items, enc);
 
-    const url = new URL(path, host.url);
-    const dec = await post(url, enc);
+    // TODO: use transport here (need to rephrase api const in terms of APICall enum)
+    const dec = await transport.call(name, enc);
 
     return endpoint.decodeResp(dec);
   }

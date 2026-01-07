@@ -1,6 +1,7 @@
 import { IClock } from "./clock.ts";
+import { Decoder, Encoder } from "./codec.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
-import { Status } from "./consts.ts";
+import { APICallName, Status } from "./consts.ts";
 
 export enum Verb {
   DELETE = 0,
@@ -170,4 +171,8 @@ export interface IHostConnectionInfo {
   url: URL;
   label: string;
   idx: number;
+}
+
+export interface ITransport {
+  call: (name: APICallName, enc: Encoder) => Promise<Decoder>;
 }

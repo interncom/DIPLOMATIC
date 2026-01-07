@@ -1,43 +1,59 @@
-import { Status } from "./consts.ts";
 import { Decoder, Encoder } from "./codec.ts";
+import { APICallName, Status } from "./consts.ts";
 
 import { peekEnd } from "./api/peek.ts";
 import { pullEnd } from "./api/pull.ts";
 import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
-
-export const apiPaths = {
-  user: "/users",
-  push: "/ops",
-  pull: "/pull",
-  peek: "/peek",
-} as const;
+import { ITransport } from "./types.ts";
 
 export const api = {
   user: {
-    path: apiPaths.user,
+    path: "/users",
     endpoint: userEnd,
+    name: APICallName.User,
   },
   push: {
-    path: apiPaths.push,
+    path: "/ops",
     endpoint: pushEnd,
+    name: APICallName.Push,
   },
   peek: {
-    path: apiPaths.peek,
+    path: "/pull",
     endpoint: peekEnd,
+    name: APICallName.Peek,
   },
   pull: {
-    path: apiPaths.pull,
+    path: "/peek",
     endpoint: pullEnd,
+    name: APICallName.Pull,
   },
 } as const;
 
+export const apiCalls = {
+  [APICallName.User]: api.user,
+  [APICallName.Push]: api.push,
+  [APICallName.Peek]: api.peek,
+  [APICallName.Pull]: api.pull,
+} as const;
+
 export const callPaths = {
-  [apiPaths.user]: api.user,
-  [apiPaths.push]: api.push,
-  [apiPaths.peek]: api.peek,
-  [apiPaths.pull]: api.pull,
-};
+  [api.user.path]: api.user,
+  [api.push.path]: api.push,
+  [api.peek.path]: api.peek,
+  [api.pull.path]: api.pull,
+} as const;
+
+export class HTTPTransport implements ITransport {
+  constructor(private url: URL) {}
+
+  async call(name: APICallName, enc: Encoder) {
+    const { path } = apiCalls[name];
+    const url = new URL(path, this.url);
+    const dec = await post(url, enc);
+    return dec;
+  }
+}
 
 export function respFor(status: Status): Response {
   switch (status) {

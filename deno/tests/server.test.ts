@@ -17,6 +17,7 @@ import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
 import { MockClock } from "../../shared/clock.ts";
+import { HTTPTransport } from "../../shared/http.ts";
 
 // Server config.
 const port = 3331;
@@ -71,6 +72,7 @@ Deno.test("server", async (t) => {
     libsodiumCrypto,
     host,
     clock,
+    new HTTPTransport(host.url),
   );
 
   await t.step("POST /users", async () => {

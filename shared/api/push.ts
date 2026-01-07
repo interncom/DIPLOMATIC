@@ -47,7 +47,7 @@ export const pushEnd: IAuthenticatedEndpoint<
         continue;
       }
       await storage.setBag(pubKey, now, bag, hash);
-      await notifier.notify(pubKey);
+      await notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
       const item: IBagPushItem = { status: Status.Success, hash };
       respEnc.writeStruct(pushItemCodec, item);
     }

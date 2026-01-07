@@ -3,7 +3,7 @@ import DiplomaticClientAPI from "../../shared/client.ts";
 import { Status, tsAuthSize } from "../../shared/consts.ts";
 import { genInsert } from "../../shared/message.ts";
 import { DiplomaticServer } from "../../shared/server.ts";
-import { IWebsocketNotifier } from "../../shared/types.ts";
+import { IPushNotifier } from "../../shared/types.ts";
 import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import memStorage from "../src/storage/memory.ts";
@@ -25,9 +25,10 @@ const enclave = new Enclave(seed, libsodiumCrypto);
 const idx = 0;
 
 Deno.test("server", async (t) => {
-  const websocketHandler: IWebsocketNotifier = {
-    handler: async () => new Response(),
-    notify: async () => { },
+  const websocketHandler: IPushNotifier = {
+    handler: async (request, host) => new Response(),
+    open: async (pubKey, recv) => Promise.resolve({ send: () => Status.OK, shut: () => Status.OK, status: Status.OK }),
+    push: async () => { },
   };
 
   // Use a consistent now Date for all operations and auth

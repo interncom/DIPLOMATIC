@@ -1,26 +1,17 @@
+import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
+import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
+import { Status } from "./consts.ts";
+import { Enclave } from "./enclave.ts";
 import {
   HostSpecificKeyPair,
   ICrypto,
-  IHostCrypto,
-  IStorage,
-  IWebsocketNotifier,
+  IProtoHost
 } from "./types.ts";
-import { Enclave } from "./enclave.ts";
-import { Status } from "./consts.ts";
-import { IClock } from "./clock.ts";
-import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 
 interface IProtoClient {
   crypto: ICrypto;
   enclave: Enclave;
-  clock: IClock;
-}
-
-interface IProtoHost {
-  storage: IStorage;
-  crypto: IHostCrypto;
-  notifier: IWebsocketNotifier;
   clock: IClock;
 }
 

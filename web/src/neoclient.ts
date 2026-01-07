@@ -17,8 +17,8 @@ export class NeoClient implements IWebClient {
     private state: StateManager,
     private store: IStore
   ) {
-    this.clientState = new StateEmitter(this.getClientState);
-    this.xferState = new StateEmitter(this.getXferState);
+    this.clientState = new StateEmitter(() => this.getClientState());
+    this.xferState = new StateEmitter(() => this.getXferState());
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {

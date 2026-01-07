@@ -14,8 +14,9 @@ import {
   sigBytes,
   Status,
 } from "../../../shared/consts.ts";
-import { IBag, PublicKey } from "../../../shared/types.ts";
+import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
+import { uint8ArraysEqual } from "../../../shared/lib.ts";
 
 Deno.test("pushEnd.handleReq - success", async () => {
   const pubKey = new Uint8Array(32).fill(0) as PublicKey;
@@ -59,15 +60,19 @@ Deno.test("pushEnd.handleReq - success", async () => {
     listHeads: () => Promise.resolve([]),
     setBag: () => Promise.resolve(),
   };
-  const mockNotifier = {
-    notify: () => {
-      notified = true;
+  const mockNotifier: IPushNotifier = {
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
+      Promise.resolve({
+        send: () => Status.Success,
+        shut: () => Status.Success,
+        status: Status.Success,
+      }),
+    push: (pk: PublicKey, data: Uint8Array) => {
+      if (uint8ArraysEqual(pk, pubKey)) {
+        notified = true;
+      }
       return Promise.resolve();
     },
-    handler: (
-      request: Request,
-      hasUser: (pubKey: PublicKey) => Promise<boolean>,
-    ) => Promise.resolve(new Response()),
   };
   const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
@@ -135,12 +140,14 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
     listHeads: () => Promise.resolve([]),
     setBag: () => Promise.resolve(),
   };
-  const mockNotifier = {
-    notify: () => Promise.resolve(),
-    handler: (
-      request: Request,
-      hasUser: (pubKey: PublicKey) => Promise<boolean>,
-    ) => Promise.resolve(new Response()),
+  const mockNotifier: IPushNotifier = {
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
+      Promise.resolve({
+        send: () => Status.Success,
+        shut: () => Status.Success,
+        status: Status.Success,
+      }),
+    push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
   };
   const mockClock = { now: () => new Date(1640995200000) };
   const mockHost = {
@@ -222,12 +229,14 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
     listHeads: () => Promise.resolve([]),
     setBag: () => Promise.resolve(),
   };
-  const mockNotifier = {
-    notify: () => Promise.resolve(),
-    handler: (
-      request: Request,
-      hasUser: (pubKey: PublicKey) => Promise<boolean>,
-    ) => Promise.resolve(new Response()),
+  const mockNotifier: IPushNotifier = {
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
+      Promise.resolve({
+        send: () => Status.Success,
+        shut: () => Status.Success,
+        status: Status.Success,
+      }),
+    push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
   };
   const mockClockOutOfSync = { now: () => new Date(1640995200000 + 40000) }; // > 30000ms diff
   const mockHostOutOfSync = {

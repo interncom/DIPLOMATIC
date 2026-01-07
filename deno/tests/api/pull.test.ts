@@ -3,7 +3,11 @@ import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { pullItemCodec } from "../../../shared/codecs/pullItem.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
-import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
+import {
+  HostSpecificKeyPair,
+  IPushNotifier,
+  PublicKey,
+} from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
@@ -33,13 +37,23 @@ const mockCrypto = {
   blake3: () => Promise.resolve(new Uint8Array(32)),
 };
 
-const mockNotifier = {
-  notify: () => Promise.resolve(),
-  handler: (request: Request, hasUser: (pubKey: PublicKey) => Promise<boolean>) => Promise.resolve(new Response()),
+const mockNotifier: IPushNotifier = {
+  open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
+    Promise.resolve({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
+  push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
 };
 
 const mockClock = { now: () => new Date(946713599000 + 1000) };
-const mockHost = { storage: mockStorage, crypto: mockCrypto, clock: mockClock, notifier: mockNotifier };
+const mockHost = {
+  storage: mockStorage,
+  crypto: mockCrypto,
+  clock: mockClock,
+  notifier: mockNotifier,
+};
 const pubKey = new Uint8Array(32).fill(0) as PublicKey;
 
 const tsAuth: IAuthTimestamp = {

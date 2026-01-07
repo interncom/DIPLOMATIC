@@ -3,14 +3,19 @@ import DiplomaticClientAPI from "../../shared/client.ts";
 import { Status, tsAuthSize } from "../../shared/consts.ts";
 import { genInsert } from "../../shared/message.ts";
 import { DiplomaticServer } from "../../shared/server.ts";
-import { IPushNotifier } from "../../shared/types.ts";
+import {
+  IProtoHost,
+  IWebSocketPushNotifier,
+  PublicKey,
+  PushReceiver,
+} from "../../shared/types.ts";
 import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import memStorage from "../src/storage/memory.ts";
 
 import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { MasterSeed, IHostConnectionInfo } from "../../shared/types.ts";
+import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
 import { MockClock } from "../../shared/clock.ts";
 
 // Server config.
@@ -20,16 +25,26 @@ const port = 3331;
 const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
 const enclave = new Enclave(seed, libsodiumCrypto);
 
-// Derivation index for host key pair.
-// Increments as part of host keypair rotation.
-const idx = 0;
+class MockPushNotifier implements IWebSocketPushNotifier {
+  handle(_host: IProtoHost, _request: Request): Promise<Response> {
+    return Promise.resolve(new Response());
+  }
+
+  open(_pubKey: PublicKey, _recv: PushReceiver) {
+    return Promise.resolve({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    });
+  }
+
+  push(_pubKey: PublicKey, _data: Uint8Array): Promise<void> {
+    return Promise.resolve();
+  }
+}
 
 Deno.test("server", async (t) => {
-  const websocketHandler: IPushNotifier = {
-    handler: async (request, host) => new Response(),
-    open: async (pubKey, recv) => Promise.resolve({ send: () => Status.OK, shut: () => Status.OK, status: Status.OK }),
-    push: async () => { },
-  };
+  const websocketHandler = new MockPushNotifier();
 
   // Use a consistent now Date for all operations and auth
   const now = new Date();

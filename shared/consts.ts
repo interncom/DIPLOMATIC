@@ -27,3 +27,10 @@ export enum Status {
   InternalError = 12,
   NotFound = 13,
 }
+
+export enum APICallName {
+  User,
+  Peek,
+  Push,
+  Pull,
+}

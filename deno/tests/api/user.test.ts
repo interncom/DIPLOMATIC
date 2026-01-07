@@ -1,8 +1,13 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
+import { userEnd } from "../../../shared/api/user.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { Status } from "../../../shared/consts.ts";
-import { userEnd } from "../../../shared/api/user.ts";
-import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
+import {
+  HostSpecificKeyPair,
+  IProtoHost,
+  IPushNotifier,
+  PublicKey,
+} from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
@@ -10,8 +15,8 @@ import {
 
 // Mock storage for testing
 const mockStorage = {
-  addUser: (pubKey: PublicKey) => Promise.resolve(),
-  hasUser: (pubKey: PublicKey) => Promise.resolve(true),
+  addUser: (_pubKey: PublicKey) => Promise.resolve(),
+  hasUser: (_pubKey: PublicKey) => Promise.resolve(true),
   getBody: () => Promise.resolve(undefined),
   listHeads: () => Promise.resolve([]),
   setBag: () => Promise.resolve(),
@@ -23,12 +28,14 @@ const mockCrypto = {
   blake3: () => Promise.resolve(new Uint8Array(32)),
 };
 
-const mockNotifier = {
-  notify: () => Promise.resolve(),
-  handler: (
-    request: Request,
-    hasUser: (pubKey: PublicKey) => Promise<boolean>,
-  ) => Promise.resolve(new Response()),
+const mockNotifier: IPushNotifier = {
+  open: (_pubKey: PublicKey, _recv: (data: Uint8Array) => void) =>
+    Promise.resolve({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
+  push: (_pubKey: PublicKey, _data: Uint8Array) => Promise.resolve(),
 };
 
 const mockClock = { now: () => new Date(1640995200000) };

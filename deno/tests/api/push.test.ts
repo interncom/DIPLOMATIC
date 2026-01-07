@@ -61,12 +61,11 @@ Deno.test("pushEnd.handleReq - success", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
-      Promise.resolve({
-        send: () => Status.Success,
-        shut: () => Status.Success,
-        status: Status.Success,
-      }),
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
     push: (pk: PublicKey, data: Uint8Array) => {
       if (uint8ArraysEqual(pk, pubKey)) {
         notified = true;
@@ -141,12 +140,11 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
-      Promise.resolve({
-        send: () => Status.Success,
-        shut: () => Status.Success,
-        status: Status.Success,
-      }),
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
     push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
   };
   const mockClock = { now: () => new Date(1640995200000) };
@@ -230,12 +228,11 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
-      Promise.resolve({
-        send: () => Status.Success,
-        shut: () => Status.Success,
-        status: Status.Success,
-      }),
+    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
     push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
   };
   const mockClockOutOfSync = { now: () => new Date(1640995200000 + 40000) }; // > 30000ms diff

@@ -40,10 +40,14 @@ export class NeoClient implements IWebClient {
   }
 
   private async apply(op: IOp) {
+    // TODO: implement. op type may be wrong.
+  }
+  public async upsert() {
     // TODO: implement.
   }
-  public async upsert() { }
-  public async delete(eid: EntityID) { }
+  public async delete(eid: EntityID) {
+    // TODO: implement.
+  }
 
   public async sync() {
     // TODO: implement.

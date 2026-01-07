@@ -5,7 +5,7 @@ import { peekEnd } from "./api/peek.ts";
 import { pullEnd } from "./api/pull.ts";
 import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
-import { ITransport } from "./types.ts";
+import { IPushListener, ITransport } from "./types.ts";
 
 export const api = {
   user: {
@@ -45,7 +45,7 @@ export const callPaths = {
 } as const;
 
 export class HTTPTransport implements ITransport {
-  constructor(private url: URL) {}
+  constructor(private url: URL, public listener: IPushListener) {}
 
   async call(name: APICallName, enc: Encoder) {
     const { path } = apiCalls[name];

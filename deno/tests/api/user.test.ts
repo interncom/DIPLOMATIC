@@ -4,7 +4,6 @@ import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { Status } from "../../../shared/consts.ts";
 import {
   HostSpecificKeyPair,
-  IProtoHost,
   IPushNotifier,
   PublicKey,
 } from "../../../shared/types.ts";
@@ -29,12 +28,11 @@ const mockCrypto = {
 };
 
 const mockNotifier: IPushNotifier = {
-  open: (_pubKey: PublicKey, _recv: (data: Uint8Array) => void) =>
-    Promise.resolve({
-      send: () => Status.Success,
-      shut: () => Status.Success,
-      status: Status.Success,
-    }),
+  open: (_pubKey: PublicKey, _recv: (data: Uint8Array) => void) => ({
+    send: () => Status.Success,
+    shut: () => Status.Success,
+    status: Status.Success,
+  }),
   push: (_pubKey: PublicKey, _data: Uint8Array) => Promise.resolve(),
 };
 

@@ -18,6 +18,7 @@ import { Enclave } from "../../shared/enclave.ts";
 import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
 import { MockClock } from "../../shared/clock.ts";
 import { HTTPTransport } from "../../shared/http.ts";
+import { WebsocketListener } from "../../shared/http/listener.ts";
 
 // Server config.
 const port = 3331;
@@ -32,7 +33,7 @@ class MockPushNotifier implements IWebSocketPushNotifier {
   }
 
   open(_pubKey: PublicKey, _recv: PushReceiver) {
-    return Promise.resolve({
+    return ({
       send: () => Status.Success,
       shut: () => Status.Success,
       status: Status.Success,
@@ -62,17 +63,21 @@ Deno.test("server", async (t) => {
   if (!server) {
     throw "a fit";
   }
+  const hostURL = new URL(`http://localhost:${port}`);
   const host: IHostConnectionInfo = {
-    url: new URL(`http://localhost:${port}`),
+    url: hostURL,
     label: "id123456",
     idx: 0,
   };
+  const wsURL = new URL(hostURL);
+  wsURL.protocol = hostURL.protocol === "https" ? "wss" : "ws";
+  const listener = new WebsocketListener(wsURL);
   const client = new DiplomaticClientAPI(
     enclave,
     libsodiumCrypto,
     host,
     clock,
-    new HTTPTransport(host.url),
+    new HTTPTransport(host.url, listener),
   );
 
   await t.step("POST /users", async () => {

@@ -38,12 +38,11 @@ const mockCrypto = {
 };
 
 const mockNotifier: IPushNotifier = {
-  open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) =>
-    Promise.resolve({
-      send: () => Status.Success,
-      shut: () => Status.Success,
-      status: Status.Success,
-    }),
+  open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+    send: () => Status.Success,
+    shut: () => Status.Success,
+    status: Status.Success,
+  }),
   push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
 };
 

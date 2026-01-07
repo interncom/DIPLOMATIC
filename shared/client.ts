@@ -6,7 +6,12 @@ import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import { type IMessage } from "./message.ts";
-import type { ICrypto, IHostConnectionInfo, ITransport } from "./types.ts";
+import type {
+  ICrypto,
+  IHostConnectionInfo,
+  ITransport,
+  PushReceiver,
+} from "./types.ts";
 
 export default class DiplomaticClientAPI {
   constructor(
@@ -45,6 +50,12 @@ export default class DiplomaticClientAPI {
   peek = (from: Date) => this.call(api.peek, [from]);
   push = (ops: IMessage[]) => this.call(api.push, ops);
   pull = (hashes: Uint8Array[]) => this.call(api.pull, hashes);
-}
 
-// Connect to websocket here.
+  // listen for new bags.
+  listen = async (recv: PushReceiver) => {
+    const { host, transport } = this;
+    const { listener } = transport;
+    const keys = await hostKeys(this, host.label, host.idx);
+    return listener.connect(keys.publicKey, recv);
+  };
+}

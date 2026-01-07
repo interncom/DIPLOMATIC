@@ -146,11 +146,16 @@ export interface IPushOpenResponse {
   status: Status;
 }
 export interface IPushNotifier {
-  open(pubKey: PublicKey, recv: PushReceiver): Promise<IPushOpenResponse>;
-  push(pubKey: PublicKey, data: Uint8Array): Promise<void>;
+  open(pubKey: PublicKey, recv: PushReceiver): IPushOpenResponse;
+  push(pubKey: PublicKey, data: Uint8Array): void;
 }
 export interface IWebSocketPushNotifier extends IPushNotifier {
   handle(host: IProtoHost, req: Request): Promise<Response>;
+}
+export interface IPushListener {
+  connect(pubKey: PublicKey, recv: PushReceiver): void;
+  connected(): boolean;
+  disconnect(): void;
 }
 
 export interface IBagHeader {
@@ -175,4 +180,5 @@ export interface IHostConnectionInfo {
 
 export interface ITransport {
   call: (name: APICallName, enc: Encoder) => Promise<Decoder>;
+  listener: IPushListener;
 }

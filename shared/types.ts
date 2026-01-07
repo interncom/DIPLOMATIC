@@ -1,4 +1,6 @@
+import { IClock } from "./clock.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
+import { Status } from "./consts.ts";
 
 export enum Verb {
   DELETE = 0,
@@ -129,12 +131,25 @@ export interface IMsgpackCodec {
   decodeAsync: (stream: ReadableStream<Uint8Array>) => Promise<unknown>;
 }
 
-export interface IWebsocketNotifier {
-  handler: (
-    request: Request,
-    hasUser: (pubKey: PublicKey) => Promise<boolean>,
-  ) => Promise<Response>;
-  notify: (pubKey: PublicKey) => Promise<void>;
+export interface IProtoHost {
+  storage: IStorage;
+  crypto: IHostCrypto;
+  notifier: IPushNotifier;
+  clock: IClock;
+}
+
+export type PushReceiver = (data: Uint8Array) => void;
+export interface IPushOpenResponse {
+  send: (data: Uint8Array) => Status;
+  shut: () => Status;
+  status: Status;
+}
+export interface IPushNotifier {
+  open(pubKey: PublicKey, recv: PushReceiver): Promise<IPushOpenResponse>;
+  push(pubKey: PublicKey, data: Uint8Array): Promise<void>;
+}
+export interface IWebSocketPushNotifier extends IPushNotifier {
+  handle(host: IProtoHost, req: Request): Promise<Response>;
 }
 
 export interface IBagHeader {

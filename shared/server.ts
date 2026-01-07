@@ -2,22 +2,19 @@ import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { Status } from "./consts.ts";
 import { binResp, callPaths, cors, respFor } from "./http.ts";
-import type { IHostCrypto, IStorage, IWebsocketNotifier } from "./types.ts";
+import type { IHostCrypto, IWebSocketPushNotifier, IStorage } from "./types.ts";
 
 export class DiplomaticServer {
   constructor(
     public storage: IStorage,
     public crypto: IHostCrypto,
-    public notifier: IWebsocketNotifier,
+    public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) {}
+  ) { }
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
-      return this.notifier.handler(
-        request,
-        this.storage.hasUser.bind(this.storage),
-      );
+      return this.notifier.handle(this, request);
     }
 
     if (request.method === "OPTIONS") {

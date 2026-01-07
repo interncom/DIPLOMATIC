@@ -1,14 +1,50 @@
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi, describe, beforeEach } from 'vitest'
 import { NeoClient } from '../src/neoclient'
-import { MemoryStore } from '../src/stores/memory/store'
 import { StateManager } from '../src/state'
+import type { IHostConnectionInfo } from '../src/shared/types'
 
-test('instantiates NeoClient', async () => {
-  const clock = { now: () => new Date() };
-  const store = new MemoryStore();
-  const applier = vi.fn(async () => { });
-  const clear = vi.fn(async () => { });
-  const state = new StateManager(applier, clear);
-  const neoClient = new NeoClient(clock, state, store);
-  expect(neoClient).toBeInstanceOf(NeoClient);
-})
+describe('NeoClient', () => {
+  let mockClock: any;
+  let mockStore: any;
+  let mockState: any;
+  let client: NeoClient;
+
+  beforeEach(() => {
+    mockClock = { now: vi.fn(() => new Date()) };
+    mockStore = {
+      hosts: {
+        add: vi.fn().mockResolvedValue(undefined),
+        del: vi.fn().mockResolvedValue(undefined)
+      },
+      seed: {
+        load: vi.fn().mockResolvedValue(undefined)
+      },
+      uploads: { count: vi.fn().mockResolvedValue(0) },
+      downloads: { count: vi.fn().mockResolvedValue(0) }
+    };
+    const applier = vi.fn();
+    const clear = vi.fn();
+    mockState = new StateManager(applier, clear);
+    client = new NeoClient(mockClock, mockState, mockStore);
+  });
+
+  test('instantiates NeoClient', () => {
+    expect(client).toBeInstanceOf(NeoClient);
+  });
+
+  test('link adds host to store', async () => {
+    const host: IHostConnectionInfo = {
+      url: new URL('https://example.com'),
+      label: 'test',
+      idx: 1
+    };
+    await client.link(host);
+    expect(mockStore.hosts.add).toHaveBeenCalledWith(host);
+  });
+
+  test('unlink removes host from store', async () => {
+    const label = 'test';
+    await client.unlink(label);
+    expect(mockStore.hosts.del).toHaveBeenCalledWith(label);
+  });
+});

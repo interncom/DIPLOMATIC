@@ -91,4 +91,21 @@ describe('NeoClient', () => {
       expect(xferState).toEqual({ numDownloads: 1, numUploads: 2 });
     });
   });
+
+  describe('disconnect', () => {
+    test('clears connections', async () => {
+      const store = new MemoryStore();
+      await store.init();
+      const clock = { now: () => new Date() };
+      const applier = vi.fn();
+      const clear = vi.fn();
+      const state = new StateManager(applier, clear);
+      const client = new NeoClient(clock, state, store);
+      // Simulate having connections
+      client.connections.set('test', {} as any);
+      expect(client.connections.size).toBe(1);
+      await client.disconnect();
+      expect(client.connections.size).toBe(0);
+    });
+  });
 });

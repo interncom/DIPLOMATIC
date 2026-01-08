@@ -48,7 +48,7 @@ describe('NeoClient', () => {
       const hosts = Array.from(await store.hosts.list());
       expect(hosts).toHaveLength(1);
       expect(hosts[0].label).toBe(host.label);
-      expect(hosts[0].url).toEqual(host.url);
+      expect(hosts[0].handle).toEqual(host.handle);
       expect(hosts[0].idx).toBe(host.idx);
     });
   });

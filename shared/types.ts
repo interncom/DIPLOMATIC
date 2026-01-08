@@ -21,6 +21,7 @@ export interface IBaseOp {
 }
 
 export interface IUpsertOp extends IBaseOp {
+  // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
   gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   pid?: EntityID; // Optional parent ID to support hierarchical structure.
   verb: Verb.UPSERT;

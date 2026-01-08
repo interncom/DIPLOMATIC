@@ -172,8 +172,12 @@ export interface IBag extends IBagHeader {
 
 export type EncodedBag = Uint8Array;
 
-export interface IHostConnectionInfo {
-  url: URL;
+// For HTTP model, the host handle is a URL.
+// For LPC (local procedure call), it's a host instance.
+export type HostHandle = URL | IProtoHost;
+
+export interface IHostConnectionInfo<Handle extends HostHandle> {
+  handle: Handle;
   label: string;
   idx: number;
 }

@@ -11,16 +11,17 @@ import type {
   IHostConnectionInfo,
   ITransport,
   PushReceiver,
+  HostHandle,
 } from "./types.ts";
 
-export default class DiplomaticClientAPI {
+export default class DiplomaticClientAPI<Handle extends HostHandle> {
   constructor(
     public enclave: Enclave,
     public crypto: ICrypto,
-    private host: IHostConnectionInfo,
+    private host: IHostConnectionInfo<Handle>,
     public clock: IClock,
     private transport: ITransport,
-  ) {}
+  ) { }
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -40,7 +41,6 @@ export default class DiplomaticClientAPI {
     const enc = new Encoder();
     await endpoint.encodeReq(this, keys, authTS, items, enc);
 
-    // TODO: use transport here (need to rephrase api const in terms of APICall enum)
     const dec = await transport.call(name, enc);
 
     return endpoint.decodeResp(dec);

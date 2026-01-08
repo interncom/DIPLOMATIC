@@ -2,12 +2,12 @@ import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { EntityID, IHostConnectionInfo, IOp, ITransport } from "./shared/types";
+import { EntityID, HostHandle, IHostConnectionInfo, IOp, ITransport } from "./shared/types";
 import { StateManager } from "./state";
-import { IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IWebClient } from "./types";
+import { IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IWebClient as IClient } from "./types";
 
-export class NeoClient implements IWebClient {
-  connections = new Map<string, DiplomaticClientAPI>();
+export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
+  connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
@@ -15,7 +15,7 @@ export class NeoClient implements IWebClient {
   constructor(
     private clock: IClock,
     private state: StateManager,
-    private store: IStore,
+    private store: IStore<Handle>,
     private transport: ITransport,
   ) {
     this.clientState = new StateEmitter(() => this.getClientState());

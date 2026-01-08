@@ -1,6 +1,6 @@
-import { btoh, concat, htob } from "../../../shared/binary.ts";
-import type { IStorage } from "../../../shared/types.ts";
-import type { IBagPeekItem } from "../../../shared/codecs/peekItem.ts";
+import { btoh, concat, htob } from "../binary.ts";
+import type { IStorage } from "../types.ts";
+import type { IBagPeekItem } from "../codecs/peekItem.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;

@@ -1,6 +1,7 @@
 import type {
   EntityID,
   Hash,
+  HostHandle,
   IHostConnectionInfo,
   IOp,
   MasterSeed,
@@ -66,16 +67,16 @@ export interface ISeedStore {
   wipe: () => Promise<void>;
 }
 
-export interface IHostRow extends IHostConnectionInfo {
+export interface IHostRow<Handle extends HostHandle> extends IHostConnectionInfo<Handle> {
   lastSyncedAt: Date;
 }
 
 // IHostStore handles persistence of hosts table.
-export interface IHostStore {
+export interface IHostStore<Handle extends HostHandle> {
   init: () => Promise<void>;
-  add: (host: IHostConnectionInfo) => Promise<void>;
+  add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
   del: (label: string) => Promise<void>;
-  list: () => Promise<Iterable<IHostRow>>;
+  list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
 }
 
@@ -119,10 +120,10 @@ export interface IMessageStore {
   list: () => Promise<Iterable<IStoredMessage>>;
 }
 
-export interface IStore {
+export interface IStore<Handle extends HostHandle> {
   init: () => Promise<void>;
   seed: ISeedStore;
-  hosts: IHostStore;
+  hosts: IHostStore<Handle>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
@@ -134,8 +135,8 @@ export interface IStateEmitter<T> {
   listen(listener: (state: T) => void): void;
 }
 
-export interface IWebClient {
-  link(host: IHostConnectionInfo): Promise<void>;
+export interface IWebClient<Handle extends HostHandle> {
+  link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;
 
   connect(): Promise<void>;

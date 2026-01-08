@@ -67,7 +67,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   // Manage stored host connections.
-  public async link(host: IHostConnectionInfo) {
+  public async link(host: IHostConnectionInfo<Handle>) {
     return this.store.hosts.add(host);
   }
   public async unlink(label: string) {
@@ -85,6 +85,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     for (const host of hosts) {
       const conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
       await conn.register();
+      // TODO: hook in to notifier (call listen).
       this.connections.set(host.label, conn);
     }
   }

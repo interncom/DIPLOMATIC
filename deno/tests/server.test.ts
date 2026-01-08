@@ -2,7 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
 import { Status, tsAuthSize } from "../../shared/consts.ts";
 import { genInsert } from "../../shared/message.ts";
-import { DiplomaticServer } from "../../shared/server.ts";
+import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import {
   IProtoHost,
   IWebSocketPushNotifier,
@@ -52,7 +52,7 @@ Deno.test("server", async (t) => {
   const now = new Date();
   const clock = new MockClock(now);
 
-  const server = new DiplomaticServer(
+  const server = new DiplomaticHTTPServer(
     memStorage,
     libsodiumCrypto,
     websocketHandler,

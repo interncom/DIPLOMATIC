@@ -1,6 +1,6 @@
 import type { IPushNotifier, IProtoHost, PublicKey } from "../../shared/types.ts";
 import { Status } from "../../shared/consts.ts";
-import { btoh, htob } from "../../shared/lib.ts";
+import { btoh, htob } from "../../shared/binary.ts";
 
 class DenoWebsocketNotifier implements IPushNotifier {
   private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();

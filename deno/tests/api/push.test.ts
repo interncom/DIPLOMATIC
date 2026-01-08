@@ -16,7 +16,7 @@ import {
 } from "../../../shared/consts.ts";
 import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
-import { uint8ArraysEqual } from "../../../shared/lib.ts";
+import { uint8ArraysEqual } from "../../../shared/binary.ts";
 
 Deno.test("pushEnd.handleReq - success", async () => {
   const pubKey = new Uint8Array(32).fill(0) as PublicKey;

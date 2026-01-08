@@ -1,9 +1,9 @@
-import { btoh } from "../lib.ts";
+import { btoh } from "../binary.ts";
 import { IPushListener, PublicKey, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
-  constructor(private url: URL) {}
+  constructor(private url: URL) { }
 
   connected(): boolean {
     return this.websocket !== undefined &&

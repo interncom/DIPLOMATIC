@@ -5,7 +5,7 @@ import {
   genUpsert,
   IMessage,
 } from "../../shared/message.ts";
-import { concat } from "../../shared/lib.ts";
+import { concat } from "../../shared/binary.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import {
   type IMessageHead,

@@ -1,4 +1,4 @@
-import { btoh, htob } from "../shared/lib";
+import { btoh, htob } from "../shared/binary";
 import type { IClientStateStore } from "../types";
 
 class MemoryStore implements IClientStateStore {

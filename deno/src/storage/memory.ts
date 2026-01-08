@@ -1,4 +1,4 @@
-import { btoh, concat, htob } from "../../../shared/lib.ts";
+import { btoh, concat, htob } from "../../../shared/binary.ts";
 import type { IStorage } from "../../../shared/types.ts";
 import type { IBagPeekItem } from "../../../shared/codecs/peekItem.ts";
 

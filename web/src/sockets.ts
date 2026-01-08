@@ -1,5 +1,5 @@
 import DiplomaticClient from "./client";
-import { btoh } from "./shared/lib";
+import { btoh } from "./shared/binary";
 
 export class WebsocketManager {
   private websocket?: WebSocket;

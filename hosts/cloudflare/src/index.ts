@@ -22,7 +22,7 @@ import type {
 import { DiplomaticServer } from "../../../shared/server";
 import { decode, decodeAsync, encode } from "@msgpack/msgpack";
 import { DurableObject } from "cloudflare:workers";
-import { btoh, concat, htob } from "../../../shared/lib";
+import { btoh, concat, htob } from "../../../shared/binary";
 
 const cloudflareCrypto: IHostCrypto = {
 	async checkSigEd25519(sig, message, pubKey) {

@@ -3,7 +3,7 @@ import DiplomaticClient from '../src/client'
 import { memoryStore } from '../src/stores/memoryStore';
 import { StateManager } from '../src/state';
 import { Verb, type IOp } from '../src/shared/types';
-import { htob } from '../src/shared/lib';
+import { htob } from '../src/shared/binary';
 
 test('applies op when executing', async () => {
   const seed = htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF");

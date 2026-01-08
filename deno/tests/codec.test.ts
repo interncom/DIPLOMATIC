@@ -4,7 +4,7 @@ import {
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Decoder } from "../../shared/codec.ts";
 import { decodeVarInt, encodeVarInt } from "../../shared/codec.ts";
-import { concat } from "../../shared/lib.ts";
+import { concat } from "../../shared/binary.ts";
 
 Deno.test("Decoder readBytes", () => {
   const data = new Uint8Array([1, 2, 3, 4, 5]);

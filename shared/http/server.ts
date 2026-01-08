@@ -1,10 +1,10 @@
-import { IClock } from "./clock.ts";
-import { Decoder, Encoder } from "./codec.ts";
-import { Status } from "./consts.ts";
-import { binResp, callPaths, cors, respFor } from "./http.ts";
-import type { IHostCrypto, IWebSocketPushNotifier, IStorage } from "./types.ts";
+import { IClock } from "../clock.ts";
+import { Decoder, Encoder } from "../codec.ts";
+import { Status } from "../consts.ts";
+import { binResp, callPaths, cors, respFor } from "../http.ts";
+import type { IHostCrypto, IWebSocketPushNotifier, IStorage } from "../types.ts";
 
-export class DiplomaticServer {
+export class DiplomaticHTTPServer {
   constructor(
     public storage: IStorage,
     public crypto: IHostCrypto,

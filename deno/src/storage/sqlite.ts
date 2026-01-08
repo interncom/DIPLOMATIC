@@ -1,5 +1,5 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import { btoh, concat } from "../../../shared/lib.ts";
+import { btoh, concat } from "../../../shared/binary.ts";
 import type { IStorage } from "../../../shared/types.ts";
 
 const db = new DB("diplomatic.db");

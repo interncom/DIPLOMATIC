@@ -9,7 +9,7 @@ import { idbStore } from "./stores/idbStore";
 import type { IDiplomaticClientState } from "./types";
 import DiplomaticClient from "./client";
 import libsodiumCrypto from "./crypto";
-import { btoh, htob } from "./shared/lib";
+import { btoh, htob } from "./shared/binary";
 import { type IOp, type IUpsertOp, Verb } from "./shared/types";
 import useStateWatcher, {
   useStateWatcherSuspense,

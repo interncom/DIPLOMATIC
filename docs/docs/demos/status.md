@@ -345,7 +345,7 @@ If the DSL doesn’t have a seed, present a view to generate and store a seed. F
 import { useState, useCallback, type FormEvent } from "react";
 import type DiplomaticClient from "../client";
 import libsodiumCrypto from "../crypto";
-import { btoh, htob } from "../shared/lib";
+import { btoh, htob } from "../shared/binary";
 
 interface IProps {
   client: DiplomaticClient;

@@ -5,7 +5,7 @@ import { Decoder, Encoder } from "./codec.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { concat, uint8ArraysEqual } from "./lib.ts";
+import { concat, uint8ArraysEqual } from "./binary.ts";
 import { IMessage, IMessageWithHash } from "./message.ts";
 import type {
   HostSpecificKeyPair,

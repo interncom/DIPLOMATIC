@@ -1,6 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 import type { EntityID, GroupID, IOp, KeyPair } from "./shared/types";
-import { htob } from "./shared/lib";
+import { htob } from "./shared/binary";
 import webClientAPI from "./api";
 import type {
   IClientStateStore,

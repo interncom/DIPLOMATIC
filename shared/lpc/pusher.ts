@@ -4,7 +4,7 @@ import type {
   PublicKey,
   PushReceiver,
 } from "../types.ts";
-import { btoh } from "../lib.ts";
+import { btoh } from "../binary.ts";
 import { Status } from "../consts.ts";
 
 export class CallbackNotifier implements IPushNotifier {

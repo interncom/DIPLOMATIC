@@ -1,7 +1,7 @@
 import DiplomaticClientAPI from "../../shared/client.ts";
 import libsodiumCrypto from "./crypto.ts";
 import denoMsgpack from "./codec.ts";
-import { concat, htob } from "../../shared/lib.ts";
+import { concat, htob } from "../../shared/binary.ts";
 import { kdmBytes } from "../../shared/consts.ts";
 import type { KeyPair } from "../../shared/types.ts";
 import { Decoder } from "../../shared/codec.ts";

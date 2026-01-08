@@ -2,7 +2,7 @@ import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { EntityID, IHostConnectionInfo, IOp } from "./shared/types";
+import { EntityID, IHostConnectionInfo, IOp, ITransport } from "./shared/types";
 import { StateManager } from "./state";
 import { IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IWebClient } from "./types";
 
@@ -15,7 +15,8 @@ export class NeoClient implements IWebClient {
   constructor(
     private clock: IClock,
     private state: StateManager,
-    private store: IStore
+    private store: IStore,
+    private transport: ITransport,
   ) {
     this.clientState = new StateEmitter(() => this.getClientState());
     this.xferState = new StateEmitter(() => this.getXferState());
@@ -75,14 +76,14 @@ export class NeoClient implements IWebClient {
 
   // Manage active host connections.
   public async connect() {
-    const { clock, store } = this;
+    const { clock, store, transport } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
     }
     const hosts = await store.hosts.list();
     for (const host of hosts) {
-      const conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock);
+      const conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
       await conn.register();
       this.connections.set(host.label, conn);
     }

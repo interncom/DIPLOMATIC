@@ -1,13 +1,13 @@
-import { IHostConnectionInfo } from "../../shared/types";
+import { HostHandle, IHostConnectionInfo } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 
-export class MemoryHostStore implements IHostStore {
-  hosts = new Map<string, IHostRow>();
+export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
+  hosts = new Map<string, IHostRow<Handle>>();
 
   async init() { }
 
-  async add(info: IHostConnectionInfo) {
-    const host: IHostRow = {
+  async add(info: IHostConnectionInfo<Handle>) {
+    const host: IHostRow<Handle> = {
       ...info,
       lastSyncedAt: new Date(0),
     };

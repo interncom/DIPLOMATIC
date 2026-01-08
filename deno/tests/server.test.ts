@@ -11,7 +11,7 @@ import {
 } from "../../shared/types.ts";
 import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import memStorage from "../src/storage/memory.ts";
+import memStorage from "../../shared/storage/memory.ts";
 
 import { Encoder } from "../../shared/codec.ts";
 import { Enclave } from "../../shared/enclave.ts";
@@ -64,8 +64,8 @@ Deno.test("server", async (t) => {
     throw "a fit";
   }
   const hostURL = new URL(`http://localhost:${port}`);
-  const host: IHostConnectionInfo = {
-    url: hostURL,
+  const host: IHostConnectionInfo<URL> = {
+    handle: hostURL,
     label: "id123456",
     idx: 0,
   };
@@ -77,7 +77,7 @@ Deno.test("server", async (t) => {
     libsodiumCrypto,
     host,
     clock,
-    new HTTPTransport(host.url, listener),
+    new HTTPTransport(host.handle, listener),
   );
 
   await t.step("POST /users", async () => {

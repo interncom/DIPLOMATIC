@@ -2,31 +2,45 @@ import { expect, test, vi, describe, beforeEach } from 'vitest'
 import { NeoClient } from '../src/neoclient'
 import { MemoryStore } from '../src/stores/memory/store'
 import { StateManager } from '../src/state'
-import type { IHostConnectionInfo } from '../src/shared/types'
+import type { IHostConnectionInfo, IProtoHost } from '../src/shared/types'
+import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
+import memStorage from '../../shared/storage/memory'
+import libsodiumCrypto from '../src/crypto'
+import { CallbackNotifier } from '../../shared/lpc/pusher'
+import { MockClock } from '../../shared/clock'
+
+const lpcHost = new DiplomaticLPCServer(
+  memStorage,
+  libsodiumCrypto,
+  new CallbackNotifier(),
+  new MockClock(new Date(0))
+);
+
+const transport = new LPCTransport(lpcHost);
 
 describe('NeoClient', () => {
   test('instantiates NeoClient', async () => {
-    const store = new MemoryStore();
+    const store = new MemoryStore<IProtoHost>();
     await store.init();
     const clock = { now: () => new Date() };
     const applier = vi.fn();
     const clear = vi.fn();
     const state = new StateManager(applier, clear);
-    const client = new NeoClient(clock, state, store);
+    const client = new NeoClient<IProtoHost>(clock, state, store, transport);
     expect(client).toBeInstanceOf(NeoClient);
   });
 
   describe('link', () => {
     test('adds host to store', async () => {
-      const store = new MemoryStore();
+      const store = new MemoryStore<IProtoHost>();
       await store.init();
       const clock = { now: () => new Date() };
       const applier = vi.fn();
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
-      const client = new NeoClient(clock, state, store);
-      const host: IHostConnectionInfo = {
-        url: new URL('https://example.com'),
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const host: IHostConnectionInfo<URL> = {
+        handle: new URL('https://example.com'),
         label: 'test',
         idx: 1
       };
@@ -41,15 +55,15 @@ describe('NeoClient', () => {
 
   describe('unlink', () => {
     test('removes host from store', async () => {
-      const store = new MemoryStore();
+      const store = new MemoryStore<IProtoHost>();
       await store.init();
       const clock = { now: () => new Date() };
       const applier = vi.fn();
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
-      const client = new NeoClient(clock, state, store);
-      const host: IHostConnectionInfo = {
-        url: new URL('https://example.com'),
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const host: IHostConnectionInfo<IProtoHost> = {
+        handle: lpcHost,
         label: 'test',
         idx: 1
       };
@@ -62,19 +76,19 @@ describe('NeoClient', () => {
 
   describe('getXferState', () => {
     test('with zero counts', async () => {
-      const store = new MemoryStore();
+      const store = new MemoryStore<IProtoHost>();
       await store.init();
       const clock = { now: () => new Date() };
       const applier = vi.fn();
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
-      const client = new NeoClient(clock, state, store);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({ numDownloads: 0, numUploads: 0 });
     });
 
     test('with non-zero counts', async () => {
-      const store = new MemoryStore();
+      const store = new MemoryStore<IProtoHost>();
       await store.init();
       // Simulate some uploads and downloads
       const hash1 = new Uint8Array(32).fill(1) as any; // Approximate Hash
@@ -86,7 +100,7 @@ describe('NeoClient', () => {
       const applier = vi.fn();
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
-      const client = new NeoClient(clock, state, store);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({ numDownloads: 1, numUploads: 2 });
     });
@@ -94,13 +108,13 @@ describe('NeoClient', () => {
 
   describe('disconnect', () => {
     test('clears connections', async () => {
-      const store = new MemoryStore();
+      const store = new MemoryStore<IProtoHost>();
       await store.init();
       const clock = { now: () => new Date() };
       const applier = vi.fn();
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
-      const client = new NeoClient(clock, state, store);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
       // Simulate having connections
       client.connections.set('test', {} as any);
       expect(client.connections.size).toBe(1);

@@ -3,10 +3,10 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
 import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { validateAuthTimestamp } from "../auth.ts";
+import { Hash } from "../types.ts";
 
-type BagHash = Uint8Array;
 export const pullEnd: IAuthenticatedEndpoint<
-  BagHash,
+  Hash,
   IterableIterator<IBagPullItem>
 > = {
   async encodeReq(_client, _keys, authTS, hashes, reqEnc) {
@@ -30,7 +30,7 @@ export const pullEnd: IAuthenticatedEndpoint<
     for (const headHash of reqDec.readBytesSeq(hashBytes)) {
       const bodyCph = await storage.getBody(pubKey, headHash);
       if (bodyCph) {
-        const item: IBagPullItem = { hash: headHash, bodyCph };
+        const item: IBagPullItem = { hash: headHash as Hash, bodyCph };
         respEnc.writeStruct(pullItemCodec, item);
       }
     }

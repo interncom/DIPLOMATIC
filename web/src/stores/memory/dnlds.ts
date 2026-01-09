@@ -1,4 +1,3 @@
-import { IMessageHead } from "../../shared/message";
 import { Hash } from "../../shared/types";
 import { IDownloadMessage, IDownloadQueue } from "../../types";
 
@@ -20,11 +19,11 @@ export class MemoryDownloadQueue implements IDownloadQueue {
   }
 
   async list() {
-    const heads: IMessageHead[] = [];
+    const msgs: IDownloadMessage[] = [];
     for (const msg of this.queue.values()) {
-      heads.push(msg.head);
+      msgs.push(msg);
     }
-    return heads;
+    return msgs;
   }
 
   async count() {

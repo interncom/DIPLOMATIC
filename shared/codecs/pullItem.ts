@@ -1,8 +1,9 @@
 import { ICodecStruct } from "../codec.ts";
 import { hashBytes } from "../consts.ts";
+import { Hash } from "../types.ts";
 
 export interface IBagPullItem {
-  hash: Uint8Array;
+  hash: Hash;
   bodyCph: Uint8Array;
 }
 
@@ -13,7 +14,7 @@ export const pullItemCodec: ICodecStruct<IBagPullItem> = {
     enc.writeBytes(item.bodyCph);
   },
   decode(dec) {
-    const hash = dec.readBytes(hashBytes);
+    const hash = dec.readBytes(hashBytes) as Hash;
     const len = dec.readVarInt();
     const bodyCph = dec.readBytes(len);
     return { hash, bodyCph };

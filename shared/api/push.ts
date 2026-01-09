@@ -6,6 +6,7 @@ import { IMessage } from "../message.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { validateAuthTimestamp } from "../auth.ts";
+import { Hash } from "../types.ts";
 
 export const pushEnd: IAuthenticatedEndpoint<
   IMessage,
@@ -36,7 +37,7 @@ export const pushEnd: IAuthenticatedEndpoint<
     }
 
     for (const bag of reqDec.readStructs(bagCodec)) {
-      const hash = await crypto.sha256Hash(bag.headCph);
+      const hash = await crypto.sha256Hash(bag.headCph) as Hash;
       const sigValid = await bagSigValid(bag, pubKey, crypto);
       if (!sigValid) {
         const item: IBagPushItem = {

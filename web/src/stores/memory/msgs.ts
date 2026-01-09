@@ -19,6 +19,10 @@ export class MemoryMessageStore implements IMessageStore {
     }
   }
 
+  async get(hash: Hash) {
+    return this.messages.get(hash);
+  }
+
   async has(hash: Hash) {
     return this.messages.has(hash);
   }

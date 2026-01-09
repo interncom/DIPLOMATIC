@@ -4,6 +4,7 @@ import { Status, tsAuthSize } from "../../shared/consts.ts";
 import { genInsert } from "../../shared/message.ts";
 import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import {
+  Hash,
   IProtoHost,
   IWebSocketPushNotifier,
   PublicKey,
@@ -100,7 +101,7 @@ Deno.test("server", async (t) => {
   });
 
   await t.step("POST /pull", async () => {
-    const hashes = result.map((r) => r.hash);
+    const hashes = result.map((r) => r.hash as Hash);
     const pulledItems = [
       ...(await client.pull(hashes)),
     ];

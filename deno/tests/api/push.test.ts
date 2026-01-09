@@ -7,14 +7,14 @@ import { pushEnd } from "../../../shared/api/push.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { bagCodec } from "../../../shared/codecs/bag.ts";
-import { pushItemCodec } from "../../../shared/codecs/pushItem.ts";
+import { IBagPushItem, pushItemCodec } from "../../../shared/codecs/pushItem.ts";
 import {
   hashBytes,
   kdmBytes,
   sigBytes,
   Status,
 } from "../../../shared/consts.ts";
-import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
+import { Hash, IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 import { uint8ArraysEqual } from "../../../shared/binary.ts";
 
@@ -95,7 +95,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
   const results = Array.from(pushEnd.decodeResp(respDec));
   assertEquals(results.length, 1);
   assertEquals(results[0].status, Status.Success);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(5));
+  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(5) as Hash);
 });
 
 Deno.test("pushEnd.handleReq - invalid signature", async () => {
@@ -171,9 +171,9 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
 });
 
 Deno.test("pushEnd.decodeResp", () => {
-  const item = {
+  const item: IBagPushItem = {
     status: Status.Success,
-    hash: new Uint8Array(hashBytes).fill(1),
+    hash: new Uint8Array(hashBytes).fill(1) as Hash,
   };
   const enc = new Encoder();
   enc.writeStruct(pushItemCodec, item);
@@ -183,7 +183,7 @@ Deno.test("pushEnd.decodeResp", () => {
   const results = Array.from(pushEnd.decodeResp(respDec));
   assertEquals(results.length, 1);
   assertEquals(results[0].status, Status.Success);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
+  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
 });
 
 Deno.test("pushEnd.handleReq - clock out of sync", async () => {

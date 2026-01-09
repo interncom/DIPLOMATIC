@@ -1,25 +1,31 @@
+import { btoh, htob } from "../../shared/binary";
 import { Hash } from "../../shared/types";
 import { IUploadQueue } from "../../types";
 
 export class MemoryUploadQueue implements IUploadQueue {
-  queue = new Set<Hash>();
+  queue = new Set<string>();
 
   async init() { }
 
   async enq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
-      this.queue.add(hash);
+      this.queue.add(btoh(hash));
     }
   }
 
   async deq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
-      this.queue.delete(hash);
+      this.queue.delete(btoh(hash));
     }
   }
 
   async list() {
-    return this.queue;
+    const hshs: Hash[] = [];
+    for (const hex of this.queue) {
+      const hash = htob(hex) as Hash;
+      hshs.push(hash);
+    }
+    return hshs;
   }
 
   async count() {

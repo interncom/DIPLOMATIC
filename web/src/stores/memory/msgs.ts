@@ -1,30 +1,30 @@
-import { uint8ArraysEqual } from "../../shared/binary";
+import { btoh, uint8ArraysEqual } from "../../shared/binary";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage } from "../../types";
 
 export class MemoryMessageStore implements IMessageStore {
-  messages = new Map<Hash, IStoredMessage>();
+  messages = new Map<string, IStoredMessage>();
 
   async init() { }
 
   async add(msgs: Iterable<IStoredMessage>) {
     for (const msg of msgs) {
-      this.messages.set(msg.hash, msg);
+      this.messages.set(btoh(msg.hash), msg);
     }
   }
 
   async del(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
-      this.messages.delete(hash);
+      this.messages.delete(btoh(hash));
     }
   }
 
   async get(hash: Hash) {
-    return this.messages.get(hash);
+    return this.messages.get(btoh(hash));
   }
 
   async has(hash: Hash) {
-    return this.messages.has(hash);
+    return this.messages.has(btoh(hash));
   }
 
   async list() {

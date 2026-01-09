@@ -2,18 +2,21 @@ import { expect, test, vi, describe, beforeEach } from 'vitest'
 import { NeoClient } from '../src/neoclient'
 import { MemoryStore } from '../src/stores/memory/store'
 import { StateManager } from '../src/state'
-import type { IHostConnectionInfo, IProtoHost } from '../src/shared/types'
+import type { Hash, IHostConnectionInfo, IProtoHost } from '../src/shared/types'
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from '../../shared/storage/memory'
 import libsodiumCrypto from '../src/crypto'
 import { CallbackNotifier } from '../../shared/lpc/pusher'
 import { MockClock } from '../../shared/clock'
 import { EncodedMessage } from '../src/shared/message'
+import { btoh } from '../../shared/binary'
+import { hostKeys } from '../../shared/endpoint'
+import { IDownloadMessage } from '../src/types'
 
 const lpcHost = new DiplomaticLPCServer(
-  memStorage,
-  libsodiumCrypto,
-  new CallbackNotifier(),
+  memStorage as any,
+  libsodiumCrypto as any,
+  new CallbackNotifier() as any,
   new MockClock(new Date(0))
 );
 
@@ -40,8 +43,8 @@ describe('NeoClient', () => {
       const clear = vi.fn();
       const state = new StateManager(applier, clear);
       const client = new NeoClient<IProtoHost>(clock, state, store, transport);
-      const host: IHostConnectionInfo<URL> = {
-        handle: new URL('https://example.com'),
+      const host: IHostConnectionInfo<IProtoHost> = {
+        handle: lpcHost,
         label: 'test',
         idx: 1
       };
@@ -94,9 +97,19 @@ describe('NeoClient', () => {
       // Simulate some uploads and downloads
       const hash1 = new Uint8Array(32).fill(1) as any; // Approximate Hash
       const hash2 = new Uint8Array(32).fill(2) as any;
-      const hash3 = new Uint8Array(32).fill(3) as any;
+      const dl: IDownloadMessage = {
+        kdm: new Uint8Array(8).fill(3),
+        hash: new Uint8Array(32).fill(3) as Hash,
+        head: {
+          eid: new Uint8Array(16).fill(3),
+          clk: new Date(),
+          ctr: 0,
+          len: 0
+        },
+        host: "label",
+      }
       await store.uploads.enq([hash1, hash2]);
-      await store.downloads.enq([hash3]);
+      await store.downloads.enq([dl]);
       const clock = { now: () => new Date() };
       const applier = vi.fn();
       const clear = vi.fn();
@@ -198,6 +211,38 @@ describe('NeoClient', () => {
       expect(deleteMsg.body).toBeUndefined();
       const uploads = await store.uploads.count();
       expect(uploads).toBe(2);
+    });
+  });
+
+  describe('sync', () => {
+    test('pushes message to host', async () => {
+      const store = new MemoryStore<IProtoHost>();
+      await store.init();
+      const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+      await store.seed.save(masterSeed);
+      const clock = lpcHost.clock;
+      const applier = vi.fn();
+      const clear = vi.fn();
+      const state = new StateManager(applier, clear);
+      const hostInfo: IHostConnectionInfo<IProtoHost> = {
+        handle: lpcHost,
+        label: 'test',
+        idx: 1
+      };
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      await client.link(hostInfo);
+      await client.connect();
+
+      const body: EncodedMessage = new Uint8Array([1, 2, 3]);
+      await client.insert(body);
+
+      await client.sync();
+      expect(await store.uploads.count()).toBe(0);
+      const enclave = (await store.seed.load())!;
+      const keys = await hostKeys({ enclave: enclave as any, crypto: libsodiumCrypto as any, clock }, 'test', 1);
+      const pubKeyHex = btoh(keys.publicKey);
+      const messagesOnHost = Array.from((lpcHost.storage as any).bag.values()).filter((item: any) => item.pubKeyHex === pubKeyHex);
+      expect(messagesOnHost.length).toBe(1);
     });
   });
 });

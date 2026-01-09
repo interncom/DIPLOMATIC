@@ -1,9 +1,10 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
-import { pullItemCodec } from "../../../shared/codecs/pullItem.ts";
+import { IBagPullItem, pullItemCodec } from "../../../shared/codecs/pullItem.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
 import {
+  Hash,
   HostSpecificKeyPair,
   IPushNotifier,
   PublicKey,
@@ -69,9 +70,9 @@ Deno.test("pullEnd.encodeReq", () => {
     sig: new Uint8Array(64).fill(2),
     timestamp: new Date("2023-01-01T00:00:00.000Z"),
   };
-  const hashes: Uint8Array[] = [
-    new Uint8Array(hashBytes).fill(1),
-    new Uint8Array(hashBytes).fill(4),
+  const hashes: Hash[] = [
+    new Uint8Array(hashBytes).fill(1) as Hash,
+    new Uint8Array(hashBytes).fill(4) as Hash,
   ];
   const reqEnc = new Encoder();
 
@@ -109,7 +110,7 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   const respDec = new Decoder(respData);
   const results = Array.from(pullEnd.decodeResp(respDec));
   assertEquals(results.length, 1); // Only one hash has body
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
+  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
   assertEquals(results[0].bodyCph, new Uint8Array([10, 20, 30]));
 });
 
@@ -138,8 +139,8 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
 });
 
 Deno.test("pullEnd.decodeResp", () => {
-  const item = {
-    hash: new Uint8Array(hashBytes).fill(1),
+  const item: IBagPullItem = {
+    hash: new Uint8Array(hashBytes).fill(1) as Hash,
     bodyCph: new Uint8Array([10, 20, 30]),
   };
   const enc = new Encoder();
@@ -149,7 +150,7 @@ Deno.test("pullEnd.decodeResp", () => {
 
   const results = Array.from(pullEnd.decodeResp(respDec));
   assertEquals(results.length, 1);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
+  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
   assertEquals(results[0].bodyCph, new Uint8Array([10, 20, 30]));
 });
 

@@ -97,6 +97,7 @@ export interface IUploadQueue {
 }
 
 export interface IDownloadMessage {
+  kdm: Uint8Array;
   hash: Hash;
   head: IMessageHead;
   host: string;
@@ -105,7 +106,7 @@ export interface IDownloadQueue {
   init: () => Promise<void>;
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
   deq: (hshs: Iterable<Hash>) => Promise<void>;
-  list: () => Promise<Iterable<IMessageHead>>;
+  list: () => Promise<Iterable<IDownloadMessage>>;
   count: () => Promise<number>;
 }
 
@@ -117,8 +118,9 @@ export interface IStoredMessage {
 export interface IMessageStore {
   init: () => Promise<void>;
   add: (msgs: Iterable<IStoredMessage>) => Promise<void>;
-  del: (hshs: Iterable<Hash>) => Promise<void>;
+  get: (hash: Hash) => Promise<IStoredMessage | undefined>;
   has: (hash: Hash) => Promise<boolean>;
+  del: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>
 }

@@ -1,14 +1,13 @@
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
-import { msgKey } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
-import { hostKeys } from "./shared/endpoint";
-import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
-import { EntityID, Hash, HostHandle, IHostConnectionInfo, ITransport } from "./shared/types";
+import { Status } from "./shared/consts";
+import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessage, IMessageHead } from "./shared/message";
+import { EntityID, Hash, HostHandle, IBag, IHostConnectionInfo, ITransport } from "./shared/types";
 import { StateManager } from "./state";
 import { IWebClient as IClient, IDiplomaticClientState, IDiplomaticClientXferState, IDownloadMessage, IStateEmitter, IStore, IStoredMessage } from "./types";
 
@@ -86,6 +85,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
       return;
     }
 
+    // Fetch and enqueue new bag headers.
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
       if (!host) {
@@ -106,10 +106,72 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
         const headEnc = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(headCph, key);
         const headDec = new Decoder(headEnc);
         const head = headDec.readStruct(messageHeadCodec);
-        dls.push({ hash: item.hash as Hash, head, host: label })
+        dls.push({ hash: item.hash as Hash, kdm, head, host: label })
       }
       store.downloads.enq(dls);
-      // TODO: update host lastSyncedAt (touch method?) using timestmap returned from host (may need to change API).
+      // TODO: update host lastSyncedAt (touch method?) using timestamp returned from host (may need to change API).
+    }
+
+    // Push local bags.
+    for (const [label, conn] of connections) {
+      const host = await store.hosts.get(label);
+      if (!host) {
+        continue;
+      }
+      const msgs: IMessage[] = [];
+      for (const hash of await store.uploads.list()) {
+        const storedMsg = await store.messages.get(hash);
+        if (!storedMsg) {
+          continue;
+        }
+        const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
+        msgs.push(msg);
+      }
+      const results = await conn.push(msgs);
+
+      // Remove successful uploads from queue.
+      for (const item of results) {
+        if (item.status !== Status.Success) {
+          // TODO: handle errors, some of which may be non-retryable.
+          continue;
+        }
+        // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
+        store.uploads.deq([item.hash]);
+      }
+    }
+
+    // Pull any new bag bodies.
+    const dls: Map<Hash, IDownloadMessage> = new Map();
+    const allItems = await store.downloads.list();
+    for (const [label, conn] of connections) {
+      const host = await store.hosts.get(label);
+      if (!host) {
+        continue;
+      }
+      const items = Array.from(allItems).filter(i => i.host === label);
+      const hshs: Hash[] = [];
+      for (const item of items) {
+        dls.set(item.hash, item);
+        hshs.push(item.hash);
+      }
+      const result = await conn.pull(hshs);
+      for (const { hash, bodyCph } of result) {
+        const dl = dls.get(hash);
+        if (!dl) {
+          continue;
+        }
+        const key = await enclave.deriveFromKDM(dl.kdm);
+        const { head } = dl;
+        const body = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(bodyCph, key) as EncodedMessage;
+        const hashChk = await libsodiumCrypto.blake3(body);
+        if (head.hsh !== hashChk) {
+          // TODO: handle better than just removing d/l.
+          dls.delete(hash);
+          continue;
+        }
+        store.messages.add([{ hash, head: dl.head, body }]);
+        dls.delete(hash);
+      }
     }
   }
 

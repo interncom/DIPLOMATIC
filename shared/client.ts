@@ -7,6 +7,7 @@ import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import { type IMessage } from "./message.ts";
 import type {
+  Hash,
   HostHandle,
   HostSpecificKeyPair,
   ICrypto,
@@ -31,7 +32,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     },
     items: Iterable<ReqItem>,
   ): Promise<Resp> {
-    const { clock, crypto, host, transport } = this;
+    const { clock, crypto, transport } = this;
     const { endpoint, name } = apiCall;
 
     const keys = await this.keys();
@@ -55,7 +56,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   register = () => this.call(api.user, []);
   peek = (from: Date) => this.call(api.peek, [from]);
   push = (ops: IMessage[]) => this.call(api.push, ops);
-  pull = (hashes: Uint8Array[]) => this.call(api.pull, hashes);
+  pull = (hashes: Hash[]) => this.call(api.pull, hashes);
 
   // listen for new bags.
   listen = async (recv: PushReceiver) => {

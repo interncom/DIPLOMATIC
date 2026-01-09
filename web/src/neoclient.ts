@@ -1,5 +1,6 @@
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
+import { btoh, htob } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
@@ -108,7 +109,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
         const head = headDec.readStruct(messageHeadCodec);
         dls.push({ hash: item.hash as Hash, kdm, head, host: label })
       }
-      store.downloads.enq(dls);
+      await store.downloads.enq(dls);
       // TODO: update host lastSyncedAt (touch method?) using timestamp returned from host (may need to change API).
     }
 
@@ -118,16 +119,20 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      const msgs: IMessage[] = [];
-      for (const hash of await store.uploads.list()) {
-        const storedMsg = await store.messages.get(hash);
+      const bags: IBag[] = [];
+      const remoteToLocalHash: Map<string, string> = new Map();
+      for (const msgHeadEncHash of await store.uploads.list()) {
+        const storedMsg = await store.messages.get(msgHeadEncHash);
         if (!storedMsg) {
           continue;
         }
         const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
-        msgs.push(msg);
+        const bag = await conn.seal(msg);
+        bags.push(bag);
+        const headCphHash = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
+        remoteToLocalHash.set(btoh(headCphHash), btoh(msgHeadEncHash));
       }
-      const results = await conn.push(msgs);
+      const results = await conn.push(bags);
 
       // Remove successful uploads from queue.
       for (const item of results) {
@@ -136,7 +141,12 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
           continue;
         }
         // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
-        store.uploads.deq([item.hash]);
+        const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
+        if (!msgHeadEncHashHex) {
+          continue;
+        }
+        const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;
+        await store.uploads.deq([msgHeadEncHash]);
       }
     }
 
@@ -169,7 +179,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
           dls.delete(hash);
           continue;
         }
-        store.messages.add([{ hash, head: dl.head, body }]);
+        await store.messages.add([{ hash, head: dl.head, body }]);
         dls.delete(hash);
       }
     }

@@ -22,56 +22,45 @@ const lpcHost = new DiplomaticLPCServer(
 
 const transport = new LPCTransport(lpcHost);
 
+const mockClock = { now: () => new Date() };
+const testHost: IHostConnectionInfo<IProtoHost> = {
+  handle: lpcHost,
+  label: 'test',
+  idx: 1
+};
+
+const createClient = async (clock = mockClock) => {
+  const store = new MemoryStore<IProtoHost>();
+  await store.init();
+  const applier = vi.fn();
+  const clear = vi.fn();
+  const state = new StateManager(applier, clear);
+  const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+  return { store, state, client };
+};
+
 describe('NeoClient', () => {
   test('instantiates NeoClient', async () => {
-    const store = new MemoryStore<IProtoHost>();
-    await store.init();
-    const clock = { now: () => new Date() };
-    const applier = vi.fn();
-    const clear = vi.fn();
-    const state = new StateManager(applier, clear);
-    const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+    const { client } = await createClient();
     expect(client).toBeInstanceOf(NeoClient);
   });
 
   describe('link', () => {
     test('adds host to store', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date() };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
-      const host: IHostConnectionInfo<IProtoHost> = {
-        handle: lpcHost,
-        label: 'test',
-        idx: 1
-      };
-      await client.link(host);
+      const { store, client } = await createClient();
+      await client.link(testHost);
       const hosts = Array.from(await store.hosts.list());
       expect(hosts).toHaveLength(1);
-      expect(hosts[0].label).toBe(host.label);
-      expect(hosts[0].handle).toEqual(host.handle);
-      expect(hosts[0].idx).toBe(host.idx);
+      expect(hosts[0].label).toBe(testHost.label);
+      expect(hosts[0].handle).toEqual(testHost.handle);
+      expect(hosts[0].idx).toBe(testHost.idx);
     });
   });
 
   describe('unlink', () => {
     test('removes host from store', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date() };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
-      const host: IHostConnectionInfo<IProtoHost> = {
-        handle: lpcHost,
-        label: 'test',
-        idx: 1
-      };
-      await client.link(host);
+      const { store, client } = await createClient();
+      await client.link(testHost);
       await client.unlink('test');
       const hosts = Array.from(await store.hosts.list());
       expect(hosts).toHaveLength(0);
@@ -80,20 +69,13 @@ describe('NeoClient', () => {
 
   describe('getXferState', () => {
     test('with zero counts', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date() };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const { client } = await createClient();
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({ numDownloads: 0, numUploads: 0 });
     });
 
     test('with non-zero counts', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
+      const { store, client } = await createClient();
       // Simulate some uploads and downloads
       const hash1 = new Uint8Array(32).fill(1) as any; // Approximate Hash
       const hash2 = new Uint8Array(32).fill(2) as any;
@@ -110,11 +92,6 @@ describe('NeoClient', () => {
       }
       await store.uploads.enq([hash1, hash2]);
       await store.downloads.enq([dl]);
-      const clock = { now: () => new Date() };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({ numDownloads: 1, numUploads: 2 });
     });
@@ -122,13 +99,7 @@ describe('NeoClient', () => {
 
   describe('disconnect', () => {
     test('clears connections', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date() };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const { client } = await createClient();
       // Simulate having connections
       client.connections.set('test', {} as any);
       expect(client.connections.size).toBe(1);
@@ -139,13 +110,7 @@ describe('NeoClient', () => {
 
   describe('insert', () => {
     test('stores an insert message', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date(1234567890000) };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const { store, client } = await createClient({ now: () => new Date(1234567890000) });
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       await client.insert(body);
       const uploads = await store.uploads.count();
@@ -161,13 +126,7 @@ describe('NeoClient', () => {
 
   describe('upsert', () => {
     test('stores upsert message and increments counter', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date(1234567890000) };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const { store, client } = await createClient({ now: () => new Date(1234567890000) });
       const eid = new Uint8Array(32).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
@@ -190,13 +149,7 @@ describe('NeoClient', () => {
 
   describe('delete', () => {
     test('stores delete message and increments counter', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
-      const clock = { now: () => new Date(1234567890000) };
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const { store, client } = await createClient({ now: () => new Date(1234567890000) });
       const eid = new Uint8Array(32).fill(1);
       await client.upsert(eid, new Uint8Array([10, 11]));
       await client.delete(eid);
@@ -216,21 +169,10 @@ describe('NeoClient', () => {
 
   describe('sync', () => {
     test('pushes message to host', async () => {
-      const store = new MemoryStore<IProtoHost>();
-      await store.init();
+      const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
       await store.seed.save(masterSeed);
-      const clock = lpcHost.clock;
-      const applier = vi.fn();
-      const clear = vi.fn();
-      const state = new StateManager(applier, clear);
-      const hostInfo: IHostConnectionInfo<IProtoHost> = {
-        handle: lpcHost,
-        label: 'test',
-        idx: 1
-      };
-      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
-      await client.link(hostInfo);
+      await client.link(testHost);
       await client.connect();
 
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
@@ -239,7 +181,7 @@ describe('NeoClient', () => {
       await client.sync();
       expect(await store.uploads.count()).toBe(0);
       const enclave = (await store.seed.load())!;
-      const keys = await hostKeys({ enclave: enclave as any, crypto: libsodiumCrypto as any, clock }, 'test', 1);
+      const keys = await hostKeys({ enclave: enclave as any, crypto: libsodiumCrypto as any, clock: lpcHost.clock }, 'test', 1);
       const pubKeyHex = btoh(keys.publicKey);
       const messagesOnHost = Array.from((lpcHost.storage as any).bag.values()).filter((item: any) => item.pubKeyHex === pubKeyHex);
       expect(messagesOnHost.length).toBe(1);

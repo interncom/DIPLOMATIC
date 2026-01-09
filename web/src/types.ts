@@ -76,6 +76,7 @@ export interface IHostRow<Handle extends HostHandle> extends IHostConnectionInfo
 export interface IHostStore<Handle extends HostHandle> {
   init: () => Promise<void>;
   add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
+  get: (label: string) => Promise<IHostRow<Handle> | undefined>;
   del: (label: string) => Promise<void>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;

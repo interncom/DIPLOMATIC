@@ -25,7 +25,7 @@ export function bagSigValid(
 
 export async function sealBag(
   msg: IMessage,
-  keyPair: HostSpecificKeyPair,
+  keys: HostSpecificKeyPair,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<IBag> {
@@ -46,7 +46,7 @@ export async function sealBag(
   //    prevents an attarcker from forging arbitrary bags if they get a key.
   // 3. Mixing the host-specific private key in prevents that deterministic
   //    KDM from being used as a unique identifier across hosts.
-  const kdmSource = concat(keyPair.privateKey, headEnc);
+  const kdmSource = concat(keys.privateKey, headEnc);
   const kdmHash = await crypto.blake3(kdmSource);
   const kdm = kdmHash.slice(0, kdmBytes);
   const key = await enclave.deriveFromKDM(kdm);
@@ -58,7 +58,7 @@ export async function sealBag(
     : new Uint8Array(0);
 
   // Wrap in bag.
-  const sig = await crypto.signEd25519(headCph, keyPair.privateKey);
+  const sig = await crypto.signEd25519(headCph, keys.privateKey);
   return {
     sig,
     kdm,

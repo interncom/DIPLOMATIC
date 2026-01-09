@@ -1,6 +1,8 @@
 import { btoh, concat, htob } from "../binary.ts";
 import type { IStorage } from "../types.ts";
 import type { IBagPeekItem } from "../codecs/peekItem.ts";
+import { Encoder } from "../codec.ts";
+import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
@@ -31,7 +33,9 @@ const memStorage: IMemoryStorage = {
   async setBag(pubKey, recordedAt, bag, sha256) {
     const pubKeyHex = btoh(pubKey);
     const storageKey = btoh(sha256);
-    const headCph = concat(concat(bag.sig, bag.kdm), bag.headCph);
+    const enc = new Encoder();
+    enc.writeStruct(peekItemHeadCodec, bag);
+    const headCph = enc.result();
     const bodyCph = bag.bodyCph;
     this.bag.set(storageKey, {
       pubKeyHex,

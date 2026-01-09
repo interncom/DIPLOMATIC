@@ -49,6 +49,8 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     const headEnc = enc.result();
     const hash = await libsodiumCrypto.blake3(headEnc);
     const msg: IStoredMessage = { hash, head, body };
+    // NOTE: important to enqueue upload before storing it.
+    await this.store.uploads.enq([hash]);
     await this.store.messages.add([msg]);
   }
 

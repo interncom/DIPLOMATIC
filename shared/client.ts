@@ -7,11 +7,12 @@ import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import { type IMessage } from "./message.ts";
 import type {
+  HostHandle,
+  HostSpecificKeyPair,
   ICrypto,
   IHostConnectionInfo,
   ITransport,
   PushReceiver,
-  HostHandle,
 } from "./types.ts";
 
 export default class DiplomaticClientAPI<Handle extends HostHandle> {
@@ -33,7 +34,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const { clock, crypto, host, transport } = this;
     const { endpoint, name } = apiCall;
 
-    const keys = await hostKeys(this, host.label, host.idx);
+    const keys = await this.keys();
 
     const now = clock.now();
     const authTS = await makeAuthTimestamp(keys, now, crypto);
@@ -44,6 +45,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const dec = await transport.call(name, enc);
 
     return endpoint.decodeResp(dec);
+  }
+
+  keys = (): Promise<HostSpecificKeyPair> => {
+    const { host } = this;
+    return hostKeys(this, host.label, host.idx);
   }
 
   register = () => this.call(api.user, []);

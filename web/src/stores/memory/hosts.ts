@@ -14,6 +14,10 @@ export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Ha
     this.hosts.set(info.label, host);
   };
 
+  async get(label: string) {
+    return this.hosts.get(label);
+  }
+
   async del(label: string) {
     this.hosts.delete(label);
   }

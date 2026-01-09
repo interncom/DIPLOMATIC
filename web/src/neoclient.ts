@@ -1,13 +1,16 @@
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
+import { msgKey } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { Encoder } from "./shared/codec";
+import { Decoder, Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
+import { hostKeys } from "./shared/endpoint";
 import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
-import { EntityID, HostHandle, IHostConnectionInfo, ITransport } from "./shared/types";
+import { EntityID, Hash, HostHandle, IHostConnectionInfo, ITransport } from "./shared/types";
 import { StateManager } from "./state";
-import { IWebClient as IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IStoredMessage } from "./types";
+import { IWebClient as IClient, IDiplomaticClientState, IDiplomaticClientXferState, IDownloadMessage, IStateEmitter, IStore, IStoredMessage } from "./types";
 
 export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -77,7 +80,37 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async sync() {
-    // TODO: implement.
+    const { connections, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) {
+      return;
+    }
+
+    for (const [label, conn] of connections) {
+      const host = await store.hosts.get(label);
+      if (!host) {
+        continue;
+      }
+      const hostKeys = await conn.keys();
+      const dls: IDownloadMessage[] = [];
+      const items = await conn.peek(host.lastSyncedAt);
+      for (const item of items) {
+        const dec = new Decoder(item.headCph);
+        const { sig, kdm, headCph } = dec.readStruct(peekItemHeadCodec);
+        const valid = await libsodiumCrypto.checkSigEd25519(sig, headCph, hostKeys.publicKey);
+        if (!valid) {
+          // TODO: handle error non-silently.
+          continue;
+        }
+        const key = await enclave.deriveFromKDM(kdm);
+        const headEnc = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(headCph, key);
+        const headDec = new Decoder(headEnc);
+        const head = headDec.readStruct(messageHeadCodec);
+        dls.push({ hash: item.hash as Hash, head, host: label })
+      }
+      store.downloads.enq(dls);
+      // TODO: update host lastSyncedAt (touch method?) using timestmap returned from host (may need to change API).
+    }
   }
 
   public async wipe() {

@@ -2,9 +2,12 @@ import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { EntityID, HostHandle, IHostConnectionInfo, IOp, ITransport } from "./shared/types";
+import { Encoder } from "./shared/codec";
+import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
+import { EntityID, HostHandle, IHostConnectionInfo, ITransport } from "./shared/types";
 import { StateManager } from "./state";
-import { IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IWebClient as IClient } from "./types";
+import { IWebClient as IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IStoredMessage } from "./types";
 
 export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -40,14 +43,35 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     return { numDownloads, numUploads };
   }
 
-  private async apply(op: IOp) {
-    // TODO: implement. op type may be wrong.
+  private async apply(head: IMessageHead, body?: EncodedMessage) {
+    const enc = new Encoder();
+    enc.writeStruct(messageHeadCodec, head);
+    const headEnc = enc.result();
+    const hash = await libsodiumCrypto.blake3(headEnc);
+    const msg: IStoredMessage = { hash, head, body };
+    await this.store.messages.add([msg]);
   }
-  public async upsert() {
-    // TODO: implement.
+
+  public async insert(body: EncodedMessage) {
+    const clk = this.clock.now();
+    const head = await genInsertHead(clk, body, libsodiumCrypto);
+    await this.apply(head);
   }
+
+  public async upsert(eid: EntityID, body: EncodedMessage) {
+    const clk = this.clock.now();
+    const last = await this.store.messages.last(eid);
+    const ctr = (last?.head.ctr ?? -1) + 1;
+    const msg = genUpsertHead(eid, clk, ctr, body);
+    await this.apply(msg, body);
+  }
+
   public async delete(eid: EntityID) {
-    // TODO: implement.
+    const clk = this.clock.now();
+    const last = await this.store.messages.last(eid);
+    const ctr = (last?.head.ctr ?? -1) + 1;
+    const msg = genDeleteHead(eid, clk, ctr);
+    await this.apply(msg);
   }
 
   public async sync() {

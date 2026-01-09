@@ -9,6 +9,7 @@ import type {
 import type {
   EncodedMessage,
   IMessageHead,
+  SerializedContent,
 } from "./shared/message";
 import type { Enclave } from "./shared/enclave";
 
@@ -118,6 +119,7 @@ export interface IMessageStore {
   del: (hshs: Iterable<Hash>) => Promise<void>;
   has: (hash: Hash) => Promise<boolean>;
   list: () => Promise<Iterable<IStoredMessage>>;
+  last: (eid: EntityID) => Promise<IStoredMessage | undefined>
 }
 
 export interface IStore<Handle extends HostHandle> {
@@ -142,7 +144,8 @@ export interface IWebClient<Handle extends HostHandle> {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 
-  upsert(op: IOp): Promise<void>;
+  insert(content: SerializedContent): Promise<void>;
+  upsert(eid: EntityID, content: SerializedContent): Promise<void>;
   delete(eid: EntityID): Promise<void>;
 
   sync(): Promise<void>;

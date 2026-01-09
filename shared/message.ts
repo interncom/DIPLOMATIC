@@ -1,14 +1,13 @@
-import type { Hash, ICrypto } from "./types.ts";
+import type { EntityID, Hash, ICrypto } from "./types.ts";
 
 // Message is also known as the "operation".
 // This is the serialized content, plus header data, which determines ordered application.
 
-type EID = Uint8Array;
-type SerializedContent = Uint8Array;
+export type SerializedContent = Uint8Array;
 
 // IMessage is an operation.
 export interface IMessageHead {
-  eid: Uint8Array;
+  eid: EntityID;
   clk: Date;
   ctr: number;
   len: number;
@@ -32,6 +31,7 @@ interface IDeleteMessage extends Omit<IMessage, "bod"> {
 export type EncodedMessage = Uint8Array;
 export type EncryptedMessage = Uint8Array;
 
+// TODO: reorganize these and use to implement corresponding methods on neoclient.
 export async function genInsert(
   clk: Date,
   content: SerializedContent,
@@ -41,8 +41,30 @@ export async function genInsert(
   return genUpsert(eid, clk, 0, content);
 }
 
+export async function genInsertHead(
+  clk: Date,
+  content: SerializedContent,
+  crypto: ICrypto,
+): Promise<IMessageHead> {
+  const eid = await crypto.gen128BitRandomID();
+  return genUpsertHead(eid, clk, 0, content);
+}
+export function genUpsertHead(
+  eid: EntityID,
+  clk: Date,
+  ctr: number,
+  content: SerializedContent,
+): IMessageHead {
+  return {
+    eid,
+    clk,
+    ctr,
+    len: content.length,
+  };
+}
+
 export function genUpsert(
-  eid: EID,
+  eid: EntityID,
   clk: Date,
   ctr: number,
   content: SerializedContent,
@@ -56,7 +78,16 @@ export function genUpsert(
   };
 }
 
-export function genDelete(eid: EID, clk: Date, ctr: number): IDeleteMessage {
+export function genDelete(eid: EntityID, clk: Date, ctr: number): IDeleteMessage {
+  return {
+    eid,
+    clk,
+    ctr,
+    len: 0,
+  };
+}
+
+export function genDeleteHead(eid: EntityID, clk: Date, ctr: number): IMessageHead {
   return {
     eid,
     clk,

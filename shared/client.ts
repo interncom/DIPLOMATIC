@@ -1,4 +1,5 @@
 import { makeAuthTimestamp } from "./auth.ts";
+import { sealBag } from "./bag.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { APICallName } from "./consts.ts";
@@ -10,6 +11,7 @@ import type {
   Hash,
   HostHandle,
   HostSpecificKeyPair,
+  IBag,
   ICrypto,
   IHostConnectionInfo,
   ITransport,
@@ -53,9 +55,16 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     return hostKeys(this, host.label, host.idx);
   }
 
+  seal = async (msg: IMessage): Promise<IBag> => {
+    const { crypto, enclave } = this;
+    const keys = await this.keys();
+    const bag = await sealBag(msg, keys, crypto, enclave);
+    return bag;
+  }
+
   register = () => this.call(api.user, []);
   peek = (from: Date) => this.call(api.peek, [from]);
-  push = (ops: IMessage[]) => this.call(api.push, ops);
+  push = (bags: IBag[]) => this.call(api.push, bags);
   pull = (hashes: Hash[]) => this.call(api.pull, hashes);
 
   // listen for new bags.

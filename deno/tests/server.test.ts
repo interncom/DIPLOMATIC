@@ -89,10 +89,10 @@ Deno.test("server", async (t) => {
   const content = denoMsgpack.encode("test operation data");
   const op1 = await genInsert(now, content, libsodiumCrypto);
   const op2 = await genInsert(now, content, libsodiumCrypto);
-  const ops = [op1, op2];
+  const bags = [await client.seal(op1), await client.seal(op2)];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = [...(await client.push(ops))];
+    result = [...(await client.push(bags))];
     assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);

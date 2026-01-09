@@ -1,4 +1,5 @@
-import { Hash } from "../../shared/types";
+import { uint8ArraysEqual } from "../../shared/binary";
+import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage } from "../../types";
 
 export class MemoryMessageStore implements IMessageStore {
@@ -24,5 +25,22 @@ export class MemoryMessageStore implements IMessageStore {
 
   async list() {
     return this.messages.values();
+  }
+
+  // last returns the stored message with given eid and highest ctr.
+  async last(eid: EntityID) {
+    let latest: IStoredMessage | undefined;
+    for (const [, msg] of this.messages) {
+      if (uint8ArraysEqual(eid, msg.head.eid) === false) {
+        continue;
+      }
+      if (latest === undefined) {
+        latest = msg;
+      }
+      if (msg.head.ctr > latest.head.ctr) {
+        latest = msg;
+      }
+    }
+    return latest;
   }
 }

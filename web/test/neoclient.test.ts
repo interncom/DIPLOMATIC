@@ -8,6 +8,7 @@ import memStorage from '../../shared/storage/memory'
 import libsodiumCrypto from '../src/crypto'
 import { CallbackNotifier } from '../../shared/lpc/pusher'
 import { MockClock } from '../../shared/clock'
+import { EncodedMessage } from '../src/shared/message'
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage,
@@ -120,6 +121,83 @@ describe('NeoClient', () => {
       expect(client.connections.size).toBe(1);
       await client.disconnect();
       expect(client.connections.size).toBe(0);
+    });
+  });
+
+  describe('insert', () => {
+    test('stores an insert message', async () => {
+      const store = new MemoryStore<IProtoHost>();
+      await store.init();
+      const clock = { now: () => new Date(1234567890000) };
+      const applier = vi.fn();
+      const clear = vi.fn();
+      const state = new StateManager(applier, clear);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const body: EncodedMessage = new Uint8Array([1, 2, 3]);
+      await client.insert(body);
+      const uploads = await store.uploads.count();
+      expect(uploads).toBe(1);
+      const messages = Array.from(await store.messages.list());
+      expect(messages.length).toBe(1);
+      const msg = messages[0];
+      expect(msg.body).toBeUndefined();
+      expect(msg.head.ctr).toBe(0);
+      expect(msg.head.len).toBe(body.length);
+    });
+  });
+
+  describe('upsert', () => {
+    test('stores upsert message and increments counter', async () => {
+      const store = new MemoryStore<IProtoHost>();
+      await store.init();
+      const clock = { now: () => new Date(1234567890000) };
+      const applier = vi.fn();
+      const clear = vi.fn();
+      const state = new StateManager(applier, clear);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const eid = new Uint8Array(32).fill(0);
+      const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
+      const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
+      await client.upsert(eid, body1);
+      let messages = Array.from(await store.messages.list());
+      expect(messages.length).toBe(1);
+      expect(messages[0].head.ctr).toBe(0);
+      expect(messages[0].body).toEqual(body1);
+      expect(messages[0].head.len).toBe(body1.length);
+      await client.upsert(eid, body2);
+      messages = Array.from(await store.messages.list());
+      expect(messages.length).toBe(2);
+      expect(messages[1].head.ctr).toBe(1);
+      expect(messages[1].body).toEqual(body2);
+      expect(messages[1].head.len).toBe(body2.length);
+      const uploads = await store.uploads.count();
+      expect(uploads).toBe(2);
+    });
+  });
+
+  describe('delete', () => {
+    test('stores delete message and increments counter', async () => {
+      const store = new MemoryStore<IProtoHost>();
+      await store.init();
+      const clock = { now: () => new Date(1234567890000) };
+      const applier = vi.fn();
+      const clear = vi.fn();
+      const state = new StateManager(applier, clear);
+      const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+      const eid = new Uint8Array(32).fill(1);
+      await client.upsert(eid, new Uint8Array([10, 11]));
+      await client.delete(eid);
+      const messages = Array.from(await store.messages.list());
+      expect(messages.length).toBe(2);
+      const upsertMsg = messages[0];
+      expect(upsertMsg.head.ctr).toBe(0);
+      expect(upsertMsg.head.len).toBe(2); // new Uint8Array([10, 11]) length 2
+      const deleteMsg = messages[1];
+      expect(deleteMsg.head.ctr).toBe(1);
+      expect(deleteMsg.head.len).toBe(0);
+      expect(deleteMsg.body).toBeUndefined();
+      const uploads = await store.uploads.count();
+      expect(uploads).toBe(2);
     });
   });
 });

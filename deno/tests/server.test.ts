@@ -20,6 +20,7 @@ import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
 import { MockClock } from "../../shared/clock.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { WebsocketListener } from "../../shared/http/listener.ts";
+import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 
 // Server config.
 const port = 3331;
@@ -33,7 +34,7 @@ class MockPushNotifier implements IWebSocketPushNotifier {
     return Promise.resolve(new Response());
   }
 
-  open(_pubKey: PublicKey, _recv: PushReceiver) {
+  open(_authTS: IAuthTimestamp, _recv: PushReceiver) {
     return ({
       send: () => Status.Success,
       shut: () => Status.Success,

@@ -28,7 +28,7 @@ const mockCrypto = {
 };
 
 const mockNotifier: IPushNotifier = {
-  open: (_pubKey: PublicKey, _recv: (data: Uint8Array) => void) => ({
+  open: (_authTS: IAuthTimestamp, _recv: (data: Uint8Array) => void) => ({
     send: () => Status.Success,
     shut: () => Status.Success,
     status: Status.Success,

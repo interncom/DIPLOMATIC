@@ -4,14 +4,15 @@ import { MemoryStore } from '../src/stores/memory/store'
 import { StateManager } from '../src/state'
 import type { Hash, IHostConnectionInfo, IProtoHost } from '../src/shared/types'
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
-import memStorage from '../../shared/storage/memory'
+import memStorage from '../src/shared/storage/memory'
 import libsodiumCrypto from '../src/crypto'
-import { CallbackNotifier } from '../../shared/lpc/pusher'
-import { MockClock } from '../../shared/clock'
-import { EncodedMessage } from '../src/shared/message'
-import { btoh } from '../../shared/binary'
-import { hostKeys } from '../../shared/endpoint'
+import { CallbackNotifier } from '../src/shared/lpc/pusher'
+import { MockClock } from '../src/shared/clock'
+import { EncodedMessage, IMessage } from '../src/shared/message'
+import { btoh } from '../src/shared/binary'
+import { hostKeys } from '../src/shared/endpoint'
 import { IDownloadMessage } from '../src/types'
+import { sealBag } from '../src/shared/bag'
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage as any,
@@ -185,6 +186,41 @@ describe('NeoClient', () => {
       const pubKeyHex = btoh(keys.publicKey);
       const messagesOnHost = Array.from((lpcHost.storage as any).bag.values()).filter((item: any) => item.pubKeyHex === pubKeyHex);
       expect(messagesOnHost.length).toBe(1);
+    });
+
+    test('pulls message from host if one is present', async () => {
+      const { store, client } = await createClient(lpcHost.clock);
+      const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+      await store.seed.save(masterSeed);
+      await client.link(testHost);
+      await client.connect();
+
+      const host = await store.hosts.get('test');
+      host.lastSyncedAt = new Date(0);
+
+      // Manually add a message to the host storage
+      const enclave = await store.seed.load();
+      expect(enclave).not.toBeUndefined();
+      if (!enclave) {
+        return;
+      }
+      const keys = await hostKeys({ enclave: enclave, crypto: libsodiumCrypto, clock: lpcHost.clock }, host.label, 1);
+      const body: EncodedMessage = new Uint8Array([4, 5, 6]);
+      const msg: IMessage = { eid: new Uint8Array(16).fill(0), clk: lpcHost.clock.now(), ctr: 0, len: body.length, bod: body };
+      const bag = await sealBag(msg, keys, libsodiumCrypto, enclave);
+      const sha256 = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
+      lpcHost.storage.setBag(keys.publicKey, lpcHost.clock.now(), bag, sha256);
+
+      expect(await store.downloads.count()).toBe(0);
+      expect(Array.from(await store.messages.list()).length).toBe(0);
+
+      // Sync: attempts to peek and pull the message from the host
+      await client.sync();
+
+      // Verify download was cleared and message was stored
+      expect(await store.downloads.count()).toBe(0);
+      const messages = Array.from(await store.messages.list());
+      expect(Array.from(await store.messages.list()).length).toBe(1);
     });
   });
 });

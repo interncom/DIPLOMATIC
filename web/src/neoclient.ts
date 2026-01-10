@@ -1,6 +1,6 @@
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
-import { btoh, htob } from "./shared/binary";
+import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
@@ -151,7 +151,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     }
 
     // Pull any new bag bodies.
-    const dls: Map<Hash, IDownloadMessage> = new Map();
+    const dls: Map<string, IDownloadMessage> = new Map();
     const allItems = await store.downloads.list();
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
@@ -161,26 +161,40 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
       const items = Array.from(allItems).filter(i => i.host === label);
       const hshs: Hash[] = [];
       for (const item of items) {
-        dls.set(item.hash, item);
+        dls.set(btoh(item.hash), item);
         hshs.push(item.hash);
       }
       const result = await conn.pull(hshs);
       for (const { hash, bodyCph } of result) {
-        const dl = dls.get(hash);
+        const dl = dls.get(btoh(hash));
         if (!dl) {
           continue;
         }
+
         const key = await enclave.deriveFromKDM(dl.kdm);
         const { head } = dl;
+        if (head.hsh === undefined && (bodyCph === undefined || bodyCph.length === 0)) {
+          await store.messages.add([{ hash, head }]);
+          dls.delete(btoh(hash));
+          continue;
+        }
+
+        if (head.hsh === undefined) {
+          // TODO: handle better than just removing d/l.
+          dls.delete(btoh(hash));
+          continue;
+        }
+
         const body = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(bodyCph, key) as EncodedMessage;
         const hashChk = await libsodiumCrypto.blake3(body);
-        if (head.hsh !== hashChk) {
+        if (uint8ArraysEqual(head.hsh, hashChk) !== true) {
           // TODO: handle better than just removing d/l.
-          dls.delete(hash);
+          dls.delete(btoh(hash));
           continue;
         }
         await store.messages.add([{ hash, head: dl.head, body }]);
-        dls.delete(hash);
+        dls.delete(btoh(hash));
+        await store.downloads.deq([hash]);
       }
     }
   }

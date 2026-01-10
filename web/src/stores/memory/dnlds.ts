@@ -9,13 +9,15 @@ export class MemoryDownloadQueue implements IDownloadQueue {
 
   async enq(msgs: Iterable<IDownloadMessage>) {
     for (const msg of msgs) {
-      this.queue.set(btoh(msg.hash), msg);
+      const hex = btoh(msg.hash);
+      this.queue.set(hex, msg);
     }
   }
 
   async deq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
-      this.queue.delete(btoh(hash));
+      const hex = btoh(hash);
+      this.queue.delete(hex);
     }
   }
 

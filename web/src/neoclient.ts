@@ -60,14 +60,14 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   public async insert(body: EncodedMessage) {
     const clk = this.clock.now();
     const head = await genInsertHead(clk, body, libsodiumCrypto);
-    await this.apply(head);
+    await this.apply(head, body);
   }
 
   public async upsert(eid: EntityID, body: EncodedMessage) {
     const clk = this.clock.now();
     const last = await this.store.messages.last(eid);
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = genUpsertHead(eid, clk, ctr, body);
+    const msg = await genUpsertHead(eid, clk, ctr, body, libsodiumCrypto);
     await this.apply(msg, body);
   }
 

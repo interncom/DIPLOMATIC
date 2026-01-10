@@ -47,19 +47,25 @@ export async function genInsertHead(
   crypto: ICrypto,
 ): Promise<IMessageHead> {
   const eid = await crypto.gen128BitRandomID();
-  return genUpsertHead(eid, clk, 0, content);
+  return genUpsertHead(eid, clk, 0, content, crypto);
 }
-export function genUpsertHead(
+export async function genUpsertHead(
   eid: EntityID,
   clk: Date,
   ctr: number,
   content: SerializedContent,
-): IMessageHead {
+  crypto: ICrypto,
+): Promise<IMessageHead> {
+  let hsh: Uint8Array | undefined;
+  if (content.length > 0) {
+    hsh = await crypto.blake3(content);
+  }
   return {
     eid,
     clk,
     ctr,
     len: content.length,
+    hsh,
   };
 }
 

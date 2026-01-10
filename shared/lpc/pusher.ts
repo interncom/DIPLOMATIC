@@ -6,12 +6,13 @@ import type {
 } from "../types.ts";
 import { btoh } from "../binary.ts";
 import { Status } from "../consts.ts";
+import { IAuthTimestamp } from "../codecs/authTimestamp.ts";
 
 export class CallbackNotifier implements IPushNotifier {
   private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();
 
-  open(pubKey: PublicKey, recv: PushReceiver): IPushOpenResponse {
-    const pubKeyHex = btoh(pubKey);
+  open(authTS: IAuthTimestamp, recv: PushReceiver): IPushOpenResponse {
+    const pubKeyHex = btoh(authTS.pubKey);
     if (!this.recvs.has(pubKeyHex)) {
       this.recvs.set(pubKeyHex, new Set());
     }

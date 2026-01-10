@@ -69,9 +69,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
 
   // listen for new bags.
   listen = async (recv: PushReceiver) => {
-    const { host, transport } = this;
+    const { clock, crypto, host, transport } = this;
     const { listener } = transport;
     const keys = await hostKeys(this, host.label, host.idx);
-    return listener.connect(keys.publicKey, recv);
+    const now = clock.now();
+    const authTS = await makeAuthTimestamp(keys, now, crypto);
+    return listener.connect(authTS, recv);
   };
 }

@@ -1,7 +1,9 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { CallbackListener } from "../../shared/lpc/listener.ts";
 import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
-import type { PublicKey } from "../../shared/types.ts";
+import type { PublicKey, KeyPair, ICrypto, Hash } from "../../shared/types.ts";
+import { makeAuthTimestamp } from "../../shared/auth.ts";
+import type { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 
 Deno.test("lpc integration", async (t) => {
   const notifier = new CallbackNotifier();
@@ -9,8 +11,25 @@ Deno.test("lpc integration", async (t) => {
   await t.step("connect and push", async () => {
     const listener = new CallbackListener(notifier);
 
-    // Mock public key (32 bytes for Ed25519 public key)
-    const pubKey = new Uint8Array(32).fill(0xab) as PublicKey;
+    // Mock keys (for testing, dummy values)
+    const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
+    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const keys: KeyPair = { keyType: "private", publicKey, privateKey };
+    const cryptoImpl: ICrypto = {
+      signEd25519: async (message: Uint8Array | string, secKey: any): Promise<Uint8Array> => {
+        return new Uint8Array(64).fill(0x99); // mock signature
+      },
+      gen128BitRandomID: async (): Promise<Uint8Array> => new Uint8Array(16).fill(0x11),
+      gen256BitSecureRandomSeed: async (): Promise<Uint8Array> => new Uint8Array(32).fill(0x22),
+      deriveXSalsa20Poly1305Key: async (seed: Uint8Array, derivationIndex: number): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
+      encryptXSalsa20Poly1305Combined: async (plaintext: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]): Promise<Uint8Array> => new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+      decryptXSalsa20Poly1305Combined: async (headerAndCipher: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]): Promise<Uint8Array> => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
+      checkSigEd25519: async (sig: Uint8Array, message: Uint8Array | string, pubKey: PublicKey): Promise<boolean> => true,
+      deriveEd25519KeyPair: async (derivationSeed: any) => ({ keyType: "private", publicKey: new Uint8Array(32).fill(0xab) as PublicKey, privateKey: new Uint8Array(64).fill(0x42) as any }),
+      blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as any,
+      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb) as any,
+    };
+    const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
 
     let receivedData: Uint8Array | undefined;
     const receiver = (data: Uint8Array) => {
@@ -21,12 +40,12 @@ Deno.test("lpc integration", async (t) => {
     assertEquals(listener.connected(), false);
 
     // Connect
-    listener.connect(pubKey, receiver);
+    listener.connect(authTS, receiver);
     assertEquals(listener.connected(), true);
 
     // Push data
     const testData = new TextEncoder().encode("TEST MESSAGE");
-    notifier.push(pubKey, testData);
+    notifier.push(authTS.pubKey, testData);
 
     // Check that data was received
     assertEquals(receivedData, testData);
@@ -40,7 +59,25 @@ Deno.test("lpc integration", async (t) => {
     const listener1 = new CallbackListener(notifier);
     const listener2 = new CallbackListener(notifier);
 
-    const pubKey = new Uint8Array(32).fill(0xcd) as PublicKey;
+    // Mock keys (for testing, dummy values)
+    const publicKey = new Uint8Array(32).fill(0xcd) as PublicKey;
+    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const keys: KeyPair = { keyType: "private", publicKey, privateKey };
+    const cryptoImpl: ICrypto = {
+      signEd25519: async (message: Uint8Array | string, secKey: any): Promise<Uint8Array> => {
+        return new Uint8Array(64).fill(0x99); // mock signature
+      },
+      gen128BitRandomID: async () => new Uint8Array(16).fill(0x11),
+      gen256BitSecureRandomSeed: async () => new Uint8Array(32).fill(0x22),
+      deriveXSalsa20Poly1305Key: async (seed: Uint8Array, derivationIndex: number) => new Uint8Array(32).fill(0x33),
+      encryptXSalsa20Poly1305Combined: async (plaintext: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]) => new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+      decryptXSalsa20Poly1305Combined: async (headerAndCipher: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]) => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
+      checkSigEd25519: async (sig: Uint8Array, message: Uint8Array | string, pubKey: PublicKey) => true,
+      deriveEd25519KeyPair: async (derivationSeed: any) => ({ keyType: "private", publicKey: new Uint8Array(32).fill(0xcd) as PublicKey, privateKey: new Uint8Array(64).fill(0x42) as any }),
+      blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
+      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb) as any,
+    };
+    const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
 
     let received1: Uint8Array | undefined;
     let received2: Uint8Array | undefined;
@@ -53,12 +90,12 @@ Deno.test("lpc integration", async (t) => {
     };
 
     // Connect both
-    listener1.connect(pubKey, receiver1);
-    listener2.connect(pubKey, receiver2);
+    listener1.connect(authTS, receiver1);
+    listener2.connect(authTS, receiver2);
 
     // Push data
     const testData = new TextEncoder().encode("MULTI TEST");
-    notifier.push(pubKey, testData);
+    notifier.push(authTS.pubKey, testData);
 
     // Both should receive
     assertEquals(received1, testData);
@@ -66,7 +103,7 @@ Deno.test("lpc integration", async (t) => {
 
     // Disconnect one and push again
     listener1.disconnect();
-    notifier.push(pubKey, new TextEncoder().encode("SECOND TEST"));
+    notifier.push(authTS.pubKey, new TextEncoder().encode("SECOND TEST"));
 
     // Only listener2 should have updated
     assertEquals(received1, testData); // Still old

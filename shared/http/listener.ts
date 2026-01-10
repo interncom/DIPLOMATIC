@@ -1,5 +1,7 @@
 import { btoh } from "../binary.ts";
-import { IPushListener, PublicKey, PushReceiver } from "../types.ts";
+import { Encoder } from "../codec.ts";
+import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
+import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
@@ -10,12 +12,15 @@ export class WebsocketListener implements IPushListener {
       this.websocket.readyState === WebSocket.OPEN;
   }
 
-  connect(pubKey: PublicKey, recv: PushReceiver) {
+  connect(authTS: IAuthTimestamp, recv: PushReceiver) {
     const { url } = this;
 
-    // TODO: new Encoder output to URL params for IAuthTimestamp.
-    const keyHex = btoh(pubKey);
-    url.searchParams.set("key", keyHex);
+    const enc = new Encoder();
+    enc.writeStruct(authTimestampCodec, authTS);
+    const authTSEnc = enc.result();
+    const authTSHex = btoh(authTSEnc);
+
+    url.searchParams.set("t", authTSHex);
     this.websocket = new WebSocket(url);
 
     this.websocket.onopen = (e) => {
@@ -24,7 +29,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onclose = (e) => {
       console.log("DISCONNECTED");
-      this.connect(pubKey, recv);
+      this.connect(authTS, recv);
     };
 
     this.websocket.onmessage = (e) => {

@@ -34,3 +34,5 @@ export enum APICallName {
   Push,
   Pull,
 }
+
+export const notifierTSAuthURLParam = "t";

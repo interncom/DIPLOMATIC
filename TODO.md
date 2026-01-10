@@ -1,7 +1,7 @@
 # TODOS
 
 ARCH
-- send authTS to connect websocket
+- validate these authTS's in websocket connect
 - get web client working on new foundation
 
 ERRORS

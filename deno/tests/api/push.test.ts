@@ -61,7 +61,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
       send: () => Status.Success,
       shut: () => Status.Success,
       status: Status.Success,
@@ -140,7 +140,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
       send: () => Status.Success,
       shut: () => Status.Success,
       status: Status.Success,
@@ -228,7 +228,7 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
     setBag: () => Promise.resolve(),
   };
   const mockNotifier: IPushNotifier = {
-    open: (pubKey: PublicKey, recv: (data: Uint8Array) => void) => ({
+    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
       send: () => Status.Success,
       shut: () => Status.Success,
       status: Status.Success,

@@ -219,7 +219,6 @@ describe('NeoClient', () => {
 
       // Verify download was cleared and message was stored
       expect(await store.downloads.count()).toBe(0);
-      const messages = Array.from(await store.messages.list());
       expect(Array.from(await store.messages.list()).length).toBe(1);
     });
   });

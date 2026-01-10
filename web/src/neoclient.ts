@@ -230,7 +230,10 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     for (const host of hosts) {
       const conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
       await conn.register();
-      // TODO: hook in to notifier (call listen).
+      const recv = (data: Uint8Array) => {
+        this.sync().catch(err => console.error('Sync failed:', err));
+      };
+      await conn.listen(recv);
       this.connections.set(host.label, conn);
     }
   }

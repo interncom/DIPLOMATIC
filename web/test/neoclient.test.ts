@@ -9,7 +9,7 @@ import libsodiumCrypto from '../src/crypto'
 import { CallbackNotifier } from '../src/shared/lpc/pusher'
 import { MockClock } from '../src/shared/clock'
 import { EncodedMessage, IMessage } from '../src/shared/message'
-import { btoh } from '../src/shared/binary'
+import { btoh, uint8ArraysEqual } from '../src/shared/binary'
 import { hostKeys } from '../src/shared/endpoint'
 import { IDownloadMessage } from '../src/types'
 import { sealBag } from '../src/shared/bag'
@@ -119,7 +119,7 @@ describe('NeoClient', () => {
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(1);
       const msg = messages[0];
-      expect(msg.body).toBeUndefined();
+      expect(uint8ArraysEqual(body, msg.body)).toBeTruthy();
       expect(msg.head.ctr).toBe(0);
       expect(msg.head.len).toBe(body.length);
     });
@@ -221,5 +221,47 @@ describe('NeoClient', () => {
       expect(await store.downloads.count()).toBe(0);
       expect(Array.from(await store.messages.list()).length).toBe(1);
     });
+  });
+});
+
+describe('push notifications', () => {
+  test('end-to-end: push notification triggers sync', async () => {
+    // Generate shared seed for both clients (single-user system)
+    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+
+    // Create clientA (pusher)
+    const { store: storeA, client: clientA } = await createClient(lpcHost.clock);
+    await storeA.seed.save(masterSeed);
+    await clientA.link(testHost);
+    const hostA = await storeA.hosts.get('test');
+    if (hostA) {
+      hostA.lastSyncedAt = new Date(0);
+    }
+
+    // Create clientB (listener)
+    const { store: storeB, client: clientB } = await createClient(lpcHost.clock);
+    await storeB.seed.save(masterSeed);
+    await clientB.link(testHost);
+
+    // Set clientB's host to old sync time so it will peek for new messages
+    const hostB = await storeB.hosts.get('test');
+    if (hostB) {
+      hostB.lastSyncedAt = new Date(0);
+    }
+
+    // Client B connects first (starts listening for notifications)
+    await clientB.connect();
+
+    // Spy on clientB's sync method
+    const syncSpy = vi.spyOn(clientB, 'sync');
+
+    // Client A connects, inserts a message, and syncs (pushes to host, triggers notification)
+    await clientA.connect();
+    const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
+    await clientA.insert(testMessage);
+    await clientA.sync();
+
+    // Wait for the push notification to trigger sync on clientB
+    await vi.waitFor(() => syncSpy.mock.calls.length === 1, { timeout: 1000 });
   });
 });

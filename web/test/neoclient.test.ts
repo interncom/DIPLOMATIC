@@ -218,10 +218,40 @@ describe('NeoClient', () => {
       await client.sync();
 
       // Verify download was cleared and message was stored
-      expect(await store.downloads.count()).toBe(0);
-      expect(Array.from(await store.messages.list()).length).toBe(1);
-    });
-  });
+       expect(await store.downloads.count()).toBe(0);
+       expect(Array.from(await store.messages.list()).length).toBe(1);
+     });
+
+     test('syncs between two clients', async () => {
+       // Generate shared seed for both clients (single-user system)
+       const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+
+       // Create clientA (pusher)
+       const { store: storeA, client: clientA } = await createClient(lpcHost.clock);
+       await storeA.seed.save(masterSeed);
+       await clientA.link(testHost);
+       await clientA.connect(false); // no listen
+
+       // Create clientB (puller)
+       const { store: storeB, client: clientB } = await createClient(lpcHost.clock);
+       await storeB.seed.save(masterSeed);
+       await clientB.link(testHost);
+       await clientB.connect(false); // no listen
+
+       // ClientA inserts a message and syncs (pushes to host)
+       const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
+       await clientA.insert(testMessage);
+       await clientA.sync();
+
+       // ClientB syncs (pulls from host)
+       await clientB.sync();
+
+       // Verify the message was synced to clientB
+       const messages = Array.from(await storeB.messages.list());
+       expect(messages.length).toBe(1);
+       expect(messages[0].body).toEqual(testMessage);
+     });
+   });
 });
 
 describe('push notifications', () => {

@@ -1,7 +1,6 @@
 # TODOS
 
 ARCH
-- refactor websocket client into separate object/class
 - send authTS to connect websocket
 - get web client working on new foundation
 

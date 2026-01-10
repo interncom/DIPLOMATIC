@@ -6,18 +6,23 @@ import { hashBytes, Status } from "../../../shared/consts.ts";
 import {
   Hash,
   HostSpecificKeyPair,
-  IPushNotifier,
   PublicKey,
 } from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
 } from "../../../shared/codecs/authTimestamp.ts";
+import {
+  baseMockStorage,
+  createMockHost,
+  testPubKey,
+  createTestAuthTimestamp,
+  createMockHostOutOfSync,
+} from "./testUtils.ts";
 
-// Mock storage
+// Mock storage with getBody override for pull tests
 const mockStorage = {
-  hasUser: () => Promise.resolve(true),
-  addUser: () => Promise.resolve(),
+  ...baseMockStorage,
   getBody: (
     pubKey: Uint8Array,
     headHash: Uint8Array,
@@ -28,48 +33,19 @@ const mockStorage = {
     }
     return Promise.resolve(undefined);
   },
-  listHeads: () => Promise.resolve([]),
-  setBag: () => Promise.resolve(),
 };
 
-const mockCrypto = {
-  checkSigEd25519: () => Promise.resolve(true),
-  sha256Hash: () => Promise.resolve(new Uint8Array(32)),
-  blake3: () => Promise.resolve(new Uint8Array(32)),
-};
+const mockHost = createMockHost({ storage: mockStorage });
 
-const mockNotifier: IPushNotifier = {
-  open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
-    send: () => Status.Success,
-    shut: () => Status.Success,
-    status: Status.Success,
-  }),
-  push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
-};
-
-const mockClock = { now: () => new Date(946713599000 + 1000) };
-const mockHost = {
-  storage: mockStorage,
-  crypto: mockCrypto,
-  clock: mockClock,
-  notifier: mockNotifier,
-};
-const pubKey = new Uint8Array(32).fill(0) as PublicKey;
-
-const tsAuth: IAuthTimestamp = {
-  pubKey,
-  sig: new Uint8Array(64).fill(2),
-  timestamp: new Date(946713599000),
-};
+const tsAuth = createTestAuthTimestamp(testPubKey, new Date(946713599000));
 
 Deno.test("pullEnd.encodeReq", () => {
   const client = {}; // Mock
   const keys = {} as HostSpecificKeyPair; // Mock
-  const tsAuth: IAuthTimestamp = {
-    pubKey: new Uint8Array(32).fill(1) as PublicKey,
-    sig: new Uint8Array(64).fill(2),
-    timestamp: new Date("2023-01-01T00:00:00.000Z"),
-  };
+  const tsAuth = createTestAuthTimestamp(
+    new Uint8Array(32).fill(1) as PublicKey,
+    new Date("2023-01-01T00:00:00.000Z"),
+  );
   const hashes: Hash[] = [
     new Uint8Array(hashBytes).fill(1) as Hash,
     new Uint8Array(hashBytes).fill(4) as Hash,
@@ -166,9 +142,7 @@ Deno.test("pullEnd.handleReq - clock out of sync", async () => {
 
   const respEnc = new Encoder();
 
-  // Mock with clock far from timestamp
-  const mockClockOutOfSync = { now: () => new Date(946713599000 + 40000) };
-  const mockHostOutOfSync = { ...mockHost, clock: mockClockOutOfSync };
+  const mockHostOutOfSync = createMockHostOutOfSync();
 
   const status = await pullEnd.handleReq(
     mockHostOutOfSync,

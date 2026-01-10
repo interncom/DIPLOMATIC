@@ -17,14 +17,19 @@ import {
 import { Hash, IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 import { uint8ArraysEqual } from "../../../shared/binary.ts";
+import {
+  baseMockCrypto,
+  baseMockNotifier,
+  createMockHost,
+  testPubKey,
+  createTestAuthTimestamp,
+  createMockHostOutOfSync,
+  mockClockForPush,
+} from "./testUtils.ts";
 
 Deno.test("pushEnd.handleReq - success", async () => {
-  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
-  const tsAuth: IAuthTimestamp = {
-    pubKey,
-    sig: new Uint8Array(64).fill(1),
-    timestamp: new Date(1640995200000),
-  };
+  const pubKey = testPubKey;
+  const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
@@ -41,31 +46,19 @@ Deno.test("pushEnd.handleReq - success", async () => {
 
   const respEnc = new Encoder();
 
-  // Mocks
   let notified = false;
   const mockCrypto = {
-    sha256Hash: (data: Uint8Array) =>
-      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
+    ...baseMockCrypto,
     checkSigEd25519: (
       sig: Uint8Array,
       message: Uint8Array | string,
       pubKey: PublicKey,
     ) => Promise.resolve(true),
-    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
-  };
-  const mockStorage = {
-    hasUser: () => Promise.resolve(true),
-    addUser: () => Promise.resolve(),
-    getBody: () => Promise.resolve(undefined),
-    listHeads: () => Promise.resolve([]),
-    setBag: () => Promise.resolve(),
+    sha256Hash: (data: Uint8Array) =>
+      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
   const mockNotifier: IPushNotifier = {
-    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
-      send: () => Status.Success,
-      shut: () => Status.Success,
-      status: Status.Success,
-    }),
+    ...baseMockNotifier,
     push: (pk: PublicKey, data: Uint8Array) => {
       if (uint8ArraysEqual(pk, pubKey)) {
         notified = true;
@@ -73,13 +66,11 @@ Deno.test("pushEnd.handleReq - success", async () => {
       return Promise.resolve();
     },
   };
-  const mockClock = { now: () => new Date(1640995200000) };
-  const mockHost = {
+  const mockHost = createMockHost({
     crypto: mockCrypto,
-    storage: mockStorage,
     notifier: mockNotifier,
-    clock: mockClock,
-  };
+    clock: mockClockForPush,
+  });
 
   const status = await pushEnd.handleReq(
     mockHost,
@@ -99,12 +90,8 @@ Deno.test("pushEnd.handleReq - success", async () => {
 });
 
 Deno.test("pushEnd.handleReq - invalid signature", async () => {
-  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
-  const tsAuth: IAuthTimestamp = {
-    pubKey,
-    sig: new Uint8Array(64).fill(1),
-    timestamp: new Date(1640995200000),
-  };
+  const pubKey = testPubKey;
+  const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
@@ -121,39 +108,20 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
 
   const respEnc = new Encoder();
 
-  // Mocks with invalid sig
   const mockCrypto = {
-    sha256Hash: (data: Uint8Array) =>
-      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
+    ...baseMockCrypto,
     checkSigEd25519: (
       sig: Uint8Array,
       message: Uint8Array | string,
       pubKey: PublicKey,
     ) => Promise.resolve((message as Uint8Array).length === 8),
-    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
+    sha256Hash: (data: Uint8Array) =>
+      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
-  const mockStorage = {
-    hasUser: () => Promise.resolve(true),
-    addUser: () => Promise.resolve(),
-    getBody: () => Promise.resolve(undefined),
-    listHeads: () => Promise.resolve([]),
-    setBag: () => Promise.resolve(),
-  };
-  const mockNotifier: IPushNotifier = {
-    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
-      send: () => Status.Success,
-      shut: () => Status.Success,
-      status: Status.Success,
-    }),
-    push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
-  };
-  const mockClock = { now: () => new Date(1640995200000) };
-  const mockHost = {
+  const mockHost = createMockHost({
     crypto: mockCrypto,
-    storage: mockStorage,
-    notifier: mockNotifier,
-    clock: mockClock,
-  };
+    clock: mockClockForPush,
+  });
 
   const status = await pushEnd.handleReq(
     mockHost,
@@ -187,12 +155,8 @@ Deno.test("pushEnd.decodeResp", () => {
 });
 
 Deno.test("pushEnd.handleReq - clock out of sync", async () => {
-  const pubKey = new Uint8Array(32).fill(0) as PublicKey;
-  const tsAuth: IAuthTimestamp = {
-    pubKey,
-    sig: new Uint8Array(64).fill(1),
-    timestamp: new Date(1640995200000),
-  };
+  const pubKey = testPubKey;
+  const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
@@ -209,39 +173,7 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
 
   const respEnc = new Encoder();
 
-  // Mocks
-  const mockCrypto = {
-    sha256Hash: (data: Uint8Array) =>
-      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
-    checkSigEd25519: (
-      sig: Uint8Array,
-      message: Uint8Array | string,
-      pubKey: PublicKey,
-    ) => Promise.resolve(true),
-    blake3: (data: Uint8Array) => Promise.resolve(new Uint8Array(32)),
-  };
-  const mockStorage = {
-    hasUser: () => Promise.resolve(true),
-    addUser: () => Promise.resolve(),
-    getBody: () => Promise.resolve(undefined),
-    listHeads: () => Promise.resolve([]),
-    setBag: () => Promise.resolve(),
-  };
-  const mockNotifier: IPushNotifier = {
-    open: (authTS: IAuthTimestamp, recv: (data: Uint8Array) => void) => ({
-      send: () => Status.Success,
-      shut: () => Status.Success,
-      status: Status.Success,
-    }),
-    push: (pubKey: PublicKey, data: Uint8Array) => Promise.resolve(),
-  };
-  const mockClockOutOfSync = { now: () => new Date(1640995200000 + 40000) }; // > 30000ms diff
-  const mockHostOutOfSync = {
-    crypto: mockCrypto,
-    storage: mockStorage,
-    notifier: mockNotifier,
-    clock: mockClockOutOfSync,
-  };
+  const mockHostOutOfSync = createMockHostOutOfSync();
 
   const status = await pushEnd.handleReq(
     mockHostOutOfSync,

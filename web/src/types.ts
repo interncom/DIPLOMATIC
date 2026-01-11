@@ -140,7 +140,7 @@ export interface IStateEmitter<T> {
   listen(listener: (state: T) => void): void;
 }
 
-export interface IWebClient<Handle extends HostHandle> {
+export interface IClient<Handle extends HostHandle> {
   link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;
 

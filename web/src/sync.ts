@@ -1,4 +1,3 @@
-import libsodiumCrypto from './crypto';
 import { btoh, htob, uint8ArraysEqual } from './shared/binary';
 import DiplomaticClientAPI from './shared/client';
 import { IClock } from './shared/clock';
@@ -17,7 +16,7 @@ export async function syncPeek<Handle extends HostHandle>(
   enclave: Enclave,
   clock: IClock,
   host: IHostRow<Handle>,
-  crypto: ICrypto
+  crypto: ICrypto,
 ): Promise<void> {
   const hostKeys = await conn.keys();
   const dls: IDownloadMessage[] = [];
@@ -25,13 +24,19 @@ export async function syncPeek<Handle extends HostHandle>(
   for (const item of items) {
     const dec = new Decoder(item.headCph);
     const { sig, kdm, headCph } = dec.readStruct(peekItemHeadCodec);
-    const valid = await libsodiumCrypto.checkSigEd25519(sig, headCph, hostKeys.publicKey);
+    const valid = await crypto.checkSigEd25519(sig, headCph, hostKeys.publicKey);
     if (!valid) {
       // TODO: handle error non-silently.
       continue;
     }
     const key = await enclave.deriveFromKDM(kdm);
-    const headEnc = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(headCph, key);
+    let headEnc: Uint8Array;
+    try {
+      headEnc = await crypto.decryptXSalsa20Poly1305Combined(headCph, key);
+    } catch {
+      // Decryption failed, skip
+      continue;
+    }
     const headDec = new Decoder(headEnc);
     const head = headDec.readStruct(messageHeadCodec);
     dls.push({ hash: item.hash as Hash, kdm, head, host: host.label });
@@ -46,8 +51,8 @@ export async function syncPush<Handle extends HostHandle>(
   store: IStore<Handle>,
   enclave: Enclave,
   clock: IClock,
-  host: IHostConnectionInfo<Handle>,
-  crypto: ICrypto
+  host: IHostRow<Handle>,
+  crypto: ICrypto,
 ): Promise<void> {
   const bags: any[] = [];
   const remoteToLocalHash: Map<string, string> = new Map();
@@ -59,7 +64,7 @@ export async function syncPush<Handle extends HostHandle>(
     const msg: any = { ...storedMsg.head, bod: storedMsg.body };
     const bag = await conn.seal(msg);
     bags.push(bag);
-    const headCphHash = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
+    const headCphHash = await crypto.sha256Hash(bag.headCph) as Hash;
     remoteToLocalHash.set(btoh(headCphHash), btoh(msgHeadEncHash));
   }
   if (bags.length > 0) {
@@ -87,8 +92,8 @@ export async function syncPull<Handle extends HostHandle>(
   conn: DiplomaticClientAPI<Handle>,
   store: IStore<Handle>,
   enclave: Enclave,
-  host: IHostConnectionInfo<Handle>,
-  crypto: ICrypto
+  host: IHostRow<Handle>,
+  crypto: ICrypto,
 ): Promise<void> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
@@ -119,8 +124,15 @@ export async function syncPull<Handle extends HostHandle>(
       continue;
     }
 
-    const body = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(bodyCph, key) as any;
-    const hashChk = await libsodiumCrypto.blake3(body);
+    let body: any;
+    try {
+      body = await crypto.decryptXSalsa20Poly1305Combined(bodyCph, key) as any;
+    } catch {
+      // Decryption failed, skip
+      dls.delete(btoh(hash));
+      continue;
+    }
+    const hashChk = await crypto.blake3(body);
     if (uint8ArraysEqual(head.hsh, hashChk) !== true) {
       // TODO: handle better than just removing d/l.
       dls.delete(btoh(hash));

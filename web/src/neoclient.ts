@@ -5,9 +5,9 @@ import { IClock } from "./shared/clock";
 import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
-import { EntityID, HostHandle, IHostConnectionInfo, ITransport } from "./shared/types";
+import { EntityID, HostHandle, ICrypto, IHostConnectionInfo, ITransport } from "./shared/types";
 import { StateManager } from "./state";
-import { syncConnection, syncPeek, syncPull, syncPush } from "./sync";
+import { syncPeek, syncPull, syncPush } from "./sync";
 import { IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IStoredMessage } from "./types";
 
 export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {

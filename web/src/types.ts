@@ -96,6 +96,11 @@ export interface IUploadQueue {
   count: () => Promise<number>;
 }
 
+export interface IDeltaListItem {
+  sha256: Uint8Array;
+  recordedAt: Date;
+}
+
 export interface IDownloadMessage {
   kdm: Uint8Array;
   hash: Hash;

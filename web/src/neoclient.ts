@@ -21,6 +21,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     private state: StateManager,
     private store: IStore<Handle>,
     private transport: ITransport,
+    private crypto: ICrypto = libsodiumCrypto,
   ) {
     this.clientState = new StateEmitter(() => this.getClientState());
     this.xferState = new StateEmitter(() => this.getXferState());
@@ -48,7 +49,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
-    const hash = await libsodiumCrypto.blake3(headEnc);
+    const hash = await this.crypto.blake3(headEnc);
     const msg: IStoredMessage = { hash, head, body };
     // NOTE: important to enqueue upload before storing it.
     await this.store.uploads.enq([hash]);
@@ -57,7 +58,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async insert(body: EncodedMessage) {
     const clk = this.clock.now();
-    const head = await genInsertHead(clk, body, libsodiumCrypto);
+    const head = await genInsertHead(clk, body, this.crypto);
     await this.apply(head, body);
   }
 
@@ -78,7 +79,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async sync() {
-    const { clock, connections, store } = this;
+    const { clock, connections, crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
@@ -89,9 +90,9 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      await syncPeek(conn, store, enclave, host);
-      await syncPush(conn, store);
-      await syncPull(conn, store, enclave, host);
+      await syncPeek(conn, store, enclave, clock, host, crypto);
+      await syncPush(conn, store, enclave, clock, host, crypto);
+      await syncPull(conn, store, enclave, host, crypto);
     }
   }
 

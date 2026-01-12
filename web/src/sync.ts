@@ -1,12 +1,13 @@
 import libsodiumCrypto from './crypto';
 import { btoh, htob, uint8ArraysEqual } from './shared/binary';
 import DiplomaticClientAPI from './shared/client';
+import { IClock } from './shared/clock';
 import { Decoder } from './shared/codec';
 import { messageHeadCodec } from './shared/codecs/messageHead';
 import { peekItemHeadCodec } from './shared/codecs/peekItemHead';
 import { Status } from "./shared/consts";
 import { Enclave } from './shared/enclave';
-import { Hash, HostHandle } from './shared/types';
+import { Hash, HostHandle, ICrypto, IHostConnectionInfo } from './shared/types';
 import { IDownloadMessage, IHostRow, IStore } from './types';
 
 // Phase 1: Peek for new items and enqueue downloads
@@ -14,7 +15,9 @@ export async function syncPeek<Handle extends HostHandle>(
   conn: DiplomaticClientAPI<Handle>,
   store: IStore<Handle>,
   enclave: Enclave,
-  host: IHostRow<Handle>
+  clock: IClock,
+  host: IHostRow<Handle>,
+  crypto: ICrypto
 ): Promise<void> {
   const hostKeys = await conn.keys();
   const dls: IDownloadMessage[] = [];
@@ -41,6 +44,10 @@ export async function syncPeek<Handle extends HostHandle>(
 export async function syncPush<Handle extends HostHandle>(
   conn: DiplomaticClientAPI<Handle>,
   store: IStore<Handle>,
+  enclave: Enclave,
+  clock: IClock,
+  host: IHostConnectionInfo<Handle>,
+  crypto: ICrypto
 ): Promise<void> {
   const bags: any[] = [];
   const remoteToLocalHash: Map<string, string> = new Map();
@@ -55,21 +62,23 @@ export async function syncPush<Handle extends HostHandle>(
     const headCphHash = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
     remoteToLocalHash.set(btoh(headCphHash), btoh(msgHeadEncHash));
   }
-  const results = await conn.push(bags);
+  if (bags.length > 0) {
+    const results = await conn.push(bags);
 
-  // Remove successful uploads from queue.
-  for (const item of results) {
-    if (item.status !== Status.Success) {
-      // TODO: handle errors, some of which may be non-retryable.
-      continue;
+    // Remove successful uploads from queue.
+    for (const item of results) {
+      if (item.status !== Status.Success) {
+        // TODO: handle errors, some of which may be non-retryable.
+        continue;
+      }
+      // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
+      const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
+      if (!msgHeadEncHashHex) {
+        continue;
+      }
+      const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;
+      await store.uploads.deq([msgHeadEncHash]);
     }
-    // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
-    const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
-    if (!msgHeadEncHashHex) {
-      continue;
-    }
-    const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;
-    await store.uploads.deq([msgHeadEncHash]);
   }
 }
 
@@ -78,7 +87,8 @@ export async function syncPull<Handle extends HostHandle>(
   conn: DiplomaticClientAPI<Handle>,
   store: IStore<Handle>,
   enclave: Enclave,
-  host: IHostRow<Handle>
+  host: IHostConnectionInfo<Handle>,
+  crypto: ICrypto
 ): Promise<void> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();

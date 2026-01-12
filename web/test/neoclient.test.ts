@@ -2,7 +2,7 @@ import { expect, test, vi, describe, beforeEach } from 'vitest'
 import { NeoClient } from '../src/neoclient'
 import { MemoryStore } from '../src/stores/memory/store'
 import { StateManager } from '../src/state'
-import type { Hash, IHostConnectionInfo, IProtoHost } from '../src/shared/types'
+import type { Hash, IHostConnectionInfo, IProtoHost, MasterSeed } from '../src/shared/types'
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from '../src/shared/storage/memory'
 import libsodiumCrypto from '../src/crypto'
@@ -13,6 +13,7 @@ import { btoh, uint8ArraysEqual } from '../src/shared/binary'
 import { hostKeys } from '../src/shared/endpoint'
 import { IDownloadMessage } from '../src/types'
 import { sealBag } from '../src/shared/bag'
+import { fail } from 'assert'
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage as any,
@@ -119,6 +120,9 @@ describe('NeoClient', () => {
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(1);
       const msg = messages[0];
+      if (!msg.body) {
+        fail("No body");
+      }
       expect(uint8ArraysEqual(body, msg.body)).toBeTruthy();
       expect(msg.head.ctr).toBe(0);
       expect(msg.head.len).toBe(body.length);
@@ -196,6 +200,9 @@ describe('NeoClient', () => {
       await client.connect();
 
       const host = await store.hosts.get('test');
+      if (!host) {
+        fail("No host");
+      }
       host.lastSyncedAt = new Date(0);
 
       // Manually add a message to the host storage
@@ -218,40 +225,40 @@ describe('NeoClient', () => {
       await client.sync();
 
       // Verify download was cleared and message was stored
-       expect(await store.downloads.count()).toBe(0);
-       expect(Array.from(await store.messages.list()).length).toBe(1);
-     });
+      expect(await store.downloads.count()).toBe(0);
+      expect(Array.from(await store.messages.list()).length).toBe(1);
+    });
 
-     test('syncs between two clients', async () => {
-       // Generate shared seed for both clients (single-user system)
-       const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+    test('syncs between two clients', async () => {
+      // Generate shared seed for both clients (single-user system)
+      const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as MasterSeed;
 
-       // Create clientA (pusher)
-       const { store: storeA, client: clientA } = await createClient(lpcHost.clock);
-       await storeA.seed.save(masterSeed);
-       await clientA.link(testHost);
-       await clientA.connect(false); // no listen
+      // Create clientA (pusher)
+      const { store: storeA, client: clientA } = await createClient(lpcHost.clock);
+      await storeA.seed.save(masterSeed);
+      await clientA.link(testHost);
+      await clientA.connect(false); // no listen
 
-       // Create clientB (puller)
-       const { store: storeB, client: clientB } = await createClient(lpcHost.clock);
-       await storeB.seed.save(masterSeed);
-       await clientB.link(testHost);
-       await clientB.connect(false); // no listen
+      // Create clientB (puller)
+      const { store: storeB, client: clientB } = await createClient(lpcHost.clock);
+      await storeB.seed.save(masterSeed);
+      await clientB.link(testHost);
+      await clientB.connect(false); // no listen
 
-       // ClientA inserts a message and syncs (pushes to host)
-       const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
-       await clientA.insert(testMessage);
-       await clientA.sync();
+      // ClientA inserts a message and syncs (pushes to host)
+      const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
+      await clientA.insert(testMessage);
+      await clientA.sync();
 
-       // ClientB syncs (pulls from host)
-       await clientB.sync();
+      // ClientB syncs (pulls from host)
+      await clientB.sync();
 
-       // Verify the message was synced to clientB
-       const messages = Array.from(await storeB.messages.list());
-       expect(messages.length).toBe(1);
-       expect(messages[0].body).toEqual(testMessage);
-     });
-   });
+      // Verify the message was synced to clientB
+      const messages = Array.from(await storeB.messages.list());
+      expect(messages.length).toBe(1);
+      expect(messages[0].body).toEqual(testMessage);
+    });
+  });
 });
 
 describe('push notifications', () => {

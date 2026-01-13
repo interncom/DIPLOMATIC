@@ -1,7 +1,5 @@
 import { SyncClient } from "./client";
 import libsodiumCrypto from "./crypto";
-import InitSeedView from "./react/initSeedView";
-import ClientStatusBar from "./react/statusBar";
 import {
   useClientState,
   useClientXferState,
@@ -19,9 +17,8 @@ import type { IDiplomaticClientState } from "./types";
 
 export {
   btoh,
-  ClientStatusBar, htob,
+  htob,
   idbStore,
-  InitSeedView,
   libsodiumCrypto,
   localStorageStore,
   StateManager, SyncClient, useClientState,

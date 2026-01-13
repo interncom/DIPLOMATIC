@@ -26,7 +26,10 @@ export class TypedEventEmitter<T> {
   }
 
   // Remove an event listener
-  public removeEventListener(eventType: string, listener: TypedListener<T>): void {
+  public removeEventListener(
+    eventType: string,
+    listener: TypedListener<T>,
+  ): void {
     const listenerSet = this.listeners.get(eventType);
     if (listenerSet) {
       listenerSet.delete(listener);
@@ -68,6 +71,6 @@ export class StateEmitter<T> implements IStateEmitter<T> {
     this.emitter.addEventListener(StateEmitter.eventName, func);
     return () => {
       this.emitter.removeEventListener(StateEmitter.eventName, func);
-    }
+    };
   }
 }

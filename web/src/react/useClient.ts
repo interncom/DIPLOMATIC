@@ -6,7 +6,9 @@ import type {
   IDiplomaticClientXferState,
 } from "../types";
 
-export function useClientState<Handle extends HostHandle>(client: SyncClient<Handle>) {
+export function useClientState<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   const [state, setState] = useState<IDiplomaticClientState>();
   useEffect(() => {
     async function updateState() {
@@ -22,7 +24,9 @@ export function useClientState<Handle extends HostHandle>(client: SyncClient<Han
   return state;
 }
 
-export function useClientXferState<Handle extends HostHandle>(client: SyncClient<Handle>) {
+export function useClientXferState<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   const [state, setState] = useState<IDiplomaticClientXferState>();
   useEffect(() => {
     async function updateState() {
@@ -38,7 +42,9 @@ export function useClientXferState<Handle extends HostHandle>(client: SyncClient
   return state;
 }
 
-export function useSyncOnResume<Handle extends HostHandle>(client: SyncClient<Handle>) {
+export function useSyncOnResume<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   useEffect(() => {
     async function handleOnline() {
       await client.connect();

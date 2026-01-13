@@ -11,7 +11,8 @@
   "scripts": {
     "tsc": "tsc",
     "build": "node esbuild.mjs",
-    "test": "vitest"
+    "test": "vitest",
+    "fmt": "deno fmt"
   },
   "author": "The Internet Committee",
   "license": "ISC",

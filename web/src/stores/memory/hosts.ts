@@ -1,7 +1,8 @@
 import { HostHandle, IHostConnectionInfo } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 
-export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
+export class MemoryHostStore<Handle extends HostHandle>
+  implements IHostStore<Handle> {
   hosts = new Map<string, IHostRow<Handle>>();
 
   async add(info: IHostConnectionInfo<Handle>) {
@@ -10,7 +11,7 @@ export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Ha
       lastSyncedAt: new Date(0),
     };
     this.hosts.set(info.label, host);
-  };
+  }
 
   async get(label: string) {
     return this.hosts.get(label);
@@ -26,5 +27,5 @@ export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Ha
 
   async wipe() {
     this.hosts.clear();
-  };
+  }
 }

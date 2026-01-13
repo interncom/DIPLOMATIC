@@ -1,4 +1,4 @@
-import { min, max } from "../lib";
+import { max, min } from "../lib";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
 
@@ -20,9 +20,12 @@ const nullEnt: IEntity<undefined> = {
   updatedAt: new Date(0),
   createdAt: new Date(0),
   body: undefined,
-}
+};
 
-export interface IDateRange { start: Date, end: Date }
+export interface IDateRange {
+  start: Date;
+  end: Date;
+}
 
 export type EntitiesQuery = {
   type: string;
@@ -35,11 +38,16 @@ export interface IEntDB {
   apply: (op: IOp) => Promise<Status>;
   clear: () => Promise<Status>;
   getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>>;
-  getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<ValStat<IEntity<T>[]>>;
+  getEntities<T>(
+    { type, gid, pid, updatedBetween }: EntitiesQuery,
+  ): Promise<ValStat<IEntity<T>[]>>;
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
 }
 
-export function updateEnt(curr: IEntity<unknown> | undefined, op: IOp): [IEntity<unknown>, Status] {
+export function updateEnt(
+  curr: IEntity<unknown> | undefined,
+  op: IOp,
+): [IEntity<unknown>, Status] {
   if (curr && curr.createdAt < op.ts && curr.updatedAt > op.ts) {
     return [nullEnt, Status.NoChange];
   }
@@ -65,7 +73,9 @@ export function updateEnt(curr: IEntity<unknown> | undefined, op: IOp): [IEntity
     }
   }
 
-  const isOpNewer = !curr || op.ts > curr.updatedAt || (op.ts.getTime() === curr.updatedAt.getTime() && op.ctr > (curr.updatedCtr ?? 0));
+  const isOpNewer = !curr || op.ts > curr.updatedAt ||
+    (op.ts.getTime() === curr.updatedAt.getTime() &&
+      op.ctr > (curr.updatedCtr ?? 0));
   const body = isOpNewer ? op.body : curr.body;
 
   const ent: IEntity<unknown> = {
@@ -77,7 +87,7 @@ export function updateEnt(curr: IEntity<unknown> | undefined, op: IOp): [IEntity
     updatedAt: new Date(updatedTs),
     updatedCtr,
     body,
-  }
+  };
 
   return [ent, Status.Success];
 }

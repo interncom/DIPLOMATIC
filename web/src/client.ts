@@ -4,10 +4,30 @@ import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
-import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
-import { EntityID, HostHandle, ICrypto, IHostConnectionInfo, ITransport } from "./shared/types";
+import {
+  EncodedMessage,
+  genDeleteHead,
+  genInsertHead,
+  genUpsertHead,
+  IMessageHead,
+} from "./shared/message";
+import {
+  EntityID,
+  HostHandle,
+  ICrypto,
+  IHostConnectionInfo,
+  ITransport,
+} from "./shared/types";
 import { syncPeek, syncPull, syncPush } from "./sync";
-import { IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStateManager, IStore, IStoredMessage } from "./types";
+import {
+  IClient,
+  IDiplomaticClientState,
+  IDiplomaticClientXferState,
+  IStateEmitter,
+  IStateManager,
+  IStore,
+  IStoredMessage,
+} from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -34,7 +54,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
       connected: false, // TODO
-    }
+    };
   }
 
   private async getXferState(): Promise<IDiplomaticClientXferState> {
@@ -129,11 +149,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     const hosts = await store.hosts.list();
     for (const host of hosts) {
-      const conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
+      const conn = new DiplomaticClientAPI(
+        enclave,
+        libsodiumCrypto,
+        host,
+        clock,
+        transport,
+      );
       await conn.register();
       if (listen) {
         const recv = (data: Uint8Array) => {
-          this.sync().catch(err => console.error('Sync failed:', err));
+          this.sync().catch((err) => console.error("Sync failed:", err));
         };
         await conn.listen(recv);
       }

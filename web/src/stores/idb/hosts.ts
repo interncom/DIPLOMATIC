@@ -2,7 +2,8 @@ import { HostHandle, IHostConnectionInfo } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 import { type IDBPDatabase } from "idb";
 
-export class IDBHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
+export class IDBHostStore<Handle extends HostHandle>
+  implements IHostStore<Handle> {
   db: IDBPDatabase<any>;
 
   constructor(db: IDBPDatabase) {

@@ -5,7 +5,7 @@ import { IDBHostStore } from "./hosts";
 import { IDBMessageStore } from "./msgs";
 import { IDBSeedStore } from "./seed";
 import { IDBUploadQueue } from "./uplds";
-import { type DBSchema, openDB, type IDBPDatabase } from "idb";
+import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { IHostRow, IStoredMessage } from "../../types";
 import { IDownloadMessage } from "../../types";
 

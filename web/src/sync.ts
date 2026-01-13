@@ -1,13 +1,13 @@
-import { btoh, htob, uint8ArraysEqual } from './shared/binary';
-import DiplomaticClientAPI from './shared/client';
-import { IClock } from './shared/clock';
-import { Decoder } from './shared/codec';
-import { messageHeadCodec } from './shared/codecs/messageHead';
-import { peekItemHeadCodec } from './shared/codecs/peekItemHead';
+import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
+import DiplomaticClientAPI from "./shared/client";
+import { IClock } from "./shared/clock";
+import { Decoder } from "./shared/codec";
+import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
-import { Enclave } from './shared/enclave';
-import { Hash, HostHandle, ICrypto, IHostConnectionInfo } from './shared/types';
-import { IDownloadMessage, IHostRow, IStore } from './types';
+import { Enclave } from "./shared/enclave";
+import { Hash, HostHandle, ICrypto, IHostConnectionInfo } from "./shared/types";
+import { IDownloadMessage, IHostRow, IStore } from "./types";
 
 // Phase 1: Peek for new items and enqueue downloads
 export async function syncPeek<Handle extends HostHandle>(
@@ -24,7 +24,11 @@ export async function syncPeek<Handle extends HostHandle>(
   for (const item of items) {
     const dec = new Decoder(item.headCph);
     const { sig, kdm, headCph } = dec.readStruct(peekItemHeadCodec);
-    const valid = await crypto.checkSigEd25519(sig, headCph, hostKeys.publicKey);
+    const valid = await crypto.checkSigEd25519(
+      sig,
+      headCph,
+      hostKeys.publicKey,
+    );
     if (!valid) {
       // TODO: handle error non-silently.
       continue;
@@ -97,7 +101,7 @@ export async function syncPull<Handle extends HostHandle>(
 ): Promise<void> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
-  const items = Array.from(allItems).filter(i => i.host === host.label);
+  const items = Array.from(allItems).filter((i) => i.host === host.label);
   const hshs: Hash[] = [];
   for (const item of items) {
     dls.set(btoh(item.hash), item);
@@ -112,7 +116,9 @@ export async function syncPull<Handle extends HostHandle>(
 
     const key = await enclave.deriveFromKDM(dl.kdm);
     const { head } = dl;
-    if (head.hsh === undefined && (bodyCph === undefined || bodyCph.length === 0)) {
+    if (
+      head.hsh === undefined && (bodyCph === undefined || bodyCph.length === 0)
+    ) {
       await store.messages.add([{ hash, head }]);
       dls.delete(btoh(hash));
       continue;

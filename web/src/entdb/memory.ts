@@ -1,13 +1,16 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { IEntity, IEntDB } from "./entdb";
+import { IEntDB, IEntity } from "./entdb";
 import { uint8ArraysEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
 import { updateEnt } from "./entdb";
 
-interface IDateRange { start: Date, end: Date }
+interface IDateRange {
+  start: Date;
+  end: Date;
+}
 
 type EntitiesQuery = {
   type: string;
@@ -40,7 +43,9 @@ export class EntDBMemory implements IEntDB {
     return [ent, Status.Success];
   }
 
-  async getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<ValStat<IEntity<T>[]>> {
+  async getEntities<T>(
+    { type, gid, pid, updatedBetween }: EntitiesQuery,
+  ): Promise<ValStat<IEntity<T>[]>> {
     const results: IEntity<T>[] = [];
     if (pid !== undefined) {
       for (const ent of this.ents.values()) {
@@ -50,13 +55,21 @@ export class EntDBMemory implements IEntDB {
       }
     } else if (gid !== undefined) {
       for (const ent of this.ents.values()) {
-        if (ent.type === type && ((typeof ent.gid === 'string' && ent.gid === gid) || (ent.gid instanceof Uint8Array && gid instanceof Uint8Array && uint8ArraysEqual(ent.gid, gid)))) {
+        if (
+          ent.type === type &&
+          ((typeof ent.gid === "string" && ent.gid === gid) ||
+            (ent.gid instanceof Uint8Array && gid instanceof Uint8Array &&
+              uint8ArraysEqual(ent.gid, gid)))
+        ) {
           results.push(ent as IEntity<T>);
         }
       }
     } else if (updatedBetween !== undefined) {
       for (const ent of this.ents.values()) {
-        if (ent.type === type && ent.updatedAt >= updatedBetween.start && ent.updatedAt <= updatedBetween.end) {
+        if (
+          ent.type === type && ent.updatedAt >= updatedBetween.start &&
+          ent.updatedAt <= updatedBetween.end
+        ) {
           results.push(ent as IEntity<T>);
         }
       }

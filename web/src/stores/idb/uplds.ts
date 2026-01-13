@@ -2,6 +2,7 @@ import { btoh, htob } from "../../shared/binary";
 import { Hash } from "../../shared/types";
 import { IUploadQueue } from "../../types";
 import { type IDBPDatabase } from "idb";
+import { UPLOAD_QUEUE_TABLE } from "./store";
 
 export class IDBUploadQueue implements IUploadQueue {
   db: IDBPDatabase<any>;
@@ -13,27 +14,27 @@ export class IDBUploadQueue implements IUploadQueue {
   async enq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
       const hex = btoh(hash);
-      await this.db.put("uploadQueue", null, hex);
+      await this.db.put(UPLOAD_QUEUE_TABLE, null, hex);
     }
   }
 
   async deq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
       const hex = btoh(hash);
-      await this.db.delete("uploadQueue", hex);
+      await this.db.delete(UPLOAD_QUEUE_TABLE, hex);
     }
   }
 
   async list() {
-    const hexes = await this.db.getAllKeys("uploadQueue");
+    const hexes = await this.db.getAllKeys(UPLOAD_QUEUE_TABLE);
     return hexes.map((hex) => htob(hex as string)) as Hash[];
   }
 
   async count() {
-    return await this.db.count("uploadQueue");
+    return await this.db.count(UPLOAD_QUEUE_TABLE);
   }
 
   async wipe() {
-    return this.db.clear("uploadQueue");
+    return this.db.clear(UPLOAD_QUEUE_TABLE);
   }
 }

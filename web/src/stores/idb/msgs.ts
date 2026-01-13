@@ -2,6 +2,7 @@ import { btoh, uint8ArraysEqual } from "../../shared/binary";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage } from "../../types";
 import { type IDBPDatabase } from "idb";
+import { MESSAGES_TABLE } from "./store";
 
 export class IDBMessageStore implements IMessageStore {
   db: IDBPDatabase<any>;
@@ -13,36 +14,36 @@ export class IDBMessageStore implements IMessageStore {
   async add(msgs: Iterable<IStoredMessage>) {
     for (const msg of msgs) {
       const hex = btoh(msg.hash);
-      await this.db.put("messages", msg, hex);
+      await this.db.put(MESSAGES_TABLE, msg, hex);
     }
   }
 
   async del(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
       const hex = btoh(hash);
-      await this.db.delete("messages", hex);
+      await this.db.delete(MESSAGES_TABLE, hex);
     }
   }
 
   async get(hash: Hash) {
     const hex = btoh(hash);
-    return await this.db.get("messages", hex);
+    return await this.db.get(MESSAGES_TABLE, hex);
   }
 
   async has(hash: Hash) {
     const hex = btoh(hash);
-    const msg = await this.db.get("messages", hex);
+    const msg = await this.db.get(MESSAGES_TABLE, hex);
     return msg !== undefined;
   }
 
   async list() {
-    return await this.db.getAll("messages");
+    return await this.db.getAll(MESSAGES_TABLE);
   }
 
   // last returns the stored message with given eid and highest ctr.
   async last(eid: EntityID) {
     let latest: IStoredMessage | undefined;
-    const allMsgs = await this.db.getAll("messages");
+    const allMsgs = await this.db.getAll(MESSAGES_TABLE);
     for (const msg of allMsgs) {
       if (uint8ArraysEqual(eid, msg.head.eid) === false) {
         continue;
@@ -55,6 +56,6 @@ export class IDBMessageStore implements IMessageStore {
   }
 
   async wipe() {
-    return this.db.clear("messages");
+    return this.db.clear(MESSAGES_TABLE);
   }
 }

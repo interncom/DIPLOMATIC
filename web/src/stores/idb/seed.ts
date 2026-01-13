@@ -4,6 +4,7 @@ import { MasterSeed } from "../../shared/types";
 import { ISeedStore } from "../../types";
 import { type IDBPDatabase } from "idb";
 import { btoh, htob } from "../../shared/binary";
+import { SEED_META_TABLE } from "./store";
 
 export class IDBSeedStore implements ISeedStore {
   enclave?: Enclave;
@@ -15,7 +16,7 @@ export class IDBSeedStore implements ISeedStore {
 
   async save(seed: MasterSeed) {
     const hex = btoh(seed);
-    await this.db.put("seedMeta", hex, "seed");
+    await this.db.put(SEED_META_TABLE, hex, "seed");
     this.enclave = new Enclave(seed, libsodiumCrypto);
     return this.enclave;
   }
@@ -24,7 +25,7 @@ export class IDBSeedStore implements ISeedStore {
     if (this.enclave) {
       return this.enclave;
     }
-    const hex = await this.db.get("seedMeta", "seed");
+    const hex = await this.db.get(SEED_META_TABLE, "seed");
     if (!hex) {
       return;
     }
@@ -35,6 +36,6 @@ export class IDBSeedStore implements ISeedStore {
 
   async wipe() {
     this.enclave = undefined;
-    await this.db.delete("seedMeta", "seed");
+    await this.db.delete(SEED_META_TABLE, "seed");
   }
 }

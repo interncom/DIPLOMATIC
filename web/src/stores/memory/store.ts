@@ -12,4 +12,12 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
   uploads = new MemoryUploadQueue();
   downloads = new MemoryDownloadQueue();
   messages = new MemoryMessageStore();
+
+  async wipe() {
+    await this.seed.wipe();
+    await this.hosts.wipe();
+    await this.uploads.wipe();
+    await this.downloads.wipe();
+    await this.messages.wipe();
+  }
 }

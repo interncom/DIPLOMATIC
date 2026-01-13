@@ -32,4 +32,8 @@ export class IDBUploadQueue implements IUploadQueue {
   async count() {
     return await this.db.count("uploadQueue");
   }
+
+  async wipe() {
+    return this.db.clear("uploadQueue");
+  }
 }

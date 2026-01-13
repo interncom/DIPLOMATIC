@@ -45,4 +45,8 @@ export class MemoryMessageStore implements IMessageStore {
     }
     return latest;
   }
+
+  async wipe() {
+    this.messages.clear();
+  }
 }

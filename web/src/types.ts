@@ -60,6 +60,7 @@ export interface IUploadQueue {
   deq: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<Hash>>;
   count: () => Promise<number>;
+  wipe(): Promise<void>;
 }
 
 export interface IDeltaListItem {
@@ -78,6 +79,7 @@ export interface IDownloadQueue {
   deq: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IDownloadMessage>>;
   count: () => Promise<number>;
+  wipe(): Promise<void>;
 }
 
 export interface IStoredMessage {
@@ -92,6 +94,7 @@ export interface IMessageStore {
   del: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
+  wipe(): Promise<void>;
 }
 
 export interface IStore<Handle extends HostHandle> {
@@ -100,6 +103,7 @@ export interface IStore<Handle extends HostHandle> {
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
+  wipe(): Promise<void>;
 }
 
 type UnlistenFunc = () => void;

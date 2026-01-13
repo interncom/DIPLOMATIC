@@ -121,7 +121,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async wipe() {
-    // TODO: implement (with precautions).
+    await this.disconnect();
+    await this.store.wipe();
+    this.clientState.emit();
+    this.xferState.emit();
   }
 
   public async import(file: File) {

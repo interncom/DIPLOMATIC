@@ -30,4 +30,8 @@ export class MemoryDownloadQueue implements IDownloadQueue {
   async count() {
     return this.queue.size;
   }
+
+  async wipe() {
+    this.queue.clear();
+  }
 }

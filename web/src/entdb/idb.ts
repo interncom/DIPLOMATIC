@@ -3,7 +3,7 @@
 
 import { type DBSchema, IDBPDatabase, openDB } from "idb";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, INeoOp } from "../shared/types";
+import { EntityID, GroupID, INeoOp, ValStat } from "../shared/types";
 import { IEntity, updateEnt, IEntDB, EntitiesQuery } from "./entdb";
 
 export const entityTableName = "entities";
@@ -83,15 +83,12 @@ export class EntIDB implements IEntDB {
     return Status.Success;
   }
 
-  async getEnt<T>(eid: EntityID): Promise<IEntity<T> | undefined> {
+  async getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>> {
     if (!this.db) {
-      return;
+      return [undefined, Status.DatabaseClosed];
     }
     const ent = await this.db.get(entityTableName, eid);
-    if (!ent) {
-      return;
-    }
-    return ent as IEntity<T>;
+    return [ent as IEntity<T> | undefined, Status.Success];
   }
 
   async getAllOfTypeUpdatedBetween<T>(
@@ -134,34 +131,37 @@ export class EntIDB implements IEntDB {
     ) as Promise<IEntity<T>[]>;
   }
 
-  async getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<IEntity<T>[]> {
+  async getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
-      return [];
+      return [[], Status.DatabaseClosed];
     }
     if (pid !== undefined) {
-      return this.db.getAllFromIndex(
+      const ents = await this.db.getAllFromIndex(
         entityTableName,
         typeParentIndexName,
         IDBKeyRange.only([type, pid]),
-      ) as Promise<IEntity<T>[]>;
+      ) as IEntity<T>[];
+      return [ents, Status.Success];
+    } else if (gid !== undefined) {
+      const ents = await this.getGroupMembers<T>(type, gid);
+      return [ents, Status.Success];
+    } else if (updatedBetween !== undefined) {
+      const ents = await this.getAllOfTypeUpdatedBetween<T>(type, updatedBetween.start, updatedBetween.end);
+      return [ents, Status.Success];
     }
-    if (gid !== undefined) {
-      return this.getGroupMembers(type, gid);
-    }
-    if (updatedBetween !== undefined) {
-      return this.getAllOfTypeUpdatedBetween(type, updatedBetween.start, updatedBetween.end);
-    }
-    return this.getAllOfType(type);
+    const ents = await this.getAllOfType<T>(type);
+    return [ents, Status.Success];
   }
 
-  async countEntities({ type }: { type: string }): Promise<number> {
+  async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
     if (!this.db) {
-      return 0;
+      return [0, Status.DatabaseClosed];
     }
-    return this.db.countFromIndex(
+    const count = await this.db.countFromIndex(
       entityTableName,
       typeIndexName,
       IDBKeyRange.bound([type], [type, []]),
     );
+    return [count, Status.Success];
   }
 }

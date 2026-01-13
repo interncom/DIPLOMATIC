@@ -9,6 +9,8 @@ export enum Verb {
   UPSERT = 1,
 }
 
+export type ValStat<T> = [T, Status];
+
 // Body types are application-specific.
 type Timestamp = string;
 export type GroupID = Uint8Array | string;

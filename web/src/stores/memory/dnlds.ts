@@ -5,8 +5,6 @@ import { IDownloadMessage, IDownloadQueue } from "../../types";
 export class MemoryDownloadQueue implements IDownloadQueue {
   queue = new Map<string, IDownloadMessage>();
 
-  async init() { }
-
   async enq(msgs: Iterable<IDownloadMessage>) {
     for (const msg of msgs) {
       const hex = btoh(msg.hash);

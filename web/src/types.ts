@@ -30,7 +30,6 @@ export type Applier = (op: IOp) => Promise<Status>;
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {
-  init: () => Promise<void>;
   save: (seed: MasterSeed) => Promise<Enclave>;
   load: () => Promise<Enclave | void>;
   wipe: () => Promise<void>;
@@ -42,7 +41,6 @@ export interface IHostRow<Handle extends HostHandle> extends IHostConnectionInfo
 
 // IHostStore handles persistence of hosts table.
 export interface IHostStore<Handle extends HostHandle> {
-  init: () => Promise<void>;
   add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
   get: (label: string) => Promise<IHostRow<Handle> | undefined>;
   del: (label: string) => Promise<void>;
@@ -57,7 +55,6 @@ export interface IHostStore<Handle extends HostHandle> {
 // So in this context, hash means blake3 hash of encoded message header.
 
 export interface IUploadQueue {
-  init: () => Promise<void>;
   enq: (hshs: Iterable<Hash>) => Promise<void>;
   deq: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<Hash>>;
@@ -76,7 +73,6 @@ export interface IDownloadMessage {
   host: string;
 }
 export interface IDownloadQueue {
-  init: () => Promise<void>;
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
   deq: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IDownloadMessage>>;
@@ -89,7 +85,6 @@ export interface IStoredMessage {
   body?: EncodedMessage;
 }
 export interface IMessageStore {
-  init: () => Promise<void>;
   add: (msgs: Iterable<IStoredMessage>) => Promise<void>;
   get: (hash: Hash) => Promise<IStoredMessage | undefined>;
   has: (hash: Hash) => Promise<boolean>;
@@ -99,7 +94,6 @@ export interface IMessageStore {
 }
 
 export interface IStore<Handle extends HostHandle> {
-  init: () => Promise<void>;
   seed: ISeedStore;
   hosts: IHostStore<Handle>;
   uploads: IUploadQueue;

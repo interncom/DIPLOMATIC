@@ -33,7 +33,6 @@ const testHost: IHostConnectionInfo<IProtoHost> = {
 
 const createClient = async (clock = mockClock) => {
   const store = new MemoryStore<IProtoHost>();
-  await store.init();
   const state: IStateManager = {
     async apply(msg) { return Status.Success },
     on(type, listener) { },

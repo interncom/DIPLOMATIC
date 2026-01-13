@@ -36,7 +36,6 @@ beforeEach(() => {
 
 const createClient = async (seed: Uint8Array) => {
   const store = new MemoryStore<any>();
-  await store.init();
   const state: IStateManager = {
     async apply(msg) { return Status.Success },
     on(type, listener) { },

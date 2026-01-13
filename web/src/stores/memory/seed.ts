@@ -6,8 +6,6 @@ import { ISeedStore } from "../../types";
 export class MemorySeedStore implements ISeedStore {
   enclave?: Enclave;
 
-  async init() { }
-
   async save(seed: MasterSeed) {
     this.enclave = new Enclave(seed, libsodiumCrypto);
     return this.enclave;

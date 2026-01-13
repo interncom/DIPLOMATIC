@@ -15,6 +15,7 @@ export interface IEntity<T> {
   pid?: EntityID; // Parent entity ID. Not necessarily of same type.
   type: string;
   updatedAt: Date;
+  updatedCtr: number;
   createdAt: Date;
   body: T;
 }
@@ -76,6 +77,7 @@ export const applier: Applier = async (op: IOp) => {
           type: op.type,
           createdAt: curr?.createdAt ?? new Date(),
           updatedAt: new Date(op.ts),
+          updatedCtr: 0, // No ctr in IOp, default to 0
           body: op.body,
         });
       }

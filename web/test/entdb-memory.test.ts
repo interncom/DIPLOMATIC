@@ -26,7 +26,8 @@ describe('EntDBMemory.apply()', () => {
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
         gid: 'group1',
@@ -59,18 +60,20 @@ describe('EntDBMemory.apply()', () => {
         ctr: 2,
         eid,
         gid: 'group2',
-        type: 'updated',
+        pid: new Uint8Array(16).fill(3),
+        type: 'test2',
         body: { data: 'new' },
       };
       const result = await db.apply(newOp);
       expect(result).toBe(Status.Success);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
         gid: 'group2',
-        pid: undefined,
-        type: 'updated',
+        pid: new Uint8Array(16).fill(3),
+        type: 'test2',
         createdAt: new Date(1000), // min of 1000 and 2000
         updatedAt: new Date(2000), // max
         updatedCtr: 2,
@@ -103,7 +106,8 @@ describe('EntDBMemory.apply()', () => {
       const result = await db.apply(oldOp);
       expect(result).toBe(Status.Success); // Since 2000 < 1500 false, it proceeds
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'new' }); // keeps new body since updatedAt 2000 > 1500
       expect(entity?.createdAt).toEqual(new Date(1500)); // min
       expect(entity?.updatedAt).toEqual(new Date(2000)); // max
@@ -139,7 +143,8 @@ describe('EntDBMemory.apply()', () => {
       const result = await db.apply(op);
       expect(result).toBe(Status.NoChange);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'updated' }); // unchanged
       expect(entity?.createdAt).toEqual(new Date(1000));
       expect(entity?.updatedAt).toEqual(new Date(2000));
@@ -168,7 +173,8 @@ describe('EntDBMemory.apply()', () => {
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'same time' }); // since updatedAt == op.ts and op.ctr > curr.updatedCtr, takes op.body
       expect(entity?.createdAt).toEqual(new Date(1000));
       expect(entity?.updatedAt).toEqual(new Date(1000));
@@ -195,7 +201,8 @@ describe('EntDBMemory.apply()', () => {
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'new' }); // since updatedAt > op.ts
       expect(entity?.createdAt).toEqual(new Date(500)); // min
       expect(entity?.updatedAt).toEqual(new Date(1000)); // max
@@ -227,7 +234,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.gid).toBe('newgroup');
       expect(entity?.pid).toEqual(new Uint8Array(16).fill(4));
       expect(entity?.type).toBe('newtype');
@@ -257,7 +265,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.gid).toBe('currgroup');
       expect(entity?.pid).toEqual(new Uint8Array(16).fill(5));
       expect(entity?.type).toBe('currtype');
@@ -286,7 +295,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toBeUndefined();
       expect(entity?.updatedCtr).toBe(2);
     });
@@ -310,7 +320,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'newer' });
     });
 
@@ -334,7 +345,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'higher ctr' });
       expect(entity?.updatedCtr).toBe(3);
     });
@@ -359,7 +371,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'first' });
       expect(entity?.updatedCtr).toBe(1);
     });
@@ -384,7 +397,8 @@ describe('EntDBMemory.apply()', () => {
       };
       await db.apply(op);
 
-      const entity = await db.getEnt(eid);
+      const [entity, entityStatus] = await db.getEnt(eid);
+      expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: 'higher' });
       expect(entity?.updatedCtr).toBe(5);
     });

@@ -1,7 +1,6 @@
 import { min, max } from "../lib";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, INeoOp } from "../shared/types";
-import { Applier } from "../types";
+import { EntityID, GroupID, INeoOp, ValStat } from "../shared/types";
 
 export interface IEntity<T> {
   eid: EntityID;
@@ -33,11 +32,11 @@ export type EntitiesQuery = {
 };
 
 export interface IEntDB {
-  apply: Applier;
+  apply: (op: INeoOp) => Promise<Status>;
   clear: () => Promise<Status>;
-  getEnt<T>(eid: EntityID): Promise<IEntity<T> | undefined>;
-  getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<IEntity<T>[]>;
-  countEntities({ type }: { type: string }): Promise<number>;
+  getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>>;
+  getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<ValStat<IEntity<T>[]>>;
+  countEntities({ type }: { type: string }): Promise<ValStat<number>>;
 }
 
 export function updateEnt(curr: IEntity<unknown> | undefined, op: INeoOp): [IEntity<unknown>, Status] {

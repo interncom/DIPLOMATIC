@@ -12,12 +12,4 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
   uploads = new MemoryUploadQueue();
   downloads = new MemoryDownloadQueue();
   messages = new MemoryMessageStore();
-
-  async init() {
-    await this.seed.init();
-    await this.hosts.init();
-    await this.uploads.init();
-    await this.downloads.init();
-    await this.messages.init();
-  }
 }

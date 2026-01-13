@@ -4,8 +4,6 @@ import type { IHostRow, IHostStore } from "../../types";
 export class MemoryHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
   hosts = new Map<string, IHostRow<Handle>>();
 
-  async init() { }
-
   async add(info: IHostConnectionInfo<Handle>) {
     const host: IHostRow<Handle> = {
       ...info,

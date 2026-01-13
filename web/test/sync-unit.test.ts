@@ -38,7 +38,6 @@ describe('syncPeek', () => {
 
   beforeEach(async () => {
     store = new MemoryStore();
-    await store.init();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: 'test', idx: 1, lastSyncedAt: new Date(0) };
@@ -75,7 +74,6 @@ describe('syncPush', () => {
 
   beforeEach(async () => {
     store = new MemoryStore();
-    await store.init();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: 'test', idx: 1 };
@@ -128,7 +126,6 @@ describe('syncPull', () => {
 
   beforeEach(async () => {
     store = new MemoryStore();
-    await store.init();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: 'test', idx: 1 };

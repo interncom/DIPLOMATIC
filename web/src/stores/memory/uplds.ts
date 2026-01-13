@@ -5,8 +5,6 @@ import { IUploadQueue } from "../../types";
 export class MemoryUploadQueue implements IUploadQueue {
   queue = new Set<string>();
 
-  async init() { }
-
   async enq(hshs: Iterable<Hash>) {
     for (const hash of hshs) {
       this.queue.add(btoh(hash));

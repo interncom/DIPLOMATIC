@@ -27,7 +27,7 @@ export interface IDateRange { start: Date, end: Date }
 export type EntitiesQuery = {
   type: string;
   gid?: GroupID;
-  pid?: Uint8Array;
+  pid?: EntityID;
   updatedBetween?: IDateRange;
 };
 

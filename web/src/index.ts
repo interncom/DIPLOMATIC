@@ -11,13 +11,11 @@ import useStateWatcher, {
 import { btoh, htob } from "./shared/binary";
 import { type IOp } from "./shared/types";
 import { StateManager } from "./state";
-import { idbStore } from "./stores/idbStore";
 import type { IDiplomaticClientState } from "./types";
 
 export {
   btoh,
   htob,
-  idbStore,
   libsodiumCrypto,
   StateManager, SyncClient, useClientState,
   useClientXferState,

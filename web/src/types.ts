@@ -101,10 +101,11 @@ export interface IStore<Handle extends HostHandle> {
   messages: IMessageStore;
 }
 
+type UnlistenFunc = () => void;
 export interface IStateEmitter<T> {
   get(): Promise<T>;
   emit(): void;
-  listen(listener: (state: T) => void): void;
+  listen(listener: (state: T) => void): UnlistenFunc;
 }
 
 export interface IClient<Handle extends HostHandle> {

@@ -5,7 +5,6 @@ ARCH
 
 CLIENT
 - split React portion into separate package
-- set up linter/formatter
 - implement wipe
 - implement import/export
 

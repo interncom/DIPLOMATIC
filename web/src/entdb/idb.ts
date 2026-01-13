@@ -4,8 +4,7 @@
 import { type DBSchema, IDBPDatabase, openDB } from "idb";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, INeoOp } from "../shared/types";
-import { IEntDB } from "../types";
-import { IEntity, updateEnt } from "./entdb";
+import { IEntity, updateEnt, IEntDB, EntitiesQuery } from "./entdb";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -63,33 +62,6 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getByEID(eid: EntityID): Promise<[IEntity<unknown> | undefined, Status]> {
-    if (!this.db) {
-      return [undefined, Status.DatabaseClosed];
-    }
-    const ent = await this.db.get(entityTableName, eid);
-    return [ent, Status.Success];
-  }
-
-  async getByGID(gid: GroupID): Promise<[Iterable<IEntity<unknown>>, Status]> {
-    if (!this.db) {
-      return [[], Status.DatabaseClosed];
-    }
-    return [ents, Status.Success];
-  }
-
-  async getByPID(pid: EntityID): Promise<[Iterable<IEntity<unknown>>, Status]> {
-    if (!this.db) {
-      return [[], Status.DatabaseClosed];
-    }
-  }
-
-  async getByType(type: string): Promise<[Iterable<IEntity<unknown>>, Status]> {
-    if (!this.db) {
-      return [[], Status.DatabaseClosed];
-    }
-  }
-
   async apply(op: INeoOp) {
     if (!this.db) {
       return Status.DatabaseClosed;
@@ -109,5 +81,87 @@ export class EntIDB implements IEntDB {
     }
     await this.db.clear(entityTableName);
     return Status.Success;
+  }
+
+  async getEnt<T>(eid: EntityID): Promise<IEntity<T> | undefined> {
+    if (!this.db) {
+      return;
+    }
+    const ent = await this.db.get(entityTableName, eid);
+    if (!ent) {
+      return;
+    }
+    return ent as IEntity<T>;
+  }
+
+  async getAllOfTypeUpdatedBetween<T>(
+    opType: string,
+    start: Date,
+    end: Date,
+  ): Promise<IEntity<T>[]> {
+    if (!this.db) {
+      return [];
+    }
+    return this.db.getAllFromIndex(
+      entityTableName,
+      typeUpdatedAtIndexName,
+      IDBKeyRange.bound([opType, start], [opType, end]),
+    ) as Promise<IEntity<T>[]>;
+  }
+
+  async getGroupMembers<T>(
+    opType: string,
+    gid: GroupID,
+  ): Promise<IEntity<T>[]> {
+    if (!this.db) {
+      return [];
+    }
+    return this.db.getAllFromIndex(
+      entityTableName,
+      typeGroupIndexName,
+      IDBKeyRange.only([opType, gid]),
+    ) as Promise<IEntity<T>[]>;
+  }
+
+  async getAllOfType<T>(opType: string): Promise<IEntity<T>[]> {
+    if (!this.db) {
+      return [];
+    }
+    return this.db.getAllFromIndex(
+      entityTableName,
+      typeIndexName,
+      IDBKeyRange.bound([opType], [opType, []]),
+    ) as Promise<IEntity<T>[]>;
+  }
+
+  async getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<IEntity<T>[]> {
+    if (!this.db) {
+      return [];
+    }
+    if (pid !== undefined) {
+      return this.db.getAllFromIndex(
+        entityTableName,
+        typeParentIndexName,
+        IDBKeyRange.only([type, pid]),
+      ) as Promise<IEntity<T>[]>;
+    }
+    if (gid !== undefined) {
+      return this.getGroupMembers(type, gid);
+    }
+    if (updatedBetween !== undefined) {
+      return this.getAllOfTypeUpdatedBetween(type, updatedBetween.start, updatedBetween.end);
+    }
+    return this.getAllOfType(type);
+  }
+
+  async countEntities({ type }: { type: string }): Promise<number> {
+    if (!this.db) {
+      return 0;
+    }
+    return this.db.countFromIndex(
+      entityTableName,
+      typeIndexName,
+      IDBKeyRange.bound([type], [type, []]),
+    );
   }
 }

@@ -16,13 +16,11 @@ import useStateWatcher, {
 } from "./react/useStateWatcher";
 import InitSeedView from "./react/initSeedView";
 import ClientStatusBar from "./react/statusBar";
-import * as EntityDB from "./entdb";
 
 export {
   btoh,
   ClientStatusBar,
   DiplomaticClient,
-  EntityDB,
   htob,
   idbStore,
   InitSeedView,
@@ -34,7 +32,6 @@ export {
   useStateWatcher,
   useStateWatcherSuspense,
   useSyncOnResume,
-  Verb,
 };
 
 export type { IDiplomaticClientState, IOp, IUpsertOp };

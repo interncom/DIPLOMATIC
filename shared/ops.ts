@@ -40,12 +40,3 @@ export function genDeleteOp<T>(
     ver: version,
   };
 }
-
-export function isOp(op: any): op is IOp {
-  return typeof op.ts === "string" &&
-    (op.verb === "UPSERT" || op.verb === "DELETE") &&
-    typeof op.type === "string" &&
-    typeof op.ver === "number" &&
-    op.ver >= 0 &&
-    op.body !== undefined;
-}

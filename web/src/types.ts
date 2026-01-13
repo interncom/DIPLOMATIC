@@ -1,20 +1,19 @@
-import type {
-  EntityID,
-  Hash,
-  HostHandle,
-  IHostConnectionInfo,
-  INeoOp,
-  IOp,
-  MasterSeed,
-} from "./shared/types";
+import { Status } from "./shared/consts";
+import type { Enclave } from "./shared/enclave";
 import type {
   EncodedMessage,
   IMessage,
   IMessageHead,
   SerializedContent,
 } from "./shared/message";
-import type { Enclave } from "./shared/enclave";
-import { Status } from "./shared/consts";
+import type {
+  EntityID,
+  Hash,
+  HostHandle,
+  IHostConnectionInfo,
+  INeoOp,
+  MasterSeed,
+} from "./shared/types";
 
 export interface IDiplomaticClientState {
   hasSeed: boolean;

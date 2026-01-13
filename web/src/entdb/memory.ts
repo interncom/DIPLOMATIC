@@ -1,12 +1,12 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { IEntity } from "../entdb";
-import { min, max } from "../lib";
+import { IEntity } from "./entdb";
 import { uint8ArraysEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, INeoOp } from "../shared/types";
 import { IEntDB } from "../types";
+import { updateEnt } from "./entdb";
 
 export class EntDBMemory implements IEntDB {
   ents: Map<EntityID, IEntity<unknown>> = new Map();
@@ -65,43 +65,9 @@ export class EntDBMemory implements IEntDB {
 
   async apply(op: INeoOp) {
     const curr = this.ents.get(op.eid);
-    if (curr && curr.createdAt < op.ts && curr.updatedAt > op.ts) {
-      return Status.NoChange;
-    }
-
-    // If op came before curr, use op's ts as the createdAt.
-    // If op came after curr, use op's ts as the updatedAt.
-    const ts = op.ts.getTime();
-    const createdTs = curr ? min(curr.createdAt.getTime(), ts) : ts;
-    const updatedTs = curr ? max(curr.updatedAt.getTime(), ts) : ts;
-
-    let updatedCtr: number;
-    if (!curr) {
-      updatedCtr = op.ctr;
-    } else {
-      const currTime = curr.updatedAt.getTime();
-      const opTime = op.ts.getTime();
-      if (opTime > currTime) {
-        updatedCtr = op.ctr;
-      } else if (opTime < currTime) {
-        updatedCtr = curr.updatedCtr ?? 0;
-      } else {
-        updatedCtr = Math.max(curr.updatedCtr ?? 0, op.ctr);
-      }
-    }
-
-    const isOpNewer = !curr || op.ts > curr.updatedAt || (op.ts.getTime() === curr.updatedAt.getTime() && op.ctr > (curr.updatedCtr ?? 0));
-    const body = isOpNewer ? op.body : curr.body;
-
-    const ent: IEntity<unknown> = {
-      eid: op.eid,
-      gid: isOpNewer ? op.gid : curr.gid,
-      pid: isOpNewer ? op.pid : curr.pid,
-      type: isOpNewer ? op.type : curr.type,
-      createdAt: new Date(createdTs),
-      updatedAt: new Date(updatedTs),
-      updatedCtr,
-      body,
+    const [ent, stat] = updateEnt(curr, op);
+    if (stat !== Status.Success) {
+      return stat;
     }
 
     this.ents.set(op.eid, ent);

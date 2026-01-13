@@ -12,4 +12,13 @@ Prefer terse variable names, even at the expense of immediate readability to an 
 
 ## Checking Work
 
-Run tests before and after making changes to ensure you haven't broken anything. Run the benchmarks before and after as well, to check for meaningful regressions.
+- Run tests before and after making changes to ensure you haven't broken anything.
+  - `deno test --allow-net` from `deno` dir.
+  - `npm test` from `web` dir.
+  
+- Run the benchmarks before and after as well, to check for meaningful regressions.
+  - `deno bench` from `deno` dir.
+  
+- Format the code.
+  - `deno fmt` in the `deno` dir.
+  - `deno fmt` in the `web` dir.

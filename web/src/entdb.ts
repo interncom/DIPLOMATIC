@@ -35,7 +35,7 @@ interface IEntityDB extends DBSchema {
 export const db = await openDB<IEntityDB>("db", 10, {
   upgrade(db, prevVersion, currVersion, tx) {
     if (!db.objectStoreNames.contains(entityTableName)) {
-      const store = db.createObjectStore(entityTableName, {
+      db.createObjectStore(entityTableName, {
         keyPath: "eid",
         autoIncrement: false,
       });

@@ -3,15 +3,18 @@ import type {
   Hash,
   HostHandle,
   IHostConnectionInfo,
+  INeoOp,
   IOp,
   MasterSeed,
 } from "./shared/types";
 import type {
   EncodedMessage,
+  IMessage,
   IMessageHead,
   SerializedContent,
 } from "./shared/message";
 import type { Enclave } from "./shared/enclave";
+import { Status } from "./shared/consts";
 
 export interface IClientStateStore {
   init?: () => Promise<void>;
@@ -58,7 +61,12 @@ export interface IDiplomaticClientXferState {
   numDownloads: number;
 }
 
-export type Applier = (op: IOp) => Promise<void>;
+export type Applier = (op: INeoOp) => Promise<Status>;
+
+export interface IEntDB {
+  apply: Applier;
+  clear: () => Promise<Status>;
+}
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {
@@ -152,9 +160,9 @@ export interface IClient<Handle extends HostHandle> {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 
-  insert(content: SerializedContent): Promise<void>;
-  upsert(eid: EntityID, content: SerializedContent): Promise<void>;
-  delete(eid: EntityID): Promise<void>;
+  insert(content: SerializedContent): Promise<Status>;
+  upsert(eid: EntityID, content: SerializedContent): Promise<Status>;
+  delete(eid: EntityID): Promise<Status>;
 
   sync(): Promise<void>;
 
@@ -165,4 +173,10 @@ export interface IClient<Handle extends HostHandle> {
 
   clientState: IStateEmitter<IDiplomaticClientState>;
   xferState: IStateEmitter<IDiplomaticClientXferState>;
+}
+
+export interface IStateManager {
+  apply: (msg: IMessage) => Promise<Status>;
+  on: (type: string, listener: () => void) => void;
+  off: (type: string, listener: () => void) => void;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EntDBMemory } from '../src/entdb/memory';
-import { Status } from '../shared/consts';
-import { INeoOp } from '../shared/types';
+import { Status } from '../src/shared/consts';
+import { INeoOp } from '../src/shared/types';
 
 describe('EntDBMemory.apply()', () => {
   let db: EntDBMemory;

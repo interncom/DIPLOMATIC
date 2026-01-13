@@ -66,5 +66,8 @@ export class StateEmitter<T> implements IStateEmitter<T> {
 
   listen(func: (state: T) => void) {
     this.emitter.addEventListener(StateEmitter.eventName, func);
+    return () => {
+      this.emitter.removeEventListener(StateEmitter.eventName, func);
+    }
   }
 }

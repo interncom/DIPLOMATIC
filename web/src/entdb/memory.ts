@@ -75,14 +75,33 @@ export class EntDBMemory implements IEntDB {
     const createdTs = curr ? min(curr.createdAt.getTime(), ts) : ts;
     const updatedTs = curr ? max(curr.updatedAt.getTime(), ts) : ts;
 
+    let updatedCtr: number;
+    if (!curr) {
+      updatedCtr = op.ctr;
+    } else {
+      const currTime = curr.updatedAt.getTime();
+      const opTime = op.ts.getTime();
+      if (opTime > currTime) {
+        updatedCtr = op.ctr;
+      } else if (opTime < currTime) {
+        updatedCtr = curr.updatedCtr ?? 0;
+      } else {
+        updatedCtr = Math.max(curr.updatedCtr ?? 0, op.ctr);
+      }
+    }
+
+    const isOpNewer = !curr || op.ts > curr.updatedAt || (op.ts.getTime() === curr.updatedAt.getTime() && op.ctr > (curr.updatedCtr ?? 0));
+    const body = isOpNewer ? op.body : curr.body;
+
     const ent: IEntity<unknown> = {
       eid: op.eid,
-      gid: op.gid,
-      pid: op.pid,
-      type: op.type,
+      gid: isOpNewer ? op.gid : curr.gid,
+      pid: isOpNewer ? op.pid : curr.pid,
+      type: isOpNewer ? op.type : curr.type,
       createdAt: new Date(createdTs),
       updatedAt: new Date(updatedTs),
-      body: curr?.updatedAt && curr.updatedAt > op.ts ? curr.body : op.body,
+      updatedCtr,
+      body,
     }
 
     this.ents.set(op.eid, ent);

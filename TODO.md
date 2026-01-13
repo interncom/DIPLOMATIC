@@ -16,7 +16,6 @@ ERRORS
 
 TESTS
 - test protocol client against binary test vector responses. make them thorough enough and can generate clients in other lanuages via LLM. can provide mock data in JSON (users, bags, ...)
-- add tests for PUSH, PEEK, and PULL that round-trip a couple bags and check their contents
 - document tests, refactor, and ensure each serves a purpose
 
 PERF

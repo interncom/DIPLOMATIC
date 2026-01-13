@@ -403,4 +403,35 @@ describe('EntDBMemory.apply()', () => {
       expect(entity?.updatedCtr).toBe(5);
     });
   });
+
+  describe('getEntities', () => {
+    it('filters by gid with equivalent but not identical Uint8Array instances', async () => {
+      const gid1 = new Uint8Array([1, 2, 3]);
+      const gid2 = new Uint8Array([1, 2, 3]); // equivalent but different instance
+
+      // Add two entities with equivalent gids
+      await db.apply({
+        ts: new Date(1000),
+        ctr: 1,
+        eid: new Uint8Array(16).fill(1),
+        gid: gid1,
+        type: 'test',
+        body: { id: 1 },
+      });
+      await db.apply({
+        ts: new Date(1000),
+        ctr: 1,
+        eid: new Uint8Array(16).fill(2),
+        gid: gid2,
+        type: 'test',
+        body: { id: 2 },
+      });
+
+      // Query by gid1 (should return both if comparison is by content)
+      const [results, status] = await db.getEntities({ type: 'test', gid: gid1 });
+      expect(status).toBe(Status.Success);
+      expect(results.length).toBe(2); // Currently fails because === compares references
+      expect(results.map(r => r.body)).toEqual([{ id: 1 }, { id: 2 }]);
+    });
+  });
 });

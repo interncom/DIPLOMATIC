@@ -16,40 +16,6 @@ import type {
 import type { Enclave } from "./shared/enclave";
 import { Status } from "./shared/consts";
 
-export interface IClientStateStore {
-  init?: () => Promise<void>;
-  getSeed: () => Promise<Uint8Array | undefined>;
-  setSeed: (seed: Uint8Array) => Promise<void>;
-  getHostURL: () => Promise<string | undefined>;
-  setHostURL: (url: string) => Promise<void>;
-  getHostID: () => Promise<string | undefined>;
-  setHostID: (id: string) => Promise<void>;
-  setLastFetchedAt: (ts: Date) => Promise<void>;
-  getLastFetchedAt: () => Promise<Date | undefined>;
-  wipe: () => Promise<void>;
-
-  enqueueUpload: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
-  dequeueUpload: (sha256: Uint8Array) => Promise<void>;
-  peekUpload: (sha256: Uint8Array) => Promise<Uint8Array | undefined>;
-  listUploads: () => Promise<Uint8Array[]>;
-  numUploads: () => Promise<number>;
-
-  enqueueDownload: (sha256: Uint8Array, recordedAt: Date) => Promise<void>;
-  dequeueDownload: (sha256: Uint8Array) => Promise<void>;
-  listDownloads: () => Promise<IDeltaListItem[]>;
-  numDownloads: () => Promise<number>;
-
-  storeOp: (sha256: Uint8Array, cipherOp: Uint8Array) => Promise<void>;
-  clearOp: (sha256: Uint8Array) => Promise<void>;
-  listOps: () => Promise<
-    Array<{
-      cipherOp: Uint8Array;
-      sha256: string;
-    }>
-  >;
-  hasOp: (sha256: Uint8Array) => Promise<boolean>;
-}
-
 export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;
@@ -62,11 +28,6 @@ export interface IDiplomaticClientXferState {
 }
 
 export type Applier = (op: INeoOp) => Promise<Status>;
-
-export interface IEntDB {
-  apply: Applier;
-  clear: () => Promise<Status>;
-}
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {

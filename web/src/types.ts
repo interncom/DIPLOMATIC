@@ -11,7 +11,7 @@ import type {
   Hash,
   HostHandle,
   IHostConnectionInfo,
-  INeoOp,
+  IOp,
   MasterSeed,
 } from "./shared/types";
 
@@ -26,7 +26,7 @@ export interface IDiplomaticClientXferState {
   numDownloads: number;
 }
 
-export type Applier = (op: INeoOp) => Promise<Status>;
+export type Applier = (op: IOp) => Promise<Status>;
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {

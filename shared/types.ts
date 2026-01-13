@@ -9,7 +9,7 @@ export type ValStat<T> = [T, Status];
 export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;
 
-export interface INeoOp {
+export interface IOp {
   ts: Date;
   ctr: number;
   eid: EntityID;

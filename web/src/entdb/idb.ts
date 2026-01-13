@@ -3,7 +3,7 @@
 
 import { type DBSchema, IDBPDatabase, openDB } from "idb";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, INeoOp, ValStat } from "../shared/types";
+import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
 import { IEntity, updateEnt, IEntDB, EntitiesQuery } from "./entdb";
 
 export const entityTableName = "entities";
@@ -62,7 +62,7 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async apply(op: INeoOp) {
+  async apply(op: IOp) {
     if (!this.db) {
       return Status.DatabaseClosed;
     }

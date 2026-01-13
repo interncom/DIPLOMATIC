@@ -2,7 +2,12 @@
 
 ARCH
 - validate these authTS's in websocket connect
-- get web client working on new foundation
+
+CLIENT
+- split React portion into separate package
+- set up linter/formatter
+- implement wipe
+- implement import/export
 
 ERRORS
 - make client error handling use status enum too. the standard is zero string-based errors

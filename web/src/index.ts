@@ -1,37 +1,34 @@
+import { SyncClient } from "./client";
+import libsodiumCrypto from "./crypto";
+import InitSeedView from "./react/initSeedView";
+import ClientStatusBar from "./react/statusBar";
 import {
   useClientState,
   useClientXferState,
   useSyncOnResume,
 } from "./react/useClient";
-import { StateManager } from "./state";
-import { localStorageStore } from "./stores/localStorageStore";
-import { idbStore } from "./stores/idbStore";
-import type { IDiplomaticClientState } from "./types";
-import { SyncClient } from "./client";
-import libsodiumCrypto from "./crypto";
-import { btoh, htob } from "./shared/binary";
-import { type IOp } from "./shared/types";
 import useStateWatcher, {
   useStateWatcherSuspense,
 } from "./react/useStateWatcher";
-import InitSeedView from "./react/initSeedView";
-import ClientStatusBar from "./react/statusBar";
+import { btoh, htob } from "./shared/binary";
+import { type IOp } from "./shared/types";
+import { StateManager } from "./state";
+import { idbStore } from "./stores/idbStore";
+import { localStorageStore } from "./stores/localStorageStore";
+import type { IDiplomaticClientState } from "./types";
 
 export {
   btoh,
-  ClientStatusBar,
-  SyncClient,
-  htob,
+  ClientStatusBar, htob,
   idbStore,
   InitSeedView,
   libsodiumCrypto,
   localStorageStore,
-  StateManager,
-  useClientState,
+  StateManager, SyncClient, useClientState,
   useClientXferState,
   useStateWatcher,
   useStateWatcherSuspense,
-  useSyncOnResume,
+  useSyncOnResume
 };
 
 export type { IDiplomaticClientState, IOp };

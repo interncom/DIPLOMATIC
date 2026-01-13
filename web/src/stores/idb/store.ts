@@ -9,24 +9,30 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { IHostRow, IStoredMessage } from "../../types";
 import { IDownloadMessage } from "../../types";
 
+export const SEED_META_TABLE = "seedMeta";
+export const HOSTS_TABLE = "hosts";
+export const UPLOAD_QUEUE_TABLE = "uploadQueue";
+export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
+export const MESSAGES_TABLE = "messages";
+
 interface DiplomaticStoreDB extends DBSchema {
-  seedMeta: {
+  [SEED_META_TABLE]: {
     key: string;
     value: string;
   };
-  hosts: {
+  [HOSTS_TABLE]: {
     key: string;
     value: IHostRow<any>;
   };
-  uploadQueue: {
+  [UPLOAD_QUEUE_TABLE]: {
     key: string;
     value: null;
   };
-  downloadQueue: {
+  [DOWNLOAD_QUEUE_TABLE]: {
     key: string;
     value: IDownloadMessage;
   };
-  messages: {
+  [MESSAGES_TABLE]: {
     key: string;
     value: IStoredMessage;
   };
@@ -61,22 +67,22 @@ export class IDBStore<Handle extends HostHandle> implements IStore<Handle> {
 export async function openIDBStore(): Promise<IDBPDatabase<DiplomaticStoreDB>> {
   return openDB<DiplomaticStoreDB>("diplomatic-store-db", 1, {
     upgrade(db) {
-      if (!db.objectStoreNames.contains("seedMeta")) {
-        db.createObjectStore("seedMeta");
+      if (!db.objectStoreNames.contains(SEED_META_TABLE)) {
+        db.createObjectStore(SEED_META_TABLE);
       }
-      if (!db.objectStoreNames.contains("hosts")) {
-        db.createObjectStore("hosts", {
+      if (!db.objectStoreNames.contains(HOSTS_TABLE)) {
+        db.createObjectStore(HOSTS_TABLE, {
           keyPath: "label",
         });
       }
-      if (!db.objectStoreNames.contains("uploadQueue")) {
-        db.createObjectStore("uploadQueue");
+      if (!db.objectStoreNames.contains(UPLOAD_QUEUE_TABLE)) {
+        db.createObjectStore(UPLOAD_QUEUE_TABLE);
       }
-      if (!db.objectStoreNames.contains("downloadQueue")) {
-        db.createObjectStore("downloadQueue");
+      if (!db.objectStoreNames.contains(DOWNLOAD_QUEUE_TABLE)) {
+        db.createObjectStore(DOWNLOAD_QUEUE_TABLE);
       }
-      if (!db.objectStoreNames.contains("messages")) {
-        db.createObjectStore("messages");
+      if (!db.objectStoreNames.contains(MESSAGES_TABLE)) {
+        db.createObjectStore(MESSAGES_TABLE);
       }
     },
   });

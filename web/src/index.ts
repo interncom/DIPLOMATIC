@@ -12,7 +12,6 @@ import { btoh, htob } from "./shared/binary";
 import { type IOp } from "./shared/types";
 import { StateManager } from "./state";
 import { idbStore } from "./stores/idbStore";
-import { localStorageStore } from "./stores/localStorageStore";
 import type { IDiplomaticClientState } from "./types";
 
 export {
@@ -20,7 +19,6 @@ export {
   htob,
   idbStore,
   libsodiumCrypto,
-  localStorageStore,
   StateManager, SyncClient, useClientState,
   useClientXferState,
   useStateWatcher,

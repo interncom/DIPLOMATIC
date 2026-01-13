@@ -26,7 +26,7 @@ export class IDBUploadQueue implements IUploadQueue {
 
   async list() {
     const hexes = await this.db.getAllKeys("uploadQueue");
-    return hexes.map(hex => htob(hex as string)) as Hash[];
+    return hexes.map((hex) => htob(hex as string)) as Hash[];
   }
 
   async count() {

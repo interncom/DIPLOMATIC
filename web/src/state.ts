@@ -15,13 +15,13 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   if (!bodDec) {
     return false;
   }
-  if (typeof bodDec !== 'object') {
+  if (typeof bodDec !== "object") {
     return false;
   }
-  if ('body' in bodDec === false) {
+  if ("body" in bodDec === false) {
     return false;
   }
-  if ('type' in bodDec === false) {
+  if ("type" in bodDec === false) {
     return false;
   }
   return true;
@@ -32,7 +32,7 @@ const nullOp: IOp = {
   ctr: 0,
   eid: new Uint8Array(),
   type: "null",
-}
+};
 
 export function msgToOp(msg: IMessage): [IOp, Status] {
   // If an IMessage represents an entity update (i.e. it's used in EntDB),
@@ -52,7 +52,7 @@ export function msgToOp(msg: IMessage): [IOp, Status] {
     pid: bodDec.pid,
     type: bodDec.type,
     body: bodDec.body,
-  }
+  };
   return [op, Status.Success];
 }
 
@@ -61,7 +61,8 @@ export class StateManager implements IStateManager {
   private emitter = new TypedEventEmitter<null>();
   constructor(
     public applier: Applier,
-    public clear: () => Promise<void>) { }
+    public clear: () => Promise<void>,
+  ) {}
 
   apply = async (msg: IMessage) => {
     const [op, statParse] = msgToOp(msg);
@@ -77,13 +78,13 @@ export class StateManager implements IStateManager {
 
     this.emitter.emit(op.type, null);
     return Status.Success;
-  }
+  };
 
   on = (opType: string, listener: () => void) => {
     this.emitter.addEventListener(opType, listener);
-  }
+  };
 
   off = (opType: string, listener: () => void) => {
     this.emitter.removeEventListener(opType, listener);
-  }
+  };
 }

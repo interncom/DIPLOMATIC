@@ -1,26 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { EntDBMemory } from '../src/entdb/memory';
-import { Status } from '../src/shared/consts';
-import { INeoOp } from '../src/shared/types';
+import { beforeEach, describe, expect, it } from "vitest";
+import { EntDBMemory } from "../src/entdb/memory";
+import { Status } from "../src/shared/consts";
+import { INeoOp } from "../src/shared/types";
 
-describe('EntDBMemory.apply()', () => {
+describe("EntDBMemory.apply()", () => {
   let db: EntDBMemory;
 
   beforeEach(() => {
     db = new EntDBMemory();
   });
 
-  describe('no pre-existing entity', () => {
-    it('creates new entity with op data', async () => {
+  describe("no pre-existing entity", () => {
+    it("creates new entity with op data", async () => {
       const eid = new Uint8Array(16).fill(1);
       const op: INeoOp = {
         ts: new Date(1000),
         ctr: 1,
         eid,
-        gid: 'group1',
+        gid: "group1",
         pid: new Uint8Array(16).fill(2),
-        type: 'test',
-        body: { data: 'new' },
+        type: "test",
+        body: { data: "new" },
       };
 
       const result = await db.apply(op);
@@ -30,27 +30,27 @@ describe('EntDBMemory.apply()', () => {
       expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
-        gid: 'group1',
+        gid: "group1",
         pid: new Uint8Array(16).fill(2),
-        type: 'test',
+        type: "test",
         createdAt: new Date(1000),
         updatedAt: new Date(1000),
         updatedCtr: 1,
-        body: { data: 'new' },
+        body: { data: "new" },
       });
     });
   });
 
-  describe('pre-existing entity older than op', () => {
-    it('overwrites body and updates timestamps', async () => {
+  describe("pre-existing entity older than op", () => {
+    it("overwrites body and updates timestamps", async () => {
       const eid = new Uint8Array(16).fill(1);
       // First, apply an older op
       const oldOp: INeoOp = {
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'old' },
+        type: "test",
+        body: { data: "old" },
       };
       await db.apply(oldOp);
 
@@ -59,10 +59,10 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(2000),
         ctr: 2,
         eid,
-        gid: 'group2',
+        gid: "group2",
         pid: new Uint8Array(16).fill(3),
-        type: 'test2',
-        body: { data: 'new' },
+        type: "test2",
+        body: { data: "new" },
       };
       const result = await db.apply(newOp);
       expect(result).toBe(Status.Success);
@@ -71,27 +71,27 @@ describe('EntDBMemory.apply()', () => {
       expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
-        gid: 'group2',
+        gid: "group2",
         pid: new Uint8Array(16).fill(3),
-        type: 'test2',
+        type: "test2",
         createdAt: new Date(1000), // min of 1000 and 2000
         updatedAt: new Date(2000), // max
         updatedCtr: 2,
-        body: { data: 'new' }, // overwritten
+        body: { data: "new" }, // overwritten
       });
     });
   });
 
-  describe('pre-existing entity newer than op', () => {
-    it('returns NoChange and keeps existing body', async () => {
+  describe("pre-existing entity newer than op", () => {
+    it("returns NoChange and keeps existing body", async () => {
       const eid = new Uint8Array(16).fill(1);
       // First, apply a newer op
       const newOp: INeoOp = {
         ts: new Date(2000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'new' },
+        type: "test",
+        body: { data: "new" },
       };
       await db.apply(newOp);
 
@@ -100,36 +100,36 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(1500), // between 2000? Wait, createdAt=2000, updatedAt=2000, so 2000 < 1500 false
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'old' },
+        type: "test",
+        body: { data: "old" },
       };
       const result = await db.apply(oldOp);
       expect(result).toBe(Status.Success); // Since 2000 < 1500 false, it proceeds
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'new' }); // keeps new body since updatedAt 2000 > 1500
+      expect(entity?.body).toEqual({ data: "new" }); // keeps new body since updatedAt 2000 > 1500
       expect(entity?.createdAt).toEqual(new Date(1500)); // min
       expect(entity?.updatedAt).toEqual(new Date(2000)); // max
       expect(entity?.updatedCtr).toBe(1);
     });
 
-    it('returns NoChange when op is strictly between created and updated', async () => {
+    it("returns NoChange when op is strictly between created and updated", async () => {
       const eid = new Uint8Array(16).fill(1);
       // Entity with createdAt < updatedAt
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'initial' },
+        type: "test",
+        body: { data: "initial" },
       });
       await db.apply({
         ts: new Date(2000),
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'updated' },
+        type: "test",
+        body: { data: "updated" },
       });
 
       // Op at 1500, which is > createdAt and < updatedAt
@@ -137,160 +137,160 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(1500),
         ctr: 3,
         eid,
-        type: 'test',
-        body: { data: 'middle' },
+        type: "test",
+        body: { data: "middle" },
       };
       const result = await db.apply(op);
       expect(result).toBe(Status.NoChange);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'updated' }); // unchanged
+      expect(entity?.body).toEqual({ data: "updated" }); // unchanged
       expect(entity?.createdAt).toEqual(new Date(1000));
       expect(entity?.updatedAt).toEqual(new Date(2000));
       expect(entity?.updatedCtr).toBe(2);
     });
   });
 
-  describe('edge cases', () => {
-    it('op.ts == curr.createdAt', async () => {
+  describe("edge cases", () => {
+    it("op.ts == curr.createdAt", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'initial' },
+        type: "test",
+        body: { data: "initial" },
       });
 
       const op: INeoOp = {
         ts: new Date(1000),
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'same time' },
+        type: "test",
+        body: { data: "same time" },
       };
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'same time' }); // since updatedAt == op.ts and op.ctr > curr.updatedCtr, takes op.body
+      expect(entity?.body).toEqual({ data: "same time" }); // since updatedAt == op.ts and op.ctr > curr.updatedCtr, takes op.body
       expect(entity?.createdAt).toEqual(new Date(1000));
       expect(entity?.updatedAt).toEqual(new Date(1000));
       expect(entity?.updatedCtr).toBe(2);
     });
 
-    it('curr.createdAt == curr.updatedAt (new entity)', async () => {
+    it("curr.createdAt == curr.updatedAt (new entity)", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'new' },
+        type: "test",
+        body: { data: "new" },
       });
 
       const op: INeoOp = {
         ts: new Date(500), // older
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'old' },
+        type: "test",
+        body: { data: "old" },
       };
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'new' }); // since updatedAt > op.ts
+      expect(entity?.body).toEqual({ data: "new" }); // since updatedAt > op.ts
       expect(entity?.createdAt).toEqual(new Date(500)); // min
       expect(entity?.updatedAt).toEqual(new Date(1000)); // max
       expect(entity?.updatedCtr).toBe(1);
     });
   });
 
-  describe('property updates', () => {
-    it('takes gid, pid, type from op when op is newer', async () => {
+  describe("property updates", () => {
+    it("takes gid, pid, type from op when op is newer", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        gid: 'oldgroup',
+        gid: "oldgroup",
         pid: new Uint8Array(16).fill(3),
-        type: 'oldtype',
-        body: { data: 'old' },
+        type: "oldtype",
+        body: { data: "old" },
       });
 
       const op: INeoOp = {
         ts: new Date(2000),
         ctr: 2,
         eid,
-        gid: 'newgroup',
+        gid: "newgroup",
         pid: new Uint8Array(16).fill(4),
-        type: 'newtype',
-        body: { data: 'new' },
+        type: "newtype",
+        body: { data: "new" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.gid).toBe('newgroup');
+      expect(entity?.gid).toBe("newgroup");
       expect(entity?.pid).toEqual(new Uint8Array(16).fill(4));
-      expect(entity?.type).toBe('newtype');
+      expect(entity?.type).toBe("newtype");
       expect(entity?.updatedCtr).toBe(2);
     });
 
-    it('retains gid, pid, type from curr when op is older', async () => {
+    it("retains gid, pid, type from curr when op is older", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(2000),
         ctr: 1,
         eid,
-        gid: 'currgroup',
+        gid: "currgroup",
         pid: new Uint8Array(16).fill(5),
-        type: 'currtype',
-        body: { data: 'curr' },
+        type: "currtype",
+        body: { data: "curr" },
       });
 
       const op: INeoOp = {
         ts: new Date(1000),
         ctr: 2,
         eid,
-        gid: 'opgroup',
+        gid: "opgroup",
         pid: new Uint8Array(16).fill(6),
-        type: 'optype',
-        body: { data: 'op' },
+        type: "optype",
+        body: { data: "op" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.gid).toBe('currgroup');
+      expect(entity?.gid).toBe("currgroup");
       expect(entity?.pid).toEqual(new Uint8Array(16).fill(5));
-      expect(entity?.type).toBe('currtype');
-      expect(entity?.body).toEqual({ data: 'curr' }); // body also retained
+      expect(entity?.type).toBe("currtype");
+      expect(entity?.body).toEqual({ data: "curr" }); // body also retained
       expect(entity?.updatedCtr).toBe(1);
     });
   });
 
-  describe('body handling', () => {
-    it('handles undefined body in op', async () => {
+  describe("body handling", () => {
+    it("handles undefined body in op", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'existing' },
+        type: "test",
+        body: { data: "existing" },
       });
 
       const op: INeoOp = {
         ts: new Date(2000),
         ctr: 2,
         eid,
-        type: 'test',
+        type: "test",
         body: undefined,
       };
       await db.apply(op);
@@ -301,38 +301,38 @@ describe('EntDBMemory.apply()', () => {
       expect(entity?.updatedCtr).toBe(2);
     });
 
-    it('keeps curr body when op is older', async () => {
+    it("keeps curr body when op is older", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(2000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'newer' },
+        type: "test",
+        body: { data: "newer" },
       });
 
       const op: INeoOp = {
         ts: new Date(1000),
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'older' },
+        type: "test",
+        body: { data: "older" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'newer' });
+      expect(entity?.body).toEqual({ data: "newer" });
     });
 
-    it('ctr tiebreaker: higher ctr wins when timestamps equal', async () => {
+    it("ctr tiebreaker: higher ctr wins when timestamps equal", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'first' },
+        type: "test",
+        body: { data: "first" },
       });
 
       // Same ts, higher ctr
@@ -340,25 +340,25 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(1000),
         ctr: 3,
         eid,
-        type: 'test',
-        body: { data: 'higher ctr' },
+        type: "test",
+        body: { data: "higher ctr" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'higher ctr' });
+      expect(entity?.body).toEqual({ data: "higher ctr" });
       expect(entity?.updatedCtr).toBe(3);
     });
 
-    it('ctr tiebreaker: equal ctr keeps current', async () => {
+    it("ctr tiebreaker: equal ctr keeps current", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'first' },
+        type: "test",
+        body: { data: "first" },
       });
 
       // Same ts, same ctr
@@ -366,25 +366,25 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(1000),
         ctr: 1,
         eid,
-        type: 'test',
-        body: { data: 'same ctr' },
+        type: "test",
+        body: { data: "same ctr" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'first' });
+      expect(entity?.body).toEqual({ data: "first" });
       expect(entity?.updatedCtr).toBe(1);
     });
 
-    it('ctr tiebreaker: lower ctr keeps current', async () => {
+    it("ctr tiebreaker: lower ctr keeps current", async () => {
       const eid = new Uint8Array(16).fill(1);
       await db.apply({
         ts: new Date(1000),
         ctr: 5,
         eid,
-        type: 'test',
-        body: { data: 'higher' },
+        type: "test",
+        body: { data: "higher" },
       });
 
       // Same ts, lower ctr
@@ -392,20 +392,20 @@ describe('EntDBMemory.apply()', () => {
         ts: new Date(1000),
         ctr: 2,
         eid,
-        type: 'test',
-        body: { data: 'lower ctr' },
+        type: "test",
+        body: { data: "lower ctr" },
       };
       await db.apply(op);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
-      expect(entity?.body).toEqual({ data: 'higher' });
+      expect(entity?.body).toEqual({ data: "higher" });
       expect(entity?.updatedCtr).toBe(5);
     });
   });
 
-  describe('getEntities', () => {
-    it('filters by gid with equivalent but not identical Uint8Array instances', async () => {
+  describe("getEntities", () => {
+    it("filters by gid with equivalent but not identical Uint8Array instances", async () => {
       const gid1 = new Uint8Array([1, 2, 3]);
       const gid2 = new Uint8Array([1, 2, 3]); // equivalent but different instance
 
@@ -415,7 +415,7 @@ describe('EntDBMemory.apply()', () => {
         ctr: 1,
         eid: new Uint8Array(16).fill(1),
         gid: gid1,
-        type: 'test',
+        type: "test",
         body: { id: 1 },
       });
       await db.apply({
@@ -423,15 +423,18 @@ describe('EntDBMemory.apply()', () => {
         ctr: 1,
         eid: new Uint8Array(16).fill(2),
         gid: gid2,
-        type: 'test',
+        type: "test",
         body: { id: 2 },
       });
 
       // Query by gid1 (should return both if comparison is by content)
-      const [results, status] = await db.getEntities({ type: 'test', gid: gid1 });
+      const [results, status] = await db.getEntities({
+        type: "test",
+        gid: gid1,
+      });
       expect(status).toBe(Status.Success);
       expect(results.length).toBe(2); // Currently fails because === compares references
-      expect(results.map(r => r.body)).toEqual([{ id: 1 }, { id: 2 }]);
+      expect(results.map((r) => r.body)).toEqual([{ id: 1 }, { id: 2 }]);
     });
   });
 });

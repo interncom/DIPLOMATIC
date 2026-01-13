@@ -4,7 +4,7 @@
 import { type DBSchema, IDBPDatabase, openDB } from "idb";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
-import { IEntity, updateEnt, IEntDB, EntitiesQuery } from "./entdb";
+import { EntitiesQuery, IEntDB, IEntity, updateEnt } from "./entdb";
 import { btoh, htob } from "../shared/binary";
 
 export const entityTableName = "entities";
@@ -28,7 +28,9 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   return {
     ...ent,
     eid: btoh(ent.eid),
-    gid: ent.gid ? (typeof ent.gid === 'string' ? ent.gid : btoh(ent.gid)) : undefined,
+    gid: ent.gid
+      ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
+      : undefined,
     pid: ent.pid ? btoh(ent.pid) : undefined,
   };
 }
@@ -37,7 +39,9 @@ function storedToEntity<T>(stored: IStoredEntity<T>): IEntity<T> {
   return {
     ...stored,
     eid: htob(stored.eid),
-    gid: stored.gid ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid) : undefined,
+    gid: stored.gid
+      ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid)
+      : undefined,
     pid: stored.pid ? htob(stored.pid) : undefined,
   };
 }
@@ -152,7 +156,7 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return [];
     }
-    const gidHex = typeof gid === 'string' ? gid : btoh(gid);
+    const gidHex = typeof gid === "string" ? gid : btoh(gid);
     const storedEnts = await this.db.getAllFromIndex(
       entityTableName,
       typeGroupIndexName,
@@ -173,7 +177,9 @@ export class EntIDB implements IEntDB {
     return storedEnts.map(storedToEntity);
   }
 
-  async getEntities<T>({ type, gid, pid, updatedBetween }: EntitiesQuery): Promise<ValStat<IEntity<T>[]>> {
+  async getEntities<T>(
+    { type, gid, pid, updatedBetween }: EntitiesQuery,
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return [[], Status.DatabaseClosed];
     }
@@ -190,7 +196,11 @@ export class EntIDB implements IEntDB {
       const ents = await this.getGroupMembers<T>(type, gid);
       return [ents, Status.Success];
     } else if (updatedBetween !== undefined) {
-      const ents = await this.getAllOfTypeUpdatedBetween<T>(type, updatedBetween.start, updatedBetween.end);
+      const ents = await this.getAllOfTypeUpdatedBetween<T>(
+        type,
+        updatedBetween.start,
+        updatedBetween.end,
+      );
       return [ents, Status.Success];
     }
     const ents = await this.getAllOfType<T>(type);

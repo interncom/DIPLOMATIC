@@ -35,7 +35,8 @@ export interface ISeedStore {
   wipe: () => Promise<void>;
 }
 
-export interface IHostRow<Handle extends HostHandle> extends IHostConnectionInfo<Handle> {
+export interface IHostRow<Handle extends HostHandle>
+  extends IHostConnectionInfo<Handle> {
   lastSyncedAt: Date;
 }
 
@@ -90,7 +91,7 @@ export interface IMessageStore {
   has: (hash: Hash) => Promise<boolean>;
   del: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
-  last: (eid: EntityID) => Promise<IStoredMessage | undefined>
+  last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
 }
 
 export interface IStore<Handle extends HostHandle> {

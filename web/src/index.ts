@@ -23,7 +23,7 @@ export {
   useClientXferState,
   useStateWatcher,
   useStateWatcherSuspense,
-  useSyncOnResume
+  useSyncOnResume,
 };
 
 export type { IDiplomaticClientState, IOp };

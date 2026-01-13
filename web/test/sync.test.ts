@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, test } from 'vitest';
-import libsodiumCrypto from '../src/crypto';
-import { SyncClient } from '../src/client';
-import { MockClock } from '../src/shared/clock';
-import { CallbackNotifier } from '../src/shared/lpc/pusher';
-import { DiplomaticLPCServer, LPCTransport } from '../src/shared/lpc/server';
-import { EncodedMessage } from '../src/shared/message';
-import memStorage from '../src/shared/storage/memory';
-import type { IHostCrypto, IStorage, MasterSeed } from '../src/shared/types';
-import { MemoryStore } from '../src/stores/memory/store';
-import { IStateManager } from '../src/types';
-import { Status } from '../src/shared/consts';
+import { beforeEach, describe, expect, test } from "vitest";
+import libsodiumCrypto from "../src/crypto";
+import { SyncClient } from "../src/client";
+import { MockClock } from "../src/shared/clock";
+import { CallbackNotifier } from "../src/shared/lpc/pusher";
+import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
+import { EncodedMessage } from "../src/shared/message";
+import memStorage from "../src/shared/storage/memory";
+import type { IHostCrypto, IStorage, MasterSeed } from "../src/shared/types";
+import { MemoryStore } from "../src/stores/memory/store";
+import { IStateManager } from "../src/types";
+import { Status } from "../src/shared/consts";
 
 const hostClock = new MockClock(new Date(0));
 let lpcHost: DiplomaticLPCServer;
@@ -29,7 +29,7 @@ beforeEach(() => {
     storage,
     libsodiumCrypto as IHostCrypto,
     new CallbackNotifier(),
-    hostClock
+    hostClock,
   );
   transport = new LPCTransport(lpcHost);
 });
@@ -37,23 +37,25 @@ beforeEach(() => {
 const createClient = async (seed: Uint8Array) => {
   const store = new MemoryStore<any>();
   const state: IStateManager = {
-    async apply(msg) { return Status.Success },
-    on(type, listener) { },
-    off(type, listener) { },
+    async apply(msg) {
+      return Status.Success;
+    },
+    on(type, listener) {},
+    off(type, listener) {},
   };
   const client = new SyncClient(
     new MockClock(new Date(0)),
     state,
     store,
     transport,
-    libsodiumCrypto
+    libsodiumCrypto,
   );
   await store.seed.save(seed as MasterSeed);
   return { store, client };
 };
 
-describe('Sync Integration', () => {
-  test('messages sync between two clients', async () => {
+describe("Sync Integration", () => {
+  test("messages sync between two clients", async () => {
     // Create shared seed for both clients
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 
@@ -62,8 +64,8 @@ describe('Sync Integration', () => {
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
     // Link both to the same host
-    await clientA.link({ handle: lpcHost, label: 'test', idx: 1 });
-    await clientB.link({ handle: lpcHost, label: 'test', idx: 1 });
+    await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
+    await clientB.link({ handle: lpcHost, label: "test", idx: 1 });
 
     // Connect both clients
     await clientA.connect(false); // No listen for simplicity
@@ -85,13 +87,13 @@ describe('Sync Integration', () => {
     expect(messages[0].body).toEqual(testMessage);
   });
 
-  test('handles multiple messages and updates', async () => {
+  test("handles multiple messages and updates", async () => {
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const { store: storeA, client: clientA } = await createClient(masterSeed);
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
-    await clientA.link({ handle: lpcHost, label: 'test', idx: 1 });
-    await clientB.link({ handle: lpcHost, label: 'test', idx: 1 });
+    await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
+    await clientB.link({ handle: lpcHost, label: "test", idx: 1 });
     await clientA.connect(false);
     await clientB.connect(false);
 
@@ -114,19 +116,19 @@ describe('Sync Integration', () => {
     expect(messages.length).toBe(3); // Original + upsert
   });
 
-  test('peek filter by recorded at works', async () => {
+  test("peek filter by recorded at works", async () => {
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
     const { store: storeA, client: clientA } = await createClient(masterSeed);
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
-    await clientA.link({ handle: lpcHost, label: 'test', idx: 1 });
-    await clientB.link({ handle: lpcHost, label: 'test', idx: 1 });
+    await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
+    await clientB.link({ handle: lpcHost, label: "test", idx: 1 });
 
     // Set host clock to time of push
     hostClock.set(new Date(1000));
 
     // Set clientB's lastSyncedAt to after the push time
-    const hostB = await storeB.hosts.get('test');
+    const hostB = await storeB.hosts.get("test");
     if (hostB) hostB.lastSyncedAt = new Date(2000);
 
     await clientA.connect(false);

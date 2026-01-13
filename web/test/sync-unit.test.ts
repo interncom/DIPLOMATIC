@@ -1,25 +1,32 @@
-import { expect, test, describe, beforeEach } from 'vitest';
-import { syncPeek, syncPush, syncPull } from '../src/sync';
-import { MemoryStore } from '../src/stores/memory/store';
-import DiplomaticClientAPI from '../src/shared/client';
-import libsodiumCrypto from '../src/crypto';
-import { Enclave } from '../src/shared/enclave';
-import { MockClock } from '../src/shared/clock';
-import { DiplomaticLPCServer, LPCTransport } from '../src/shared/lpc/server';
-import { CallbackNotifier } from '../src/shared/lpc/pusher';
-import memStorage from '../src/shared/storage/memory';
-import { sealBag } from '../src/shared/bag';
-import { Encoder } from '../src/shared/codec';
-import { messageHeadCodec } from '../src/shared/codecs/messageHead';
-import { Hash, HostHandle, HostSpecificKeyPair, MasterSeed } from '../src/shared/types';
-import { IMessage } from '../src/shared/message';
+import { beforeEach, describe, expect, test } from "vitest";
+import { syncPeek, syncPull, syncPush } from "../src/sync";
+import { MemoryStore } from "../src/stores/memory/store";
+import DiplomaticClientAPI from "../src/shared/client";
+import libsodiumCrypto from "../src/crypto";
+import { Enclave } from "../src/shared/enclave";
+import { MockClock } from "../src/shared/clock";
+import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
+import { CallbackNotifier } from "../src/shared/lpc/pusher";
+import memStorage from "../src/shared/storage/memory";
+import { sealBag } from "../src/shared/bag";
+import { Encoder } from "../src/shared/codec";
+import { messageHeadCodec } from "../src/shared/codecs/messageHead";
+import {
+  Hash,
+  HostHandle,
+  HostSpecificKeyPair,
+  MasterSeed,
+} from "../src/shared/types";
+import { IMessage } from "../src/shared/message";
 
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
 
 async function generateTestKeys(enclave: Enclave) {
-  const hostSeed = await enclave.derive('test', 1);
-  return await libsodiumCrypto.deriveEd25519KeyPair(hostSeed) as HostSpecificKeyPair;
+  const hostSeed = await enclave.derive("test", 1);
+  return await libsodiumCrypto.deriveEd25519KeyPair(
+    hostSeed,
+  ) as HostSpecificKeyPair;
 }
 
 async function createTestBag(message: IMessage, enclave: Enclave) {
@@ -27,7 +34,7 @@ async function createTestBag(message: IMessage, enclave: Enclave) {
   return sealBag(message, keys, libsodiumCrypto, enclave);
 }
 
-describe('syncPeek', () => {
+describe("syncPeek", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
@@ -40,22 +47,28 @@ describe('syncPeek', () => {
     store = new MemoryStore();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
-    host = { label: 'test', idx: 1, lastSyncedAt: new Date(0) };
+    host = { label: "test", idx: 1, lastSyncedAt: new Date(0) };
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
       storage as any,
       libsodiumCrypto as any,
       new CallbackNotifier() as any,
-      new MockClock(new Date(0))
+      new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);
-    conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
+    conn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+    );
     const keys = await conn.keys();
     await lpcHost.storage.addUser(keys.publicKey);
   });
 
-  test('handles empty peek results', async () => {
+  test("handles empty peek results", async () => {
     await syncPeek(conn, store, enclave, clock, host, libsodiumCrypto);
 
     const downloads = Array.from(await store.downloads.list());
@@ -63,7 +76,7 @@ describe('syncPeek', () => {
   });
 });
 
-describe('syncPush', () => {
+describe("syncPush", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
@@ -76,22 +89,28 @@ describe('syncPush', () => {
     store = new MemoryStore();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
-    host = { label: 'test', idx: 1 };
+    host = { label: "test", idx: 1 };
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
       storage as any,
       libsodiumCrypto as any,
       new CallbackNotifier() as any,
-      new MockClock(new Date(0))
+      new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);
-    conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
+    conn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+    );
     const keys = await conn.keys();
     await lpcHost.storage.addUser(keys.publicKey);
   });
 
-  test('pushes uploads successfully', async () => {
+  test("pushes uploads successfully", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
@@ -115,7 +134,7 @@ describe('syncPush', () => {
   });
 });
 
-describe('syncPull', () => {
+describe("syncPull", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
@@ -128,22 +147,28 @@ describe('syncPull', () => {
     store = new MemoryStore();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
-    host = { label: 'test', idx: 1 };
+    host = { label: "test", idx: 1 };
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
       storage as any,
       libsodiumCrypto as any,
       new CallbackNotifier() as any,
-      new MockClock(new Date(0))
+      new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);
-    conn = new DiplomaticClientAPI(enclave, libsodiumCrypto, host, clock, transport);
+    conn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+    );
     const keys = await conn.keys();
     await lpcHost.storage.addUser(keys.publicKey);
   });
 
-  test('pulls and processes downloads', async () => {
+  test("pulls and processes downloads", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
@@ -163,7 +188,7 @@ describe('syncPull', () => {
       hash,
       kdm: bag.kdm,
       head: message,
-      host: 'test',
+      host: "test",
     };
     await store.downloads.enq([download]);
 
@@ -175,14 +200,14 @@ describe('syncPull', () => {
     expect(await store.downloads.count()).toBe(0);
   });
 
-  test('handles no downloads', async () => {
+  test("handles no downloads", async () => {
     await syncPull(conn, store, enclave, host, libsodiumCrypto);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(0);
   });
 
-  test('handles messages without body', async () => {
+  test("handles messages without body", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
@@ -200,7 +225,7 @@ describe('syncPull', () => {
       hash,
       kdm: bag.kdm,
       head: message,
-      host: 'test',
+      host: "test",
     };
     await store.downloads.enq([download]);
 

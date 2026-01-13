@@ -2,7 +2,7 @@ import { TypedEventEmitter } from "./events";
 import type { Applier, IStateManager } from "./types";
 import { IMessage } from "./shared/message";
 import { Status } from "./shared/consts";
-import { EntityID, GroupID, INeoOp } from "./shared/types";
+import { EntityID, GroupID, IOp } from "./shared/types";
 import { decode } from "@msgpack/msgpack";
 
 export interface IMsgEntBody {
@@ -27,14 +27,14 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   return true;
 }
 
-const nullOp: INeoOp = {
+const nullOp: IOp = {
   ts: new Date(0),
   ctr: 0,
   eid: new Uint8Array(),
   type: "null",
 }
 
-export function msgToOp(msg: IMessage): [INeoOp, Status] {
+export function msgToOp(msg: IMessage): [IOp, Status] {
   // If an IMessage represents an entity update (i.e. it's used in EntDB),
   // then the bod of the IMessage must be an msgpack-encoded IEmsgEntBod.
   if (!msg.bod) {

@@ -4,7 +4,7 @@
 import { IEntity, IEntDB } from "./entdb";
 import { uint8ArraysEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, INeoOp, ValStat } from "../shared/types";
+import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
 import { updateEnt } from "./entdb";
 
 interface IDateRange { start: Date, end: Date }
@@ -19,7 +19,7 @@ type EntitiesQuery = {
 export class EntDBMemory implements IEntDB {
   ents: Map<EntityID, IEntity<unknown>> = new Map();
 
-  async apply(op: INeoOp): Promise<Status> {
+  async apply(op: IOp): Promise<Status> {
     const curr = this.ents.get(op.eid);
     const [ent, stat] = updateEnt(curr, op);
     if (stat !== Status.Success) {

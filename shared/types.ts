@@ -4,40 +4,10 @@ import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
 import { APICallName, Status } from "./consts.ts";
 
-export enum Verb {
-  DELETE = 0,
-  UPSERT = 1,
-}
-
 export type ValStat<T> = [T, Status];
 
-// Body types are application-specific.
-type Timestamp = string;
 export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;
-
-export interface IBaseOp {
-  eid: EntityID;
-  ts: Timestamp; // UTC unix timestamp
-  type: string;
-  ver: number; // Version number, application-specific not about the protocol;
-}
-
-export interface IUpsertOp extends IBaseOp {
-  // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
-  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
-  pid?: EntityID; // Optional parent ID to support hierarchical structure.
-  verb: Verb.UPSERT;
-  body: unknown;
-}
-
-export interface IDeleteOp extends IBaseOp {
-  verb: Verb.DELETE;
-}
-
-export type IOp = IUpsertOp | IDeleteOp;
-
-export type CipherOp = Uint8Array; // encrypted serialized IOp
 
 export interface INeoOp {
   ts: Date;
@@ -48,20 +18,6 @@ export interface INeoOp {
   pid?: EntityID; // Optional parent ID to support hierarchical structure.
   type: string;
   body?: unknown;
-}
-
-export interface ISyncRequest {
-  ops: CipherOp[];
-  begin: Timestamp;
-}
-
-export interface IRegistrationRequest {
-  token: string;
-  pubKey: Uint8Array;
-}
-
-export interface IOperationRequest {
-  cipher: Uint8Array;
 }
 
 export interface IStorage {

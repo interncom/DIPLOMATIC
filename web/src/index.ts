@@ -7,10 +7,10 @@ import { StateManager } from "./state";
 import { localStorageStore } from "./stores/localStorageStore";
 import { idbStore } from "./stores/idbStore";
 import type { IDiplomaticClientState } from "./types";
-import DiplomaticClient from "./client";
+import { SyncClient } from "./client";
 import libsodiumCrypto from "./crypto";
 import { btoh, htob } from "./shared/binary";
-import { type IOp, type IUpsertOp, Verb } from "./shared/types";
+import { type IOp } from "./shared/types";
 import useStateWatcher, {
   useStateWatcherSuspense,
 } from "./react/useStateWatcher";
@@ -20,7 +20,7 @@ import ClientStatusBar from "./react/statusBar";
 export {
   btoh,
   ClientStatusBar,
-  DiplomaticClient,
+  SyncClient,
   htob,
   idbStore,
   InitSeedView,
@@ -34,4 +34,4 @@ export {
   useSyncOnResume,
 };
 
-export type { IDiplomaticClientState, IOp, IUpsertOp };
+export type { IDiplomaticClientState, IOp };

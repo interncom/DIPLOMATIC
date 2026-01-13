@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import libsodiumCrypto from '../src/crypto';
-import { NeoClient } from '../src/neoclient';
+import { SyncClient } from '../src/client';
 import { MockClock } from '../src/shared/clock';
 import { CallbackNotifier } from '../src/shared/lpc/pusher';
 import { DiplomaticLPCServer, LPCTransport } from '../src/shared/lpc/server';
@@ -42,7 +42,7 @@ const createClient = async (seed: Uint8Array) => {
     on(type, listener) { },
     off(type, listener) { },
   };
-  const client = new NeoClient(
+  const client = new SyncClient(
     new MockClock(new Date(0)),
     state,
     store,

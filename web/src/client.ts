@@ -9,7 +9,7 @@ import { EntityID, HostHandle, ICrypto, IHostConnectionInfo, ITransport } from "
 import { syncPeek, syncPull, syncPush } from "./sync";
 import { IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStateManager, IStore, IStoredMessage } from "./types";
 
-export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
+export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
   public clientState: IStateEmitter<IDiplomaticClientState>;

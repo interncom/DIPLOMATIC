@@ -1,5 +1,5 @@
 import { expect, test, vi, describe, beforeEach } from 'vitest'
-import { NeoClient } from '../src/neoclient'
+import { SyncClient } from '../src/client'
 import { MemoryStore } from '../src/stores/memory/store'
 import type { Hash, IHostConnectionInfo, IProtoHost, MasterSeed } from '../src/shared/types'
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
@@ -39,14 +39,14 @@ const createClient = async (clock = mockClock) => {
     on(type, listener) { },
     off(type, listener) { },
   };
-  const client = new NeoClient<IProtoHost>(clock, state, store, transport);
+  const client = new SyncClient<IProtoHost>(clock, state, store, transport);
   return { store, state, client };
 };
 
 describe('NeoClient', () => {
   test('instantiates NeoClient', async () => {
     const { client } = await createClient();
-    expect(client).toBeInstanceOf(NeoClient);
+    expect(client).toBeInstanceOf(SyncClient);
   });
 
   describe('link', () => {

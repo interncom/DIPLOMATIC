@@ -30,4 +30,8 @@ export class IDBDownloadQueue implements IDownloadQueue {
   async count() {
     return await this.db.count("downloadQueue");
   }
+
+  async wipe() {
+    return this.db.clear("downloadQueue");
+  }
 }

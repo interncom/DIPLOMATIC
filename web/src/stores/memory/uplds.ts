@@ -29,4 +29,8 @@ export class MemoryUploadQueue implements IUploadQueue {
   async count() {
     return this.queue.size;
   }
+
+  async wipe() {
+    this.queue.clear();
+  }
 }

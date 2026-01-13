@@ -53,4 +53,8 @@ export class IDBMessageStore implements IMessageStore {
     }
     return latest;
   }
+
+  async wipe() {
+    return this.db.clear("messages");
+  }
 }

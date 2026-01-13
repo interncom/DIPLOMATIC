@@ -48,6 +48,14 @@ export class IDBStore<Handle extends HostHandle> implements IStore<Handle> {
     this.downloads = new IDBDownloadQueue(this.db as IDBPDatabase<any>);
     this.messages = new IDBMessageStore(this.db as IDBPDatabase<any>);
   }
+
+  async wipe() {
+    await this.seed.wipe();
+    await this.hosts.wipe();
+    await this.uploads.wipe();
+    await this.downloads.wipe();
+    await this.messages.wipe();
+  }
 }
 
 export async function openIDBStore(): Promise<IDBPDatabase<DiplomaticStoreDB>> {

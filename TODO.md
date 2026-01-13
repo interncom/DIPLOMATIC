@@ -5,7 +5,6 @@ ARCH
 
 CLIENT
 - split React portion into separate package
-- implement wipe
 - implement import/export
 
 ERRORS

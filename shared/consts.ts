@@ -26,6 +26,8 @@ export enum Status {
   InvalidRequest = 11,
   InternalError = 12,
   NotFound = 13,
+  InvalidMessage = 14,
+  NoChange = 15,
 }
 
 export enum APICallName {

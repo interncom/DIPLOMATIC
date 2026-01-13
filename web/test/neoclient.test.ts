@@ -1,7 +1,6 @@
 import { expect, test, vi, describe, beforeEach } from 'vitest'
 import { NeoClient } from '../src/neoclient'
 import { MemoryStore } from '../src/stores/memory/store'
-import { StateManager } from '../src/state'
 import type { Hash, IHostConnectionInfo, IProtoHost, MasterSeed } from '../src/shared/types'
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from '../src/shared/storage/memory'
@@ -11,9 +10,10 @@ import { MockClock } from '../src/shared/clock'
 import { EncodedMessage, IMessage } from '../src/shared/message'
 import { btoh, uint8ArraysEqual } from '../src/shared/binary'
 import { hostKeys } from '../src/shared/endpoint'
-import { IDownloadMessage } from '../src/types'
+import { IDownloadMessage, IStateManager } from '../src/types'
 import { sealBag } from '../src/shared/bag'
 import { fail } from 'assert'
+import { Status } from '../src/shared/consts'
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage as any,
@@ -34,9 +34,11 @@ const testHost: IHostConnectionInfo<IProtoHost> = {
 const createClient = async (clock = mockClock) => {
   const store = new MemoryStore<IProtoHost>();
   await store.init();
-  const applier = vi.fn();
-  const clear = vi.fn();
-  const state = new StateManager(applier, clear);
+  const state: IStateManager = {
+    async apply(msg) { return Status.Success },
+    on(type, listener) { },
+    off(type, listener) { },
+  };
   const client = new NeoClient<IProtoHost>(clock, state, store, transport);
   return { store, state, client };
 };

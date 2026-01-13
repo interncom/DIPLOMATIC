@@ -6,9 +6,8 @@ import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { EncodedMessage, genDeleteHead, genInsertHead, genUpsertHead, IMessageHead } from "./shared/message";
 import { EntityID, HostHandle, ICrypto, IHostConnectionInfo, ITransport } from "./shared/types";
-import { StateManager } from "./state";
 import { syncPeek, syncPull, syncPush } from "./sync";
-import { IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStore, IStoredMessage } from "./types";
+import { IClient, IDiplomaticClientState, IDiplomaticClientXferState, IStateEmitter, IStateManager, IStore, IStoredMessage } from "./types";
 
 export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -18,7 +17,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
 
   constructor(
     private clock: IClock,
-    private state: StateManager,
+    private state: IStateManager,
     private store: IStore<Handle>,
     private transport: ITransport,
     private crypto: ICrypto = libsodiumCrypto,
@@ -54,12 +53,17 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     // NOTE: important to enqueue upload before storing it.
     await this.store.uploads.enq([hash]);
     await this.store.messages.add([msg]);
+
+    // TODO: decide what should happen if there's an error while applying.
+    // Dequeue upload and remove message?
+    const stat = await this.state.apply({ ...head, bod: body });
+    return stat;
   }
 
   public async insert(body: EncodedMessage) {
     const clk = this.clock.now();
     const head = await genInsertHead(clk, body, this.crypto);
-    await this.apply(head, body);
+    return this.apply(head, body);
   }
 
   public async upsert(eid: EntityID, body: EncodedMessage) {
@@ -67,7 +71,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     const last = await this.store.messages.last(eid);
     const ctr = (last?.head.ctr ?? -1) + 1;
     const msg = await genUpsertHead(eid, clk, ctr, body, libsodiumCrypto);
-    await this.apply(msg, body);
+    return this.apply(msg, body);
   }
 
   public async delete(eid: EntityID) {
@@ -75,7 +79,7 @@ export class NeoClient<Handle extends HostHandle> implements IClient<Handle> {
     const last = await this.store.messages.last(eid);
     const ctr = (last?.head.ctr ?? -1) + 1;
     const msg = genDeleteHead(eid, clk, ctr);
-    await this.apply(msg);
+    return this.apply(msg);
   }
 
   public async sync() {

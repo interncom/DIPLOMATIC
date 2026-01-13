@@ -3,7 +3,7 @@ import {
   useClientXferState,
   useSyncOnResume,
 } from "./react/useClient";
-import { opMapApplier, StateManager } from "./state";
+import { StateManager } from "./state";
 import { localStorageStore } from "./stores/localStorageStore";
 import { idbStore } from "./stores/idbStore";
 import type { IDiplomaticClientState } from "./types";
@@ -28,7 +28,6 @@ export {
   InitSeedView,
   libsodiumCrypto,
   localStorageStore,
-  opMapApplier,
   StateManager,
   useClientState,
   useClientXferState,

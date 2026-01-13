@@ -1,14 +1,15 @@
-import { expect, test, describe, beforeEach } from 'vitest';
-import { NeoClient } from '../src/neoclient';
-import { MemoryStore } from '../src/stores/memory/store';
-import { StateManager } from '../src/state';
-import { DiplomaticLPCServer, LPCTransport } from '../src/shared/lpc/server';
+import { beforeEach, describe, expect, test } from 'vitest';
 import libsodiumCrypto from '../src/crypto';
+import { NeoClient } from '../src/neoclient';
 import { MockClock } from '../src/shared/clock';
+import { CallbackNotifier } from '../src/shared/lpc/pusher';
+import { DiplomaticLPCServer, LPCTransport } from '../src/shared/lpc/server';
 import { EncodedMessage } from '../src/shared/message';
 import memStorage from '../src/shared/storage/memory';
-import { CallbackNotifier } from '../src/shared/lpc/pusher';
-import type { IStorage, IHostCrypto, IPushNotifier, MasterSeed } from '../src/shared/types';
+import type { IHostCrypto, IStorage, MasterSeed } from '../src/shared/types';
+import { MemoryStore } from '../src/stores/memory/store';
+import { IStateManager } from '../src/types';
+import { Status } from '../src/shared/consts';
 
 const hostClock = new MockClock(new Date(0));
 let lpcHost: DiplomaticLPCServer;
@@ -36,9 +37,11 @@ beforeEach(() => {
 const createClient = async (seed: Uint8Array) => {
   const store = new MemoryStore<any>();
   await store.init();
-  const applier = async () => { };
-  const clear = async () => { };
-  const state = new StateManager(applier, clear);
+  const state: IStateManager = {
+    async apply(msg) { return Status.Success },
+    on(type, listener) { },
+    off(type, listener) { },
+  };
   const client = new NeoClient(
     new MockClock(new Date(0)),
     state,

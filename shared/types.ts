@@ -37,6 +37,17 @@ export type IOp = IUpsertOp | IDeleteOp;
 
 export type CipherOp = Uint8Array; // encrypted serialized IOp
 
+export interface INeoOp {
+  ts: Date;
+  ctr: number;
+  eid: EntityID;
+  // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
+  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
+  pid?: EntityID; // Optional parent ID to support hierarchical structure.
+  type: string;
+  body?: unknown;
+}
+
 export interface ISyncRequest {
   ops: CipherOp[];
   begin: Timestamp;

@@ -1,68 +1,89 @@
-import { EventEmitter } from "./events";
-import type { Applier } from "./types";
-import type { IOp } from "./shared/types";
+import { TypedEventEmitter } from "./events";
+import type { Applier, IStateManager } from "./types";
+import { IMessage } from "./shared/message";
+import { Status } from "./shared/consts";
+import { EntityID, GroupID, INeoOp } from "./shared/types";
+import { decode } from "@msgpack/msgpack";
 
-export class StateManager {
-  emitter: EventEmitter = new EventEmitter();
-  applier: Applier;
-  clear: () => Promise<void>;
-  constructor(applier: Applier, clear: () => Promise<void>) {
-    this.applier = applier;
-    this.clear = clear;
+export interface IMsgEntBody {
+  gid?: GroupID;
+  pid?: EntityID; // Parent entity ID. Not necessarily of same type.
+  type: string;
+  body: unknown;
+}
+export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
+  if (!bodDec) {
+    return false;
   }
+  if (typeof bodDec !== 'object') {
+    return false;
+  }
+  if ('body' in bodDec === false) {
+    return false;
+  }
+  if ('type' in bodDec === false) {
+    return false;
+  }
+  return true;
+}
 
-  apply = async (op: IOp) => {
-    await this.applier(op);
-    this.emitter.emit(op.type);
+const nullOp: INeoOp = {
+  ts: new Date(0),
+  ctr: 0,
+  eid: new Uint8Array(),
+  type: "null",
+}
+
+export function msgToOp(msg: IMessage): [INeoOp, Status] {
+  // If an IMessage represents an entity update (i.e. it's used in EntDB),
+  // then the bod of the IMessage must be an msgpack-encoded IEmsgEntBod.
+  if (!msg.bod) {
+    return [nullOp, Status.MissingBody];
+  }
+  const bodDec = decode(msg.bod);
+  if (isMsgEntBody(bodDec) === false) {
+    return [nullOp, Status.InvalidMessage];
+  }
+  const op = {
+    ts: msg.clk,
+    ctr: msg.ctr,
+    eid: msg.eid,
+    gid: bodDec.gid,
+    pid: bodDec.pid,
+    type: bodDec.type,
+    body: bodDec.body,
+  }
+  return [op, Status.Success];
+}
+
+// StateManager emits events named by the op type which has just been updated.
+export class StateManager implements IStateManager {
+  private emitter = new TypedEventEmitter<null>();
+  constructor(
+    public applier: Applier,
+    public clear: () => Promise<void>) { }
+
+  apply = async (msg: IMessage) => {
+    const [op, statParse] = msgToOp(msg);
+    if (statParse !== Status.Success) {
+      return statParse;
+    }
+
+    const statApply = await this.applier(op);
+    if (statApply !== Status.Success) {
+      // NOTE: this includes Status.NoChange, which is not an error.
+      return statApply;
+    }
+
+    this.emitter.emit(op.type, null);
+    return Status.Success;
   }
 
   on = (opType: string, listener: () => void) => {
-    this.emitter.on(opType, listener);
+    this.emitter.addEventListener(opType, listener);
   }
 
   off = (opType: string, listener: () => void) => {
-    this.emitter.off(opType, listener);
-  }
-}
-
-interface IApplier<T extends IOp> {
-  check: (op: IOp) => op is T;
-  apply: (op: T) => Promise<void>;
-}
-
-type Appliers<M> = {
-  [K in keyof M]: M[K] extends IOp ? IApplier<M[K]> : never;
-}
-
-// opMapApplier generates an operation applier from a record
-// mapping from op type to op IApplier. This is a convenience
-// function to organize handling of multiple op types.
-//
-// Example usage:
-//
-// export interface IStatusOp extends IOp {
-//   type: "status";
-//   body: string;
-// }
-// const applier = opMapApplier<{ status: IStatusOp }>({
-//   "status": {
-//     check: (op: IOp): op is IStatusOp => {
-//       return op.type === "status" && typeof op.body === "string";
-//     },
-//     apply: async (op: IStatusOp) => {
-//       const curr = statusStore.load();
-//       if (!curr?.updatedAt || op.ts > curr.updatedAt) {
-//         const status = op.body;
-//         statusStore.store({ status, updatedAt: op.ts });
-//       }
-//     }
-//   }
-// });
-export function opMapApplier<M>(appliers: Appliers<M>) {
-  return async (op: IOp) => {
-    const applier = appliers[op.type as keyof M];
-    if (applier?.check(op)) {
-      await applier.apply(op);
-    }
+    this.emitter.removeEventListener(opType, listener);
   }
 }

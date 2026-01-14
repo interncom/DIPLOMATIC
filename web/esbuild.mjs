@@ -6,7 +6,7 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/index.mjs",
   platform: "browser",
-  external: ["react"],
+  external: ["react", "@noble/hashes"],
   // minify: true,
   tsconfig: "./tsconfig.json",
 });

@@ -9,4 +9,7 @@ export default defineConfig({
       exclude: ['test/**/*.ts', 'dist/**', '**/*.d.ts'],
     },
   },
+  optimizeDeps: {
+    exclude: ['@noble/hashes'],
+  },
 })

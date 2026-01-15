@@ -73,13 +73,12 @@ Deno.test("server", async (t) => {
   };
   const wsURL = new URL(hostURL);
   wsURL.protocol = hostURL.protocol === "https" ? "wss" : "ws";
-  const listener = new WebsocketListener(wsURL);
   const client = new DiplomaticClientAPI(
     enclave,
     libsodiumCrypto,
     host,
     clock,
-    new HTTPTransport(host.handle, listener),
+    new HTTPTransport(host.handle),
   );
 
   await t.step("POST /users", async () => {

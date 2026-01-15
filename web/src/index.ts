@@ -12,22 +12,32 @@ import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { Status } from "./shared/consts";
 import { HTTPTransport } from "./shared/http";
-import { MasterSeed, type IOp } from "./shared/types";
+import { type IOp, MasterSeed } from "./shared/types";
 import { StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import type { IDiplomaticClientState } from "./types";
 
-export async function genWebClient(stateMgr: StateManager, url: URL): Promise<{ client: SyncClient<URL>, setSeed: (seedHex: string) => Promise<void> }> {
+export async function genWebClient(
+  stateMgr: StateManager,
+  url: URL,
+): Promise<
+  { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
+> {
   const idb = await openIDBStore();
   const idbStore = new IDBStore(idb);
   const transport = new HTTPTransport(url);
-  const client = new SyncClient<URL>(new Clock(), stateMgr, idbStore, transport);
+  const client = new SyncClient<URL>(
+    new Clock(),
+    stateMgr,
+    idbStore,
+    transport,
+  );
   const setSeed = async (seedHex: string) => {
     const seed = htob(seedHex) as MasterSeed;
     await idbStore.seed.save(seed);
     await idbStore.hosts.add({ handle: url, label: "host", idx: 0 });
     await client.connect();
-  }
+  };
   return { client, setSeed };
 }
 
@@ -36,13 +46,13 @@ export {
   htob,
   libsodiumCrypto,
   StateManager,
+  Status,
   SyncClient,
   useClientState,
   useClientXferState,
   useStateWatcher,
   useStateWatcherSuspense,
   useSyncOnResume,
-  Status,
 };
 
 export type { IDiplomaticClientState, IOp };

@@ -67,14 +67,23 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return { numDownloads, numUploads };
   }
 
-  private async apply(head: IMessageHead, body: EncodedMessage | undefined, upload = true) {
+  private async apply(
+    head: IMessageHead,
+    body: EncodedMessage | undefined,
+    upload = true,
+  ) {
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
     const hash = await this.crypto.blake3(headEnc);
     const msg: IStoredMessage = { hash, head, body };
-    // NOTE: important to enqueue upload before storing it.
-    await this.store.uploads.enq([hash]);
+
+    // If message is being applied via sync, don't upload.
+    if (upload) {
+      // NOTE: important to enqueue upload before storing it.
+      await this.store.uploads.enq([hash]);
+    }
+
     await this.store.messages.add([msg]);
 
     // TODO: decide what should happen if there's an error while applying.
@@ -118,7 +127,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async sync() {
     const { clock, connections, crypto, store } = this;
-    console.log("syncing")
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
@@ -129,7 +137,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      console.log("syncing host", host)
       await syncPeek(conn, store, enclave, clock, host, crypto);
       await syncPush(conn, store, enclave, clock, host, crypto);
       await syncPull(conn, store, enclave, host, crypto, this.apply.bind(this));

@@ -1,7 +1,7 @@
 import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { Decoder } from "./shared/codec";
+import { Decoder, Encoder } from "./shared/codec";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
@@ -47,7 +47,9 @@ export async function syncPeek<Handle extends HostHandle>(
     dls.push({ hash: item.hash as Hash, kdm, head, host: host.label });
   }
   await store.downloads.enq(dls);
+
   // TODO: update host lastSyncedAt (touch method?) using timestamp returned from host (may need to change API).
+  await store.hosts.touch(host.label, clock.now());
 }
 
 // Phase 2: Push local uploads to the host
@@ -79,11 +81,13 @@ export async function syncPush<Handle extends HostHandle>(
     for (const item of results) {
       if (item.status !== Status.Success) {
         // TODO: handle errors, some of which may be non-retryable.
+        console.error("push err", item)
         continue;
       }
       // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
       const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
       if (!msgHeadEncHashHex) {
+        console.error("no hash", item, btoh(item.hash))
         continue;
       }
       const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;
@@ -99,7 +103,11 @@ export async function syncPull<Handle extends HostHandle>(
   enclave: Enclave,
   host: IHostRow<Handle>,
   crypto: ICrypto,
-  apply: (head: IMessageHead, body: EncodedMessage | undefined, upload: boolean) => Promise<Status>,
+  apply: (
+    head: IMessageHead,
+    body: EncodedMessage | undefined,
+    upload: boolean,
+  ) => Promise<Status>,
 ): Promise<void> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
@@ -121,7 +129,11 @@ export async function syncPull<Handle extends HostHandle>(
     if (
       head.hsh === undefined && (bodyCph === undefined || bodyCph.length === 0)
     ) {
-      await store.messages.add([{ hash, head }]);
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      const headEnc = enc.result();
+      const properHash = await crypto.blake3(headEnc) as Hash;
+      await store.messages.add([{ hash: properHash, head }]);
       dls.delete(btoh(hash));
       continue;
     }
@@ -146,8 +158,11 @@ export async function syncPull<Handle extends HostHandle>(
       dls.delete(btoh(hash));
       continue;
     }
-    const headEncHash = 
-    const msg: IStoredMessage = { hash, head: dl.head, body };
+    const enc = new Encoder();
+    enc.writeStruct(messageHeadCodec, dl.head);
+    const headEnc = enc.result();
+    const properHash = await crypto.blake3(headEnc) as Hash;
+    const msg: IStoredMessage = { hash: properHash, head: dl.head, body };
     await store.messages.add([msg]);
     dls.delete(btoh(hash));
     await store.downloads.deq([hash]);

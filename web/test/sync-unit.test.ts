@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
+import { vi } from "vitest";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import DiplomaticClientAPI from "../src/shared/client";
@@ -192,7 +193,8 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    await syncPull(conn, store, enclave, host, libsodiumCrypto);
+    const apply = vi.fn().mockResolvedValue(0);
+    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -201,7 +203,8 @@ describe("syncPull", () => {
   });
 
   test("handles no downloads", async () => {
-    await syncPull(conn, store, enclave, host, libsodiumCrypto);
+    const apply = vi.fn().mockResolvedValue(0);
+    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(0);
@@ -229,7 +232,8 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    await syncPull(conn, store, enclave, host, libsodiumCrypto);
+    const apply = vi.fn().mockResolvedValue(0);
+    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);

@@ -40,8 +40,8 @@ const createClient = async (seed: Uint8Array) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) { },
-    off(type, listener) { },
+    on(type, listener) {},
+    off(type, listener) {},
   };
   const client = new SyncClient(
     new MockClock(new Date(0)),

@@ -18,6 +18,7 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
     if (msg.hsh) {
       enc.writeBytes(msg.hsh);
     }
+    console.log("msghead", msg)
   },
   decode(dec) {
     const eid = dec.readBytes(eidBytes);

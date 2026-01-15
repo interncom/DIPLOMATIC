@@ -1,3 +1,4 @@
+import { eidBytes } from "./consts.ts";
 import type { EntityID, Hash, ICrypto } from "./types.ts";
 
 // Message is also known as the "operation".
@@ -56,6 +57,9 @@ export async function genUpsertHead(
   content: SerializedContent,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
+  if (eid.length !== eidBytes) {
+    throw new Error("Invalid EID");
+  }
   let hsh: Uint8Array | undefined;
   if (content.length > 0) {
     hsh = await crypto.blake3(content);

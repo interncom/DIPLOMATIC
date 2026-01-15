@@ -1,12 +1,15 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@noble/hashes@^2.0.1": "2.0.1",
     "jsr:@std/assert@0.223.0": "0.223.0",
     "jsr:@std/fmt@0.223": "0.223.0",
-    "npm:@noble/hashes@^1.8.0": "1.8.0",
     "npm:@types/node@*": "24.2.0"
   },
   "jsr": {
+    "@noble/hashes@2.0.1": {
+      "integrity": "e0e908292a0bf91099cf8ba0720a1647cef82ab38b588815b5e9535b4ff4d7bb"
+    },
     "@std/assert@0.223.0": {
       "integrity": "eb8d6d879d76e1cc431205bd346ed4d88dc051c6366365b1af47034b0670be24",
       "dependencies": [
@@ -18,9 +21,6 @@
     }
   },
   "npm": {
-    "@noble/hashes@1.8.0": {
-      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
-    },
     "@types/node@24.2.0": {
       "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
       "dependencies": [
@@ -165,7 +165,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@noble/hashes@^1.8.0"
+      "jsr:@noble/hashes@^2.0.1"
     ]
   }
 }

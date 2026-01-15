@@ -120,8 +120,8 @@ export interface IClient<Handle extends HostHandle> {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 
-  insert(content: SerializedContent): Promise<Status>;
-  upsert(eid: EntityID, content: SerializedContent): Promise<Status>;
+  insertRaw(content: SerializedContent): Promise<Status>;
+  upsertRaw(eid: EntityID, content: SerializedContent): Promise<Status>;
   delete(eid: EntityID): Promise<Status>;
 
   sync(): Promise<void>;

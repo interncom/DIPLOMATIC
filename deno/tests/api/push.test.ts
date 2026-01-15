@@ -7,7 +7,10 @@ import { pushEnd } from "../../../shared/api/push.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { bagCodec } from "../../../shared/codecs/bag.ts";
-import { IBagPushItem, pushItemCodec } from "../../../shared/codecs/pushItem.ts";
+import {
+  IBagPushItem,
+  pushItemCodec,
+} from "../../../shared/codecs/pushItem.ts";
 import {
   hashBytes,
   kdmBytes,
@@ -21,10 +24,10 @@ import {
   baseMockCrypto,
   baseMockNotifier,
   createMockHost,
-  testPubKey,
-  createTestAuthTimestamp,
   createMockHostOutOfSync,
+  createTestAuthTimestamp,
   mockClockForPush,
+  testPubKey,
 } from "./testUtils.ts";
 
 Deno.test("pushEnd.handleReq - success", async () => {

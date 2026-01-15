@@ -1,13 +1,11 @@
-import { DiplomaticServer } from "../../shared/server.ts";
+import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";
 import denoWebsocketNotifer from "../../deno/src/websockets.ts";
+import { Clock } from "../../shared/clock.ts";
+import memStorage from "../../shared/storage/memory.ts";
 
-const hostID = Deno.env.get("DIPLOMATIC_HOST_ID");
 const port = Number.parseInt(Deno.env.get("DIPLOMATIC_HOST_PORT"));
-if (!hostID) {
-  throw "Missing DIPLOMATIC_HOST_ID env var";
-}
 if (!port) {
   throw "Missing DIPLOMATIC_HOST_PORT env var";
 }
@@ -15,11 +13,11 @@ if (!port) {
 const args = Deno.args;
 const useHttps = args.includes("--https");
 
-const server = new DiplomaticServer(
-  hostID,
+const server = new DiplomaticHTTPServer(
   sqliteStorage,
   libsodiumCrypto,
   denoWebsocketNotifer,
+  new Clock(),
 );
 
 if (useHttps) {

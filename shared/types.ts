@@ -20,6 +20,9 @@ export interface IOp {
   body?: unknown;
 }
 
+export type IInsertParams = Omit<IOp, "ts" | "ctr" | "eid">;
+export type IUpsertParams = Omit<IOp, "ts" | "ctr">;
+
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<void>;
   hasUser: (pubKey: PublicKey) => Promise<boolean>;

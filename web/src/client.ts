@@ -1,3 +1,4 @@
+import { encode } from "@msgpack/msgpack";
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
@@ -16,7 +17,9 @@ import {
   HostHandle,
   ICrypto,
   IHostConnectionInfo,
+  IInsertParams,
   ITransport,
+  IUpsertParams,
 } from "./shared/types";
 import { syncPeek, syncPull, syncPush } from "./sync";
 import {
@@ -64,7 +67,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return { numDownloads, numUploads };
   }
 
-  private async apply(head: IMessageHead, body?: EncodedMessage) {
+  private async apply(head: IMessageHead, body: EncodedMessage | undefined, upload = true) {
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
@@ -80,13 +83,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return stat;
   }
 
-  public async insert(body: EncodedMessage) {
+  public async insertRaw(body: EncodedMessage) {
     const clk = this.clock.now();
     const head = await genInsertHead(clk, body, this.crypto);
     return this.apply(head, body);
   }
 
-  public async upsert(eid: EntityID, body: EncodedMessage) {
+  public async upsertRaw(eid: EntityID, body: EncodedMessage) {
     const clk = this.clock.now();
     const last = await this.store.messages.last(eid);
     const ctr = (last?.head.ctr ?? -1) + 1;
@@ -94,16 +97,28 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.apply(msg, body);
   }
 
+  public async insert(op: IInsertParams) {
+    const body = encode(op);
+    return this.insertRaw(body);
+  }
+
+  public async upsert(op: IUpsertParams) {
+    const { eid, ...rest } = op;
+    const body = encode(rest);
+    return this.upsertRaw(eid, body);
+  }
+
   public async delete(eid: EntityID) {
     const clk = this.clock.now();
     const last = await this.store.messages.last(eid);
     const ctr = (last?.head.ctr ?? -1) + 1;
     const msg = genDeleteHead(eid, clk, ctr);
-    return this.apply(msg);
+    return this.apply(msg, undefined);
   }
 
   public async sync() {
     const { clock, connections, crypto, store } = this;
+    console.log("syncing")
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
@@ -114,9 +129,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
+      console.log("syncing host", host)
       await syncPeek(conn, store, enclave, clock, host, crypto);
       await syncPush(conn, store, enclave, clock, host, crypto);
-      await syncPull(conn, store, enclave, host, crypto);
+      await syncPull(conn, store, enclave, host, crypto, this.apply.bind(this));
     }
   }
 

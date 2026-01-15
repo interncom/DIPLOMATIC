@@ -10,16 +10,13 @@ import {
   authTimestampCodec,
   type IAuthTimestamp,
 } from "../../../shared/codecs/authTimestamp.ts";
-import {
-  HostSpecificKeyPair,
-  PublicKey,
-} from "../../../shared/types.ts";
+import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
 import {
   baseMockStorage,
   createMockHost,
-  testPubKey,
-  createTestAuthTimestamp,
   createMockHostOutOfSync,
+  createTestAuthTimestamp,
+  testPubKey,
 } from "./testUtils.ts";
 
 // Mock storage with listHeads override for peek tests

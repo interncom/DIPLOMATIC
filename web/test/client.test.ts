@@ -42,8 +42,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
   const client = new SyncClient<IProtoHost>(clock, state, store, transport);
   return { store, state, client };
@@ -124,7 +124,7 @@ describe("NeoClient", () => {
         now: () => new Date(1234567890000),
       });
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
-      await client.insert(body);
+      await client.insertRaw(body);
       const uploads = await store.uploads.count();
       expect(uploads).toBe(1);
       const messages = Array.from(await store.messages.list());
@@ -147,13 +147,13 @@ describe("NeoClient", () => {
       const eid = new Uint8Array(32).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
-      await client.upsert(eid, body1);
+      await client.upsertRaw(eid, body1);
       let messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(1);
       expect(messages[0].head.ctr).toBe(0);
       expect(messages[0].body).toEqual(body1);
       expect(messages[0].head.len).toBe(body1.length);
-      await client.upsert(eid, body2);
+      await client.upsertRaw(eid, body2);
       messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
       expect(messages[1].head.ctr).toBe(1);
@@ -170,7 +170,7 @@ describe("NeoClient", () => {
         now: () => new Date(1234567890000),
       });
       const eid = new Uint8Array(32).fill(1);
-      await client.upsert(eid, new Uint8Array([10, 11]));
+      await client.upsertRaw(eid, new Uint8Array([10, 11]));
       await client.delete(eid);
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
@@ -196,7 +196,7 @@ describe("NeoClient", () => {
       await client.connect();
 
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
-      await client.insert(body);
+      await client.insertRaw(body);
 
       await client.sync();
       expect(await store.uploads.count()).toBe(0);
@@ -287,7 +287,7 @@ describe("NeoClient", () => {
 
       // ClientA inserts a message and syncs (pushes to host)
       const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
-      await clientA.insert(testMessage);
+      await clientA.insertRaw(testMessage);
       await clientA.sync();
 
       // ClientB syncs (pulls from host)
@@ -339,7 +339,7 @@ describe("push notifications", () => {
     // Client A connects, inserts a message, and syncs (pushes to host, triggers notification)
     await clientA.connect();
     const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
-    await clientA.insert(testMessage);
+    await clientA.insertRaw(testMessage);
     await clientA.sync();
 
     // Wait for the push notification to trigger sync on clientB

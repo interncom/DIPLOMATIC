@@ -1,6 +1,8 @@
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import { btoh, concat } from "../../../shared/binary.ts";
+import { btoh } from "../../../shared/binary.ts";
 import type { IStorage } from "../../../shared/types.ts";
+import { Encoder } from "../../../shared/codec.ts";
+import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 
 const db = new DB("diplomatic.db");
 db.query(`
@@ -38,11 +40,13 @@ const sqliteStorage: IStorage = {
     return has ?? false;
   },
 
-  async setEnvelope(pubKey, recordedAt, env, sha256) {
+  async setBag(pubKey, recordedAt, bag, sha256) {
     const pubKeyHex = btoh(pubKey);
     const recAtStr = recordedAt.toISOString();
-    const headCph = concat(concat(env.sig, env.kdm), env.headCph);
-    const bodyCph = env.bodyCph;
+    const enc = new Encoder();
+    enc.writeStruct(peekItemHeadCodec, bag);
+    const headCph = enc.result();
+    const bodyCph = bag.bodyCph;
     db.query(
       "INSERT INTO bag (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
       [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
@@ -69,7 +73,7 @@ const sqliteStorage: IStorage = {
       [pubKeyHex, begin, end],
     );
     return rows.map(([sha256, recordedAt, headCph]) => ({
-      sha256: sha256,
+      hash: sha256,
       recordedAt: new Date(recordedAt),
       headCph: new Uint8Array(headCph),
     }));

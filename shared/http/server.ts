@@ -56,7 +56,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
         return respFor(status);
       }
       return binResp(enc);
-    } catch {
+    } catch (err) {
+      console.error("ARGH", err)
       return respFor(Status.InternalError);
     }
   };

@@ -1,13 +1,12 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
-import { IBagPullItem, pullItemCodec } from "../../../shared/codecs/pullItem.ts";
-import { hashBytes, Status } from "../../../shared/consts.ts";
 import {
-  Hash,
-  HostSpecificKeyPair,
-  PublicKey,
-} from "../../../shared/types.ts";
+  IBagPullItem,
+  pullItemCodec,
+} from "../../../shared/codecs/pullItem.ts";
+import { hashBytes, Status } from "../../../shared/consts.ts";
+import { Hash, HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
@@ -15,9 +14,9 @@ import {
 import {
   baseMockStorage,
   createMockHost,
-  testPubKey,
-  createTestAuthTimestamp,
   createMockHostOutOfSync,
+  createTestAuthTimestamp,
+  testPubKey,
 } from "./testUtils.ts";
 
 // Mock storage with getBody override for pull tests

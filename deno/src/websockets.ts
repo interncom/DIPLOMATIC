@@ -1,7 +1,16 @@
-import type { IPushNotifier, IProtoHost, PublicKey, PushReceiver, IPushOpenResponse } from "../../shared/types.ts";
+import type {
+  IProtoHost,
+  IPushNotifier,
+  IPushOpenResponse,
+  PublicKey,
+  PushReceiver,
+} from "../../shared/types.ts";
 import { notifierTSAuthURLParam, Status } from "../../shared/consts.ts";
 import { btoh, htob } from "../../shared/binary.ts";
-import { authTimestampCodec, IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
+import {
+  authTimestampCodec,
+  IAuthTimestamp,
+} from "../../shared/codecs/authTimestamp.ts";
 import { Decoder } from "../../shared/codec.ts";
 
 class DenoWebsocketNotifier implements IPushNotifier {
@@ -26,7 +35,10 @@ class DenoWebsocketNotifier implements IPushNotifier {
     };
   }
 
-  async push(pubKey: PublicKey, data: Uint8Array = new TextEncoder().encode("NEW OP")): Promise<void> {
+  async push(
+    pubKey: PublicKey,
+    data: Uint8Array = new TextEncoder().encode("NEW OP"),
+  ): Promise<void> {
     const pubKeyHex = btoh(pubKey);
     const recvs = this.recvs.get(pubKeyHex);
     if (recvs) {

@@ -38,9 +38,9 @@ interface DiplomaticStoreDB extends DBSchema {
   };
 }
 
-export class IDBStore<Handle extends HostHandle> implements IStore<Handle> {
+export class IDBStore implements IStore<URL> {
   seed: IDBSeedStore;
-  hosts: IDBHostStore<Handle>;
+  hosts: IDBHostStore;
   uploads: IDBUploadQueue;
   downloads: IDBDownloadQueue;
   messages: IDBMessageStore;
@@ -49,7 +49,7 @@ export class IDBStore<Handle extends HostHandle> implements IStore<Handle> {
   constructor(db: IDBPDatabase<DiplomaticStoreDB>) {
     this.db = db;
     this.seed = new IDBSeedStore(this.db as IDBPDatabase<any>);
-    this.hosts = new IDBHostStore<Handle>(this.db as IDBPDatabase<any>);
+    this.hosts = new IDBHostStore(this.db as IDBPDatabase<any>);
     this.uploads = new IDBUploadQueue(this.db as IDBPDatabase<any>);
     this.downloads = new IDBDownloadQueue(this.db as IDBPDatabase<any>);
     this.messages = new IDBMessageStore(this.db as IDBPDatabase<any>);

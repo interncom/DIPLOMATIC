@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { CallbackListener } from "../../shared/lpc/listener.ts";
 import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
-import type { PublicKey, KeyPair, ICrypto, Hash } from "../../shared/types.ts";
+import type { Hash, ICrypto, KeyPair, PublicKey } from "../../shared/types.ts";
 import { makeAuthTimestamp } from "../../shared/auth.ts";
 import type { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 
@@ -16,18 +16,45 @@ Deno.test("lpc integration", async (t) => {
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl: ICrypto = {
-      signEd25519: async (message: Uint8Array | string, secKey: any): Promise<Uint8Array> => {
+      signEd25519: async (
+        message: Uint8Array | string,
+        secKey: any,
+      ): Promise<Uint8Array> => {
         return new Uint8Array(64).fill(0x99); // mock signature
       },
-      gen128BitRandomID: async (): Promise<Uint8Array> => new Uint8Array(16).fill(0x11),
-      gen256BitSecureRandomSeed: async (): Promise<Uint8Array> => new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (seed: Uint8Array, derivationIndex: number): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (plaintext: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]): Promise<Uint8Array> => new Uint8Array(16 + plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (headerAndCipher: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]): Promise<Uint8Array> => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
-      checkSigEd25519: async (sig: Uint8Array, message: Uint8Array | string, pubKey: PublicKey): Promise<boolean> => true,
-      deriveEd25519KeyPair: async (derivationSeed: any) => ({ keyType: "private", publicKey: new Uint8Array(32).fill(0xab) as PublicKey, privateKey: new Uint8Array(64).fill(0x42) as any }),
+      gen128BitRandomID: async (): Promise<Uint8Array> =>
+        new Uint8Array(16).fill(0x11),
+      gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
+        new Uint8Array(32).fill(0x22),
+      deriveXSalsa20Poly1305Key: async (
+        seed: Uint8Array,
+        derivationIndex: number,
+      ): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
+      encryptXSalsa20Poly1305Combined: async (
+        plaintext: Uint8Array,
+        key: Uint8Array,
+        ...ad: Uint8Array[]
+      ): Promise<Uint8Array> =>
+        new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+      decryptXSalsa20Poly1305Combined: async (
+        headerAndCipher: Uint8Array,
+        key: Uint8Array,
+        ...ad: Uint8Array[]
+      ): Promise<Uint8Array> =>
+        new Uint8Array(headerAndCipher.length - 32).fill(0x55),
+      checkSigEd25519: async (
+        sig: Uint8Array,
+        message: Uint8Array | string,
+        pubKey: PublicKey,
+      ): Promise<boolean> => true,
+      deriveEd25519KeyPair: async (derivationSeed: any) => ({
+        keyType: "private",
+        publicKey: new Uint8Array(32).fill(0xab) as PublicKey,
+        privateKey: new Uint8Array(64).fill(0x42) as any,
+      }),
       blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as any,
-      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb) as any,
+      sha256Hash: async (input: Uint8Array) =>
+        new Uint8Array(32).fill(0xbb) as any,
     };
     const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
 
@@ -64,18 +91,42 @@ Deno.test("lpc integration", async (t) => {
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl: ICrypto = {
-      signEd25519: async (message: Uint8Array | string, secKey: any): Promise<Uint8Array> => {
+      signEd25519: async (
+        message: Uint8Array | string,
+        secKey: any,
+      ): Promise<Uint8Array> => {
         return new Uint8Array(64).fill(0x99); // mock signature
       },
       gen128BitRandomID: async () => new Uint8Array(16).fill(0x11),
       gen256BitSecureRandomSeed: async () => new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (seed: Uint8Array, derivationIndex: number) => new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (plaintext: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]) => new Uint8Array(16 + plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (headerAndCipher: Uint8Array, key: Uint8Array, ...ad: Uint8Array[]) => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
-      checkSigEd25519: async (sig: Uint8Array, message: Uint8Array | string, pubKey: PublicKey) => true,
-      deriveEd25519KeyPair: async (derivationSeed: any) => ({ keyType: "private", publicKey: new Uint8Array(32).fill(0xcd) as PublicKey, privateKey: new Uint8Array(64).fill(0x42) as any }),
-      blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb) as any,
+      deriveXSalsa20Poly1305Key: async (
+        seed: Uint8Array,
+        derivationIndex: number,
+      ) => new Uint8Array(32).fill(0x33),
+      encryptXSalsa20Poly1305Combined: async (
+        plaintext: Uint8Array,
+        key: Uint8Array,
+        ...ad: Uint8Array[]
+      ) => new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+      decryptXSalsa20Poly1305Combined: async (
+        headerAndCipher: Uint8Array,
+        key: Uint8Array,
+        ...ad: Uint8Array[]
+      ) => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
+      checkSigEd25519: async (
+        sig: Uint8Array,
+        message: Uint8Array | string,
+        pubKey: PublicKey,
+      ) => true,
+      deriveEd25519KeyPair: async (derivationSeed: any) => ({
+        keyType: "private",
+        publicKey: new Uint8Array(32).fill(0xcd) as PublicKey,
+        privateKey: new Uint8Array(64).fill(0x42) as any,
+      }),
+      blake3: async (input: Uint8Array) =>
+        new Uint8Array(32).fill(0xaa) as Hash,
+      sha256Hash: async (input: Uint8Array) =>
+        new Uint8Array(32).fill(0xbb) as any,
     };
     const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
 

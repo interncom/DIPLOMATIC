@@ -40,8 +40,8 @@ const createClient = async (seed: Uint8Array) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
   const client = new SyncClient(
     new MockClock(new Date(0)),
@@ -73,7 +73,7 @@ describe("Sync Integration", () => {
 
     // Client A inserts a message
     const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
-    await clientA.insert(testMessage);
+    await clientA.insertRaw(testMessage);
 
     // Client A syncs (pushes the message)
     await clientA.sync();
@@ -98,8 +98,8 @@ describe("Sync Integration", () => {
     await clientB.connect(false);
 
     // Insert multiple messages
-    await clientA.insert(new Uint8Array([1]));
-    await clientA.insert(new Uint8Array([2]));
+    await clientA.insertRaw(new Uint8Array([1]));
+    await clientA.insertRaw(new Uint8Array([2]));
     await clientA.sync();
     await clientB.sync();
 
@@ -108,7 +108,7 @@ describe("Sync Integration", () => {
 
     // Upsert one
     const eid = messages[0].head.eid;
-    await clientA.upsert(eid, new Uint8Array([3]));
+    await clientA.upsertRaw(eid, new Uint8Array([3]));
     await clientA.sync();
     await clientB.sync();
 
@@ -135,7 +135,7 @@ describe("Sync Integration", () => {
     await clientB.connect(false);
 
     // Insert and sync at time 1000
-    await clientA.insert(new Uint8Array([1]));
+    await clientA.insertRaw(new Uint8Array([1]));
     await clientA.sync();
 
     // ClientB syncs with lastSyncedAt at 2000 - should not pull messages from 1000

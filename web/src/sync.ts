@@ -2,12 +2,13 @@ import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder } from "./shared/codec";
-import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import { Hash, HostHandle, ICrypto, IHostConnectionInfo } from "./shared/types";
-import { IDownloadMessage, IHostRow, IStore } from "./types";
+import { EncodedMessage } from "./shared/message";
+import { Hash, HostHandle, ICrypto } from "./shared/types";
+import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
 
 // Phase 1: Peek for new items and enqueue downloads
 export async function syncPeek<Handle extends HostHandle>(
@@ -98,6 +99,7 @@ export async function syncPull<Handle extends HostHandle>(
   enclave: Enclave,
   host: IHostRow<Handle>,
   crypto: ICrypto,
+  apply: (head: IMessageHead, body: EncodedMessage | undefined, upload: boolean) => Promise<Status>,
 ): Promise<void> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
@@ -144,8 +146,14 @@ export async function syncPull<Handle extends HostHandle>(
       dls.delete(btoh(hash));
       continue;
     }
-    await store.messages.add([{ hash, head: dl.head, body }]);
+    const headEncHash = 
+    const msg: IStoredMessage = { hash, head: dl.head, body };
+    await store.messages.add([msg]);
     dls.delete(btoh(hash));
     await store.downloads.deq([hash]);
+    const stat = await apply(head, body, false);
+    if (stat !== Status.Success) {
+      console.error("ERR applying", stat);
+    }
   }
 }

@@ -2,20 +2,17 @@ import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { userEnd } from "../../../shared/api/user.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { Status } from "../../../shared/consts.ts";
-import {
-  HostSpecificKeyPair,
-  PublicKey,
-} from "../../../shared/types.ts";
+import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
 } from "../../../shared/codecs/authTimestamp.ts";
 import {
   createMockHost,
-  testPubKeyAlt,
-  createTestAuthTimestamp,
   createMockHostOutOfSync,
+  createTestAuthTimestamp,
   mockClockForPush,
+  testPubKeyAlt,
 } from "./testUtils.ts";
 
 const mockHost = createMockHost({ clock: mockClockForPush });
@@ -39,7 +36,10 @@ Deno.test("userEnd.encodeReq", () => {
 });
 
 Deno.test("userEnd.handleReq - success", async () => {
-  const tsAuth = createTestAuthTimestamp(testPubKeyAlt, new Date(1640995200000));
+  const tsAuth = createTestAuthTimestamp(
+    testPubKeyAlt,
+    new Date(1640995200000),
+  );
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
   const reqData = reqEnc.result();
@@ -61,7 +61,10 @@ Deno.test("userEnd.handleReq - success", async () => {
 });
 
 Deno.test("userEnd.handleReq - extra body content", async () => {
-  const tsAuth = createTestAuthTimestamp(testPubKeyAlt, new Date(1640995200000));
+  const tsAuth = createTestAuthTimestamp(
+    testPubKeyAlt,
+    new Date(1640995200000),
+  );
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
   reqEnc.writeBytes(new Uint8Array([1])); // Extra byte
@@ -84,7 +87,10 @@ Deno.test("userEnd.decodeResp", () => {
 });
 
 Deno.test("userEnd.handleReq - clock out of sync", async () => {
-  const tsAuth = createTestAuthTimestamp(testPubKeyAlt, new Date(1640995200000));
+  const tsAuth = createTestAuthTimestamp(
+    testPubKeyAlt,
+    new Date(1640995200000),
+  );
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
   const reqData = reqEnc.result();

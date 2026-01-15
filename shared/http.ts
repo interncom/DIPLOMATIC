@@ -6,6 +6,7 @@ import { pullEnd } from "./api/pull.ts";
 import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
 import { IPushListener, ITransport } from "./types.ts";
+import { WebsocketListener } from "./http/listener.ts";
 
 export const api = {
   user: {
@@ -19,12 +20,12 @@ export const api = {
     name: APICallName.Push,
   },
   peek: {
-    path: "/pull",
+    path: "/peek",
     endpoint: peekEnd,
     name: APICallName.Peek,
   },
   pull: {
-    path: "/peek",
+    path: "/pull",
     endpoint: pullEnd,
     name: APICallName.Pull,
   },
@@ -45,7 +46,10 @@ export const callPaths = {
 } as const;
 
 export class HTTPTransport implements ITransport {
-  constructor(private url: URL, public listener: IPushListener) {}
+  public listener: IPushListener;
+  constructor(private url: URL) {
+    this.listener = new WebsocketListener(url);
+  }
 
   async call(name: APICallName, enc: Encoder) {
     const { path } = apiCalls[name];

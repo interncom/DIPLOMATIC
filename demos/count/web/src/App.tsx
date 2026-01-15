@@ -1,24 +1,35 @@
-import { StateManager, useStateWatcher, idbStore, DiplomaticClient, Verb } from '@interncom/diplomatic'
+import { StateManager, useStateWatcher, Status, IOp, genWebClient } from '@interncom/diplomatic'
 
 const appState = { count: 0 };
-const stateMgr = new StateManager(async (op) => {
-  if (op.type === "count" && op.verb === Verb.UPSERT && typeof op.body === "number") {
+const stateMgr = new StateManager(async (op: IOp) => {
+  if (op.type === "count" && typeof op.body === "number") {
     appState.count = op.body;
   }
+  return Status.Success;
 }, async () => { appState.count = 0 })
 
-const client = new DiplomaticClient({
-  seed: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-  // hostURL: "https://diplomatic-cloudflare-host.root-a00.workers.dev",
-  hostURL: "https://localhost:3311",
-  // hostURL: "http://localhost:8787",
-  stateManager: stateMgr,
-  store: idbStore,
-});
+
+const url = new URL("http://localhost:3311");
+const { client, setSeed } = await genWebClient(stateMgr, url);
+await setSeed("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")
+
+const eid = new Uint8Array(16).fill(0);
 
 export default function App() {
-  const count = useStateWatcher(stateMgr, "count", async () => appState.count)
-  const inc = () => client.upsert({ type: "count", body: (count ?? 0) + 1, eid: new Uint8Array() })
+  const count = useStateWatcher(stateMgr, "count", async () => {
+    console.log("state watch", appState)
+    return appState.count;
+  })
+  const inc = async () => {
+    await client.upsert({ type: "count", body: (count ?? 0) + 1, eid });
+    console.log("inserted")
+    try {
+      await client.sync();
+    } catch (err) {
+      console.error("syncerr", err);
+    }
+    console.log("synced")
+  }
 
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>

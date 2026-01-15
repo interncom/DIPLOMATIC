@@ -144,7 +144,7 @@ describe("NeoClient", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
-      const eid = new Uint8Array(32).fill(0);
+      const eid = new Uint8Array(16).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
       await client.upsertRaw(eid, body1);
@@ -169,7 +169,7 @@ describe("NeoClient", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
-      const eid = new Uint8Array(32).fill(1);
+      const eid = new Uint8Array(16).fill(1);
       await client.upsertRaw(eid, new Uint8Array([10, 11]));
       await client.delete(eid);
       const messages = Array.from(await store.messages.list());

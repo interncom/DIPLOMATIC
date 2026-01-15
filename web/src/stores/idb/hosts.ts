@@ -9,12 +9,11 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
     handle: new URL(row.handle),
     idx: row.idx,
     lastSyncedAt: row.lastSyncedAt,
-  }
+  };
   return host;
 }
 
-export class IDBHostStore
-  implements IHostStore<URL> {
+export class IDBHostStore implements IHostStore<URL> {
   db: IDBPDatabase<any>;
 
   constructor(db: IDBPDatabase) {
@@ -28,6 +27,19 @@ export class IDBHostStore
     };
     await this.db.put(HOSTS_TABLE, host);
   }
+
+  async touch(label: string, now: Date) {
+    const row = await this.db.get(HOSTS_TABLE, label);
+    if (!row) {
+      return;
+    }
+    const next = {
+      ...row,
+      lastSyncedAt: now,
+    }
+    await this.db.put(HOSTS_TABLE, next);
+  }
+
 
   async get(label: string) {
     const row = await this.db.get(HOSTS_TABLE, label);

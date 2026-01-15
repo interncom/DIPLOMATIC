@@ -47,6 +47,7 @@ export interface IHostStore<Handle extends HostHandle> {
   del: (label: string) => Promise<void>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
+  touch: (label: string, now: Date) => Promise<void>;
 }
 
 // What to index msgs on?

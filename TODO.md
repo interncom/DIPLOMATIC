@@ -1,8 +1,5 @@
 # TODOS
 
-ARCH
-- validate these authTS's in websocket connect
-
 CLIENT
 - split React portion into separate package
 - implement import/export

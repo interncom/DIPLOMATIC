@@ -28,7 +28,7 @@ export class DiplomaticLPCServer implements IProtoHost {
 export class LPCTransport implements ITransport {
   public listener: IPushListener;
   constructor(private host: DiplomaticLPCServer) {
-    this.listener = new CallbackListener(host.notifier);
+    this.listener = new CallbackListener(host.notifier, host.crypto, host.clock);
   }
 
   call = async (name: APICallName, enc: Encoder): Promise<Decoder> => {

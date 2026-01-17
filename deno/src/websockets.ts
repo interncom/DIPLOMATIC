@@ -11,12 +11,30 @@ import {
   authTimestampCodec,
   IAuthTimestamp,
 } from "../../shared/codecs/authTimestamp.ts";
+import { validateAuthTimestamp } from "../../shared/auth.ts";
+import type { IHostCrypto } from "../../shared/types.ts";
+import type { IClock } from "../../shared/clock.ts";
 import { Decoder } from "../../shared/codec.ts";
 
 class DenoWebsocketNotifier implements IPushNotifier {
+  // recvs maps a user's pubKeyHex => the set of listener functions.
   private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();
 
-  open(authTS: IAuthTimestamp, recv: PushReceiver): IPushOpenResponse {
+  async open(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    crypto: IHostCrypto,
+    clock: IClock,
+  ): Promise<IPushOpenResponse> {
+    // Validate authTS
+    const status = await validateAuthTimestamp(authTS, crypto, clock);
+    if (status !== Status.Success) {
+      return {
+        send: () => status,
+        shut: () => status,
+        status,
+      };
+    }
     const pubKeyHex = btoh(authTS.pubKey);
     if (!this.recvs.has(pubKeyHex)) {
       this.recvs.set(pubKeyHex, new Set());
@@ -64,7 +82,12 @@ class DenoWebsocketNotifier implements IPushNotifier {
     console.log("WebSocket connection established");
     const { socket, response } = Deno.upgradeWebSocket(request);
 
-    const chan = this.open(authTS, (data) => socket.send(data));
+    const chan = await this.open(
+      authTS,
+      (data) => socket.send(data),
+      host.crypto,
+      host.clock,
+    );
     // TODO: handle non-success.
     socket.onclose = () => chan.shut();
 

@@ -1,11 +1,10 @@
-import type { ICrypto, IHostCrypto, KeyPair, PublicKey } from "./types.ts";
-import { Decoder, Encoder } from "./codec.ts";
-import { clockToleranceMs, Status } from "./consts.ts";
-import {
-  authTimestampCodec,
-  type IAuthTimestamp,
-} from "./codecs/authTimestamp.ts";
 import { IClock } from "./clock.ts";
+import { Encoder } from "./codec.ts";
+import {
+  type IAuthTimestamp
+} from "./codecs/authTimestamp.ts";
+import { clockToleranceMs, Status } from "./consts.ts";
+import type { ICrypto, IHostCrypto, KeyPair } from "./types.ts";
 
 export type EncodedAuthTimestamp = Uint8Array;
 

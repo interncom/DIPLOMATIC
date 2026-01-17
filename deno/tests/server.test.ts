@@ -6,6 +6,7 @@ import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import {
   Hash,
   IProtoHost,
+  IPushOpenResponse,
   IWebSocketPushNotifier,
   PublicKey,
   PushReceiver,
@@ -34,8 +35,13 @@ class MockPushNotifier implements IWebSocketPushNotifier {
     return Promise.resolve(new Response());
   }
 
-  open(_authTS: IAuthTimestamp, _recv: PushReceiver) {
-    return ({
+  async open(
+    _authTS: IAuthTimestamp,
+    _recv: PushReceiver,
+    _crypto: any,
+    _clock: any,
+  ): Promise<IPushOpenResponse> {
+    return Promise.resolve({
       send: () => Status.Success,
       shut: () => Status.Success,
       status: Status.Success,

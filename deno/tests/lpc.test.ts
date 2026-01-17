@@ -4,18 +4,28 @@ import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
 import type { Hash, ICrypto, KeyPair, PublicKey } from "../../shared/types.ts";
 import { makeAuthTimestamp } from "../../shared/auth.ts";
 import type { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
+import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
 
 Deno.test("lpc integration", async (t) => {
   const notifier = new CallbackNotifier();
 
   await t.step("connect and push", async () => {
-    const listener = new CallbackListener(notifier);
+    const listener = new CallbackListener(
+      notifier,
+      baseMockCrypto,
+      baseMockClock,
+    );
 
     // Mock keys (for testing, dummy values)
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl: ICrypto = {
+      checkSigEd25519: async (
+        sig: Uint8Array,
+        message: Uint8Array | string,
+        pubKey: PublicKey,
+      ): Promise<boolean> => true, // mock
       signEd25519: async (
         message: Uint8Array | string,
         secKey: any,
@@ -33,30 +43,23 @@ Deno.test("lpc integration", async (t) => {
       encryptXSalsa20Poly1305Combined: async (
         plaintext: Uint8Array,
         key: Uint8Array,
-        ...ad: Uint8Array[]
       ): Promise<Uint8Array> =>
-        new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+        new Uint8Array(plaintext.length + 16).fill(0x44),
       decryptXSalsa20Poly1305Combined: async (
         headerAndCipher: Uint8Array,
         key: Uint8Array,
-        ...ad: Uint8Array[]
-      ): Promise<Uint8Array> =>
-        new Uint8Array(headerAndCipher.length - 32).fill(0x55),
-      checkSigEd25519: async (
-        sig: Uint8Array,
-        message: Uint8Array | string,
-        pubKey: PublicKey,
-      ): Promise<boolean> => true,
+      ): Promise<Uint8Array> => headerAndCipher.slice(16),
       deriveEd25519KeyPair: async (derivationSeed: any) => ({
-        keyType: "private",
-        publicKey: new Uint8Array(32).fill(0xab) as PublicKey,
-        privateKey: new Uint8Array(64).fill(0x42) as any,
+        keyType: "private" as const,
+        publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
+        privateKey: new Uint8Array(64).fill(0x66) as any,
       }),
       blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as any,
       sha256Hash: async (input: Uint8Array) =>
         new Uint8Array(32).fill(0xbb) as any,
     };
-    const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
+    const now = baseMockClock.now();
+    const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
 
     let receivedData: Uint8Array | undefined;
     const receiver = (data: Uint8Array) => {
@@ -67,7 +70,7 @@ Deno.test("lpc integration", async (t) => {
     assertEquals(listener.connected(), false);
 
     // Connect
-    listener.connect(authTS, receiver);
+    await listener.connect(authTS, receiver, () => {});
     assertEquals(listener.connected(), true);
 
     // Push data
@@ -83,14 +86,27 @@ Deno.test("lpc integration", async (t) => {
   });
 
   await t.step("multiple listeners", async () => {
-    const listener1 = new CallbackListener(notifier);
-    const listener2 = new CallbackListener(notifier);
+    const listener1 = new CallbackListener(
+      notifier,
+      baseMockCrypto,
+      baseMockClock,
+    );
+    const listener2 = new CallbackListener(
+      notifier,
+      baseMockCrypto,
+      baseMockClock,
+    );
 
     // Mock keys (for testing, dummy values)
     const publicKey = new Uint8Array(32).fill(0xcd) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl: ICrypto = {
+      checkSigEd25519: async (
+        sig: Uint8Array,
+        message: Uint8Array | string,
+        pubKey: PublicKey,
+      ): Promise<boolean> => true, // mock
       signEd25519: async (
         message: Uint8Array | string,
         secKey: any,
@@ -113,11 +129,6 @@ Deno.test("lpc integration", async (t) => {
         key: Uint8Array,
         ...ad: Uint8Array[]
       ) => new Uint8Array(headerAndCipher.length - 32).fill(0x55),
-      checkSigEd25519: async (
-        sig: Uint8Array,
-        message: Uint8Array | string,
-        pubKey: PublicKey,
-      ) => true,
       deriveEd25519KeyPair: async (derivationSeed: any) => ({
         keyType: "private",
         publicKey: new Uint8Array(32).fill(0xcd) as PublicKey,
@@ -128,7 +139,8 @@ Deno.test("lpc integration", async (t) => {
       sha256Hash: async (input: Uint8Array) =>
         new Uint8Array(32).fill(0xbb) as any,
     };
-    const authTS = await makeAuthTimestamp(keys, new Date(), cryptoImpl);
+    const now = baseMockClock.now();
+    const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
 
     let received1: Uint8Array | undefined;
     let received2: Uint8Array | undefined;
@@ -141,8 +153,8 @@ Deno.test("lpc integration", async (t) => {
     };
 
     // Connect both
-    listener1.connect(authTS, receiver1);
-    listener2.connect(authTS, receiver2);
+    await listener1.connect(authTS, receiver1, () => {});
+    await listener2.connect(authTS, receiver2, () => {});
 
     // Push data
     const testData = new TextEncoder().encode("MULTI TEST");

@@ -74,6 +74,9 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const keys = await hostKeys(this, host.label, host.idx);
     const now = clock.now();
     const authTS = await makeAuthTimestamp(keys, now, crypto);
-    return listener.connect(authTS, recv);
+    return await listener.connect(authTS, recv, () => {
+      // TODO: handle disconnection, perhaps reconnect
+      console.log("Disconnected from push listener");
+    });
   };
 }

@@ -7,6 +7,43 @@ import type { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../shared/consts.ts";
 import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
 
+const baseCryptoImpl: ICrypto = {
+  checkSigEd25519: async (
+    sig: Uint8Array,
+    message: Uint8Array | string,
+    pubKey: PublicKey,
+  ): Promise<boolean> => true, // mock
+  signEd25519: async (
+    message: Uint8Array | string,
+    secKey: any,
+  ): Promise<Uint8Array> => {
+    return new Uint8Array(64).fill(0x99); // mock signature
+  },
+  gen128BitRandomID: async (): Promise<Uint8Array> =>
+    new Uint8Array(16).fill(0x11),
+  gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
+    new Uint8Array(32).fill(0x22),
+  deriveXSalsa20Poly1305Key: async (
+    seed: Uint8Array,
+    derivationIndex: number,
+  ): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
+  encryptXSalsa20Poly1305Combined: async (
+    plaintext: Uint8Array,
+    key: Uint8Array,
+  ): Promise<Uint8Array> => new Uint8Array(plaintext.length + 16).fill(0x44),
+  decryptXSalsa20Poly1305Combined: async (
+    headerAndCipher: Uint8Array,
+    key: Uint8Array,
+  ): Promise<Uint8Array> => headerAndCipher.slice(16),
+  deriveEd25519KeyPair: async (derivationSeed: any) => ({
+    keyType: "private" as const,
+    publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
+    privateKey: new Uint8Array(64).fill(0x66) as any,
+  }),
+  blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
+  sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
+};
+
 Deno.test("lpc integration", async (t) => {
   const notifier = new CallbackNotifier();
 
@@ -21,44 +58,7 @@ Deno.test("lpc integration", async (t) => {
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
-    const cryptoImpl: ICrypto = {
-      checkSigEd25519: async (
-        sig: Uint8Array,
-        message: Uint8Array | string,
-        pubKey: PublicKey,
-      ): Promise<boolean> => true, // mock
-      signEd25519: async (
-        message: Uint8Array | string,
-        secKey: any,
-      ): Promise<Uint8Array> => {
-        return new Uint8Array(64).fill(0x99); // mock signature
-      },
-      gen128BitRandomID: async (): Promise<Uint8Array> =>
-        new Uint8Array(16).fill(0x11),
-      gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
-        new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (
-        seed: Uint8Array,
-        derivationIndex: number,
-      ): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (
-        plaintext: Uint8Array,
-        key: Uint8Array,
-      ): Promise<Uint8Array> =>
-        new Uint8Array(plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (
-        headerAndCipher: Uint8Array,
-        key: Uint8Array,
-      ): Promise<Uint8Array> => headerAndCipher.slice(16),
-      deriveEd25519KeyPair: async (derivationSeed: any) => ({
-        keyType: "private" as const,
-        publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
-        privateKey: new Uint8Array(64).fill(0x66) as any,
-      }),
-      blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as any,
-      sha256Hash: async (input: Uint8Array) =>
-        new Uint8Array(32).fill(0xbb) as any,
-    };
+    const cryptoImpl = baseCryptoImpl;
     const now = baseMockClock.now();
     const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
 
@@ -102,24 +102,26 @@ Deno.test("lpc integration", async (t) => {
     const publicKey = new Uint8Array(32).fill(0xcd) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
-    const cryptoImpl: ICrypto = {
-      checkSigEd25519: async (sig, message, pubKey) => true,
-      signEd25519: async (message, secKey) => new Uint8Array(64).fill(0x99),
-      gen128BitRandomID: async () => new Uint8Array(16).fill(0x11),
-      gen256BitSecureRandomSeed: async () => new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (seed, derivationIndex) =>
-        new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (plaintext, key, ...ad) =>
-        new Uint8Array(16 + plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (headerAndCipher, key, ...ad) =>
-        new Uint8Array(headerAndCipher.length - 32).fill(0x55),
-      deriveEd25519KeyPair: async (derivationSeed) => ({
-        keyType: "private",
+    const cryptoImpl = {
+      ...baseCryptoImpl,
+      deriveEd25519KeyPair: async (derivationSeed: any) => ({
+        keyType: "private" as const,
         publicKey: new Uint8Array(32).fill(0xcd) as PublicKey,
         privateKey: new Uint8Array(64).fill(0x42) as any,
       }),
-      blake3: async (input) => new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (input) => new Uint8Array(32).fill(0xbb),
+      blake3: async (input: Uint8Array) =>
+        new Uint8Array(32).fill(0xaa) as Hash,
+      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
+      encryptXSalsa20Poly1305Combined: async (
+        plaintext: Uint8Array,
+        key: Uint8Array,
+      ): Promise<Uint8Array> =>
+        new Uint8Array(16 + plaintext.length + 16).fill(0x44),
+      decryptXSalsa20Poly1305Combined: async (
+        headerAndCipher: Uint8Array,
+        key: Uint8Array,
+      ): Promise<Uint8Array> =>
+        new Uint8Array(headerAndCipher.length - 32).fill(0x55),
     };
     const now = baseMockClock.now();
     const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
@@ -177,24 +179,11 @@ Deno.test("lpc integration", async (t) => {
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
-    const cryptoImpl: ICrypto = {
-      checkSigEd25519: async (sig, message, pubKey) => true,
-      signEd25519: async (message, secKey) => new Uint8Array(64).fill(0x99),
-      gen128BitRandomID: async () => new Uint8Array(16).fill(0x11),
-      gen256BitSecureRandomSeed: async () => new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (seed, derivationIndex) =>
-        new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (plaintext, key) =>
-        new Uint8Array(plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (headerAndCipher, key) =>
-        headerAndCipher.slice(16),
-      deriveEd25519KeyPair: async (derivationSeed) => ({
-        keyType: "private" as const,
-        publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
-        privateKey: new Uint8Array(64).fill(0x66) as any,
-      }),
-      blake3: async (input) => new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (input) => new Uint8Array(32).fill(0xbb),
+    const cryptoImpl = {
+      ...baseCryptoImpl,
+      blake3: async (input: Uint8Array) =>
+        new Uint8Array(32).fill(0xaa) as Hash,
+      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
     };
     const now = baseMockClock.now();
     const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
@@ -218,25 +207,7 @@ Deno.test("lpc integration", async (t) => {
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
     const privateKey = new Uint8Array(64).fill(0x42) as any;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
-    const cryptoImpl: ICrypto = {
-      checkSigEd25519: async (sig, message, pubKey) => true,
-      signEd25519: async (message, secKey) => new Uint8Array(64).fill(0x99),
-      gen128BitRandomID: async () => new Uint8Array(16).fill(0x11),
-      gen256BitSecureRandomSeed: async () => new Uint8Array(32).fill(0x22),
-      deriveXSalsa20Poly1305Key: async (seed, derivationIndex) =>
-        new Uint8Array(32).fill(0x33),
-      encryptXSalsa20Poly1305Combined: async (plaintext, key) =>
-        new Uint8Array(plaintext.length + 16).fill(0x44),
-      decryptXSalsa20Poly1305Combined: async (headerAndCipher, key) =>
-        headerAndCipher.slice(16),
-      deriveEd25519KeyPair: async (derivationSeed) => ({
-        keyType: "private" as const,
-        publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
-        privateKey: new Uint8Array(64).fill(0x66) as any,
-      }),
-      blake3: async (input) => new Uint8Array(32).fill(0xaa) as any,
-      sha256Hash: async (input) => new Uint8Array(32).fill(0xbb),
-    };
+    const cryptoImpl = baseCryptoImpl;
     // Create authTS with old timestamp
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
     const authTS = await makeAuthTimestamp(keys, oldTs, cryptoImpl);

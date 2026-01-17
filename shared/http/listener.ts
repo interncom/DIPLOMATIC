@@ -1,6 +1,7 @@
 import { btoh } from "../binary.ts";
 import { Encoder } from "../codec.ts";
 import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
+import { Status } from "../consts.ts";
 import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
@@ -12,7 +13,7 @@ export class WebsocketListener implements IPushListener {
       this.websocket.readyState === WebSocket.OPEN;
   }
 
-  connect(authTS: IAuthTimestamp, recv: PushReceiver) {
+  async connect(authTS: IAuthTimestamp, recv: PushReceiver, onDisconnect: () => void): Promise<Status> {
     const { url } = this;
 
     const enc = new Encoder();
@@ -29,7 +30,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onclose = (e) => {
       console.log("DISCONNECTED");
-      this.connect(authTS, recv);
+      onDisconnect();
     };
 
     this.websocket.onmessage = (e) => {
@@ -40,6 +41,8 @@ export class WebsocketListener implements IPushListener {
     this.websocket.onerror = (e) => {
       console.log(`ERROR: ${e}`);
     };
+
+    return Promise.resolve(Status.Success);
   }
 
   disconnect() {

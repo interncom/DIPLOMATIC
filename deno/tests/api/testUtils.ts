@@ -1,5 +1,11 @@
 import { Status } from "../../../shared/consts.ts";
-import { IProtoHost, IPushNotifier, PublicKey } from "../../../shared/types.ts";
+import {
+  IProtoHost,
+  IPushNotifier,
+  IPushOpenResponse,
+  PublicKey,
+  PushReceiver,
+} from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 
 // Base mock storage - can be overridden per test
@@ -24,12 +30,18 @@ export const baseMockCrypto = {
 
 // Base mock notifier
 export const baseMockNotifier: IPushNotifier = {
-  open: (_authTS: IAuthTimestamp, _recv: (data: Uint8Array) => void) => ({
-    send: () => Status.Success,
-    shut: () => Status.Success,
-    status: Status.Success,
-  }),
-  push: (_pubKey: PublicKey, _data: Uint8Array) => Promise.resolve(),
+  open: async (
+    _authTS: IAuthTimestamp,
+    _recv: PushReceiver,
+    _crypto: any,
+    _clock: any,
+  ): Promise<IPushOpenResponse> =>
+    Promise.resolve({
+      send: () => Status.Success,
+      shut: () => Status.Success,
+      status: Status.Success,
+    }),
+  push: (_pubKey: PublicKey, _data: Uint8Array) => void 0,
 };
 
 // Base mock clock - synchronized for tests

@@ -7,11 +7,23 @@ import type {
 import { btoh } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { IAuthTimestamp } from "../codecs/authTimestamp.ts";
+import { validateAuthTimestamp } from "../auth.ts";
+import type { IHostCrypto } from "../types.ts";
+import type { IClock } from "../clock.ts";
 
 export class CallbackNotifier implements IPushNotifier {
   private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();
 
-  open(authTS: IAuthTimestamp, recv: PushReceiver): IPushOpenResponse {
+  async open(authTS: IAuthTimestamp, recv: PushReceiver, crypto: IHostCrypto, clock: IClock): Promise<IPushOpenResponse> {
+    // Validate authTS
+    const status = await validateAuthTimestamp(authTS, crypto, clock);
+    if (status !== Status.Success) {
+      return {
+        send: () => status,
+        shut: () => status,
+        status,
+      };
+    }
     const pubKeyHex = btoh(authTS.pubKey);
     if (!this.recvs.has(pubKeyHex)) {
       this.recvs.set(pubKeyHex, new Set());

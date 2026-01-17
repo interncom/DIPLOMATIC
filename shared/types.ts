@@ -120,14 +120,14 @@ export interface IPushOpenResponse {
   status: Status;
 }
 export interface IPushNotifier {
-  open(authTS: IAuthTimestamp, recv: PushReceiver): IPushOpenResponse;
+  open(authTS: IAuthTimestamp, recv: PushReceiver, crypto: IHostCrypto, clock: IClock): Promise<IPushOpenResponse>;
   push(pubKey: PublicKey, data: Uint8Array): void;
 }
 export interface IWebSocketPushNotifier extends IPushNotifier {
   handle(host: IProtoHost, req: Request): Promise<Response>;
 }
 export interface IPushListener {
-  connect(authTS: IAuthTimestamp, recv: PushReceiver): void;
+  connect(authTS: IAuthTimestamp, recv: PushReceiver, onDisconnect: () => void): Promise<Status>;
   connected(): boolean;
   disconnect(): void;
 }

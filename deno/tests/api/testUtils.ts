@@ -3,18 +3,21 @@ import {
   IProtoHost,
   IPushNotifier,
   IPushOpenResponse,
+  IStorage,
   PublicKey,
   PushReceiver,
+  ValStat,
 } from "../../../shared/types.ts";
+import { IBagPeekItem } from "../../../shared/codecs/peekItem.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 
 // Base mock storage - can be overridden per test
-export const baseMockStorage = {
-  hasUser: () => Promise.resolve(true),
-  addUser: () => Promise.resolve(),
-  getBody: () => Promise.resolve(undefined as Uint8Array | undefined),
-  listHeads: () => Promise.resolve([]),
-  setBag: () => Promise.resolve(),
+export const baseMockStorage: IStorage = {
+  hasUser: async () => [true, Status.Success],
+  addUser: async () => [undefined, Status.Success],
+  getBody: async () => [undefined, Status.Success],
+  listHeads: async () => [[], Status.Success],
+  setBag: async () => [undefined, Status.Success],
 };
 
 // Base mock crypto

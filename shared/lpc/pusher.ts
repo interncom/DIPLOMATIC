@@ -14,7 +14,12 @@ import type { IClock } from "../clock.ts";
 export class CallbackNotifier implements IPushNotifier {
   private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();
 
-  async open(authTS: IAuthTimestamp, recv: PushReceiver, crypto: IHostCrypto, clock: IClock): Promise<IPushOpenResponse> {
+  async open(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    crypto: IHostCrypto,
+    clock: IClock,
+  ): Promise<IPushOpenResponse> {
     // Validate authTS
     const status = await validateAuthTimestamp(authTS, crypto, clock);
     if (status !== Status.Success) {

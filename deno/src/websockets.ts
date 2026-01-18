@@ -74,8 +74,12 @@ class DenoWebsocketNotifier implements IPushNotifier {
     }
     const authTSEnc = htob(authTSHex);
     const dec = new Decoder(authTSEnc);
-    const authTS = dec.readStruct(authTimestampCodec);
-    if (!await host.storage.hasUser(authTS.pubKey)) {
+    const [authTS, decStatus] = dec.readStruct(authTimestampCodec);
+    if (decStatus !== Status.Success) {
+      return new Response("Invalid authTS", { status: 401 });
+    }
+    const [hasUser, hasStatus] = await host.storage.hasUser(authTS.pubKey);
+    if (hasStatus !== Status.Success || !hasUser) {
       return new Response("Unauthorized", { status: 401 });
     }
 

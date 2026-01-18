@@ -25,11 +25,17 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
-    const validStatus = await validateAuthTimestamp(authTS, host.crypto, host.clock);
+    const validStatus = await validateAuthTimestamp(
+      authTS,
+      host.crypto,
+      host.clock,
+    );
     if (validStatus !== Status.Success) return validStatus;
     const { pubKey } = authTS;
 
-    if (!storage.hasUser(pubKey)) return Status.UserNotRegistered;
+    const [hasUser, hasStatus] = await storage.hasUser(pubKey);
+    if (hasStatus !== Status.Success) return hasStatus;
+    if (!hasUser) return Status.UserNotRegistered;
 
     const [bags, s3] = reqDec.readStructs(bagCodec);
     if (s3 !== Status.Success) return s3;
@@ -42,9 +48,11 @@ export const pushEnd: IAuthenticatedEndpoint<
         if (itemStatus !== Status.Success) return itemStatus;
         continue;
       }
-      await storage.setBag(pubKey, now, bag, hash);
-      notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
-      const item: IBagPushItem = { status: Status.Success, hash };
+      const [_, setStatus] = await storage.setBag(pubKey, now, bag, hash);
+      if (setStatus === Status.Success) {
+        notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
+      }
+      const item: IBagPushItem = { status: setStatus, hash };
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;
     }

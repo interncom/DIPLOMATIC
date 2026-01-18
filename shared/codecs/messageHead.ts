@@ -37,6 +37,12 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
       if (s5 !== Status.Success) return [undefined, s5];
       hsh = h as Uint8Array;
     }
-    return [{ eid: eid as Uint8Array, clk: clk as Date, ctr: ctr as number, len: len as number, hsh: hsh as Uint8Array | undefined }, Status.Success];
+    return [{
+      eid,
+      clk,
+      ctr,
+      len,
+      hsh,
+    }, Status.Success];
   },
 };

@@ -13,7 +13,11 @@ export const userEnd: IAuthenticatedEndpoint<never, void> = {
 
     const [authTS, status] = reqDec.readStruct(authTimestampCodec);
     if (status !== Status.Success) return status;
-    const validStatus = await validateAuthTimestamp(authTS, host.crypto, host.clock);
+    const validStatus = await validateAuthTimestamp(
+      authTS,
+      host.crypto,
+      host.clock,
+    );
     if (validStatus !== Status.Success) {
       return validStatus;
     }
@@ -22,7 +26,8 @@ export const userEnd: IAuthenticatedEndpoint<never, void> = {
     if (!reqDec.done()) {
       return Status.ExtraBodyContent;
     }
-    await storage.addUser(pubKey);
+    const [_, addStatus] = await storage.addUser(pubKey);
+    if (addStatus !== Status.Success) return addStatus;
     return Status.Success;
   },
   decodeResp(_respDec) {

@@ -36,10 +36,9 @@ export class IDBHostStore implements IHostStore<URL> {
     const next = {
       ...row,
       lastSyncedAt: now,
-    }
+    };
     await this.db.put(HOSTS_TABLE, next);
   }
-
 
   async get(label: string) {
     const row = await this.db.get(HOSTS_TABLE, label);

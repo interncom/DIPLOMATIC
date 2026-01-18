@@ -2,7 +2,7 @@
 // The bag includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 
 import { Decoder, Encoder } from "./codec.ts";
-import { messageHeadCodec, IMessageHead } from "./codecs/messageHead.ts";
+import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { concat, uint8ArraysEqual } from "./binary.ts";
@@ -103,7 +103,9 @@ export async function openBag(
   // Check hash.
   if ((msgHead as IMessageHead).hsh && msgBody) {
     const bodyHash = await crypto.blake3(msgBody);
-    if (!uint8ArraysEqual(bodyHash, (msgHead as IMessageHead).hsh as Uint8Array)) {
+    if (
+      !uint8ArraysEqual(bodyHash, (msgHead as IMessageHead).hsh as Uint8Array)
+    ) {
       throw new Error("Hash mismatch");
     }
   }

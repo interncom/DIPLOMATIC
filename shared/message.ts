@@ -88,7 +88,11 @@ export function genUpsert(
   };
 }
 
-export function genDelete(eid: EntityID, clk: Date, ctr: number): IDeleteMessage {
+export function genDelete(
+  eid: EntityID,
+  clk: Date,
+  ctr: number,
+): IDeleteMessage {
   return {
     eid,
     clk,
@@ -97,7 +101,11 @@ export function genDelete(eid: EntityID, clk: Date, ctr: number): IDeleteMessage
   };
 }
 
-export function genDeleteHead(eid: EntityID, clk: Date, ctr: number): IMessageHead {
+export function genDeleteHead(
+  eid: EntityID,
+  clk: Date,
+  ctr: number,
+): IMessageHead {
   return {
     eid,
     clk,

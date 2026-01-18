@@ -31,6 +31,7 @@ import {
   IStore,
   IStoredMessage,
 } from "./types";
+import { Status } from "./shared/consts";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -137,9 +138,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      await syncPeek(conn, store, enclave, clock, host, crypto);
-      await syncPush(conn, store, enclave, clock, host, crypto);
-      await syncPull(conn, store, enclave, host, crypto, this.apply.bind(this));
+      const peekStat = await syncPeek(conn, store, enclave, clock, host, crypto);
+      if (peekStat !== Status.Success) {
+        console.error(`Failed to peek: ${peekStat}`);
+      }
+      const pushStat = await syncPush(conn, store, enclave, clock, host, crypto);
+      if (pushStat !== Status.Success) {
+        console.error(`Failed to push: ${pushStat}`);
+      }
+      const pullStat = await syncPull(conn, store, enclave, host, crypto, this.apply.bind(this));
+      if (pullStat !== Status.Success) {
+        console.error(`Failed to pull: ${pullStat}`);
+      }
     }
   }
 

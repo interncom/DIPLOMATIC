@@ -56,7 +56,9 @@ Deno.test("userEnd.handleReq - success", async () => {
   // Check decodeResp
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const result = userEnd.decodeResp(respDec);
+  const resp = userEnd.decodeResp(respDec);
+  const [result, decodeStatus] = resp;
+  assertEquals(decodeStatus, Status.Success);
   assertEquals(result, undefined);
 });
 
@@ -82,8 +84,9 @@ Deno.test("userEnd.handleReq - extra body content", async () => {
 
 Deno.test("userEnd.decodeResp", () => {
   const respDec = new Decoder(new Uint8Array());
-  const result = userEnd.decodeResp(respDec);
-  assertEquals(result, undefined);
+  const [val, status] = userEnd.decodeResp(respDec);
+  assertEquals(status, Status.Success);
+  assertEquals(val, undefined);
 });
 
 Deno.test("userEnd.handleReq - clock out of sync", async () => {

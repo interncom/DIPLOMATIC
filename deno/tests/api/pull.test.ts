@@ -83,10 +83,11 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   // Check response
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const results = Array.from(pullEnd.decodeResp(respDec));
-  assertEquals(results.length, 1); // Only one hash has body
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
-  assertEquals(results[0].bodyCph, new Uint8Array([10, 20, 30]));
+  const [results, decodeStatus] = pullEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPullItem[]).length, 1); // Only one hash has body
+  assertEquals((results as IBagPullItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
+  assertEquals((results as IBagPullItem[])[0].bodyCph, new Uint8Array([10, 20, 30]));
 });
 
 Deno.test("pullEnd.handleReq - no bodies", async () => {
@@ -109,8 +110,9 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
   // Check response
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const results = Array.from(pullEnd.decodeResp(respDec));
-  assertEquals(results.length, 0);
+  const [results, decodeStatus] = pullEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPullItem[]).length, 0);
 });
 
 Deno.test("pullEnd.decodeResp", () => {
@@ -123,10 +125,11 @@ Deno.test("pullEnd.decodeResp", () => {
   const respData = enc.result();
   const respDec = new Decoder(respData);
 
-  const results = Array.from(pullEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
-  assertEquals(results[0].bodyCph, new Uint8Array([10, 20, 30]));
+  const [results, decodeStatus] = pullEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPullItem[]).length, 1);
+  assertEquals((results as IBagPullItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
+  assertEquals((results as IBagPullItem[])[0].bodyCph, new Uint8Array([10, 20, 30]));
 });
 
 Deno.test("pullEnd.handleReq - clock out of sync", async () => {

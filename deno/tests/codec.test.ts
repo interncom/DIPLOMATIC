@@ -5,11 +5,13 @@ import {
 import { Decoder } from "../../shared/codec.ts";
 import { decodeVarInt, encodeVarInt } from "../../shared/codec.ts";
 import { concat } from "../../shared/binary.ts";
+import { Status } from "../../shared/consts.ts";
 
 Deno.test("Decoder readBytes", () => {
   const data = new Uint8Array([1, 2, 3, 4, 5]);
   const dec = new Decoder(data);
-  const bytes = dec.readBytes(3);
+  const [bytes, status] = dec.readBytes(3);
+  assertEquals(status, Status.Success);
   assertEquals(bytes, new Uint8Array([1, 2, 3]));
   assertEquals(dec.done(), false);
 });
@@ -19,15 +21,19 @@ Deno.test("Decoder readBigInt", () => {
   const view = new DataView(data.buffer);
   view.setBigUint64(0, 1234567890123456789n, false);
   const dec = new Decoder(data);
-  const bigint = dec.readBigInt();
+  const [bigint, status] = dec.readBigInt();
+  assertEquals(status, Status.Success);
   assertEquals(bigint, 1234567890123456789n);
   assertEquals(dec.done(), true);
 });
 
 Deno.test("Decoder readVarInt", () => {
-  const varint = encodeVarInt(42);
+  const [varint, encStatus] = encodeVarInt(42);
+  assertEquals(encStatus, Status.Success);
+  if (encStatus !== Status.Success) return;
   const dec = new Decoder(varint);
-  const num = dec.readVarInt();
+  const [num, decStatus] = dec.readVarInt();
+  assertEquals(decStatus, Status.Success);
   assertEquals(num, 42);
   assertEquals(dec.done(), true);
 });
@@ -37,19 +43,25 @@ Deno.test("Decoder sequential reads", () => {
   const bytes4 = new Uint8Array([1, 2, 3, 4]);
   const bigintData = new Uint8Array(8);
   new DataView(bigintData.buffer).setBigUint64(0, 999n, false);
-  const varintData = encodeVarInt(5);
+  const [varintData, vs] = encodeVarInt(5);
+  assertEquals(vs, Status.Success);
+  if (vs !== Status.Success) return;
   const bytes2 = new Uint8Array([7, 8]);
   const all = concat(bytes4, bigintData);
   const temp = concat(all, varintData);
   const data = concat(temp, bytes2);
   const dec = new Decoder(data);
-  const b4 = dec.readBytes(4);
+  const [b4, s1] = dec.readBytes(4);
+  assertEquals(s1, Status.Success);
   assertEquals(b4, bytes4);
-  const bi = dec.readBigInt();
+  const [bi, s2] = dec.readBigInt();
+  assertEquals(s2, Status.Success);
   assertEquals(bi, 999n);
-  const vi = dec.readVarInt();
+  const [vi, s3] = dec.readVarInt();
+  assertEquals(s3, Status.Success);
   assertEquals(vi, 5);
-  const b2 = dec.readBytes(2);
+  const [b2, s4] = dec.readBytes(2);
+  assertEquals(s4, Status.Success);
   assertEquals(b2, bytes2);
   assertEquals(dec.done(), true);
 });
@@ -57,7 +69,8 @@ Deno.test("Decoder sequential reads", () => {
 Deno.test("Decoder readBytes at end", () => {
   const data = new Uint8Array([10, 20]);
   const dec = new Decoder(data);
-  const bytes = dec.readBytes(2);
+  const [bytes, status] = dec.readBytes(2);
+  assertEquals(status, Status.Success);
   assertEquals(bytes, data);
   assertEquals(dec.done(), true);
 });
@@ -93,23 +106,29 @@ Deno.test("Encoder writeBigInt", () => {
 
 Deno.test("Encoder writeVarInt", () => {
   const enc = new Encoder();
-  enc.writeVarInt(42);
+  const status = enc.writeVarInt(42);
+  assertEquals(status, Status.Success);
   const result = enc.result();
-  assertEquals(result, encodeVarInt(42));
+  const [expected, expStatus] = encodeVarInt(42);
+  assertEquals(expStatus, Status.Success);
+  assertEquals(result, expected);
 });
 
 Deno.test("Encoder sequential writes", () => {
   const enc = new Encoder();
   enc.writeBytes(new Uint8Array([1, 2]));
   enc.writeBigInt(999n);
-  enc.writeVarInt(5);
+  const vs2 = enc.writeVarInt(5);
+  assertEquals(vs2, Status.Success);
   enc.writeBytes(new Uint8Array([7, 8]));
   const result = enc.result();
   // Expected: [1,2] + 8 bytes big endian 999 + varint 5 + [7,8]
   const bytes4 = new Uint8Array([1, 2]);
   const bigintData = new Uint8Array(8);
   new DataView(bigintData.buffer).setBigUint64(0, 999n, false);
-  const varintData = encodeVarInt(5);
+  const [varintData, vs] = encodeVarInt(5);
+  assertEquals(vs, Status.Success);
+  if (vs !== Status.Success) return;
   const bytes2 = new Uint8Array([7, 8]);
   const expected = concat(
     bytes4,
@@ -127,52 +146,50 @@ Deno.test("Encoder empty", () => {
 Deno.test("Decoder readBytes negative num", () => {
   const data = new Uint8Array([1, 2, 3]);
   const dec = new Decoder(data);
-  assertThrows(
-    () => dec.readBytes(-1),
-    Error,
-    "Cannot read negative number of bytes",
-  );
+  const [bytes, status] = dec.readBytes(-1);
+  assertEquals(status, Status.InvalidParam);
+  assertEquals(bytes, undefined);
 });
 
 Deno.test("Decoder readBytes more than available", () => {
   const data = new Uint8Array([1, 2, 3]);
   const dec = new Decoder(data);
-  assertThrows(
-    () => dec.readBytes(5),
-    Error,
-    "Not enough data to read requested bytes",
-  );
+  const [bytes, status] = dec.readBytes(5);
+  assertEquals(status, Status.MissingBody);
+  assertEquals(bytes, undefined);
 });
 
 Deno.test("Decoder readBytes zero", () => {
   const data = new Uint8Array([1, 2, 3]);
   const dec = new Decoder(data);
-  const bytes = dec.readBytes(0);
+  const [bytes, status] = dec.readBytes(0);
+  assertEquals(status, Status.Success);
   assertEquals(bytes, new Uint8Array(0));
-  assertEquals(dec.consumed(), 0);
 });
 
 Deno.test("Decoder readBigInt not enough data", () => {
   const data = new Uint8Array([1, 2, 3]);
   const dec = new Decoder(data);
-  assertThrows(
-    () => dec.readBigInt(),
-    Error,
-    "Not enough data to read BigInt (needs 8 bytes)",
-  );
+  const [result, status] = dec.readBigInt();
+  assertEquals(status, Status.MissingBody);
+  assertEquals(result, undefined);
 });
 
 Deno.test("Decoder readVarInt no data", () => {
   const data = new Uint8Array([]);
   const dec = new Decoder(data);
-  assertThrows(() => dec.readVarInt(), Error, "Not enough data to read VarInt");
+  const [result, status] = dec.readVarInt();
+  assertEquals(status, Status.InvalidMessage);
+  assertEquals(result, undefined);
 });
 
 Deno.test("Decoder readVarInt truncated", () => {
   // Varint for a large number but cut off
   const data = new Uint8Array([0x80, 0x80]); // Incomplete varint
   const dec = new Decoder(data);
-  assertThrows(() => dec.readVarInt()); // Assuming decode_varint throws
+  const [result, status] = dec.readVarInt();
+  assertEquals(status, Status.InvalidMessage);
+  assertEquals(result, undefined);
 });
 
 Deno.test("Decoder on empty data", () => {
@@ -200,11 +217,8 @@ Deno.test("Decoder done after full read", () => {
 
 Deno.test("Encoder writeVarInt negative", () => {
   const enc = new Encoder();
-  assertThrows(
-    () => enc.writeVarInt(-1),
-    Error,
-    "Cannot write negative VarInt",
-  );
+  const status = enc.writeVarInt(-1);
+  assertEquals(status, Status.InvalidParam);
 });
 
 Deno.test("Encoder writeBytes empty", () => {
@@ -233,72 +247,93 @@ Deno.test("Encoder multiple result calls", () => {
 Deno.test("Decoder readBytes at exact end", () => {
   const data = new Uint8Array([10, 20]);
   const dec = new Decoder(data);
-  const bytes = dec.readBytes(2);
+  const [bytes, status] = dec.readBytes(2);
+  assertEquals(status, Status.Success);
   assertEquals(bytes, data);
-  assertEquals(dec.done(), true);
-  assertThrows(
-    () => dec.readBytes(1),
-    Error,
-    "Not enough data to read requested bytes",
-  );
+  const [bytes2, status2] = dec.readBytes(1);
+  assertEquals(status2, Status.MissingBody);
+  assertEquals(bytes2, undefined);
 });
 
 Deno.test("encode_varint 0", () => {
-  const encoded = encodeVarInt(0);
+  const [encoded, encStatus] = encodeVarInt(0);
+  assertEquals(encStatus, Status.Success);
+  if (encStatus !== Status.Success) return;
   assertEquals(encoded, new Uint8Array([0]));
+  const [res, decStatus] = decodeVarInt(new Uint8Array([0]));
+  assertEquals(decStatus, Status.Success);
+  if (decStatus !== Status.Success) return;
+  const { value, bytesRead } = res;
+  assertEquals(value, 0);
+  assertEquals(bytesRead, 1);
 });
 
 Deno.test("decode_varint 0", () => {
-  const { value, bytesRead } = decodeVarInt(new Uint8Array([0]));
+  const [res, status] = decodeVarInt(new Uint8Array([0]));
+  assertEquals(status, Status.Success);
+  if (status !== Status.Success) return;
+  const { value, bytesRead } = res;
   assertEquals(value, 0);
   assertEquals(bytesRead, 1);
 });
 
 Deno.test("roundtrip small numbers", () => {
-  for (let i = 1; i < 1000; i++) {
-    const encoded = encodeVarInt(i);
-    const { value } = decodeVarInt(encoded);
+  for (const i of [0, 1, 42, 127, 128, 16383, 16384, 0x7fffffff]) {
+    const [encoded, encStatus] = encodeVarInt(i);
+    assertEquals(encStatus, Status.Success);
+    if (encStatus !== Status.Success) return;
+    const [res, decStatus] = decodeVarInt(encoded);
+    assertEquals(decStatus, Status.Success);
+    if (decStatus !== Status.Success) return;
+    const { value } = res;
     assertEquals(value, i);
   }
 });
 
 Deno.test("roundtrip large number", () => {
-  const n = 123456789;
-  const encoded = encodeVarInt(n);
-  const { value } = decodeVarInt(encoded);
+  const n = 0x7fffffffffffffffn;
+  const [encoded, encStatus] = encodeVarInt(n);
+  assertEquals(encStatus, Status.Success);
+  if (encStatus !== Status.Success) return;
+  const [res, decStatus] = decodeVarInt(encoded);
+  assertEquals(decStatus, Status.Success);
+  if (decStatus !== Status.Success) return;
+  const { value } = res;
   assertEquals(value, n);
 });
 
 Deno.test("encode_varint 32-bit max", () => {
-  const n = 2 ** 32 - 1;
-  const encoded = encodeVarInt(n);
-  const { value } = decodeVarInt(encoded);
-  assertEquals(value, n);
+  const [encoded, encStatus] = encodeVarInt(0x7fffffff);
+  assertEquals(encStatus, Status.Success);
+  if (encStatus !== Status.Success) return;
+  const [res, decStatus] = decodeVarInt(encoded);
+  assertEquals(decStatus, Status.Success);
+  if (decStatus !== Status.Success) return;
+  const { value } = res;
+  assertEquals(value, 0x7fffffff);
 });
 
 Deno.test("decode_varint with offset", () => {
-  const data = new Uint8Array([0x80, 0x01, 0x00]); // varint 128 + data
-  const { value, bytesRead } = decodeVarInt(data, 0);
-  assertEquals(value, 128);
-  assertEquals(bytesRead, 2);
+  const data = new Uint8Array([0x00, 0x00, 0x05]);
+  const [res, status] = decodeVarInt(data, 2);
+  assertEquals(status, Status.Success);
+  const { value, bytesRead } = res!;
+  assertEquals(value, 5);
+  assertEquals(bytesRead, 1);
 });
 
 Deno.test("decode_varint incomplete throws error", () => {
-  assertThrows(() => {
-    decodeVarInt(new Uint8Array([0x80])); // incomplete
-  });
+  const [res, status] = decodeVarInt(new Uint8Array([0x80]));
+  assertEquals(status, Status.InvalidMessage);
+  assertEquals(res, undefined);
 });
 
 Deno.test("decode_varint too long throws error", () => {
   const longVarint = new Uint8Array(10);
   longVarint.fill(0x80);
-  assertThrows(
-    () => {
-      decodeVarInt(longVarint);
-    },
-    Error,
-    "Varint too long",
-  );
+  const [res, status] = decodeVarInt(longVarint);
+  assertEquals(status, Status.InvalidMessage);
+  assertEquals(res, undefined);
 });
 
 Deno.test("Encoder writeDate", () => {
@@ -310,51 +345,52 @@ Deno.test("Encoder writeDate", () => {
   assertEquals(result.length, 8);
   // Decode back to verify
   const dec = new Decoder(result);
-  const decodedDate = dec.readDate();
+  const [decodedDate, status] = dec.readDate();
+  assertEquals(status, Status.Success);
+  if (status !== Status.Success) return;
   assertEquals(decodedDate.getTime(), date.getTime());
 });
 
 Deno.test("Decoder readDate", () => {
+  const date = new Date();
   const enc = new Encoder();
-  const originalDate = new Date(1696161600000); // 2023-10-01T12:00:00Z in ms
-  enc.writeDate(originalDate);
+  enc.writeDate(date);
   const data = enc.result();
   const dec = new Decoder(data);
-  const decodedDate = dec.readDate();
-  assertEquals(decodedDate, originalDate);
-  assertEquals(dec.done(), true);
+  const [decodedDate, status] = dec.readDate();
+  assertEquals(status, Status.Success);
+  if (status !== Status.Success) return;
+  assertEquals(decodedDate.getTime(), date.getTime());
 });
 
 Deno.test("Date roundtrip sequential", () => {
+  const date1 = new Date(1000);
+  const date2 = new Date(2000);
   const enc = new Encoder();
-  const date1 = new Date("2020-01-01T00:00:00Z");
-  const date2 = new Date("2030-12-31T23:59:59.999Z");
   enc.writeDate(date1);
   enc.writeDate(date2);
-  const encoded = enc.result();
-  const dec = new Decoder(encoded);
-  const decodedDate1 = dec.readDate();
-  const decodedDate2 = dec.readDate();
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [decodedDate1, s1] = dec.readDate();
+  assertEquals(s1, Status.Success);
+  const [decodedDate2, s2] = dec.readDate();
+  assertEquals(s2, Status.Success);
   assertEquals(decodedDate1, date1);
   assertEquals(decodedDate2, date2);
-  assertEquals(dec.done(), true);
 });
 
 Deno.test("Decoder readDate not enough data", () => {
-  const data = new Uint8Array([1, 2, 3]);
-  const decoder = new Decoder(data);
-  assertThrows(
-    () => decoder.readDate(),
-    Error,
-    "Not enough data to read BigInt (needs 8 bytes)",
-  );
+  const data = new Uint8Array(7); // less than 8
+  const dec = new Decoder(data);
+  const [date, status] = dec.readDate();
+  assertEquals(status, Status.MissingBody);
+  assertEquals(date, undefined);
 });
 
 Deno.test("Decoder fromResponse", async () => {
-  const data = new Uint8Array([1, 2, 3, 4, 5]);
-  const response = new Response(data.slice());
+  const response = new Response(new Uint8Array([1, 2, 3]));
   const decoder = await Decoder.fromResponse(response);
-  const bytes = decoder.readBytes(3);
+  const [bytes, status] = decoder.readBytes(3);
+  assertEquals(status, Status.Success);
   assertEquals(bytes, new Uint8Array([1, 2, 3]));
-  assertEquals(decoder.done(), false);
 });

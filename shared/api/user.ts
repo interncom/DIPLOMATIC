@@ -5,15 +5,17 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
   async encodeReq(_client, _keys, authTS, _body, reqEnc) {
-    reqEnc.writeStruct(authTimestampCodec, authTS);
+    const status = reqEnc.writeStruct(authTimestampCodec, authTS);
+    return status;
   },
   async handleReq(host, reqDec, _respEnc) {
     const { storage } = host;
 
-    const authTS = reqDec.readStruct(authTimestampCodec);
-    const status = await validateAuthTimestamp(authTS, host.crypto, host.clock);
-    if (status !== Status.Success) {
-      return status;
+    const [authTS, status] = reqDec.readStruct(authTimestampCodec);
+    if (status !== Status.Success) return status;
+    const validStatus = await validateAuthTimestamp(authTS, host.crypto, host.clock);
+    if (validStatus !== Status.Success) {
+      return validStatus;
     }
     const { pubKey } = authTS;
 
@@ -24,6 +26,6 @@ export const userEnd: IAuthenticatedEndpoint<never, void> = {
     return Status.Success;
   },
   decodeResp(_respDec) {
-    return;
+    return [undefined, Status.Success];
   },
 };

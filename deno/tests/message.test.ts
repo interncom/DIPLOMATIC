@@ -1,16 +1,16 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import {
-  genDelete,
-  genInsert,
-  genUpsert,
-  IMessage,
-} from "../../shared/message.ts";
 import { concat } from "../../shared/binary.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import {
   type IMessageHead,
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
+import { Status } from "../../shared/consts.ts";
+import {
+  genDelete,
+  genUpsert,
+  IMessage
+} from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed
@@ -46,10 +46,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const header = enc.result();
     const fullEncoded = concat(header, op.bod || new Uint8Array(0));
     const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
+    const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
+    assertEquals(headStatus, Status.Success);
+    if (headStatus !== Status.Success) return;
     let decodedBod: Uint8Array | undefined;
     if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
+      const [bod, bodStatus] = dec.readBytes(decodedHead.len);
+      assertEquals(bodStatus, Status.Success);
+      decodedBod = bod;
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
@@ -85,10 +89,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const header = enc.result();
     const fullEncoded = concat(header, op.bod || new Uint8Array(0));
     const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
+    const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
+    assertEquals(headStatus, Status.Success);
+    if (headStatus !== Status.Success) return;
     let decodedBod: Uint8Array | undefined;
     if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
+      const [bod, bodStatus] = dec.readBytes(decodedHead.len);
+      assertEquals(bodStatus, Status.Success);
+      decodedBod = bod;
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
@@ -96,6 +104,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
+    // Check hsh
     assertEquals(decoded.hsh, hsh);
   });
 
@@ -114,47 +123,22 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const header = enc.result();
     const fullEncoded = header; // No body since len=0
     const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
+    const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
+    assertEquals(headStatus, Status.Success);
+    if (headStatus !== Status.Success) return;
     let decodedBod: Uint8Array | undefined;
     if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
+      const [bod, bodStatus] = dec.readBytes(decodedHead.len);
+      assertEquals(bodStatus, Status.Success);
+      decodedBod = bod;
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
     assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
-    assertEquals(decoded.bod, undefined); // No body
-    assertEquals(decoded.hsh, undefined); // No hsh for delete
-  });
-
-  await t.step("genInsert round-trip", async () => {
-    const content = createFilledArray(42, 0xcc);
-    const op = await genInsert(new Date(555555555000), content, crypto);
-    const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
-    const msgHead: IMessageHead = {
-      eid: op.eid,
-      clk: op.clk,
-      ctr: op.ctr,
-      len: op.len,
-      hsh,
-    };
-    const enc = new Encoder();
-    messageHeadCodec.encode(enc, msgHead);
-    const header = enc.result();
-    const fullEncoded = concat(header, op.bod || new Uint8Array(0));
-    const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
-    let decodedBod: Uint8Array | undefined;
-    if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
-    }
-    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
-    assertEquals(decoded.eid.length, eidBytes);
-    assertEquals(decoded.clk.getTime(), op.clk.getTime());
-    assertEquals(decoded.ctr, op.ctr);
-    assertEquals(decoded.len, op.len);
-    assertEquals(decoded.bod, op.bod);
+    assertEquals(decoded.bod, undefined);
+    // Check hsh
     assertEquals(decoded.hsh, hsh);
   });
 
@@ -179,10 +163,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const header = enc.result();
     const fullEncoded = header; // No body since len=0
     const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
+    const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
+    if (headStatus !== Status.Success) return;
+    assertEquals(headStatus, Status.Success);
     let decodedBod: Uint8Array | undefined;
     if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
+      const [bod, bodStatus] = dec.readBytes(decodedHead.len);
+      assertEquals(bodStatus, Status.Success);
+      decodedBod = bod;
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
@@ -240,12 +228,16 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const header = enc.result();
     const fullEncoded = concat(header, op.bod || new Uint8Array(0));
     const dec = new Decoder(fullEncoded);
-    const decodedHead = messageHeadCodec.decode(dec);
+    const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
+    assertEquals(headStatus, Status.Success);
+    const decodedHeadVal = decodedHead!;
     let decodedBod: Uint8Array | undefined;
-    if (decodedHead.len > 0) {
-      decodedBod = dec.readBytes(decodedHead.len);
+    if (decodedHeadVal.len > 0) {
+      const [bod, bodStatus] = dec.readBytes(decodedHeadVal.len);
+      assertEquals(bodStatus, Status.Success);
+      decodedBod = bod!;
     }
-    const decoded: IMessage = { ...decodedHead, bod: decodedBod };
+    const decoded: IMessage = { eid: decodedHeadVal.eid, clk: decodedHeadVal.clk, ctr: decodedHeadVal.ctr, len: decodedHeadVal.len, hsh: decodedHeadVal.hsh, bod: decodedBod };
     assertEquals(decoded.hsh, expectedHsh);
   });
 
@@ -271,12 +263,8 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       0xff,
     ]); // Too large varint
     const encoded = concat(eid, concat(clkBytes, invalidVarint));
-    try {
-      const dec = new Decoder(encoded);
-      messageHeadCodec.decode(dec);
-      throw new Error("Should have thrown");
-    } catch (e) {
-      // Expected to fail on invalid varint
-    }
+    const dec = new Decoder(encoded);
+    const [, status] = messageHeadCodec.decode(dec);
+    assertEquals(status, Status.InvalidMessage);
   });
 });

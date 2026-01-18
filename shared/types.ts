@@ -4,7 +4,10 @@ import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
 import { APICallName, Status } from "./consts.ts";
 
-export type ValStat<T> = [T, Status];
+// ValStat is a return value paired with a status code (for Go-style errors).
+export type ValStat<T> =
+  | [T, Status.Success]
+  | [undefined, Exclude<Status, Status.Success>];
 
 export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;

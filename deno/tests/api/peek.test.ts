@@ -80,9 +80,10 @@ Deno.test("peekEnd.handleReq - success", async () => {
   // Check response
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const results = Array.from(peekEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
+  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPeekItem[]).length, 1);
+  assertEquals((results as IBagPeekItem[])[0].hash, new Uint8Array(hashBytes).fill(1));
 });
 
 Deno.test("peekEnd.handleReq - extra body content", async () => {
@@ -116,9 +117,10 @@ Deno.test("peekEnd.decodeResp", () => {
   const respData = enc.result();
   const respDec = new Decoder(respData);
 
-  const results = Array.from(peekEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1));
+  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPeekItem[]).length, 1);
+  assertEquals((results as IBagPeekItem[])[0].hash, new Uint8Array(hashBytes).fill(1));
 });
 
 Deno.test("peekEnd.handleReq - clock out of sync", async () => {

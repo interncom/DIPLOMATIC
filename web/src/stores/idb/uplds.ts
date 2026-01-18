@@ -1,40 +1,75 @@
 import { btoh, htob } from "../../shared/binary";
 import { Hash } from "../../shared/types";
 import { IUploadQueue } from "../../types";
-import { type IDBPDatabase } from "idb";
 import { UPLOAD_QUEUE_TABLE } from "./store";
 
 export class IDBUploadQueue implements IUploadQueue {
-  db: IDBPDatabase<any>;
+  db: IDBDatabase;
 
-  constructor(db: IDBPDatabase) {
+  constructor(db: IDBDatabase) {
     this.db = db;
   }
 
   async enq(hshs: Iterable<Hash>) {
-    for (const hash of hshs) {
-      const hex = btoh(hash);
-      await this.db.put(UPLOAD_QUEUE_TABLE, null, hex);
-    }
+    const hashes = [...hshs];
+    if (hashes.length === 0) return;
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const hash of hashes) {
+        const hex = btoh(hash);
+        store.put(null, hex);
+      }
+    });
   }
 
   async deq(hshs: Iterable<Hash>) {
-    for (const hash of hshs) {
-      const hex = btoh(hash);
-      await this.db.delete(UPLOAD_QUEUE_TABLE, hex);
-    }
+    const hashes = [...hshs];
+    if (hashes.length === 0) return;
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const hash of hashes) {
+        const hex = btoh(hash);
+        store.delete(hex);
+      }
+    });
   }
 
   async list() {
-    const hexes = await this.db.getAllKeys(UPLOAD_QUEUE_TABLE);
-    return hexes.map((hex) => htob(hex as string)) as Hash[];
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readonly');
+    const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
+    return new Promise<Hash[]>((resolve, reject) => {
+      const req = store.getAllKeys();
+      req.onsuccess = () => {
+        const hexes = req.result as string[];
+        resolve(hexes.map((hex) => htob(hex)) as Hash[]);
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async count() {
-    return await this.db.count(UPLOAD_QUEUE_TABLE);
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readonly');
+    const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
+    return new Promise<number>((resolve, reject) => {
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async wipe() {
-    return this.db.clear(UPLOAD_QUEUE_TABLE);
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.clear();
+    });
   }
 }

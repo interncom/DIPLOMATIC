@@ -37,7 +37,6 @@
     "@msgpack/msgpack": "^3.0.0-beta2",
     "@noble/hashes": "1.8.0",
     "file-saver": "^2.0.5",
-    "idb": "^8.0.0",
     "jszip": "^3.10.1",
     "libsodium.js": "git+ssh://github.com/interncom/libsodium.js#e4e7647"
   }

@@ -1,38 +1,72 @@
 import { btoh, htob } from "../../shared/binary";
 import { Hash } from "../../shared/types";
 import { IDownloadMessage, IDownloadQueue } from "../../types";
-import { type IDBPDatabase } from "idb";
 import { DOWNLOAD_QUEUE_TABLE } from "./store";
 
 export class IDBDownloadQueue implements IDownloadQueue {
-  db: IDBPDatabase<any>;
+  db: IDBDatabase;
 
-  constructor(db: IDBPDatabase) {
+  constructor(db: IDBDatabase) {
     this.db = db;
   }
+
   async enq(msgs: Iterable<IDownloadMessage>) {
-    for (const msg of msgs) {
-      const hex = btoh(msg.hash);
-      await this.db.put(DOWNLOAD_QUEUE_TABLE, msg, hex);
-    }
+    const messages = [...msgs];
+    if (messages.length === 0) return;
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const msg of messages) {
+        const hex = btoh(msg.hash);
+        store.put(msg, hex);
+      }
+    });
   }
 
   async deq(hshs: Iterable<Hash>) {
-    for (const hash of hshs) {
-      const hex = btoh(hash);
-      await this.db.delete(DOWNLOAD_QUEUE_TABLE, hex);
-    }
+    const hashes = [...hshs];
+    if (hashes.length === 0) return;
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const hash of hashes) {
+        const hex = btoh(hash);
+        store.delete(hex);
+      }
+    });
   }
 
   async list() {
-    return await this.db.getAll(DOWNLOAD_QUEUE_TABLE);
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readonly');
+    const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
+    return new Promise<IDownloadMessage[]>((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async count() {
-    return await this.db.count(DOWNLOAD_QUEUE_TABLE);
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readonly');
+    const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
+    return new Promise<number>((resolve, reject) => {
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async wipe() {
-    return this.db.clear(DOWNLOAD_QUEUE_TABLE);
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.clear();
+    });
   }
 }

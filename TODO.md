@@ -5,10 +5,18 @@ CLIENT
 - implement import/export
 - eliminate idb library dependency
 
+ENTDB
+- split EntDB into separate package?
+- use eid index to optimize last()
+- unit test with fake indexeddb
+
 ERRORS
+- make ok() and fail() helpers to generate ValStat<T>'s concisely
+- make an ruok() method to check if a ValStat<T> is ok
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)
 - prepend status byte to each API response to wire server errors through to client?
+- return ValStats from entdb queries
 
 TESTS
 - test HTTP client and server together

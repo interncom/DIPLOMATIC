@@ -1,6 +1,5 @@
 import { IHostConnectionInfo } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
-import { type IDBPDatabase } from "idb";
 import { HOSTS_TABLE } from "./store";
 
 function idbRowToHostRow(row: any): IHostRow<URL> {
@@ -14,50 +13,94 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
 }
 
 export class IDBHostStore implements IHostStore<URL> {
-  db: IDBPDatabase<any>;
+  db: IDBDatabase;
 
-  constructor(db: IDBPDatabase) {
+  constructor(db: IDBDatabase) {
     this.db = db;
   }
+
   async add(info: IHostConnectionInfo<URL>) {
     const host = {
       ...info,
       handle: info.handle.toString(),
       lastSyncedAt: new Date(0),
     };
-    await this.db.put(HOSTS_TABLE, host);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.put(host);
+    });
   }
 
   async touch(label: string, now: Date) {
-    const row = await this.db.get(HOSTS_TABLE, label);
-    if (!row) {
-      return;
-    }
-    const next = {
-      ...row,
-      lastSyncedAt: now,
-    };
-    await this.db.put(HOSTS_TABLE, next);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      const getReq = store.get(label);
+      getReq.onsuccess = () => {
+        const row = getReq.result;
+        if (row) {
+          const next = {
+            ...row,
+            lastSyncedAt: now,
+          };
+          store.put(next);
+        }
+      };
+    });
   }
 
   async get(label: string) {
-    const row = await this.db.get(HOSTS_TABLE, label);
-    if (!row) {
-      return undefined;
-    }
-    return idbRowToHostRow(row);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readonly');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<IHostRow<URL> | undefined>((resolve, reject) => {
+      const req = store.get(label);
+      req.onsuccess = () => {
+        const row = req.result;
+        if (!row) {
+          resolve(undefined);
+        } else {
+          resolve(idbRowToHostRow(row));
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async del(label: string) {
-    await this.db.delete(HOSTS_TABLE, label);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.delete(label);
+    });
   }
 
   async list() {
-    const rows = await this.db.getAll(HOSTS_TABLE);
-    return rows.map(idbRowToHostRow);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readonly');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<IHostRow<URL>[]>((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const rows = req.result;
+        resolve(rows.map(idbRowToHostRow));
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async wipe() {
-    await this.db.clear(HOSTS_TABLE);
+    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const store = tx.objectStore(HOSTS_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.clear();
+    });
   }
 }

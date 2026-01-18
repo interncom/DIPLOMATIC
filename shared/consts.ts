@@ -30,6 +30,7 @@ export enum Status {
   NoChange = 15,
   DatabaseClosed = 16,
   StorageError = 17,
+  DatabaseError = 18,
 }
 
 export enum APICallName {

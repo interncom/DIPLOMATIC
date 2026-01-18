@@ -5,7 +5,6 @@ import { IDBHostStore } from "./hosts";
 import { IDBMessageStore } from "./msgs";
 import { IDBSeedStore } from "./seed";
 import { IDBUploadQueue } from "./uplds";
-import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { IHostRow, IStoredMessage } from "../../types";
 import { IDownloadMessage } from "../../types";
 
@@ -15,44 +14,21 @@ export const UPLOAD_QUEUE_TABLE = "uploadQueue";
 export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
 export const MESSAGES_TABLE = "messages";
 
-interface DiplomaticStoreDB extends DBSchema {
-  [SEED_META_TABLE]: {
-    key: string;
-    value: string;
-  };
-  [HOSTS_TABLE]: {
-    key: string;
-    value: IHostRow<any>;
-  };
-  [UPLOAD_QUEUE_TABLE]: {
-    key: string;
-    value: null;
-  };
-  [DOWNLOAD_QUEUE_TABLE]: {
-    key: string;
-    value: IDownloadMessage;
-  };
-  [MESSAGES_TABLE]: {
-    key: string;
-    value: IStoredMessage;
-  };
-}
-
 export class IDBStore implements IStore<URL> {
   seed: IDBSeedStore;
   hosts: IDBHostStore;
   uploads: IDBUploadQueue;
   downloads: IDBDownloadQueue;
   messages: IDBMessageStore;
-  db: IDBPDatabase<DiplomaticStoreDB>;
+  db: IDBDatabase;
 
-  constructor(db: IDBPDatabase<DiplomaticStoreDB>) {
+  constructor(db: IDBDatabase) {
     this.db = db;
-    this.seed = new IDBSeedStore(this.db as IDBPDatabase<any>);
-    this.hosts = new IDBHostStore(this.db as IDBPDatabase<any>);
-    this.uploads = new IDBUploadQueue(this.db as IDBPDatabase<any>);
-    this.downloads = new IDBDownloadQueue(this.db as IDBPDatabase<any>);
-    this.messages = new IDBMessageStore(this.db as IDBPDatabase<any>);
+    this.seed = new IDBSeedStore(db);
+    this.hosts = new IDBHostStore(db);
+    this.uploads = new IDBUploadQueue(db);
+    this.downloads = new IDBDownloadQueue(db);
+    this.messages = new IDBMessageStore(db);
   }
 
   async wipe() {
@@ -64,9 +40,11 @@ export class IDBStore implements IStore<URL> {
   }
 }
 
-export async function openIDBStore(): Promise<IDBPDatabase<DiplomaticStoreDB>> {
-  return openDB<DiplomaticStoreDB>("diplomatic-store-db", 1, {
-    upgrade(db) {
+export async function openIDBStore(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("diplomatic-store-db", 1);
+    req.onupgradeneeded = (event) => {
+      const db = req.result;
       if (!db.objectStoreNames.contains(SEED_META_TABLE)) {
         db.createObjectStore(SEED_META_TABLE);
       }
@@ -84,6 +62,8 @@ export async function openIDBStore(): Promise<IDBPDatabase<DiplomaticStoreDB>> {
       if (!db.objectStoreNames.contains(MESSAGES_TABLE)) {
         db.createObjectStore(MESSAGES_TABLE);
       }
-    },
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }

@@ -1,61 +1,101 @@
 import { btoh, uint8ArraysEqual } from "../../shared/binary";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage } from "../../types";
-import { type IDBPDatabase } from "idb";
 import { MESSAGES_TABLE } from "./store";
 
 export class IDBMessageStore implements IMessageStore {
-  db: IDBPDatabase<any>;
+  db: IDBDatabase;
 
-  constructor(db: IDBPDatabase) {
+  constructor(db: IDBDatabase) {
     this.db = db;
   }
 
   async add(msgs: Iterable<IStoredMessage>) {
-    for (const msg of msgs) {
-      const hex = btoh(msg.hash);
-      await this.db.put(MESSAGES_TABLE, msg, hex);
-    }
+    const messages = [...msgs];
+    if (messages.length === 0) return;
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const msg of messages) {
+        const hex = btoh(msg.hash);
+        store.put(msg, hex);
+      }
+    });
   }
 
   async del(hshs: Iterable<Hash>) {
-    for (const hash of hshs) {
-      const hex = btoh(hash);
-      await this.db.delete(MESSAGES_TABLE, hex);
-    }
+    const hashes = [...hshs];
+    if (hashes.length === 0) return;
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const hash of hashes) {
+        const hex = btoh(hash);
+        store.delete(hex);
+      }
+    });
   }
 
   async get(hash: Hash) {
-    const hex = btoh(hash);
-    return await this.db.get(MESSAGES_TABLE, hex);
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<IStoredMessage>((resolve, reject) => {
+      const hex = btoh(hash);
+      const req = store.get(hex);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async has(hash: Hash) {
-    const hex = btoh(hash);
-    const msg = await this.db.get(MESSAGES_TABLE, hex);
-    return msg !== undefined;
+    const result = await this.get(hash);
+    return result !== undefined;
   }
 
   async list() {
-    return await this.db.getAll(MESSAGES_TABLE);
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<IStoredMessage[]>((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 
   // last returns the stored message with given eid and highest ctr.
   async last(eid: EntityID) {
-    let latest: IStoredMessage | undefined;
-    const allMsgs = await this.db.getAll(MESSAGES_TABLE);
-    for (const msg of allMsgs) {
-      if (uint8ArraysEqual(eid, msg.head.eid) === false) {
-        continue;
-      }
-      if (!latest || msg.head.ctr > latest.head.ctr) {
-        latest = msg;
-      }
-    }
-    return latest;
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<IStoredMessage | undefined>((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const allMsgs = req.result;
+        let latest: IStoredMessage | undefined;
+        for (const msg of allMsgs) {
+          if (uint8ArraysEqual(eid, msg.head.eid) === false) {
+            continue;
+          }
+          if (!latest || msg.head.ctr > latest.head.ctr) {
+            latest = msg;
+          }
+        }
+        resolve(latest);
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async wipe() {
-    return this.db.clear(MESSAGES_TABLE);
+    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      store.clear();
+    });
   }
 }

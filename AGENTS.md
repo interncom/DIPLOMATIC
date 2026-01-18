@@ -4,6 +4,11 @@ This repo has a few related projects in it, implementing the DIPLOMATIC protocol
 
 Prefer terse variable names, even at the expense of immediate readability to an outsider. Someone who spends time with the code will learn to recognize them. This project is meant to be very compact. It won't have many collaborators. GLOSSARY.md defines some terms. Do not use the ! operator or `as any` in TypeScript to cheat and avoid the type system. Generally follow the style of code in the files you're working on.
 
+## Constraints
+
+- Do not use typecasting `x as Type` in TypeScript.
+- Do not use the TypeScript `!` operator.
+
 ## Directory Structure
 
 - `shared` holds common code. It's written in TypeScript, targeting deno.

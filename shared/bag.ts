@@ -2,8 +2,8 @@
 // The bag includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
 
 import { Decoder, Encoder } from "./codec.ts";
-import { messageHeadCodec } from "./codecs/messageHead.ts";
-import { kdmBytes } from "./consts.ts";
+import { messageHeadCodec, IMessageHead } from "./codecs/messageHead.ts";
+import { kdmBytes, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { concat, uint8ArraysEqual } from "./binary.ts";
 import { IMessage, IMessageWithHash } from "./message.ts";
@@ -95,12 +95,15 @@ export async function openBag(
 
   // Decode.
   const dec = new Decoder(msgHeadEnc);
-  const msgHead = messageHeadCodec.decode(dec);
+  const [msgHead, status] = messageHeadCodec.decode(dec);
+  if (status !== Status.Success) {
+    throw new Error("Failed to decode message head");
+  }
 
   // Check hash.
-  if (msgHead.hsh && msgBody) {
+  if ((msgHead as IMessageHead).hsh && msgBody) {
     const bodyHash = await crypto.blake3(msgBody);
-    if (!uint8ArraysEqual(bodyHash, msgHead.hsh)) {
+    if (!uint8ArraysEqual(bodyHash, (msgHead as IMessageHead).hsh as Uint8Array)) {
       throw new Error("Hash mismatch");
     }
   }
@@ -109,5 +112,5 @@ export async function openBag(
   const headHash = await crypto.blake3(msgHeadEnc);
 
   // Reconstruct message.
-  return { ...msgHead, bod: msgBody, headHash };
+  return { ...(msgHead as IMessageHead), bod: msgBody, headHash };
 }

@@ -3,6 +3,9 @@ import DiplomaticClientAPI from "../../shared/client.ts";
 import { Status, tsAuthSize } from "../../shared/consts.ts";
 import { genInsert } from "../../shared/message.ts";
 import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
+import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
+import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
+import { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import {
   Hash,
   IProtoHost,
@@ -98,7 +101,9 @@ Deno.test("server", async (t) => {
   const bags = [await client.seal(op1), await client.seal(op2)];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {
-    result = [...(await client.push(bags))];
+    const [pushResults, pushStatus] = await client.push(bags);
+    assertEquals(pushStatus, Status.Success);
+    result = pushResults as typeof result;
     assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);
@@ -108,25 +113,24 @@ Deno.test("server", async (t) => {
 
   await t.step("POST /pull", async () => {
     const hashes = result.map((r) => r.hash as Hash);
-    const pulledItems = [
-      ...(await client.pull(hashes)),
-    ];
-    assertEquals(pulledItems.length, 2);
+    const [pulledItems, pullStatus] = await client.pull(hashes);
+    assertEquals(pullStatus, Status.Success);
+    assertEquals((pulledItems as IBagPullItem[]).length, 2);
 
     // Verify item structure (integration test, skip decryption)
-    for (const item of pulledItems) {
+    for (const item of pulledItems as IBagPullItem[]) {
       assertEquals(item.hash.length, 32);
       assert(item.bodyCph.length >= 0);
     }
   });
 
   await t.step("POST /peek", async () => {
-    const peekedHeaders = [
-      ...(await client.peek(new Date(0))),
-    ];
-    assertEquals(peekedHeaders.length, 2);
-    // Verify header structure
-    for (const header of peekedHeaders) {
+    const [peekedHeaders, peekStatus] = await client.peek(new Date(0));
+    assertEquals(peekStatus, Status.Success);
+
+    // Should have 2 items
+    assertEquals((peekedHeaders as IBagPeekItem[]).length, 2);
+    for (const header of peekedHeaders as IBagPeekItem[]) {
       assertEquals(header.hash.length, 32);
       assert(header.recordedAt instanceof Date);
       assert(header.headCph.length > 0);

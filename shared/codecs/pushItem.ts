@@ -11,10 +11,13 @@ export const pushItemCodec: ICodecStruct<IBagPushItem> = {
   encode(enc, item) {
     enc.writeBytes(new Uint8Array([item.status]));
     enc.writeBytes(item.hash);
+    return Status.Success;
   },
   decode(dec) {
-    const status = dec.readBytes(1)[0];
-    const hash = dec.readBytes(hashBytes) as Hash;
-    return { status, hash };
+    const [statusBytes, stat1] = dec.readBytes(1);
+    if (stat1 !== Status.Success) return [undefined, stat1];
+    const [hash, stat2] = dec.readBytes(hashBytes);
+    if (stat2 !== Status.Success) return [undefined, stat2];
+    return [{ status: statusBytes[0], hash: hash as Hash }, Status.Success];
   },
 };

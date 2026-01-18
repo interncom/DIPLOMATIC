@@ -7,6 +7,7 @@ import { type IMessage } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import type { MasterSeed } from "../../shared/types.ts";
 import { Enclave } from "../../shared/enclave.ts";
+import { Status } from "../../shared/consts.ts";
 
 // Setup crypto and keypair
 const crypto = libsodiumCrypto;
@@ -50,7 +51,10 @@ async function bench(size: number, suffix: string) {
   const bagEnc = await fullyEncodeBag(op);
   Deno.bench(`open bag (${suffix})`, async (b) => {
     const decoder = new Decoder(bagEnc);
-    const bag: IBag = decoder.readStruct(bagCodec);
+    const [bag, stat] = decoder.readStruct(bagCodec);
+    if (stat !== Status.Success) {
+      throw new Error(`Error decoding bag: ${stat}`);
+    }
     await openBag(
       bag,
       keyPair.publicKey,

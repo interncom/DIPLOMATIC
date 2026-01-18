@@ -2,7 +2,7 @@ import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
-import { APICallName } from "./consts.ts";
+import { APICallName, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
@@ -16,6 +16,7 @@ import type {
   IHostConnectionInfo,
   ITransport,
   PushReceiver,
+  ValStat,
 } from "./types.ts";
 
 export default class DiplomaticClientAPI<Handle extends HostHandle> {
@@ -33,7 +34,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       name: APICallName;
     },
     items: Iterable<ReqItem>,
-  ): Promise<Resp> {
+  ): Promise<ValStat<Resp>> {
     const { clock, crypto, transport } = this;
     const { endpoint, name } = apiCall;
 
@@ -43,7 +44,8 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const authTS = await makeAuthTimestamp(keys, now, crypto);
 
     const enc = new Encoder();
-    await endpoint.encodeReq(this, keys, authTS, items, enc);
+    const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
+    if (encStatus !== Status.Success) return [undefined, encStatus];
 
     const dec = await transport.call(name, enc);
 

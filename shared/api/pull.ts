@@ -1,37 +1,39 @@
 import { hashBytes, Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
-import { authTimestampCodec } from "../codecs/authTimestamp.ts";
+import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { validateAuthTimestamp } from "../auth.ts";
-import { Hash } from "../types.ts";
+import { Hash, ValStat } from "../types.ts";
 
 export const pullEnd: IAuthenticatedEndpoint<
   Hash,
-  IterableIterator<IBagPullItem>
+  IBagPullItem[]
 > = {
-  async encodeReq(_client, _keys, authTS, hashes, reqEnc) {
-    reqEnc.writeStruct(authTimestampCodec, authTS);
+  async encodeReq(_client, _keys, authTS, hashes, reqEnc): Promise<Status> {
+    const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
+    if (s1 !== Status.Success) return s1;
     reqEnc.writeBytesSeq(hashes);
+    return Status.Success;
   },
   async handleReq(host, reqDec, respEnc) {
     const { storage } = host;
 
-    const authTS = reqDec.readStruct(authTimestampCodec);
-    const status = await validateAuthTimestamp(authTS, host.crypto, host.clock);
-    if (status !== Status.Success) {
-      return status;
-    }
-    const { pubKey } = authTS;
+    const [authTS, s] = reqDec.readStruct(authTimestampCodec);
+    if (s !== Status.Success) return s;
+    const validStatus = await validateAuthTimestamp(authTS as IAuthTimestamp, host.crypto, host.clock);
+    if (validStatus !== Status.Success) return validStatus;
+    const { pubKey } = authTS as IAuthTimestamp;
 
-    if (!storage.hasUser(pubKey)) {
-      return Status.UserNotRegistered;
-    }
+    if (!storage.hasUser(pubKey)) return Status.UserNotRegistered;
 
-    for (const headHash of reqDec.readBytesSeq(hashBytes)) {
-      const bodyCph = await storage.getBody(pubKey, headHash);
+    const [hashes, s3] = reqDec.readBytesSeq(hashBytes);
+    if (s3 !== Status.Success) return s3;
+    for (const headHash of hashes as Uint8Array[]) {
+      const bodyCph = await storage.getBody(pubKey, headHash as Hash);
       if (bodyCph) {
         const item: IBagPullItem = { hash: headHash as Hash, bodyCph };
-        respEnc.writeStruct(pullItemCodec, item);
+        const itemStatus = respEnc.writeStruct(pullItemCodec, item);
+        if (itemStatus !== Status.Success) return itemStatus;
       }
     }
     return Status.Success;

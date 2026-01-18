@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { openBag, sealBag } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
+import { Status } from "../../shared/consts.ts";
 import type {
   HostSpecificKeyPair,
   IBag,
@@ -56,7 +57,9 @@ Deno.test("bag", async (t) => {
     enc.writeStruct(bagCodec, op);
     const encoded = enc.result();
     const decoder = new Decoder(encoded);
-    const decoded = decoder.readStruct(bagCodec);
+    const [decoded, status] = decoder.readStruct(bagCodec);
+    assertEquals(status, Status.Success);
+    if (status !== Status.Success) return;
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.lenHeadCph, op.lenHeadCph);

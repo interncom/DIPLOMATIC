@@ -6,7 +6,8 @@ import { Enclave } from "./enclave.ts";
 import {
   HostSpecificKeyPair,
   ICrypto,
-  IProtoHost
+  IProtoHost,
+  ValStat
 } from "./types.ts";
 
 interface IProtoClient {
@@ -23,7 +24,7 @@ export interface IAuthenticatedEndpoint<ReqItem, Resp> {
     authTS: IAuthTimestamp,
     body: Iterable<ReqItem>,
     reqEnc: Encoder,
-  ): Promise<void>;
+  ): Promise<Status>;
 
   // handleReq reads request data from reqDec and writes to respEnc.
   handleReq(
@@ -33,7 +34,7 @@ export interface IAuthenticatedEndpoint<ReqItem, Resp> {
   ): Promise<Status>;
 
   // decodeResp reads response data from respDeck and parses it.
-  decodeResp(respDec: Decoder): Resp;
+  decodeResp(respDec: Decoder): ValStat<Resp>;
 }
 
 export interface IAuthData {

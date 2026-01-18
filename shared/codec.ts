@@ -1,5 +1,9 @@
-export function encodeVarInt(n: number | bigint): Uint8Array {
+import { ValStat } from "./types.ts";
+import { Status } from "./consts.ts";
+
+export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
   if (typeof n !== "bigint") n = BigInt(n);
+  if (n < 0n) return [undefined, Status.InvalidParam];
   const bytes: number[] = [];
   while (n > 0n) {
     const byte = Number(n & 0x7fn);
@@ -11,33 +15,33 @@ export function encodeVarInt(n: number | bigint): Uint8Array {
     }
   }
   if (bytes.length === 0) {
-    return new Uint8Array([0]);
+    return [new Uint8Array([0]), Status.Success];
   }
-  return new Uint8Array(bytes);
+  return [new Uint8Array(bytes), Status.Success];
 }
 
 export function decodeVarInt(
   bytes: Uint8Array,
   offset: number = 0,
-): { value: number | bigint; bytesRead: number } {
+): ValStat<{ value: number | bigint; bytesRead: number }> {
   let result = 0n;
   let shift = 0;
   let i = offset;
   while (true) {
     if (i >= bytes.length) {
-      throw new Error("Incomplete varint");
+      return [undefined, Status.InvalidMessage];
     }
     const byte = bytes[i++];
     result |= BigInt(byte & 0x7f) << BigInt(shift);
     if ((byte & 0x80) === 0) {
-      return {
+      return [{
         value: result > 0x1fffffffffffffn ? result : Number(result),
         bytesRead: i - offset,
-      };
+      }, Status.Success];
     }
     shift += 7;
     if (shift >= 64) {
-      throw new Error("Varint too long");
+      return [undefined, Status.InvalidMessage];
     }
   }
 }
@@ -56,59 +60,66 @@ export class Decoder {
     return new Decoder(data);
   }
 
-  readBigInt(): bigint {
+  readBigInt(): ValStat<bigint> {
     if (this.pos + 8 > this.data.length) {
-      throw new Error("Not enough data to read BigInt (needs 8 bytes)");
+      return [undefined, Status.MissingBody];
     }
     const value = new DataView(
       this.data.buffer,
       this.data.byteOffset + this.pos,
     ).getBigUint64(0, false);
     this.pos += 8;
-    return value;
+    return [value, Status.Success];
   }
 
-  readDate(): Date {
-    const timestampMs = this.readBigInt();
-    return new Date(Number(timestampMs));
+  readDate(): ValStat<Date> {
+    const [timestampMs, status] = this.readBigInt();
+    if (status !== Status.Success) return [undefined, status];
+    return [new Date(Number(timestampMs)), Status.Success];
   }
 
-  readVarInt(): number {
-    if (this.pos >= this.data.length) {
-      throw new Error("Not enough data to read VarInt");
-    }
-    const decode = decodeVarInt(this.data, this.pos);
-    this.pos += decode.bytesRead;
-    const val = decode.value;
-    return typeof val === "bigint" ? Number(val) : val;
+  readVarInt(): ValStat<number> {
+    const [res, status] = decodeVarInt(this.data, this.pos);
+    if (status !== Status.Success) return [undefined, status];
+    this.pos += res.bytesRead;
+    const val = res.value;
+    return [typeof val === "bigint" ? Number(val) : val, Status.Success];
   }
 
-  readBytes(num: number): Uint8Array {
+  readBytes(num: number): ValStat<Uint8Array> {
     if (num < 0) {
-      throw new Error("Cannot read negative number of bytes");
+      return [undefined, Status.InvalidParam];
     }
     if (this.pos + num > this.data.length) {
-      throw new Error("Not enough data to read requested bytes");
+      return [undefined, Status.MissingBody];
     }
     const bytes = this.data.slice(this.pos, this.pos + num);
     this.pos += num;
-    return bytes;
+    return [bytes, Status.Success];
   }
 
-  readStruct<T>(codec: ICodecStruct<T>): T {
+  readStruct<T>(codec: ICodecStruct<T>): ValStat<T> {
     return codec.decode(this);
   }
 
-  *readStructs<T>(this: Decoder, codec: ICodecStruct<T>): IterableIterator<T> {
+  readStructs<T>(codec: ICodecStruct<T>): ValStat<T[]> {
+    const results: T[] = [];
     while (!this.done()) {
-      yield this.readStruct(codec);
+      const [val, status] = this.readStruct(codec);
+      if (status !== Status.Success) return [undefined, status];
+      results.push(val);
     }
+    return [results, Status.Success];
   }
 
-  *readBytesSeq(len: number): Generator<Uint8Array, void, unknown> {
+  readBytesSeq(len: number): ValStat<Uint8Array[]> {
+    const results: Uint8Array[] = [];
     while (!this.done()) {
-      yield this.readBytes(len);
+      const [bytes, status] = this.readBytes(len);
+      if (status !== Status.Success) return [undefined, status];
+      results.push(bytes);
     }
+    return [results, Status.Success];
   }
 
   done(): boolean {
@@ -134,29 +145,28 @@ export class Encoder {
     this.writeBigInt(BigInt(timestampMs));
   }
 
-  writeVarInt(n: number): void {
-    if (n < 0) {
-      throw new Error("Cannot write negative VarInt");
-    }
-    this.parts.push(encodeVarInt(n));
+  writeVarInt(n: number): Status {
+    const [bytes, status] = encodeVarInt(n);
+    if (status !== Status.Success) return status;
+    this.parts.push(bytes);
+    return Status.Success;
   }
 
   writeBytes(bytes: Uint8Array): void {
     this.parts.push(bytes);
   }
 
-  writeStruct<T>(codec: ICodecStruct<T>, str: T): void {
-    codec.encode(this, str);
+  writeStruct<T>(codec: ICodecStruct<T>, str: T): Status {
+    return codec.encode(this, str);
   }
 
-  writeStructs<T>(
-    this: Encoder,
-    codec: ICodecStruct<T>,
-    structs: Iterable<T>,
-  ): void {
+  writeStructs<T>(codec: ICodecStruct<T>, structs: Iterable<T>): Status {
     for (const struct of structs) {
-      this.writeStruct(codec, struct);
+
+      const status = this.writeStruct(codec, struct);
+      if (status !== Status.Success) return status;
     }
+    return Status.Success;
   }
 
   writeBytesSeq(bytesSeq: Iterable<Uint8Array>): void {
@@ -178,6 +188,6 @@ export class Encoder {
 }
 
 export interface ICodecStruct<T> {
-  encode: (enc: Encoder, struct: T) => void;
-  decode: (dec: Decoder) => T;
+  encode: (enc: Encoder, struct: T) => Status;
+  decode: (dec: Decoder) => ValStat<T>;
 }

@@ -86,10 +86,11 @@ Deno.test("pushEnd.handleReq - success", async () => {
   // Check response
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const results = Array.from(pushEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].status, Status.Success);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(5) as Hash);
+  const [results, decodeStatus] = pushEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPushItem[]).length, 1);
+  assertEquals((results as IBagPushItem[])[0].status, Status.Success);
+  assertEquals((results as IBagPushItem[])[0].hash, new Uint8Array(hashBytes).fill(5) as Hash);
 });
 
 Deno.test("pushEnd.handleReq - invalid signature", async () => {
@@ -136,9 +137,10 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   // Check response
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
-  const results = Array.from(pushEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].status, Status.InvalidSignature);
+  const [results, decodeStatus] = pushEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPushItem[]).length, 1);
+  assertEquals((results as IBagPushItem[])[0].status, Status.InvalidSignature);
 });
 
 Deno.test("pushEnd.decodeResp", () => {
@@ -151,10 +153,11 @@ Deno.test("pushEnd.decodeResp", () => {
   const respData = enc.result();
   const respDec = new Decoder(respData);
 
-  const results = Array.from(pushEnd.decodeResp(respDec));
-  assertEquals(results.length, 1);
-  assertEquals(results[0].status, Status.Success);
-  assertEquals(results[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
+  const [results, decodeStatus] = pushEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPushItem[]).length, 1);
+  assertEquals((results as IBagPushItem[])[0].status, Status.Success);
+  assertEquals((results as IBagPushItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
 });
 
 Deno.test("pushEnd.handleReq - clock out of sync", async () => {

@@ -18,13 +18,21 @@ export async function syncPeek<Handle extends HostHandle>(
   clock: IClock,
   host: IHostRow<Handle>,
   crypto: ICrypto,
-): Promise<void> {
+): Promise<Status> {
   const hostKeys = await conn.keys();
   const dls: IDownloadMessage[] = [];
-  const items = await conn.peek(host.lastSyncedAt);
+  const [items, peekStatus] = await conn.peek(host.lastSyncedAt);
+  if (peekStatus !== Status.Success) {
+    return peekStatus;
+  }
   for (const item of items) {
     const dec = new Decoder(item.headCph);
-    const { sig, kdm, headCph } = dec.readStruct(peekItemHeadCodec);
+    const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
+    if (readStatus !== Status.Success) {
+      // TODO: handle error
+      continue;
+    }
+    const { sig, kdm, headCph } = peekItem;
     const valid = await crypto.checkSigEd25519(
       sig,
       headCph,
@@ -43,13 +51,19 @@ export async function syncPeek<Handle extends HostHandle>(
       continue;
     }
     const headDec = new Decoder(headEnc);
-    const head = headDec.readStruct(messageHeadCodec);
+    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+    if (headStatus !== Status.Success) {
+      // TODO: handle error
+      continue;
+    }
     dls.push({ hash: item.hash as Hash, kdm, head, host: host.label });
   }
   await store.downloads.enq(dls);
 
   // TODO: update host lastSyncedAt (touch method?) using timestamp returned from host (may need to change API).
   await store.hosts.touch(host.label, clock.now());
+
+  return Status.Success;
 }
 
 // Phase 2: Push local uploads to the host
@@ -60,7 +74,7 @@ export async function syncPush<Handle extends HostHandle>(
   clock: IClock,
   host: IHostRow<Handle>,
   crypto: ICrypto,
-): Promise<void> {
+): Promise<Status> {
   const bags: any[] = [];
   const remoteToLocalHash: Map<string, string> = new Map();
   for (const msgHeadEncHash of await store.uploads.list()) {
@@ -75,7 +89,10 @@ export async function syncPush<Handle extends HostHandle>(
     remoteToLocalHash.set(btoh(headCphHash), btoh(msgHeadEncHash));
   }
   if (bags.length > 0) {
-    const results = await conn.push(bags);
+    const [results, pushStatus] = await conn.push(bags);
+    if (pushStatus !== Status.Success) {
+      return pushStatus;
+    }
 
     // Remove successful uploads from queue.
     for (const item of results) {
@@ -94,6 +111,7 @@ export async function syncPush<Handle extends HostHandle>(
       await store.uploads.deq([msgHeadEncHash]);
     }
   }
+  return Status.Success;
 }
 
 // Phase 3: Pull and process enqueued downloads
@@ -108,7 +126,7 @@ export async function syncPull<Handle extends HostHandle>(
     body: EncodedMessage | undefined,
     upload: boolean,
   ) => Promise<Status>,
-): Promise<void> {
+): Promise<Status> {
   const dls: Map<string, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
   const items = Array.from(allItems).filter((i) => i.host === host.label);
@@ -117,7 +135,10 @@ export async function syncPull<Handle extends HostHandle>(
     dls.set(btoh(item.hash), item);
     hshs.push(item.hash);
   }
-  const result = await conn.pull(hshs);
+  const [result, stat] = await conn.pull(hshs);
+  if (stat !== Status.Success) {
+    return stat;
+  }
   for (const { hash, bodyCph } of result) {
     const dl = dls.get(btoh(hash));
     if (!dl) {
@@ -171,4 +192,5 @@ export async function syncPull<Handle extends HostHandle>(
       console.error("ERR applying", stat);
     }
   }
+  return Status.Success;
 }

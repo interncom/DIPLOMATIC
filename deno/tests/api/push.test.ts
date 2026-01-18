@@ -90,7 +90,10 @@ Deno.test("pushEnd.handleReq - success", async () => {
   assertEquals(decodeStatus, Status.Success);
   assertEquals((results as IBagPushItem[]).length, 1);
   assertEquals((results as IBagPushItem[])[0].status, Status.Success);
-  assertEquals((results as IBagPushItem[])[0].hash, new Uint8Array(hashBytes).fill(5) as Hash);
+  assertEquals(
+    (results as IBagPushItem[])[0].hash,
+    new Uint8Array(hashBytes).fill(5) as Hash,
+  );
 });
 
 Deno.test("pushEnd.handleReq - invalid signature", async () => {
@@ -157,7 +160,10 @@ Deno.test("pushEnd.decodeResp", () => {
   assertEquals(decodeStatus, Status.Success);
   assertEquals((results as IBagPushItem[]).length, 1);
   assertEquals((results as IBagPushItem[])[0].status, Status.Success);
-  assertEquals((results as IBagPushItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
+  assertEquals(
+    (results as IBagPushItem[])[0].hash,
+    new Uint8Array(hashBytes).fill(1) as Hash,
+  );
 });
 
 Deno.test("pushEnd.handleReq - clock out of sync", async () => {

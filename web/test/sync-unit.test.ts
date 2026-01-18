@@ -18,6 +18,7 @@ import {
   HostSpecificKeyPair,
   MasterSeed,
 } from "../src/shared/types";
+import { Status } from "../src/shared/consts";
 import { IMessage } from "../src/shared/message";
 
 // Fixed seed for deterministic key derivation
@@ -66,7 +67,8 @@ describe("syncPeek", () => {
       transport,
     );
     const keys = await conn.keys();
-    await lpcHost.storage.addUser(keys.publicKey);
+    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    expect(addStatus).toBe(Status.Success);
   });
 
   test("handles empty peek results", async () => {
@@ -108,7 +110,8 @@ describe("syncPush", () => {
       transport,
     );
     const keys = await conn.keys();
-    await lpcHost.storage.addUser(keys.publicKey);
+    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    expect(addStatus).toBe(Status.Success);
   });
 
   test("pushes uploads successfully", async () => {
@@ -166,7 +169,8 @@ describe("syncPull", () => {
       transport,
     );
     const keys = await conn.keys();
-    await lpcHost.storage.addUser(keys.publicKey);
+    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    expect(addStatus).toBe(Status.Success);
   });
 
   test("pulls and processes downloads", async () => {
@@ -183,7 +187,13 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    lpcHost.storage.setBag(keys.publicKey, new Date(1000), bag, hash);
+    const [_, setStatus] = await lpcHost.storage.setBag(
+      keys.publicKey,
+      new Date(1000),
+      bag,
+      hash,
+    );
+    expect(setStatus).toBe(Status.Success);
 
     const download = {
       hash,
@@ -222,7 +232,13 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    lpcHost.storage.setBag(keys.publicKey, new Date(1000), bag, hash);
+    const [_, setStatus] = await lpcHost.storage.setBag(
+      keys.publicKey,
+      new Date(1000),
+      bag,
+      hash,
+    );
+    expect(setStatus).toBe(Status.Success);
 
     const download = {
       hash,

@@ -6,11 +6,7 @@ import {
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
 import { Status } from "../../shared/consts.ts";
-import {
-  genDelete,
-  genUpsert,
-  IMessage
-} from "../../shared/message.ts";
+import { genDelete, genUpsert, IMessage } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Constants that remain fixed
@@ -237,7 +233,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       assertEquals(bodStatus, Status.Success);
       decodedBod = bod!;
     }
-    const decoded: IMessage = { eid: decodedHeadVal.eid, clk: decodedHeadVal.clk, ctr: decodedHeadVal.ctr, len: decodedHeadVal.len, hsh: decodedHeadVal.hsh, bod: decodedBod };
+    const decoded: IMessage = {
+      eid: decodedHeadVal.eid,
+      clk: decodedHeadVal.clk,
+      ctr: decodedHeadVal.ctr,
+      len: decodedHeadVal.len,
+      hsh: decodedHeadVal.hsh,
+      bod: decodedBod,
+    };
     assertEquals(decoded.hsh, expectedHsh);
   });
 

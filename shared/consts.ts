@@ -29,6 +29,7 @@ export enum Status {
   InvalidMessage = 14,
   NoChange = 15,
   DatabaseClosed = 16,
+  StorageError = 17,
 }
 
 export enum APICallName {

@@ -42,8 +42,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) { },
-    off(type, listener) { },
+    on(type, listener) {},
+    off(type, listener) {},
   };
   const client = new SyncClient<IProtoHost>(clock, state, store, transport);
   return { store, state, client };
@@ -251,7 +251,13 @@ describe("NeoClient", () => {
       };
       const bag = await sealBag(msg, keys, libsodiumCrypto, enclave);
       const sha256 = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
-      lpcHost.storage.setBag(keys.publicKey, lpcHost.clock.now(), bag, sha256);
+      const [_, setStatus] = await lpcHost.storage.setBag(
+        keys.publicKey,
+        lpcHost.clock.now(),
+        bag,
+        sha256,
+      );
+      expect(setStatus).toBe(Status.Success);
 
       expect(await store.downloads.count()).toBe(0);
       expect(Array.from(await store.messages.list()).length).toBe(0);

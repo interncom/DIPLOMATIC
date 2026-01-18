@@ -98,13 +98,13 @@ export async function syncPush<Handle extends HostHandle>(
     for (const item of results) {
       if (item.status !== Status.Success) {
         // TODO: handle errors, some of which may be non-retryable.
-        console.error("push err", item)
+        console.error("push err", item);
         continue;
       }
       // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
       const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
       if (!msgHeadEncHashHex) {
-        console.error("no hash", item, btoh(item.hash))
+        console.error("no hash", item, btoh(item.hash));
         continue;
       }
       const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;

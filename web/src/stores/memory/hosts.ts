@@ -21,7 +21,7 @@ export class MemoryHostStore<Handle extends HostHandle>
     const next: IHostRow<Handle> = {
       ...host,
       lastSyncedAt: now,
-    }
+    };
     this.hosts.set(label, next);
   }
 

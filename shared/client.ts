@@ -26,7 +26,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     private host: IHostConnectionInfo<Handle>,
     public clock: IClock,
     private transport: ITransport,
-  ) { }
+  ) {}
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -55,14 +55,14 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   keys = (): Promise<HostSpecificKeyPair> => {
     const { host } = this;
     return hostKeys(this, host.label, host.idx);
-  }
+  };
 
   seal = async (msg: IMessage): Promise<IBag> => {
     const { crypto, enclave } = this;
     const keys = await this.keys();
     const bag = await sealBag(msg, keys, crypto, enclave);
     return bag;
-  }
+  };
 
   register = () => this.call(api.user, []);
   peek = (from: Date) => this.call(api.peek, [from]);

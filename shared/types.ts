@@ -27,23 +27,23 @@ export type IInsertParams = Omit<IOp, "ts" | "ctr" | "eid">;
 export type IUpsertParams = Omit<IOp, "ts" | "ctr">;
 
 export interface IStorage {
-  addUser: (pubKey: PublicKey) => Promise<void>;
-  hasUser: (pubKey: PublicKey) => Promise<boolean>;
+  addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
+  hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
   setBag: (
     pubKey: PublicKey,
     recordedAt: Date,
     bag: IBag,
     sha256: Uint8Array,
-  ) => Promise<void>;
+  ) => Promise<ValStat<void>>;
   getBody: (
     pubKey: PublicKey,
     sha256: Uint8Array,
-  ) => Promise<Uint8Array | undefined>;
+  ) => Promise<ValStat<Uint8Array | undefined>>;
   listHeads: (
     pubKey: PublicKey,
     begin: string,
     end: string,
-  ) => Promise<IBagPeekItem[]>;
+  ) => Promise<ValStat<IBagPeekItem[]>>;
 }
 
 export interface KeyPair {
@@ -123,14 +123,23 @@ export interface IPushOpenResponse {
   status: Status;
 }
 export interface IPushNotifier {
-  open(authTS: IAuthTimestamp, recv: PushReceiver, crypto: IHostCrypto, clock: IClock): Promise<IPushOpenResponse>;
+  open(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    crypto: IHostCrypto,
+    clock: IClock,
+  ): Promise<IPushOpenResponse>;
   push(pubKey: PublicKey, data: Uint8Array): void;
 }
 export interface IWebSocketPushNotifier extends IPushNotifier {
   handle(host: IProtoHost, req: Request): Promise<Response>;
 }
 export interface IPushListener {
-  connect(authTS: IAuthTimestamp, recv: PushReceiver, onDisconnect: () => void): Promise<Status>;
+  connect(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    onDisconnect: () => void,
+  ): Promise<Status>;
   connected(): boolean;
   disconnect(): void;
 }

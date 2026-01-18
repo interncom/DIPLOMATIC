@@ -10,7 +10,12 @@ import {
   authTimestampCodec,
   type IAuthTimestamp,
 } from "../../../shared/codecs/authTimestamp.ts";
-import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
+import {
+  HostSpecificKeyPair,
+  IStorage,
+  PublicKey,
+  ValStat,
+} from "../../../shared/types.ts";
 import {
   baseMockStorage,
   createMockHost,
@@ -20,21 +25,21 @@ import {
 } from "./testUtils.ts";
 
 // Mock storage with listHeads override for peek tests
-const mockStorage = {
+const mockStorage: IStorage = {
   ...baseMockStorage,
-  listHeads: (
+  listHeads: async (
     pubKey: PublicKey,
     begin: string,
     end: string,
-  ): Promise<IBagPeekItem[]> => {
+  ): Promise<ValStat<IBagPeekItem[]>> => {
     // Mock: return some items
-    return Promise.resolve([
+    return [[
       {
         hash: new Uint8Array(hashBytes).fill(1),
         recordedAt: new Date(),
         headCph: new Uint8Array([1, 2, 3]),
       },
-    ]);
+    ], Status.Success];
   },
 };
 
@@ -83,7 +88,10 @@ Deno.test("peekEnd.handleReq - success", async () => {
   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
   assertEquals(decodeStatus, Status.Success);
   assertEquals((results as IBagPeekItem[]).length, 1);
-  assertEquals((results as IBagPeekItem[])[0].hash, new Uint8Array(hashBytes).fill(1));
+  assertEquals(
+    (results as IBagPeekItem[])[0].hash,
+    new Uint8Array(hashBytes).fill(1),
+  );
 });
 
 Deno.test("peekEnd.handleReq - extra body content", async () => {
@@ -120,7 +128,10 @@ Deno.test("peekEnd.decodeResp", () => {
   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
   assertEquals(decodeStatus, Status.Success);
   assertEquals((results as IBagPeekItem[]).length, 1);
-  assertEquals((results as IBagPeekItem[])[0].hash, new Uint8Array(hashBytes).fill(1));
+  assertEquals(
+    (results as IBagPeekItem[])[0].hash,
+    new Uint8Array(hashBytes).fill(1),
+  );
 });
 
 Deno.test("peekEnd.handleReq - clock out of sync", async () => {

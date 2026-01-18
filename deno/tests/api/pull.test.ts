@@ -6,7 +6,13 @@ import {
   pullItemCodec,
 } from "../../../shared/codecs/pullItem.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
-import { Hash, HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
+import {
+  Hash,
+  HostSpecificKeyPair,
+  IStorage,
+  PublicKey,
+  ValStat,
+} from "../../../shared/types.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
@@ -20,17 +26,22 @@ import {
 } from "./testUtils.ts";
 
 // Mock storage with getBody override for pull tests
-const mockStorage = {
+const mockStorage: IStorage = {
   ...baseMockStorage,
   getBody: (
     pubKey: Uint8Array,
     headHash: Uint8Array,
-  ): Promise<Uint8Array | undefined> => {
+  ): Promise<ValStat<Uint8Array | undefined>> => {
     // Mock: return some data for one hash, undefined for others
     if (headHash[0] === 1) {
-      return Promise.resolve(new Uint8Array([10, 20, 30]));
+      const ret: ValStat<Uint8Array | undefined> = [
+        new Uint8Array([10, 20, 30]),
+        Status.Success,
+      ];
+      return Promise.resolve(ret);
     }
-    return Promise.resolve(undefined);
+    const ret: ValStat<Uint8Array | undefined> = [undefined, Status.Success];
+    return Promise.resolve(ret);
   },
 };
 
@@ -85,9 +96,16 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   const respDec = new Decoder(respData);
   const [results, decodeStatus] = pullEnd.decodeResp(respDec);
   assertEquals(decodeStatus, Status.Success);
-  assertEquals((results as IBagPullItem[]).length, 1); // Only one hash has body
-  assertEquals((results as IBagPullItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
-  assertEquals((results as IBagPullItem[])[0].bodyCph, new Uint8Array([10, 20, 30]));
+  if (decodeStatus !== Status.Success) return;
+  assertEquals(results.length, 1); // Only one hash has body
+  assertEquals(
+    results[0].hash,
+    new Uint8Array(hashBytes).fill(1) as Hash,
+  );
+  assertEquals(
+    results[0].bodyCph,
+    new Uint8Array([10, 20, 30]),
+  );
 });
 
 Deno.test("pullEnd.handleReq - no bodies", async () => {
@@ -127,9 +145,16 @@ Deno.test("pullEnd.decodeResp", () => {
 
   const [results, decodeStatus] = pullEnd.decodeResp(respDec);
   assertEquals(decodeStatus, Status.Success);
-  assertEquals((results as IBagPullItem[]).length, 1);
-  assertEquals((results as IBagPullItem[])[0].hash, new Uint8Array(hashBytes).fill(1) as Hash);
-  assertEquals((results as IBagPullItem[])[0].bodyCph, new Uint8Array([10, 20, 30]));
+  if (decodeStatus !== Status.Success) return;
+  assertEquals(results.length, 1);
+  assertEquals(
+    results[0].hash,
+    new Uint8Array(hashBytes).fill(1) as Hash,
+  );
+  assertEquals(
+    results[0].bodyCph,
+    new Uint8Array([10, 20, 30]),
+  );
 });
 
 Deno.test("pullEnd.handleReq - clock out of sync", async () => {

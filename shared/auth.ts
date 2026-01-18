@@ -1,8 +1,6 @@
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
-import {
-  type IAuthTimestamp
-} from "./codecs/authTimestamp.ts";
+import { type IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { clockToleranceMs, Status } from "./consts.ts";
 import type { ICrypto, IHostCrypto, KeyPair } from "./types.ts";
 

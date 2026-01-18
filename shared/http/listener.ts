@@ -6,14 +6,18 @@ import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
-  constructor(private url: URL) { }
+  constructor(private url: URL) {}
 
   connected(): boolean {
     return this.websocket !== undefined &&
       this.websocket.readyState === WebSocket.OPEN;
   }
 
-  async connect(authTS: IAuthTimestamp, recv: PushReceiver, onDisconnect: () => void): Promise<Status> {
+  async connect(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    onDisconnect: () => void,
+  ): Promise<Status> {
     const { url } = this;
 
     const enc = new Encoder();

@@ -162,7 +162,6 @@ export class Encoder {
 
   writeStructs<T>(codec: ICodecStruct<T>, structs: Iterable<T>): Status {
     for (const struct of structs) {
-
       const status = this.writeStruct(codec, struct);
       if (status !== Status.Success) return status;
     }

@@ -138,15 +138,36 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      const peekStat = await syncPeek(conn, store, enclave, clock, host, crypto);
+      const peekStat = await syncPeek(
+        conn,
+        store,
+        enclave,
+        clock,
+        host,
+        crypto,
+      );
       if (peekStat !== Status.Success) {
         console.error(`Failed to peek: ${peekStat}`);
       }
-      const pushStat = await syncPush(conn, store, enclave, clock, host, crypto);
+      const pushStat = await syncPush(
+        conn,
+        store,
+        enclave,
+        clock,
+        host,
+        crypto,
+      );
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
       }
-      const pullStat = await syncPull(conn, store, enclave, host, crypto, this.apply.bind(this));
+      const pullStat = await syncPull(
+        conn,
+        store,
+        enclave,
+        host,
+        crypto,
+        this.apply.bind(this),
+      );
       if (pullStat !== Status.Success) {
         console.error(`Failed to pull: ${pullStat}`);
       }

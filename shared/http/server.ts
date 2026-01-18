@@ -2,7 +2,12 @@ import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { binResp, callPaths, cors, respFor } from "../http.ts";
-import type { IHostCrypto, IWebSocketPushNotifier, IStorage, IProtoHost } from "../types.ts";
+import type {
+  IHostCrypto,
+  IProtoHost,
+  IStorage,
+  IWebSocketPushNotifier,
+} from "../types.ts";
 
 export class DiplomaticHTTPServer implements IProtoHost {
   constructor(
@@ -10,7 +15,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) { }
+  ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
@@ -57,7 +62,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
       }
       return binResp(enc);
     } catch (err) {
-      console.error("ARGH", err)
+      console.error("ARGH", err);
       return respFor(Status.InternalError);
     }
   };

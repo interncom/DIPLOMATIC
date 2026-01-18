@@ -20,16 +20,26 @@ export const pullEnd: IAuthenticatedEndpoint<
 
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
-    const validStatus = await validateAuthTimestamp(authTS as IAuthTimestamp, host.crypto, host.clock);
+    const validStatus = await validateAuthTimestamp(
+      authTS as IAuthTimestamp,
+      host.crypto,
+      host.clock,
+    );
     if (validStatus !== Status.Success) return validStatus;
     const { pubKey } = authTS as IAuthTimestamp;
 
-    if (!storage.hasUser(pubKey)) return Status.UserNotRegistered;
+    const [hasUser, hasStatus] = await storage.hasUser(pubKey);
+    if (hasStatus !== Status.Success) return hasStatus;
+    if (!hasUser) return Status.UserNotRegistered;
 
     const [hashes, s3] = reqDec.readBytesSeq(hashBytes);
     if (s3 !== Status.Success) return s3;
     for (const headHash of hashes as Uint8Array[]) {
-      const bodyCph = await storage.getBody(pubKey, headHash as Hash);
+      const [bodyCph, getStatus] = await storage.getBody(
+        pubKey,
+        headHash as Hash,
+      );
+      if (getStatus !== Status.Success) return getStatus;
       if (bodyCph) {
         const item: IBagPullItem = { hash: headHash as Hash, bodyCph };
         const itemStatus = respEnc.writeStruct(pullItemCodec, item);

@@ -1,5 +1,6 @@
 import { ICodecStruct } from "../codec.ts";
 import { hashBytes, Status } from "../consts.ts";
+import { err, ok } from "../valstat.ts";
 
 export interface IBagPeekItem {
   hash: Uint8Array;
@@ -18,13 +19,13 @@ export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
   },
   decode(dec) {
     const [hash, s1] = dec.readBytes(hashBytes);
-    if (s1 !== Status.Success) return [undefined, s1];
+    if (s1 !== Status.Success) return err(s1);
     const [recordedAt, s2] = dec.readDate();
-    if (s2 !== Status.Success) return [undefined, s2];
+    if (s2 !== Status.Success) return err(s2);
     const [headCphLen, s3] = dec.readVarInt();
-    if (s3 !== Status.Success) return [undefined, s3];
+    if (s3 !== Status.Success) return err(s3);
     const [headCph, s4] = dec.readBytes(headCphLen);
-    if (s4 !== Status.Success) return [undefined, s4];
-    return [{ hash, recordedAt, headCph }, Status.Success];
+    if (s4 !== Status.Success) return err(s4);
+    return ok({ hash, recordedAt, headCph });
   },
 };

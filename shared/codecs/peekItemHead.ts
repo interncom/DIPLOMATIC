@@ -26,6 +26,6 @@ export const peekItemHeadCodec: ICodecStruct<IBagPeekItemHead> = {
     if (s3 !== Status.Success) return err(s3);
     const [headCph, s4] = dec.readBytes(headCphLen);
     if (s4 !== Status.Success) return err(s4);
-    return ok({ sig: sig, kdm: kdm, headCph: headCph });
+    return ok({ sig, kdm, headCph });
   },
 };

@@ -1,6 +1,7 @@
 import { ICodecStruct } from "../codec.ts";
 import { kdmBytes, sigBytes, Status } from "../consts.ts";
 import type { IBag } from "../types.ts";
+import { err, ok } from "../valstat.ts";
 
 export const bagCodec: ICodecStruct<IBag> = {
   encode(enc, bag): Status {
@@ -16,24 +17,24 @@ export const bagCodec: ICodecStruct<IBag> = {
   },
   decode(dec) {
     const [sig, s1] = dec.readBytes(sigBytes);
-    if (s1 !== Status.Success) return [undefined, s1];
+    if (s1 !== Status.Success) return err(s1);
     const [kdm, s2] = dec.readBytes(kdmBytes);
-    if (s2 !== Status.Success) return [undefined, s2];
+    if (s2 !== Status.Success) return err(s2);
     const [lenHeadCph, s3] = dec.readVarInt();
-    if (s3 !== Status.Success) return [undefined, s3];
+    if (s3 !== Status.Success) return err(s3);
     const [lenBodyCph, s4] = dec.readVarInt();
-    if (s4 !== Status.Success) return [undefined, s4];
-    const [headCph, s5] = dec.readBytes(lenHeadCph as number);
-    if (s5 !== Status.Success) return [undefined, s5];
-    const [bodyCph, s6] = dec.readBytes(lenBodyCph as number);
-    if (s6 !== Status.Success) return [undefined, s6];
-    return [{
-      sig: sig as Uint8Array,
-      kdm: kdm as Uint8Array,
-      lenHeadCph: lenHeadCph as number,
-      lenBodyCph: lenBodyCph as number,
-      headCph: headCph as Uint8Array,
-      bodyCph: bodyCph as Uint8Array,
-    }, Status.Success];
+    if (s4 !== Status.Success) return err(s4);
+    const [headCph, s5] = dec.readBytes(lenHeadCph);
+    if (s5 !== Status.Success) return err(s5);
+    const [bodyCph, s6] = dec.readBytes(lenBodyCph);
+    if (s6 !== Status.Success) return err(s6);
+    return ok({
+      sig,
+      kdm,
+      lenHeadCph,
+      lenBodyCph,
+      headCph,
+      bodyCph,
+    });
   },
 };

@@ -21,12 +21,12 @@ export const pullEnd: IAuthenticatedEndpoint<
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
     const validStatus = await validateAuthTimestamp(
-      authTS as IAuthTimestamp,
+      authTS,
       host.crypto,
       host.clock,
     );
     if (validStatus !== Status.Success) return validStatus;
-    const { pubKey } = authTS as IAuthTimestamp;
+    const { pubKey } = authTS;
 
     const [hasUser, hasStatus] = await storage.hasUser(pubKey);
     if (hasStatus !== Status.Success) return hasStatus;
@@ -34,7 +34,7 @@ export const pullEnd: IAuthenticatedEndpoint<
 
     const [hashes, s3] = reqDec.readBytesSeq(hashBytes);
     if (s3 !== Status.Success) return s3;
-    for (const headHash of hashes as Uint8Array[]) {
+    for (const headHash of hashes) {
       const [bodyCph, getStatus] = await storage.getBody(
         pubKey,
         headHash as Hash,

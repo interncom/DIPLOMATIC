@@ -1,6 +1,6 @@
 import { ICodecStruct } from "../codec.ts";
 import { kdmBytes, sigBytes, Status } from "../consts.ts";
-import { ValStat } from "../types.ts";
+import { ValStat, ok, err } from "../valstat.ts";
 
 export interface IBagPeekItemHead {
   sig: Uint8Array;
@@ -19,13 +19,13 @@ export const peekItemHeadCodec: ICodecStruct<IBagPeekItemHead> = {
   },
   decode(dec): ValStat<IBagPeekItemHead> {
     const [sig, s1] = dec.readBytes(sigBytes);
-    if (s1 !== Status.Success) return [undefined, s1];
+    if (s1 !== Status.Success) return err(s1);
     const [kdm, s2] = dec.readBytes(kdmBytes);
-    if (s2 !== Status.Success) return [undefined, s2];
+    if (s2 !== Status.Success) return err(s2);
     const [headCphLen, s3] = dec.readVarInt();
-    if (s3 !== Status.Success) return [undefined, s3];
+    if (s3 !== Status.Success) return err(s3);
     const [headCph, s4] = dec.readBytes(headCphLen);
-    if (s4 !== Status.Success) return [undefined, s4];
-    return [{ sig: sig, kdm: kdm, headCph: headCph }, Status.Success];
+    if (s4 !== Status.Success) return err(s4);
+    return ok({ sig: sig, kdm: kdm, headCph: headCph });
   },
 };

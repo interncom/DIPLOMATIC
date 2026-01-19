@@ -14,8 +14,8 @@ import {
   HostSpecificKeyPair,
   IStorage,
   PublicKey,
-  ValStat,
 } from "../../../shared/types.ts";
+import { ValStat, ok } from "../../../shared/valstat.ts";
 import {
   baseMockStorage,
   createMockHost,
@@ -33,13 +33,13 @@ const mockStorage: IStorage = {
     end: string,
   ): Promise<ValStat<IBagPeekItem[]>> => {
     // Mock: return some items
-    return [[
+    return ok([
       {
         hash: new Uint8Array(hashBytes).fill(1),
         recordedAt: new Date(),
         headCph: new Uint8Array([1, 2, 3]),
       },
-    ], Status.Success];
+    ]);
   },
 };
 

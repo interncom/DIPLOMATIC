@@ -2,7 +2,8 @@
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
+import { EntityID, GroupID, IOp } from "../shared/types";
+import { ValStat, ok, err } from "../shared/valstat.ts";
 import { EntitiesQuery, IEntDB, IEntity, updateEnt } from "./entdb";
 import { btoh, htob } from "../shared/binary";
 
@@ -131,7 +132,7 @@ export class EntIDB implements IEntDB {
 
   async getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>> {
     if (!this.db) {
-      return [undefined, Status.DatabaseClosed];
+      return err(Status.DatabaseClosed);
     }
     const eidHex = btoh(eid);
     const tx = this.db.transaction(entityTableName, 'readonly');
@@ -141,13 +142,13 @@ export class EntIDB implements IEntDB {
       req.onsuccess = () => {
         const stored = req.result;
         if (!stored) {
-          resolve([undefined, Status.Success]);
+          resolve(ok(undefined));
         } else {
           const ent = storedToEntity(stored as IStoredEntity<T>);
-          resolve([ent, Status.Success]);
+          resolve(ok(ent));
         }
       };
-      req.onerror = () => resolve([undefined, Status.DatabaseError]);
+      req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
 
@@ -211,7 +212,7 @@ export class EntIDB implements IEntDB {
     { type, gid, pid, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
-      return [undefined, Status.DatabaseClosed];
+      return err(Status.DatabaseClosed);
     }
     if (pid !== undefined) {
       const pidHex = btoh(pid);
@@ -222,35 +223,35 @@ export class EntIDB implements IEntDB {
         req.onsuccess = () => {
           const storedEnts = req.result as IStoredEntity<T>[];
           const ents = storedEnts.map(storedToEntity);
-          resolve([ents, Status.Success]);
+          resolve(ok(ents));
         };
-        req.onerror = () => resolve([undefined, Status.DatabaseError]);
+        req.onerror = () => resolve(err(Status.DatabaseError));
       });
     } else if (gid !== undefined) {
       const ents = await this.getGroupMembers<T>(type, gid);
-      return [ents, Status.Success];
+      return ok(ents);
     } else if (updatedBetween !== undefined) {
       const ents = await this.getAllOfTypeUpdatedBetween<T>(
         type,
         updatedBetween.start,
         updatedBetween.end,
       );
-      return [ents, Status.Success];
+      return ok(ents);
     }
     const ents = await this.getAllOfType<T>(type);
-    return [ents, Status.Success];
+    return ok(ents);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
     if (!this.db) {
-      return [undefined, Status.DatabaseClosed];
+      return err(Status.DatabaseClosed);
     }
     const tx = this.db.transaction(entityTableName, 'readonly');
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
       const req = index.count(IDBKeyRange.bound([type], [type, new Date(Infinity)]));
-      req.onsuccess = () => resolve([req.result, Status.Success]);
-      req.onerror = () => resolve([undefined, Status.DatabaseError]);
+      req.onsuccess = () => resolve(ok(req.result));
+      req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
 }

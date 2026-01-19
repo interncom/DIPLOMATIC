@@ -16,8 +16,8 @@ import type {
   IHostConnectionInfo,
   ITransport,
   PushReceiver,
-  ValStat,
 } from "./types.ts";
+import { ValStat, err } from "./valstat.ts";
 
 export default class DiplomaticClientAPI<Handle extends HostHandle> {
   constructor(
@@ -45,7 +45,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
 
     const enc = new Encoder();
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
-    if (encStatus !== Status.Success) return [undefined, encStatus];
+    if (encStatus !== Status.Success) return err(encStatus);
 
     const dec = await transport.call(name, enc);
 

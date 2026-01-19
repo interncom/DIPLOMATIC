@@ -1,6 +1,7 @@
 import { max, min } from "../lib";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
+import { EntityID, GroupID, IOp } from "../shared/types";
+import { ValStat } from "../shared/valstat.ts";
 
 export interface IEntity<T> {
   eid: EntityID;

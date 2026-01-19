@@ -1,3 +1,4 @@
+import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../../shared/consts.ts";
 import {
   IProtoHost,
@@ -6,10 +7,7 @@ import {
   IStorage,
   PublicKey,
   PushReceiver,
-  ValStat,
 } from "../../../shared/types.ts";
-import { IBagPeekItem } from "../../../shared/codecs/peekItem.ts";
-import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 
 // Base mock storage - can be overridden per test
 export const baseMockStorage: IStorage = {

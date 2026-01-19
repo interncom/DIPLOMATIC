@@ -1,18 +1,17 @@
-import { bagSigValid, sealBag } from "../bag.ts";
-import { Status } from "../consts.ts";
-import { bagCodec } from "../codecs/bag.ts";
-import { IAuthenticatedEndpoint } from "../endpoint.ts";
-import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
-import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { validateAuthTimestamp } from "../auth.ts";
-import { Hash, IBag, ValStat } from "../types.ts";
+import { bagSigValid } from "../bag.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
+import { bagCodec } from "../codecs/bag.ts";
+import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
+import { Status } from "../consts.ts";
+import { IAuthenticatedEndpoint } from "../endpoint.ts";
+import { Hash, IBag } from "../types.ts";
 
 export const pushEnd: IAuthenticatedEndpoint<
   IBag,
   IBagPushItem[]
 > = {
   async encodeReq(client, _keys, authTS, bags, reqEnc) {
-    const { crypto, enclave } = client;
     const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
     if (s1 !== Status.Success) return s1;
     const s2 = reqEnc.writeStructs(bagCodec, bags);

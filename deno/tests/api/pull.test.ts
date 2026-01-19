@@ -11,8 +11,8 @@ import {
   HostSpecificKeyPair,
   IStorage,
   PublicKey,
-  ValStat,
 } from "../../../shared/types.ts";
+import { ValStat, ok } from "../../../shared/valstat.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,
@@ -34,14 +34,9 @@ const mockStorage: IStorage = {
   ): Promise<ValStat<Uint8Array | undefined>> => {
     // Mock: return some data for one hash, undefined for others
     if (headHash[0] === 1) {
-      const ret: ValStat<Uint8Array | undefined> = [
-        new Uint8Array([10, 20, 30]),
-        Status.Success,
-      ];
-      return Promise.resolve(ret);
+      return Promise.resolve(ok(new Uint8Array([10, 20, 30])));
     }
-    const ret: ValStat<Uint8Array | undefined> = [undefined, Status.Success];
-    return Promise.resolve(ret);
+    return Promise.resolve(ok(undefined));
   },
 };
 

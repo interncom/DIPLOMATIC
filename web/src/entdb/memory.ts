@@ -4,7 +4,8 @@
 import { IEntDB, IEntity } from "./entdb";
 import { uint8ArraysEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp, ValStat } from "../shared/types";
+import { EntityID, GroupID, IOp } from "../shared/types";
+import { ValStat, ok } from "../shared/valstat.ts";
 import { updateEnt } from "./entdb";
 
 interface IDateRange {
@@ -40,7 +41,7 @@ export class EntDBMemory implements IEntDB {
 
   async getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>> {
     const ent = this.ents.get(eid) as IEntity<T> | undefined;
-    return [ent, Status.Success];
+    return ok(ent);
   }
 
   async getEntities<T>(
@@ -80,7 +81,7 @@ export class EntDBMemory implements IEntDB {
         }
       }
     }
-    return [results, Status.Success];
+    return ok(results);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
@@ -90,6 +91,6 @@ export class EntDBMemory implements IEntDB {
         count += 1;
       }
     }
-    return [count, Status.Success];
+    return ok(count);
   }
 }

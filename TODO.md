@@ -3,7 +3,6 @@
 CLIENT
 - split React portion into separate package
 - implement import/export
-- eliminate idb library dependency
 
 ENTDB
 - split EntDB into separate package?

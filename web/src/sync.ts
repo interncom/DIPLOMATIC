@@ -1,4 +1,5 @@
 import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
+import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
@@ -144,49 +145,27 @@ export async function syncPull<Handle extends HostHandle>(
     if (!dl) {
       continue;
     }
-
-    const key = await enclave.deriveFromKDM(dl.kdm);
     const { head } = dl;
-    if (
-      head.hsh === undefined && (bodyCph === undefined || bodyCph.length === 0)
-    ) {
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
-      const headEnc = enc.result();
-      const properHash = await crypto.blake3(headEnc) as Hash;
-      await store.messages.add([{ hash: properHash, head }]);
-      dls.delete(btoh(hash));
-      continue;
-    }
 
-    if (head.hsh === undefined) {
-      // TODO: handle better than just removing d/l.
-      dls.delete(btoh(hash));
-      continue;
-    }
-
-    let body: any;
-    try {
-      body = await crypto.decryptXSalsa20Poly1305Combined(bodyCph, key) as any;
-    } catch {
-      // Decryption failed, skip
-      dls.delete(btoh(hash));
-      continue;
-    }
-    const hashChk = await crypto.blake3(body);
-    if (uint8ArraysEqual(head.hsh, hashChk) !== true) {
-      // TODO: handle better than just removing d/l.
-      dls.delete(btoh(hash));
-      continue;
-    }
+    // Decode message head.
     const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, dl.head);
+    enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
-    const properHash = await crypto.blake3(headEnc) as Hash;
-    const msg: IStoredMessage = { hash: properHash, head: dl.head, body };
+
+    // Unseal body.
+    const key = await enclave.deriveFromKDM(dl.kdm);
+    const [contents, status] = await openBagBody(headEnc, bodyCph, key, crypto);
+    if (status !== Status.Success) {
+      // TODO: determine if this is sufficient handling.
+      dls.delete(btoh(hash));
+      continue;
+    }
+    const { bod: body, headHash: properHash } = contents;
+    const msg: IStoredMessage = { hash: properHash, head, body };
     await store.messages.add([msg]);
     dls.delete(btoh(hash));
     await store.downloads.deq([hash]);
+    // TODO: should apply happen before storing the message and deq-ing the download?
     const stat = await apply(head, body, false);
     if (stat !== Status.Success) {
       console.error("ERR applying", stat);

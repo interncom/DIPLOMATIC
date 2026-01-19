@@ -13,7 +13,7 @@ export class IDBMessageStore implements IMessageStore {
   async add(msgs: Iterable<IStoredMessage>) {
     const messages = [...msgs];
     if (messages.length === 0) return;
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -28,7 +28,7 @@ export class IDBMessageStore implements IMessageStore {
   async del(hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -41,7 +41,7 @@ export class IDBMessageStore implements IMessageStore {
   }
 
   async get(hash: Hash) {
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage>((resolve, reject) => {
       const hex = btoh(hash);
@@ -57,7 +57,7 @@ export class IDBMessageStore implements IMessageStore {
   }
 
   async list() {
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage[]>((resolve, reject) => {
       const req = store.getAll();
@@ -68,7 +68,7 @@ export class IDBMessageStore implements IMessageStore {
 
   // last returns the stored message with given eid and highest ctr.
   async last(eid: EntityID) {
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readonly');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage | undefined>((resolve, reject) => {
       const req = store.getAll();
@@ -90,7 +90,7 @@ export class IDBMessageStore implements IMessageStore {
   }
 
   async wipe() {
-    const tx = this.db.transaction(MESSAGES_TABLE, 'readwrite');
+    const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

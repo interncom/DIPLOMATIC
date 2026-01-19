@@ -13,7 +13,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
   async enq(msgs: Iterable<IDownloadMessage>) {
     const messages = [...msgs];
     if (messages.length === 0) return;
-    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -28,7 +28,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
   async deq(hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
-    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -41,7 +41,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
   }
 
   async list() {
-    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readonly');
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readonly");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<IDownloadMessage[]>((resolve, reject) => {
       const req = store.getAll();
@@ -51,7 +51,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
   }
 
   async count() {
-    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readonly');
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readonly");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<number>((resolve, reject) => {
       const req = store.count();
@@ -61,7 +61,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
   }
 
   async wipe() {
-    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

@@ -25,7 +25,7 @@ export class IDBHostStore implements IHostStore<URL> {
       handle: info.handle.toString(),
       lastSyncedAt: new Date(0),
     };
-    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -35,7 +35,7 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async touch(label: string, now: Date) {
-    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -55,7 +55,7 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async get(label: string) {
-    const tx = this.db.transaction(HOSTS_TABLE, 'readonly');
+    const tx = this.db.transaction(HOSTS_TABLE, "readonly");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<IHostRow<URL> | undefined>((resolve, reject) => {
       const req = store.get(label);
@@ -72,7 +72,7 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async del(label: string) {
-    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -82,7 +82,7 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async list() {
-    const tx = this.db.transaction(HOSTS_TABLE, 'readonly');
+    const tx = this.db.transaction(HOSTS_TABLE, "readonly");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<IHostRow<URL>[]>((resolve, reject) => {
       const req = store.getAll();
@@ -95,7 +95,7 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async wipe() {
-    const tx = this.db.transaction(HOSTS_TABLE, 'readwrite');
+    const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

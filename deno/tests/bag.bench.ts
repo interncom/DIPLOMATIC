@@ -1,7 +1,7 @@
 import { openBag, sealBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { HostSpecificKeyPair, IBag } from "../../shared/types.ts";
+import type { HostSpecificKeyPair } from "../../shared/types.ts";
 import { type IMessage } from "../../shared/message.ts";
 
 import libsodiumCrypto from "../src/crypto.ts";
@@ -55,12 +55,15 @@ async function bench(size: number, suffix: string) {
     if (stat !== Status.Success) {
       throw new Error(`Error decoding bag: ${stat}`);
     }
-    await openBag(
+    const [, openStat] = await openBag(
       bag,
       keyPair.publicKey,
       crypto,
       enclave,
     );
+    if (openStat !== Status.Success) {
+      throw new Error(`Open bag failed: ${openStat}`);
+    }
   });
 }
 

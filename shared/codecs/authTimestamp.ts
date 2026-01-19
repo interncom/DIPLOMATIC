@@ -1,6 +1,7 @@
 import { ICodecStruct } from "../codec.ts";
 import { pubKeyBytes, sigBytes, Status } from "../consts.ts";
 import type { PublicKey } from "../types.ts";
+import { err, ok } from "../valstat.ts";
 
 export interface IAuthTimestamp {
   pubKey: PublicKey;
@@ -17,11 +18,11 @@ export const authTimestampCodec: ICodecStruct<IAuthTimestamp> = {
   },
   decode(dec) {
     const [pubKey, status1] = dec.readBytes(pubKeyBytes);
-    if (status1 !== Status.Success) return [undefined, status1];
+    if (status1 !== Status.Success) return err(status1);
     const [sig, status2] = dec.readBytes(sigBytes);
-    if (status2 !== Status.Success) return [undefined, status2];
+    if (status2 !== Status.Success) return err(status2);
     const [timestamp, status3] = dec.readDate();
-    if (status3 !== Status.Success) return [undefined, status3];
-    return [{ pubKey: pubKey as PublicKey, sig, timestamp }, Status.Success];
+    if (status3 !== Status.Success) return err(status3);
+    return ok({ pubKey: pubKey as PublicKey, sig, timestamp });
   },
 };

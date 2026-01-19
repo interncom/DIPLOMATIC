@@ -1,6 +1,7 @@
 import { ICodecStruct } from "../codec.ts";
 import { hashBytes, Status } from "../consts.ts";
 import { Hash } from "../types.ts";
+import { err, ok } from "../valstat.ts";
 
 export interface IBagPullItem {
   hash: Hash;
@@ -17,11 +18,11 @@ export const pullItemCodec: ICodecStruct<IBagPullItem> = {
   },
   decode(dec) {
     const [hash, s1] = dec.readBytes(hashBytes);
-    if (s1 !== Status.Success) return [undefined, s1];
+    if (s1 !== Status.Success) return err(s1);
     const [len, s2] = dec.readVarInt();
-    if (s2 !== Status.Success) return [undefined, s2];
+    if (s2 !== Status.Success) return err(s2);
     const [bodyCph, s3] = dec.readBytes(len);
-    if (s3 !== Status.Success) return [undefined, s3];
-    return [{ hash: hash as Hash, bodyCph: bodyCph }, Status.Success];
+    if (s3 !== Status.Success) return err(s3);
+    return ok({ hash: hash as Hash, bodyCph });
   },
 };

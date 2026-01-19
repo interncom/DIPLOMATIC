@@ -22,12 +22,12 @@ export const peekEnd: IAuthenticatedEndpoint<
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
     const validStatus = await validateAuthTimestamp(
-      authTS as IAuthTimestamp,
+      authTS,
       host.crypto,
       host.clock,
     );
     if (validStatus !== Status.Success) return validStatus;
-    const { pubKey } = authTS as IAuthTimestamp;
+    const { pubKey } = authTS;
 
     const [hasUser, hasStatus] = await storage.hasUser(pubKey);
     if (hasStatus !== Status.Success) return hasStatus;
@@ -37,7 +37,7 @@ export const peekEnd: IAuthenticatedEndpoint<
     if (s2 !== Status.Success) return s2;
     if (!reqDec.done()) return Status.ExtraBodyContent;
 
-    const begin = (from as Date).toISOString();
+    const begin = from.toISOString();
     const end = clock.now().toISOString();
     const [items, listStatus] = await storage.listHeads(pubKey, begin, end);
     if (listStatus !== Status.Success) return listStatus;

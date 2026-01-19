@@ -1,5 +1,6 @@
 import { ICodecStruct } from "../codec.ts";
 import { eidBytes, hshBytes, Status } from "../consts.ts";
+import { err, ok } from "../valstat.ts";
 
 export interface IMessageHead {
   eid: Uint8Array;
@@ -24,25 +25,25 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
   },
   decode(dec) {
     const [eid, s1] = dec.readBytes(eidBytes);
-    if (s1 !== Status.Success) return [undefined, s1];
+    if (s1 !== Status.Success) return err(s1);
     const [clk, s2] = dec.readDate();
-    if (s2 !== Status.Success) return [undefined, s2];
+    if (s2 !== Status.Success) return err(s2);
     const [ctr, s3] = dec.readVarInt();
-    if (s3 !== Status.Success) return [undefined, s3];
+    if (s3 !== Status.Success) return err(s3);
     const [len, s4] = dec.readVarInt();
-    if (s4 !== Status.Success) return [undefined, s4];
+    if (s4 !== Status.Success) return err(s4);
     let hsh: Uint8Array | undefined;
     if ((len as number) > 0) {
       const [h, s5] = dec.readBytes(hshBytes);
-      if (s5 !== Status.Success) return [undefined, s5];
-      hsh = h as Uint8Array;
+      if (s5 !== Status.Success) return err(s5);
+      hsh = h;
     }
-    return [{
+    return ok({
       eid,
       clk,
       ctr,
       len,
       hsh,
-    }, Status.Success];
+    });
   },
 };

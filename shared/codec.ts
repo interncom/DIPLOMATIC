@@ -86,6 +86,15 @@ export class Decoder {
     return ok(typeof val === "bigint" ? Number(val) : val);
   }
 
+  readVarString(): ValStat<string> {
+    const [len, s1] = this.readVarInt();
+    if (s1 !== Status.Success) return err(s1);
+    const [bytes, s2] = this.readBytes(len);
+    if (s2 !== Status.Success) return err(s2);
+    const str = new TextDecoder().decode(bytes);
+    return ok(str);
+  }
+
   readBytes(num: number): ValStat<Uint8Array> {
     if (num < 0) {
       return err(Status.InvalidParam);
@@ -149,6 +158,14 @@ export class Encoder {
     const [bytes, status] = encodeVarInt(n);
     if (status !== Status.Success) return status;
     this.parts.push(bytes);
+    return Status.Success;
+  }
+
+  writeVarString(s: string): Status {
+    const bytes = new TextEncoder().encode(s);
+    const status = this.writeVarInt(bytes.length);
+    if (status !== Status.Success) return status;
+    this.writeBytes(bytes);
     return Status.Success;
   }
 

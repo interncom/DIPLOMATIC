@@ -3,7 +3,8 @@ import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { HostSpecificKeyPair, ICrypto, IProtoHost, ValStat } from "./types.ts";
+import { HostSpecificKeyPair, ICrypto, IProtoHost } from "./types.ts";
+import { ValStat } from "./valstat.ts";
 
 interface IProtoClient {
   crypto: ICrypto;

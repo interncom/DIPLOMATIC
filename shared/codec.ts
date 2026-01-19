@@ -1,9 +1,9 @@
-import { ValStat } from "./types.ts";
+import { err, ok, ValStat } from "./valstat.ts";
 import { Status } from "./consts.ts";
 
 export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
   if (typeof n !== "bigint") n = BigInt(n);
-  if (n < 0n) return [undefined, Status.InvalidParam];
+  if (n < 0n) return err(Status.InvalidParam);
   const bytes: number[] = [];
   while (n > 0n) {
     const byte = Number(n & 0x7fn);
@@ -15,9 +15,9 @@ export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
     }
   }
   if (bytes.length === 0) {
-    return [new Uint8Array([0]), Status.Success];
+    return ok(new Uint8Array([0]));
   }
-  return [new Uint8Array(bytes), Status.Success];
+  return ok(new Uint8Array(bytes));
 }
 
 export function decodeVarInt(
@@ -29,19 +29,19 @@ export function decodeVarInt(
   let i = offset;
   while (true) {
     if (i >= bytes.length) {
-      return [undefined, Status.InvalidMessage];
+      return err(Status.InvalidMessage);
     }
     const byte = bytes[i++];
     result |= BigInt(byte & 0x7f) << BigInt(shift);
     if ((byte & 0x80) === 0) {
-      return [{
+      return ok({
         value: result > 0x1fffffffffffffn ? result : Number(result),
         bytesRead: i - offset,
-      }, Status.Success];
+      });
     }
     shift += 7;
     if (shift >= 64) {
-      return [undefined, Status.InvalidMessage];
+      return err(Status.InvalidMessage);
     }
   }
 }
@@ -62,40 +62,40 @@ export class Decoder {
 
   readBigInt(): ValStat<bigint> {
     if (this.pos + 8 > this.data.length) {
-      return [undefined, Status.MissingBody];
+      return err(Status.MissingBody);
     }
     const value = new DataView(
       this.data.buffer,
       this.data.byteOffset + this.pos,
     ).getBigUint64(0, false);
     this.pos += 8;
-    return [value, Status.Success];
+    return ok(value);
   }
 
   readDate(): ValStat<Date> {
     const [timestampMs, status] = this.readBigInt();
-    if (status !== Status.Success) return [undefined, status];
-    return [new Date(Number(timestampMs)), Status.Success];
+    if (status !== Status.Success) return err(status);
+    return ok(new Date(Number(timestampMs)));
   }
 
   readVarInt(): ValStat<number> {
     const [res, status] = decodeVarInt(this.data, this.pos);
-    if (status !== Status.Success) return [undefined, status];
+    if (status !== Status.Success) return err(status);
     this.pos += res.bytesRead;
     const val = res.value;
-    return [typeof val === "bigint" ? Number(val) : val, Status.Success];
+    return ok(typeof val === "bigint" ? Number(val) : val);
   }
 
   readBytes(num: number): ValStat<Uint8Array> {
     if (num < 0) {
-      return [undefined, Status.InvalidParam];
+      return err(Status.InvalidParam);
     }
     if (this.pos + num > this.data.length) {
-      return [undefined, Status.MissingBody];
+      return err(Status.MissingBody);
     }
     const bytes = this.data.slice(this.pos, this.pos + num);
     this.pos += num;
-    return [bytes, Status.Success];
+    return ok(bytes);
   }
 
   readStruct<T>(codec: ICodecStruct<T>): ValStat<T> {
@@ -106,20 +106,20 @@ export class Decoder {
     const results: T[] = [];
     while (!this.done()) {
       const [val, status] = this.readStruct(codec);
-      if (status !== Status.Success) return [undefined, status];
+      if (status !== Status.Success) return err(status);
       results.push(val);
     }
-    return [results, Status.Success];
+    return ok(results);
   }
 
   readBytesSeq(len: number): ValStat<Uint8Array[]> {
     const results: Uint8Array[] = [];
     while (!this.done()) {
       const [bytes, status] = this.readBytes(len);
-      if (status !== Status.Success) return [undefined, status];
+      if (status !== Status.Success) return err(status);
       results.push(bytes);
     }
-    return [results, Status.Success];
+    return ok(results);
   }
 
   done(): boolean {

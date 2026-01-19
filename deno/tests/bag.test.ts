@@ -104,13 +104,18 @@ Deno.test("bag", async (t) => {
     const bag = await sealBag(msg, keyPair, crypto, enclave);
 
     // Open the bag
-    const openedMsg = await openBag(bag, keyPair.publicKey, crypto, enclave);
+    const [openedMsg, status] = await openBag(bag, keyPair.publicKey, crypto, enclave);
+    if (status === Status.Success) {
+      // openedMsg is IMessageWithHash
 
-    // Verify contents
-    assertEquals(openedMsg.eid, msg.eid);
-    assertEquals(openedMsg.clk.getTime(), msg.clk.getTime());
-    assertEquals(openedMsg.ctr, msg.ctr);
-    assertEquals(openedMsg.len, msg.len);
-    assertEquals(openedMsg.bod, msg.bod);
+      // Verify contents
+      assertEquals(openedMsg!.eid, msg.eid);
+      assertEquals(openedMsg!.clk.getTime(), msg.clk.getTime());
+      assertEquals(openedMsg!.ctr, msg.ctr);
+      assertEquals(openedMsg!.len, msg.len);
+      assertEquals(openedMsg!.bod, msg.bod);
+    } else {
+      throw new Error(`Open bag failed with status ${status}`);
+    }
   });
 });

@@ -7,6 +7,7 @@ import { kdmBytes, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { concat, uint8ArraysEqual } from "./binary.ts";
 import { IMessage, IMessageWithHash } from "./message.ts";
+import { ok, err, type ValStat } from "./valstat.ts";
 import type {
   HostSpecificKeyPair,
   IBag,
@@ -74,11 +75,11 @@ export async function openBag(
   pubKey: PublicKey,
   crypto: ICrypto,
   enclave: Enclave,
-): Promise<IMessageWithHash> {
+): Promise<ValStat<IMessageWithHash>> {
   // Check sig.
   const sigValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
   if (!sigValid) {
-    throw new Error("Invalid signature");
+    return err(Status.InvalidSignature);
   }
 
   // Derive key.
@@ -97,7 +98,7 @@ export async function openBag(
   const dec = new Decoder(msgHeadEnc);
   const [msgHead, status] = messageHeadCodec.decode(dec);
   if (status !== Status.Success) {
-    throw new Error("Failed to decode message head");
+    return err(Status.InvalidMessage);
   }
 
   // Check hash.
@@ -106,7 +107,7 @@ export async function openBag(
     if (
       !uint8ArraysEqual(bodyHash, (msgHead as IMessageHead).hsh as Uint8Array)
     ) {
-      throw new Error("Hash mismatch");
+      return err(Status.HashMismatch);
     }
   }
 
@@ -114,5 +115,5 @@ export async function openBag(
   const headHash = await crypto.blake3(msgHeadEnc);
 
   // Reconstruct message.
-  return { ...(msgHead as IMessageHead), bod: msgBody, headHash };
+  return ok({ ...msgHead, bod: msgBody, headHash });
 }

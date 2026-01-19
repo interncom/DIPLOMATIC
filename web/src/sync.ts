@@ -8,7 +8,7 @@ import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
 import { EncodedMessage, IMessage } from "./shared/message";
-import { Hash, HostHandle, ICrypto } from "./shared/types";
+import { Hash, HostHandle, IBag, ICrypto } from "./shared/types";
 import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
 
 // Phase 1: Peek for new items and enqueue downloads
@@ -76,7 +76,7 @@ export async function syncPush<Handle extends HostHandle>(
   host: IHostRow<Handle>,
   crypto: ICrypto,
 ): Promise<Status> {
-  const bags: any[] = [];
+  const bags: IBag[] = [];
   const remoteToLocalHash: Map<string, string> = new Map();
   for (const msgHeadEncHash of await store.uploads.list()) {
     const storedMsg = await store.messages.get(msgHeadEncHash);

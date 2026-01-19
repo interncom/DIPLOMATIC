@@ -13,8 +13,6 @@ ENTDB
 - unit test with fake indexeddb
 
 ERRORS
-- make ok() and fail() helpers to generate ValStat<T>'s concisely
-- make an ruok() method to check if a ValStat<T> is ok
 - return ValStat from openBag
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)

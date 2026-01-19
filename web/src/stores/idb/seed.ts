@@ -15,7 +15,7 @@ export class IDBSeedStore implements ISeedStore {
 
   async save(seed: MasterSeed) {
     const hex = btoh(seed);
-    const tx = this.db.transaction(SEED_META_TABLE, 'readwrite');
+    const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise<Enclave>((resolve, reject) => {
       tx.oncomplete = () => {
@@ -31,7 +31,7 @@ export class IDBSeedStore implements ISeedStore {
     if (this.enclave) {
       return this.enclave;
     }
-    const tx = this.db.transaction(SEED_META_TABLE, 'readonly');
+    const tx = this.db.transaction(SEED_META_TABLE, "readonly");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise<Enclave | undefined>((resolve, reject) => {
       const req = store.get("seed");
@@ -51,7 +51,7 @@ export class IDBSeedStore implements ISeedStore {
 
   async wipe() {
     this.enclave = undefined;
-    const tx = this.db.transaction(SEED_META_TABLE, 'readwrite');
+    const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

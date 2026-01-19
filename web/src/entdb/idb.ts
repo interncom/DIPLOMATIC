@@ -3,7 +3,7 @@
 
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
-import { ValStat, ok, err } from "../shared/valstat.ts";
+import { err, ok, ValStat } from "../shared/valstat.ts";
 import { EntitiesQuery, IEntDB, IEntity, updateEnt } from "./entdb";
 import { btoh, htob } from "../shared/binary";
 
@@ -96,7 +96,7 @@ export class EntIDB implements IEntDB {
       return Status.DatabaseClosed;
     }
     const currHex = btoh(op.eid);
-    const tx = this.db.transaction(entityTableName, 'readwrite');
+    const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status>((resolve) => {
       tx.oncomplete = () => resolve(Status.Success);
@@ -121,7 +121,7 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return Status.DatabaseClosed;
     }
-    const tx = this.db.transaction(entityTableName, 'readwrite');
+    const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status>((resolve) => {
       tx.oncomplete = () => resolve(Status.Success);
@@ -135,7 +135,7 @@ export class EntIDB implements IEntDB {
       return err(Status.DatabaseClosed);
     }
     const eidHex = btoh(eid);
-    const tx = this.db.transaction(entityTableName, 'readonly');
+    const tx = this.db.transaction(entityTableName, "readonly");
     const store = tx.objectStore(entityTableName);
     return new Promise((resolve) => {
       const req = store.get(eidHex);
@@ -160,10 +160,12 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return [];
     }
-    const tx = this.db.transaction(entityTableName, 'readonly');
+    const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeUpdatedAtIndexName);
     return new Promise((resolve) => {
-      const req = index.getAll(IDBKeyRange.bound([opType, start], [opType, end]));
+      const req = index.getAll(
+        IDBKeyRange.bound([opType, start], [opType, end]),
+      );
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
         resolve(storedEnts.map(storedToEntity));
@@ -180,7 +182,7 @@ export class EntIDB implements IEntDB {
       return [];
     }
     const gidHex = typeof gid === "string" ? gid : btoh(gid);
-    const tx = this.db.transaction(entityTableName, 'readonly');
+    const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeGroupIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(IDBKeyRange.only([opType, gidHex]));
@@ -196,10 +198,12 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return [];
     }
-    const tx = this.db.transaction(entityTableName, 'readonly');
+    const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
-      const req = index.getAll(IDBKeyRange.bound([opType], [opType, new Date(Infinity)]));
+      const req = index.getAll(
+        IDBKeyRange.bound([opType], [opType, new Date(Infinity)]),
+      );
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
         resolve(storedEnts.map(storedToEntity));
@@ -216,7 +220,7 @@ export class EntIDB implements IEntDB {
     }
     if (pid !== undefined) {
       const pidHex = btoh(pid);
-      const tx = this.db.transaction(entityTableName, 'readonly');
+      const tx = this.db.transaction(entityTableName, "readonly");
       const index = tx.objectStore(entityTableName).index(typeParentIndexName);
       return new Promise((resolve) => {
         const req = index.getAll(IDBKeyRange.only([type, pidHex]));
@@ -246,10 +250,12 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, 'readonly');
+    const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
-      const req = index.count(IDBKeyRange.bound([type], [type, new Date(Infinity)]));
+      const req = index.count(
+        IDBKeyRange.bound([type], [type, new Date(Infinity)]),
+      );
       req.onsuccess = () => resolve(ok(req.result));
       req.onerror = () => resolve(err(Status.DatabaseError));
     });

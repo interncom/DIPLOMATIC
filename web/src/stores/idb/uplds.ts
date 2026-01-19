@@ -13,7 +13,7 @@ export class IDBUploadQueue implements IUploadQueue {
   async enq(hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
-    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -28,7 +28,7 @@ export class IDBUploadQueue implements IUploadQueue {
   async deq(hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
-    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -41,7 +41,7 @@ export class IDBUploadQueue implements IUploadQueue {
   }
 
   async list() {
-    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readonly');
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readonly");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<Hash[]>((resolve, reject) => {
       const req = store.getAllKeys();
@@ -54,7 +54,7 @@ export class IDBUploadQueue implements IUploadQueue {
   }
 
   async count() {
-    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readonly');
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readonly");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<number>((resolve, reject) => {
       const req = store.count();
@@ -64,7 +64,7 @@ export class IDBUploadQueue implements IUploadQueue {
   }
 
   async wipe() {
-    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, 'readwrite');
+    const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

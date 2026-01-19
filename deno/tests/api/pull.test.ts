@@ -12,7 +12,7 @@ import {
   IStorage,
   PublicKey,
 } from "../../../shared/types.ts";
-import { ValStat, ok } from "../../../shared/valstat.ts";
+import { ok, ValStat } from "../../../shared/valstat.ts";
 import {
   authTimestampCodec,
   type IAuthTimestamp,

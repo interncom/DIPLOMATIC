@@ -5,7 +5,7 @@ import { IEntDB, IEntity } from "./entdb";
 import { uint8ArraysEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
-import { ValStat, ok } from "../shared/valstat.ts";
+import { ok, ValStat } from "../shared/valstat.ts";
 import { updateEnt } from "./entdb";
 
 interface IDateRange {

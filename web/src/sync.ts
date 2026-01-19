@@ -7,7 +7,7 @@ import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import { EncodedMessage } from "./shared/message";
+import { EncodedMessage, IMessage } from "./shared/message";
 import { Hash, HostHandle, ICrypto } from "./shared/types";
 import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
 
@@ -83,7 +83,7 @@ export async function syncPush<Handle extends HostHandle>(
     if (!storedMsg) {
       continue;
     }
-    const msg: any = { ...storedMsg.head, bod: storedMsg.body };
+    const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
     const bag = await conn.seal(msg);
     bags.push(bag);
     const headCphHash = await crypto.sha256Hash(bag.headCph) as Hash;

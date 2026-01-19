@@ -1,6 +1,6 @@
 import * as esbuild from "esbuild";
 
-await esbuild.build({
+const result = await esbuild.build({
   entryPoints: ["src/index.ts"],
   bundle: true,
   format: "esm",
@@ -9,4 +9,7 @@ await esbuild.build({
   external: ["react", "@noble/hashes"],
   // minify: true,
   tsconfig: "./tsconfig.json",
+  metafile: true,
 });
+
+console.log(await esbuild.analyzeMetafile(result.metafile));

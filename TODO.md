@@ -2,7 +2,6 @@
 
 ARCH
 - handle clock skew (how should client deal with server notice it's skewed)
-- 
 
 CLIENT
 - split React portion into separate package?

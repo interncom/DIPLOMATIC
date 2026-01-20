@@ -49,7 +49,6 @@ const fileExtension = 'dpl';
 
 // TODO:
 // - unit test it
-// - unit test varString encoder/decoder
 // - implement decodeFile function and test that too
 // - consume these from client
 export async function encodeFile(

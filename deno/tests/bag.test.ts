@@ -104,7 +104,12 @@ Deno.test("bag", async (t) => {
     const bag = await sealBag(msg, keyPair, crypto, enclave);
 
     // Open the bag
-    const [openedMsg, status] = await openBag(bag, keyPair.publicKey, crypto, enclave);
+    const [openedMsg, status] = await openBag(
+      bag,
+      keyPair.publicKey,
+      crypto,
+      enclave,
+    );
     if (status === Status.Success) {
       // openedMsg is IMessageWithHash
 

@@ -394,3 +394,174 @@ Deno.test("Decoder fromResponse", async () => {
   assertEquals(status, Status.Success);
   assertEquals(bytes, new Uint8Array([1, 2, 3]));
 });
+
+Deno.test("writeVarString basic", () => {
+  const enc = new Encoder();
+  const status = enc.writeVarString("hello");
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  // Length 5 encoded as varint 5, then "hello" bytes
+  const expectedLen = new Uint8Array([5]);
+  const expectedStr = new TextEncoder().encode("hello");
+  const expected = concat(expectedLen, expectedStr);
+  assertEquals(result, expected);
+});
+
+Deno.test("readVarString basic", () => {
+  const enc = new Encoder();
+  enc.writeVarString("world");
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.Success);
+  assertEquals(str, "world");
+  assertEquals(dec.done(), true);
+});
+
+Deno.test("writeVarString empty string", () => {
+  const enc = new Encoder();
+  const status = enc.writeVarString("");
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  assertEquals(result, new Uint8Array([0])); // Length 0 varint
+});
+
+Deno.test("readVarString empty string", () => {
+  const data = new Uint8Array([0]); // Length 0
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.Success);
+  assertEquals(str, "");
+  assertEquals(dec.done(), true);
+});
+
+Deno.test("writeVarString special characters", () => {
+  const enc = new Encoder();
+  const s = "!\n\t\r\"'";
+  const status = enc.writeVarString(s);
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  const expectedLen = new Uint8Array([s.length]);
+  const expectedStr = new TextEncoder().encode(s);
+  const expected = concat(expectedLen, expectedStr);
+  assertEquals(result, expected);
+});
+
+Deno.test("readVarString special characters", () => {
+  const s = "!\n\t\r\"'";
+  const enc = new Encoder();
+  enc.writeVarString(s);
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.Success);
+  assertEquals(str, s);
+});
+
+Deno.test("writeVarString unicode", () => {
+  const enc = new Encoder();
+  const s = "🚀🌟";
+  const status = enc.writeVarString(s);
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  const expectedLen = new Uint8Array([new TextEncoder().encode(s).length]);
+  const expectedStr = new TextEncoder().encode(s);
+  const expected = concat(expectedLen, expectedStr);
+  assertEquals(result, expected);
+});
+
+Deno.test("readVarString unicode", () => {
+  const s = "🚀🌟";
+  const enc = new Encoder();
+  enc.writeVarString(s);
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.Success);
+  assertEquals(str, s);
+});
+
+Deno.test("writeVarString long string", () => {
+  const enc = new Encoder();
+  const s = "a".repeat(1000);
+  const status = enc.writeVarString(s);
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  const lenBytes = new TextEncoder().encode(s).length;
+  const [varint, vs] = encodeVarInt(lenBytes);
+  assertEquals(vs, Status.Success);
+  if (vs !== Status.Success) return;
+  const expected = concat(varint, new TextEncoder().encode(s));
+  assertEquals(result, expected);
+});
+
+Deno.test("readVarString long string", () => {
+  const s = "b".repeat(1000);
+  const enc = new Encoder();
+  enc.writeVarString(s);
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.Success);
+  assertEquals(str, s);
+});
+
+Deno.test("roundtrip varString", () => {
+  const testStrings = [
+    "",
+    "hello",
+    "!\n\t\r\"'",
+    "🚀🌟",
+    "a".repeat(1000),
+    "mixed content with unicode 🚀 and special chars !\n",
+  ];
+  for (const s of testStrings) {
+    const enc = new Encoder();
+    const status = enc.writeVarString(s);
+    assertEquals(status, Status.Success);
+    const data = enc.result();
+    const dec = new Decoder(data);
+    const [decoded, decStatus] = dec.readVarString();
+    assertEquals(decStatus, Status.Success);
+    assertEquals(decoded, s);
+    assertEquals(dec.done(), true);
+  }
+});
+
+Deno.test("readVarString insufficient data for length", () => {
+  const data = new Uint8Array([0x80]); // Incomplete varint
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.InvalidMessage);
+  assertEquals(str, undefined);
+});
+
+Deno.test("readVarString insufficient data for string", () => {
+  const enc = new Encoder();
+  enc.writeVarInt(5); // Length 5
+  enc.writeBytes(new Uint8Array([1, 2, 3])); // Only 3 bytes
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [str, status] = dec.readVarString();
+  assertEquals(status, Status.MissingBody);
+  assertEquals(str, undefined);
+});
+
+Deno.test("integration writeVarString with other methods", () => {
+  const enc = new Encoder();
+  enc.writeBigInt(42n);
+  enc.writeVarString("test");
+  enc.writeBytes(new Uint8Array([1, 2, 3]));
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [bi, s1] = dec.readBigInt();
+  assertEquals(s1, Status.Success);
+  assertEquals(bi, 42n);
+  const [str, s2] = dec.readVarString();
+  assertEquals(s2, Status.Success);
+  assertEquals(str, "test");
+  const [bytes, s3] = dec.readBytes(3);
+  assertEquals(s3, Status.Success);
+  assertEquals(bytes, new Uint8Array([1, 2, 3]));
+  assertEquals(dec.done(), true);
+});

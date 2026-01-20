@@ -112,10 +112,6 @@ export async function encodeFile(
     hsh,
     sig,
   }
-  const encHead = new Encoder();
-  const headEncStat = encHead.writeStruct(fileHeadCodec, head);
-  if (headEncStat !== Status.Success) return err(headEncStat);
-  const headEnc = encHead.result();
 
   const encFile = new Encoder();
   encFile.writeStruct(fileCodec, { head, indexEnc, bodyEnc });

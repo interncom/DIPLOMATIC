@@ -1,13 +1,16 @@
 import { ICodecStruct } from "../codec.ts";
-import { eidBytes, hshBytes, Status } from "../consts.ts";
+import { hshBytes, sigBytes, Status } from "../consts.ts";
 import { Hash } from "../types.ts";
 import { err, ok } from "../valstat.ts";
 
 export interface IFileHead {
+  // TODO: determine if even need to store these or better to just compute a kdm and use that.
   lbl: string; // Key derivation label.
   idx: number; // Key derivation index
+
   num: number; // Number of bags.
   hsh: Hash; // Hash of INDEX section.
+  sig: Uint8Array; // Ed25519 signature of hsh.
 }
 
 export const fileHeadCodec: ICodecStruct<IFileHead> = {
@@ -19,6 +22,7 @@ export const fileHeadCodec: ICodecStruct<IFileHead> = {
     const s3 = enc.writeVarInt(head.num);
     if (s3 !== Status.Success) return s3;
     enc.writeBytes(head.hsh);
+    enc.writeBytes(head.sig);
     return Status.Success;
   },
   decode(dec) {
@@ -30,6 +34,8 @@ export const fileHeadCodec: ICodecStruct<IFileHead> = {
     if (s3 !== Status.Success) return err(s3);
     const [hsh, s4] = dec.readBytes(hshBytes);
     if (s4 !== Status.Success) return err(s4);
-    return ok({ lbl, idx, num, hsh: hsh as Hash });
+    const [sig, s5] = dec.readBytes(sigBytes);
+    if (s5 !== Status.Success) return err(s5);
+    return ok({ lbl, idx, num, hsh: hsh as Hash, sig });
   },
 };

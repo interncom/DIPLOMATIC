@@ -25,6 +25,24 @@ export function bagSigValid(
   return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
 }
 
+// kdmFor computes the key derivation material for an encoded msgHead.
+export async function kdmFor(
+  msgHeadEnc: Uint8Array,
+  keys: HostSpecificKeyPair,
+  crypto: ICrypto,
+): Promise<Uint8Array> {
+  // 1. We use a different key for each bag, so that cracking one key does
+  //    not compromise all of the user's bags.
+  // 2. Deterministically deriving the KDM from the plaintext message head
+  //    prevents an attacker from forging arbitrary bags if they get a key.
+  // 3. Mixing the host-specific private key in prevents that deterministic
+  //    KDM from being used as a unique identifier across hosts.
+  const kdmSource = concat(keys.privateKey, msgHeadEnc);
+  const kdmHash = await crypto.blake3(kdmSource);
+  const kdm = kdmHash.slice(0, kdmBytes);
+  return kdm;
+}
+
 export async function sealBag(
   msg: IMessage,
   keys: HostSpecificKeyPair,
@@ -42,15 +60,7 @@ export async function sealBag(
   const headEnc = enc.result();
 
   // Derive encryption key.
-  // 1. We use a different key for each bag, so that cracking one key does
-  //    not compromise all of the user's bags.
-  // 2. Deterministically deriving the KDM from the plaintext message head
-  //    prevents an attarcker from forging arbitrary bags if they get a key.
-  // 3. Mixing the host-specific private key in prevents that deterministic
-  //    KDM from being used as a unique identifier across hosts.
-  const kdmSource = concat(keys.privateKey, headEnc);
-  const kdmHash = await crypto.blake3(kdmSource);
-  const kdm = kdmHash.slice(0, kdmBytes);
+  const kdm = await kdmFor(headEnc, keys, crypto);
   const key = await enclave.deriveFromKDM(kdm);
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.

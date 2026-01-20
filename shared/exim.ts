@@ -1,14 +1,14 @@
-import { kdmFor } from "./bag";
-import { Encoder } from "./codec";
-import { fileCodec } from "./codecs/file";
-import { fileHeadCodec, IFileHead } from "./codecs/fileHead";
-import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem";
-import { messageHeadCodec } from "./codecs/messageHead";
-import { Status } from "./consts";
-import { Enclave } from "./enclave";
-import { IMessageHead } from "./message";
-import { HostSpecificKeyPair, ICrypto } from "./types";
-import { err, ok, ValStat } from "./valstat";
+import { kdmFor } from "./bag.ts";
+import { Encoder } from "./codec.ts";
+import { fileCodec } from "./codecs/file.ts";
+import { IFileHead } from "./codecs/fileHead.ts";
+import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
+import { messageHeadCodec } from "./codecs/messageHead.ts";
+import { Status } from "./consts.ts";
+import { Enclave } from "./enclave.ts";
+import { IMessageHead } from "./message.ts";
+import { HostSpecificKeyPair, ICrypto } from "./types.ts";
+import { err, ok, ValStat } from "./valstat.ts";
 
 /* File format
 
@@ -45,21 +45,22 @@ The INDEX section allows parallelization for bag loading.
 Should have a checksum of some sort in the HEADER, e.g. hash of concatenated bag hashes in the INDEX section.
 */
 
-const fileExtension = 'dpl';
+const fileExtension = "dpl";
 
 // TODO:
-// - unit test it
 // - implement decodeFile function and test that too
 // - consume these from client
 export async function encodeFile(
   keyLbl: string,
   keyIdx: number,
-  msgs: Iterable<{ head: IMessageHead, body?: Uint8Array }>,
+  msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<ValStat<Uint8Array>> {
   const derivSeed = await enclave.derive(keyLbl, keyIdx);
-  const keys = await crypto.deriveEd25519KeyPair(derivSeed) as HostSpecificKeyPair;
+  const keys = await crypto.deriveEd25519KeyPair(
+    derivSeed,
+  ) as HostSpecificKeyPair;
 
   const encIndex = new Encoder();
   const encBody = new Encoder();
@@ -85,7 +86,7 @@ export async function encodeFile(
       headCph,
       lenBody: bodyCph.length,
       offBody: bodyCph.length > 0 ? offset : undefined,
-    }
+    };
     const statItem = encIndex.writeStruct(fileIndexItemCodec, item);
     if (statItem !== Status.Success) return err(statItem);
 
@@ -93,6 +94,8 @@ export async function encodeFile(
       encBody.writeBytes(bodyCph);
       offset += bodyCph.length;
     }
+
+    num++;
   }
 
   // TODO: do this in a zero-copy way.
@@ -111,7 +114,7 @@ export async function encodeFile(
     num,
     hsh,
     sig,
-  }
+  };
 
   const encFile = new Encoder();
   encFile.writeStruct(fileCodec, { head, indexEnc, bodyEnc });

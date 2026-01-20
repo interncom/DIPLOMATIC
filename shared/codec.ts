@@ -1,5 +1,6 @@
 import { err, ok, ValStat } from "./valstat.ts";
 import { Status } from "./consts.ts";
+import { ICrypto } from "./types.ts";
 
 export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
   if (typeof n !== "bigint") n = BigInt(n);
@@ -200,6 +201,12 @@ export class Encoder {
       offset += part.length;
     }
     return result;
+  }
+
+  *scan(): Generator<Uint8Array> {
+    for (const part of this.parts) {
+      yield part;
+    }
   }
 }
 

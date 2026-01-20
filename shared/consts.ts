@@ -33,6 +33,7 @@ export enum Status {
   DatabaseError = 18,
   HashMismatch = 19,
   DecryptionError = 20,
+  NotImplemented = 21,
 }
 
 export enum APICallName {

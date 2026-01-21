@@ -4,6 +4,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pushEnd } from "../../../shared/api/push.ts";
+import { bytesEqual } from "../../../shared/binary.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { bagCodec } from "../../../shared/codecs/bag.ts";
@@ -18,8 +19,6 @@ import {
   Status,
 } from "../../../shared/consts.ts";
 import { Hash, IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
-import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
-import { bytesEqual } from "../../../shared/binary.ts";
 import {
   baseMockCrypto,
   baseMockNotifier,

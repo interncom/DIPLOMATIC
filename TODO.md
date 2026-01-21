@@ -6,7 +6,6 @@ ARCH
 
 CLIENT
 - split React portion into separate package?
-- implement import/export (eliminate zip dependency)
 - eliminate fileSaver dependency
 
 ENTDB
@@ -22,6 +21,7 @@ ERRORS
 - return ValStats from entdb queries
 
 TESTS
+- test import/export at client level
 - test HTTP client and server together
 - test protocol client against binary test vector responses. make them thorough enough and can generate clients in other lanuages via LLM. can provide mock data in JSON (users, bags, ...)
 - document tests, refactor, and ensure each serves a purpose

@@ -129,8 +129,8 @@ export interface IClient<Handle extends HostHandle> {
 
   wipe(): Promise<void>;
 
-  import(file: File): Promise<void>;
-  export(filename: string, extension?: string): Promise<void>;
+  import(file: File): Promise<Status>;
+  export(filename: string, extension?: string): Promise<Status>;
 
   clientState: IStateEmitter<IDiplomaticClientState>;
   xferState: IStateEmitter<IDiplomaticClientXferState>;

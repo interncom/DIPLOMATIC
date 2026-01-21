@@ -46,7 +46,7 @@ The INDEX section allows parallelization for bag loading.
 Should have a checksum of some sort in the HEADER, e.g. hash of concatenated bag hashes in the INDEX section.
 */
 
-const fileExtension = "dpl";
+export const defaultFileExtension = "dpl";
 
 // TODO:
 // - consume these from client

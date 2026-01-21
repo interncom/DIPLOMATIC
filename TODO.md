@@ -7,6 +7,7 @@ ARCH
 CLIENT
 - split React portion into separate package?
 - implement import/export (eliminate zip dependency)
+- eliminate fileSaver dependency
 
 ENTDB
 - split EntDB into separate package?

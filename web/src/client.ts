@@ -32,6 +32,8 @@ import {
   IStoredMessage,
 } from "./types";
 import { Status } from "./shared/consts";
+import { defaultFileExtension, encodeFile } from "./shared/exim";
+import { saveAs } from "file-saver";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -185,8 +187,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // TODO: implement.
   }
 
-  public async export(filename: string, extension?: string) {
-    // TODO: implement.
+  public async export(filename: string, extension = defaultFileExtension) {
+    const { crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) return Status.MissingSeed;
+
+    const msgs = await store.messages.list();
+    const [bytes, stat] = await encodeFile("export", 0, msgs, crypto, enclave);
+    if (stat !== Status.Success) return stat;
+
+    const blob = new Blob([bytes.slice()]);
+    saveAs(blob, filename);
+    return Status.Success;
   }
 
   // Manage stored host connections.

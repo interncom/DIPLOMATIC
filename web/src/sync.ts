@@ -1,5 +1,5 @@
-import { btoh, htob, bytesEqual } from "./shared/binary";
 import { openBagBody } from "./shared/bag";
+import { btoh, htob } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";

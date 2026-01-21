@@ -3,7 +3,7 @@ import { Decoder } from "../../shared/codec.ts";
 import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { encodeFile, decodeFile } from "../../shared/exim.ts";
+import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import type { IMessageHead } from "../../shared/message.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type { Hash, ICrypto, MasterSeed } from "../../shared/types.ts";
@@ -99,7 +99,13 @@ Deno.test("encodeFile", async (t) => {
 
   await t.step("empty messages", async () => {
     const msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }> = [];
-    const [fileData, statFile] = await encodeFile("test-label", 0, msgs, crypto, enclave);
+    const [fileData, statFile] = await encodeFile(
+      "test-label",
+      0,
+      msgs,
+      crypto,
+      enclave,
+    );
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
     assertEquals(fileData.length > 0, true);
@@ -120,7 +126,13 @@ Deno.test("encodeFile", async (t) => {
     const eid = await crypto.gen128BitRandomID();
     const head: IMessageHead = genDeleteHead(eid, new Date(), 1);
     const msgs = [{ head }];
-    const [fileData, statFile] = await encodeFile("test-label", 0, msgs, crypto, enclave);
+    const [fileData, statFile] = await encodeFile(
+      "test-label",
+      0,
+      msgs,
+      crypto,
+      enclave,
+    );
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -147,7 +159,13 @@ Deno.test("encodeFile", async (t) => {
       crypto,
     );
     const msgs = [{ head, body }];
-    const [fileData, statFile] = await encodeFile("test-label", 0, msgs, crypto, enclave);
+    const [fileData, statFile] = await encodeFile(
+      "test-label",
+      0,
+      msgs,
+      crypto,
+      enclave,
+    );
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -179,7 +197,13 @@ Deno.test("encodeFile", async (t) => {
       );
       msgs.push({ head, body });
     }
-    const [fileData, statFile] = await encodeFile("test-label", 1, msgs, crypto, enclave);
+    const [fileData, statFile] = await encodeFile(
+      "test-label",
+      1,
+      msgs,
+      crypto,
+      enclave,
+    );
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -241,7 +265,13 @@ Deno.test("decodeFile", async (t) => {
       crypto,
     );
     const originalMsgs = [{ head, body }];
-    const [fileData, statEnc] = await encodeFile(lbl, 0, originalMsgs, crypto, enclave);
+    const [fileData, statEnc] = await encodeFile(
+      lbl,
+      0,
+      originalMsgs,
+      crypto,
+      enclave,
+    );
     assertEquals(statEnc, Status.Success);
     if (statEnc !== Status.Success) return;
 

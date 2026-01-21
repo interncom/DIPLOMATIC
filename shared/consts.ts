@@ -35,6 +35,7 @@ export enum Status {
   DecryptionError = 20,
   NotImplemented = 21,
   MissingSeed = 22,
+  OutOfBounds = 23,
 }
 
 export enum APICallName {

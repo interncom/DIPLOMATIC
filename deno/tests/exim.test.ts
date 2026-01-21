@@ -3,7 +3,7 @@ import { Decoder } from "../../shared/codec.ts";
 import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { encodeFile } from "../../shared/exim.ts";
+import { encodeFile, decodeFile } from "../../shared/exim.ts";
 import type { IMessageHead } from "../../shared/message.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type { Hash, ICrypto, MasterSeed } from "../../shared/types.ts";
@@ -38,7 +38,10 @@ class MockCrypto implements ICrypto {
     headerAndCipher: Uint8Array,
     key: Uint8Array,
   ): Promise<Uint8Array> {
-    throw new Error("Not implemented in mock");
+    if (headerAndCipher[0] !== 0xFF) throw new Error("Invalid mock ciphertext");
+    const keyPart = headerAndCipher.slice(-8);
+    if (!keyPart.every((v, i) => v === key[i])) throw new Error("Key mismatch");
+    return headerAndCipher.slice(1, -8);
   }
 
   async deriveEd25519KeyPair(derivationSeed: any): Promise<any> {
@@ -87,6 +90,8 @@ class MockEnclave extends Enclave {
     return new Uint8Array(32).fill(kdm[0] || 0x22);
   }
 }
+
+const lbl = "test-label";
 
 Deno.test("encodeFile", async (t) => {
   const crypto = new MockCrypto();
@@ -188,5 +193,101 @@ Deno.test("encodeFile", async (t) => {
     assertEquals(file.head.num, 3);
     assertEquals(file.indexEnc.length > 0, true);
     assertEquals(file.bodyEnc.length > 0, true); // At least one message has body
+  });
+});
+
+Deno.test("decodeFile", async (t) => {
+  const crypto = new MockCrypto();
+  const enclave = new MockEnclave();
+
+  await t.step("round-trip empty messages", async () => {
+    const [file, statEnc] = await encodeFile(lbl, 0, [], crypto, enclave);
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [msgsDecoded, statDec] = await decodeFile(file, crypto, enclave);
+    assertEquals(statDec, Status.Success);
+    if (statDec !== Status.Success) return;
+
+    assertEquals(msgsDecoded.length, 0);
+  });
+
+  await t.step("round-trip single message without body", async () => {
+    const eid = await crypto.gen128BitRandomID();
+    const head = genDeleteHead(eid, new Date(), 1);
+    const msgs = [{ head }];
+    const [file, statEnc] = await encodeFile(lbl, 0, msgs, crypto, enclave);
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [msgsDecoded, statDec] = await decodeFile(file, crypto, enclave);
+    assertEquals(statDec, Status.Success);
+    if (statDec !== Status.Success) return;
+
+    assertEquals(msgsDecoded.length, 1);
+    const msgDecoded = msgsDecoded[0];
+    assertEquals(msgDecoded.head.eid, head.eid);
+    assertEquals(msgDecoded.body, undefined);
+  });
+
+  await t.step("round-trip single message with body", async () => {
+    const eid = await crypto.gen128BitRandomID();
+    const body = new TextEncoder().encode("test body");
+    const head: IMessageHead = await genUpsertHead(
+      eid,
+      new Date(),
+      1,
+      body,
+      crypto,
+    );
+    const originalMsgs = [{ head, body }];
+    const [fileData, statEnc] = await encodeFile(lbl, 0, originalMsgs, crypto, enclave);
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [msgsDecoded, statDec] = await decodeFile(fileData, crypto, enclave);
+    assertEquals(statDec, Status.Success);
+    if (statDec !== Status.Success) return;
+
+    assertEquals(msgsDecoded.length, 1);
+    const msgDecoded = msgsDecoded[0];
+    assertEquals(msgDecoded.head.eid, head.eid);
+    assertEquals(msgDecoded.body, body);
+  });
+
+  await t.step("round-trip multiple messages", async () => {
+    const msgs: Array<{ head: IMessageHead; body?: Uint8Array }> = [];
+    for (let i = 0; i < 3; i++) {
+      const eid = await crypto.gen128BitRandomID();
+      const body = i % 2 === 0
+        ? new TextEncoder().encode(`body ${i}`)
+        : undefined;
+      const head: IMessageHead = await genUpsertHead(
+        eid,
+        new Date(),
+        i,
+        body || new Uint8Array(0),
+        crypto,
+      );
+      msgs.push({ head, body });
+    }
+    const [file, statEnc] = await encodeFile(lbl, 1, msgs, crypto, enclave);
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [msgsDecoded, statDec] = await decodeFile(file, crypto, enclave);
+    assertEquals(statDec, Status.Success);
+    if (statDec !== Status.Success) return;
+
+    assertEquals(msgsDecoded.length, 3);
+    for (let i = 0; i < 3; i++) {
+      const msg = msgsDecoded[i];
+      assertEquals(msg.head.eid, msgs[i].head.eid);
+      if (msgs[2 - i].body) {
+        assertEquals(msg.body, msgs[i].body);
+      } else {
+        assertEquals(msg.body, undefined);
+      }
+    }
   });
 });

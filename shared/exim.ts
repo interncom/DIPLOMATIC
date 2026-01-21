@@ -1,5 +1,6 @@
 import { kdmFor } from "./bag.ts";
-import { Encoder } from "./codec.ts";
+import { uint8ArraysEqual } from "./binary.ts";
+import { Decoder, Encoder } from "./codec.ts";
 import { fileCodec } from "./codecs/file.ts";
 import { IFileHead } from "./codecs/fileHead.ts";
 import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
@@ -48,7 +49,6 @@ Should have a checksum of some sort in the HEADER, e.g. hash of concatenated bag
 const fileExtension = "dpl";
 
 // TODO:
-// - implement decodeFile function and test that too
 // - consume these from client
 export async function encodeFile(
   keyLbl: string,
@@ -80,12 +80,13 @@ export async function encodeFile(
       ? await crypto.encryptXSalsa20Poly1305Combined(msg.body, key)
       : new Uint8Array(0);
 
+    const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined ? bodyCph.length : 0;
     const item: IFileIndexItem = {
       kdm,
       lenHead: headCph.length,
       headCph,
-      lenBody: bodyCph.length,
-      offBody: bodyCph.length > 0 ? offset : undefined,
+      lenBody,
+      offBody: lenBody > 0 ? offset : undefined,
     };
     const statItem = encIndex.writeStruct(fileIndexItemCodec, item);
     if (statItem !== Status.Success) return err(statItem);
@@ -121,6 +122,71 @@ export async function encodeFile(
   const fileEnc = encFile.result();
 
   return ok(fileEnc);
+}
+
+export async function decodeFile(
+  file: Uint8Array,
+  crypto: ICrypto,
+  enclave: Enclave,
+): Promise<ValStat<{ head: IMessageHead; body?: Uint8Array }[]>> {
+  const [fileStruct, statDecode] = fileCodec.decode(new Decoder(file));
+  if (statDecode !== Status.Success) return err(statDecode);
+  const { head, indexEnc, bodyEnc } = fileStruct;
+
+  const derivSeed = await enclave.derive(head.lbl, head.idx);
+  const keys = await crypto.deriveEd25519KeyPair(
+    derivSeed,
+  ) as HostSpecificKeyPair;
+
+  // Check that hash signature is valid.
+  const sigValid = await crypto.checkSigEd25519(
+    head.sig,
+    head.hsh,
+    keys.publicKey,
+  );
+  if (!sigValid) return err(Status.InvalidSignature);
+
+  // Check that hash matches head contents (header data validates body data).
+  const computedHsh = await crypto.blake3(indexEnc);
+  if (!uint8ArraysEqual(computedHsh, head.hsh)) return err(Status.HashMismatch);
+
+  const decoder = new Decoder(indexEnc);
+  const items: IFileIndexItem[] = [];
+  for (let i = 0; i < head.num; i++) {
+    const [item, itemStatus] = decoder.readStruct(fileIndexItemCodec);
+    if (itemStatus !== Status.Success) return err(itemStatus);
+    // TODO: per-item failure codes. Allow partial import.
+    items.push(item);
+  }
+
+  if (items.length !== head.num) return err(Status.InvalidMessage);
+
+  const messages: { head: IMessageHead; body?: Uint8Array }[] = [];
+  for (const item of items) {
+    const key = await enclave.deriveFromKDM(item.kdm);
+    const headEnc = await crypto.decryptXSalsa20Poly1305Combined(
+      item.headCph,
+      key,
+    );
+    const [msgHead, headStatus] = messageHeadCodec.decode(
+      new Decoder(headEnc),
+    );
+    if (headStatus !== Status.Success) return err(headStatus);
+
+    let itemBodyEnc: Uint8Array | undefined;
+    if (item.lenBody > 0 && item.offBody !== undefined) {
+      if (msgHead.hsh === undefined) return err(Status.InvalidMessage);
+      const itemBodyCph = bodyEnc.slice(item.offBody, item.offBody + item.lenBody);
+      itemBodyEnc = await crypto.decryptXSalsa20Poly1305Combined(itemBodyCph, key);
+      const hashItemBody = await crypto.blake3(itemBodyEnc);
+      if (!uint8ArraysEqual(hashItemBody, msgHead.hsh)) return err(Status.HashMismatch);
+      // TODO: per-item failure codes. Allow partial import.
+    }
+
+    messages.push({ head: msgHead, body: itemBodyEnc });
+  }
+
+  return ok(messages);
 }
 
 // Imports.

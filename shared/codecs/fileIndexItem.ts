@@ -18,7 +18,7 @@ export const fileIndexItemCodec: ICodecStruct<IFileIndexItem> = {
     enc.writeBytes(item.headCph);
     const s2 = enc.writeVarInt(item.lenBody);
     if (s2 !== Status.Success) return s2;
-    if (item.lenBody > 0 && item.offBody) {
+    if (item.lenBody > 0 && item.offBody !== undefined) {
       const s3 = enc.writeVarInt(item.offBody);
       if (s3 !== Status.Success) return s3;
     }

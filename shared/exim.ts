@@ -48,8 +48,6 @@ Should have a checksum of some sort in the HEADER, e.g. hash of concatenated bag
 
 export const defaultFileExtension = "dpl";
 
-// TODO:
-// - consume these from client
 export async function encodeFile(
   keyLbl: string,
   keyIdx: number,
@@ -188,28 +186,3 @@ export async function decodeFile(
 
   return ok(messages);
 }
-
-// import = async (file: File) => {
-//   if (!this.encKey) {
-//     return;
-//   }
-//   const { encKey } = this;
-//   const zip = await JSZip.loadAsync(file);
-//   for (const opFileName of Object.keys(zip.files)) {
-//     const hex = opFileName.split(".")[0];
-//     const zipSha256 = htob(hex);
-//     if (await this.store.hasOp(zipSha256)) {
-//       continue;
-//     }
-//     const cipher = await zip.files[opFileName].async("uint8array");
-//     const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-//       cipher,
-//       encKey,
-//     );
-//     const op = decode(packed) as IOp;
-//     const sha256 = await libsodiumCrypto.sha256Hash(cipher);
-//     await this.stateManager.apply(op);
-//     await this.store.storeOp(sha256, cipher);
-//     this.emitXferUpdate();
-//   }
-// };

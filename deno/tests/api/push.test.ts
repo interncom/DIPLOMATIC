@@ -19,7 +19,7 @@ import {
 } from "../../../shared/consts.ts";
 import { Hash, IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
-import { uint8ArraysEqual } from "../../../shared/binary.ts";
+import { bytesEqual } from "../../../shared/binary.ts";
 import {
   baseMockCrypto,
   baseMockNotifier,
@@ -63,7 +63,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
   const mockNotifier: IPushNotifier = {
     ...baseMockNotifier,
     push: (pk: PublicKey, data: Uint8Array) => {
-      if (uint8ArraysEqual(pk, pubKey)) {
+      if (bytesEqual(pk, pubKey)) {
         notified = true;
       }
       return Promise.resolve();

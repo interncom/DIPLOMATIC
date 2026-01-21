@@ -5,7 +5,7 @@ import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { concat, uint8ArraysEqual } from "./binary.ts";
+import { concat, bytesEqual } from "./binary.ts";
 import { EncodedMessage, IMessage, IMessageWithHash } from "./message.ts";
 import { ok, err, type ValStat } from "./valstat.ts";
 import type {
@@ -113,7 +113,7 @@ export async function openBagBody(
   // Check body hash.
   if (msgHead.hsh && msgBody) {
     const bodyHash = await crypto.blake3(msgBody);
-    if (!uint8ArraysEqual(bodyHash, msgHead.hsh)) {
+    if (!bytesEqual(bodyHash, msgHead.hsh)) {
       return err(Status.HashMismatch);
     }
   }

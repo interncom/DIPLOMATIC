@@ -1,4 +1,4 @@
-import { btoh, uint8ArraysEqual } from "../../shared/binary";
+import { btoh, bytesEqual } from "../../shared/binary";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage } from "../../types";
 import { MESSAGES_TABLE } from "./store";
@@ -76,7 +76,7 @@ export class IDBMessageStore implements IMessageStore {
         const allMsgs = req.result;
         let latest: IStoredMessage | undefined;
         for (const msg of allMsgs) {
-          if (uint8ArraysEqual(eid, msg.head.eid) === false) {
+          if (bytesEqual(eid, msg.head.eid) === false) {
             continue;
           }
           if (!latest || msg.head.ctr > latest.head.ctr) {

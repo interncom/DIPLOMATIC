@@ -2,7 +2,7 @@
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
 import { IEntDB, IEntity } from "./entdb";
-import { uint8ArraysEqual } from "../shared/binary";
+import { bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { ok, ValStat } from "../shared/valstat.ts";
@@ -50,7 +50,7 @@ export class EntDBMemory implements IEntDB {
     const results: IEntity<T>[] = [];
     if (pid !== undefined) {
       for (const ent of this.ents.values()) {
-        if (ent.type === type && ent.pid && uint8ArraysEqual(ent.pid, pid)) {
+        if (ent.type === type && ent.pid && bytesEqual(ent.pid, pid)) {
           results.push(ent as IEntity<T>);
         }
       }
@@ -60,7 +60,7 @@ export class EntDBMemory implements IEntDB {
           ent.type === type &&
           ((typeof ent.gid === "string" && ent.gid === gid) ||
             (ent.gid instanceof Uint8Array && gid instanceof Uint8Array &&
-              uint8ArraysEqual(ent.gid, gid)))
+              bytesEqual(ent.gid, gid)))
         ) {
           results.push(ent as IEntity<T>);
         }

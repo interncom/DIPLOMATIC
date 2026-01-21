@@ -1,4 +1,4 @@
-import { btoh, htob, uint8ArraysEqual } from "./shared/binary";
+import { btoh, htob, bytesEqual } from "./shared/binary";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";

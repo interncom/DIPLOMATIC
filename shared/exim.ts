@@ -1,5 +1,5 @@
 import { kdmFor } from "./bag.ts";
-import { uint8ArraysEqual } from "./binary.ts";
+import { bytesEqual } from "./binary.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { fileCodec } from "./codecs/file.ts";
 import { IFileHead } from "./codecs/fileHead.ts";
@@ -146,7 +146,7 @@ export async function decodeFile(
 
   // Check that hash matches head contents (header data validates body data).
   const computedHsh = await crypto.blake3(indexEnc);
-  if (!uint8ArraysEqual(computedHsh, head.hsh)) return err(Status.HashMismatch);
+  if (!bytesEqual(computedHsh, head.hsh)) return err(Status.HashMismatch);
 
   const decoder = new Decoder(indexEnc);
   const items: IFileIndexItem[] = [];
@@ -177,7 +177,7 @@ export async function decodeFile(
       const itemBodyCph = bodyEnc.slice(item.offBody, item.offBody + item.lenBody);
       itemBodyEnc = await crypto.decryptXSalsa20Poly1305Combined(itemBodyCph, key);
       const hashItemBody = await crypto.blake3(itemBodyEnc);
-      if (!uint8ArraysEqual(hashItemBody, msgHead.hsh)) return err(Status.HashMismatch);
+      if (!bytesEqual(hashItemBody, msgHead.hsh)) return err(Status.HashMismatch);
       // TODO: per-item failure codes. Allow partial import.
     }
 

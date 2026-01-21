@@ -13,7 +13,7 @@ import libsodiumCrypto from "../src/crypto";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
 import { EncodedMessage, IMessage } from "../src/shared/message";
-import { btoh, uint8ArraysEqual } from "../src/shared/binary";
+import { btoh, bytesEqual } from "../src/shared/binary";
 import { hostKeys } from "../src/shared/endpoint";
 import { IDownloadMessage, IStateManager } from "../src/types";
 import { sealBag } from "../src/shared/bag";
@@ -42,8 +42,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
   const client = new SyncClient<IProtoHost>(clock, state, store, transport);
   return { store, state, client };
@@ -133,7 +133,7 @@ describe("NeoClient", () => {
       if (!msg.body) {
         fail("No body");
       }
-      expect(uint8ArraysEqual(body, msg.body)).toBeTruthy();
+      expect(bytesEqual(body, msg.body)).toBeTruthy();
       expect(msg.head.ctr).toBe(0);
       expect(msg.head.len).toBe(body.length);
     });

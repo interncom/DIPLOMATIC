@@ -1,10 +1,13 @@
 # TODOS
 
+GENERAL
+- Fix all `// TODO:` in codebase
+
 ARCH
 - handle clock skew (how should client deal with server notice it's skewed)
-- determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey
 
 CLIENT
+- determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey
 - split React portion into separate package?
 - eliminate fileSaver dependency
 
@@ -14,7 +17,7 @@ ENTDB
 - unit test with fake indexeddb
 
 ERRORS
-- allow a ValStat to hold a list of Status codes, to capture the full stack (err can wrap an err(stat) return val) or is that too implementation specific? maybe better to have a location embedded within the status byte
+- allow a ValStat to hold a list of Status codes, to capture the full stack (err can wrap an err(stat) return val) or is that too implementation specific? maybe better to have a location embedded within the status byte (or just more granular codes)
 - make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)
 - prepend status byte to each API response to wire server errors through to client?

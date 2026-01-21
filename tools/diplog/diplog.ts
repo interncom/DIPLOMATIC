@@ -1,4 +1,4 @@
-import { initCLI } from "../../deno/src/cli2.ts";
+import { initCLI } from "../../deno/src/cli.ts";
 
 const client = await initCLI();
 

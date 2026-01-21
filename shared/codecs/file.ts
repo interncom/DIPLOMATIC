@@ -1,6 +1,5 @@
 import { ICodecStruct } from "../codec.ts";
-import { hshBytes, sigBytes, Status } from "../consts.ts";
-import { Hash } from "../types.ts";
+import { Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
 import { fileHeadCodec, IFileHead } from "./fileHead.ts";
 

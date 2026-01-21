@@ -101,7 +101,7 @@ export class Decoder {
       return err(Status.InvalidParam);
     }
     if (this.pos + num > this.data.length) {
-      return err(Status.MissingBody);
+      return err(Status.OutOfBounds);
     }
     const bytes = this.data.slice(this.pos, this.pos + num);
     this.pos += num;

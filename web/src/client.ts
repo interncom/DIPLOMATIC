@@ -32,7 +32,7 @@ import {
   IStoredMessage,
 } from "./types";
 import { Status } from "./shared/consts";
-import { defaultFileExtension, encodeFile } from "./shared/exim";
+import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -184,7 +184,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async import(file: File) {
-    // TODO: implement.
+    const { crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) return Status.MissingSeed;
+
+    const bytes = await file.bytes();
+    const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
+    if (statDec !== Status.Success) return statDec;
+
+    for (const msg of msgs) {
+      const statApp = await this.apply(msg.head, msg.body, true);
+      if (statApp !== Status.Success) return statApp;
+    }
+
+    return Status.Success;
   }
 
   public async export(filename: string, extension = defaultFileExtension) {

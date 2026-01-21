@@ -1,4 +1,4 @@
-import { initCLI } from "../../deno/src/cli2.ts";
+import { initCLI } from "../../deno/src/cli.ts";
 import type { IMessage } from "../../shared/message.ts";
 import denoMsgpack from "../../deno/src/codec.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";

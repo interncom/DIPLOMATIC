@@ -189,25 +189,6 @@ export async function decodeFile(
   return ok(messages);
 }
 
-// Imports.
-// "file-saver": "^2.0.5",
-// "jszip": "^3.10.1",
-
-// Legacy import/export code.
-// async export(filename: string, extension = "dip") {
-//   const ops = await this.store.listOps();
-
-//   const zip = new JSZip();
-//   for (const op of ops) {
-//     zip.file(`${op.sha256}.op`, op.cipherOp);
-//   }
-//   const blob = await zip.generateAsync({
-//     compression: "STORE",
-//     type: "blob",
-//   });
-//   return saveAs(blob, `${filename}.${extension}`);
-// }
-
 // import = async (file: File) => {
 //   if (!this.encKey) {
 //     return;

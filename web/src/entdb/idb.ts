@@ -202,7 +202,7 @@ export class EntIDB implements IEntDB {
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(
-        IDBKeyRange.bound([opType], [opType, new Date(Infinity)]),
+        IDBKeyRange.bound([opType], [opType, []]),
       );
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];

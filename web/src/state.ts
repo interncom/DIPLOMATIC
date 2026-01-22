@@ -61,8 +61,8 @@ export class StateManager implements IStateManager {
   private emitter = new TypedEventEmitter<null>();
   constructor(
     public applier: Applier,
-    public clear: () => Promise<void>,
-  ) {}
+    public clear: () => Promise<Status>,
+  ) { }
 
   apply = async (msg: IMessage) => {
     const [op, statParse] = msgToOp(msg);
@@ -87,4 +87,15 @@ export class StateManager implements IStateManager {
   off = (opType: string, listener: () => void) => {
     this.emitter.removeEventListener(opType, listener);
   };
+}
+
+// nullStateManager is a helper for initializing
+export const nullStateManager: IStateManager = {
+  apply: async function(msg) {
+    return Status.Success;
+  },
+  on: function(type, listener): void {
+  },
+  off: function(type, listener): void {
+  }
 }

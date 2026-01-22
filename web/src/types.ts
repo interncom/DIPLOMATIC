@@ -115,6 +115,8 @@ export interface IStateEmitter<T> {
 }
 
 export interface IClient<Handle extends HostHandle> {
+  setSeed(seed: MasterSeed): Promise<void>;
+
   link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;
 

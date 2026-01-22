@@ -7,6 +7,6 @@ Deno.test("authTimestampCodec with invalid data length", () => {
   const shortEncoded = new Uint8Array(90); // less than 96 (32+64+8)
   const dec = new Decoder(shortEncoded);
   const [result, status] = authTimestampCodec.decode(dec);
-  assertEquals(status, Status.MissingBody);
+  assertEquals(status, Status.OutOfBounds);
   assertEquals(result, undefined);
 });

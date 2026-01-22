@@ -23,6 +23,12 @@ type EntitiesQuery = {
 export class EntDBMemory implements IEntDB {
   ents: Map<EntityID, IEntity<unknown>> = new Map();
 
+  constructor(initEnts: IEntity<unknown>[] = []) {
+    for (const ent of initEnts) {
+      this.ents.set(ent.eid, ent);
+    }
+  }
+
   async apply(op: IOp): Promise<Status> {
     const curr = this.ents.get(op.eid);
     const [ent, stat] = updateEnt(curr, op);

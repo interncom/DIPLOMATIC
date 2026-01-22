@@ -8,7 +8,7 @@ import { ValStat } from "./valstat.ts";
 export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;
 
-export interface IOp {
+export interface IOp<T = unknown> {
   ts: Date;
   ctr: number;
   eid: EntityID;
@@ -16,11 +16,11 @@ export interface IOp {
   gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   pid?: EntityID; // Optional parent ID to support hierarchical structure.
   type: string;
-  body?: unknown;
+  body?: T;
 }
 
-export type IInsertParams = Omit<IOp, "ts" | "ctr" | "eid">;
-export type IUpsertParams = Omit<IOp, "ts" | "ctr">;
+export type IInsertParams<T> = Omit<IOp<T>, "ts" | "ctr" | "eid">;
+export type IUpsertParams<T> = IInsertParams<T> & { eid?: EntityID };
 
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;

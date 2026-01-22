@@ -20,6 +20,7 @@ import {
   IInsertParams,
   ITransport,
   IUpsertParams,
+  MasterSeed,
 } from "./shared/types";
 import { syncPeek, syncPull, syncPush } from "./sync";
 import {
@@ -50,6 +51,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   ) {
     this.clientState = new StateEmitter(() => this.getClientState());
     this.xferState = new StateEmitter(() => this.getXferState());
+  }
+
+  public async setSeed(seed: MasterSeed) {
+    await this.store.seed.save(seed);
+    this.clientState.emit();
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {
@@ -109,14 +115,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.apply(msg, body);
   }
 
-  public async insert(op: IInsertParams) {
+  public async insert<T = unknown>(op: IInsertParams<T>) {
     const body = encode(op);
     return this.insertRaw(body);
   }
 
-  public async upsert(op: IUpsertParams) {
+  public async upsert<T = unknown>(op: IUpsertParams<T>) {
     const { eid, ...rest } = op;
     const body = encode(rest);
+    if (eid === undefined) {
+      return this.insertRaw(body);
+    }
     return this.upsertRaw(eid, body);
   }
 

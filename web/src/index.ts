@@ -1,5 +1,8 @@
 import { SyncClient } from "./client";
 import libsodiumCrypto from "./crypto";
+import { EntitiesQuery, entStateManager, IEntDB, IEntity, nullEntDB } from "./entdb/entdb";
+import { EntIDB } from "./entdb/idb";
+import { EntDBMemory } from "./entdb/memory";
 import {
   useClientState,
   useClientXferState,
@@ -12,10 +15,11 @@ import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { Status } from "./shared/consts";
 import { HTTPTransport } from "./shared/http";
-import { type IOp, MasterSeed } from "./shared/types";
-import { StateManager } from "./state";
+import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
+import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
-import type { IDiplomaticClientState } from "./types";
+import { MemoryStore } from "./stores/memory/store";
+import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
 
 export async function genWebClient(
   stateMgr: StateManager,
@@ -44,8 +48,25 @@ export async function genWebClient(
 export {
   btoh,
   htob,
+  openIDBStore,
+  MasterSeed,
+  Clock,
+  IStore,
+  IDBStore,
+  MemoryStore,
+  EntIDB,
+  EntDBMemory,
+  IEntDB,
+  IEntity,
+  EntitiesQuery,
+  EntityID,
+  GroupID,
+  nullEntDB,
+  entStateManager,
   libsodiumCrypto,
   StateManager,
+  IStateManager,
+  nullStateManager,
   Status,
   SyncClient,
   useClientState,
@@ -53,6 +74,7 @@ export {
   useStateWatcher,
   useStateWatcherSuspense,
   useSyncOnResume,
+  HTTPTransport,
 };
 
 export type { IDiplomaticClientState, IOp };

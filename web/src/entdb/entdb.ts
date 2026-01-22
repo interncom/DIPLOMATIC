@@ -2,6 +2,7 @@ import { max, min } from "../lib";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { ValStat } from "../shared/valstat.ts";
+import { StateManager } from "../state.ts";
 
 export interface IEntity<T> {
   eid: EntityID;
@@ -43,6 +44,10 @@ export interface IEntDB {
     { type, gid, pid, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
+}
+
+export function entStateManager(edb: IEntDB): StateManager {
+  return new StateManager(edb.apply, edb.clear);
 }
 
 export function updateEnt(
@@ -91,4 +96,12 @@ export function updateEnt(
   };
 
   return [ent, Status.Success];
+}
+
+export const nullEntDB: IEntDB = {
+  getEnt: async () => [undefined, Status.NotImplemented],
+  getEntities: async () => [undefined, Status.NotImplemented],
+  countEntities: async () => [undefined, Status.NotImplemented],
+  apply: async (op: IOp) => Status.NotImplemented,
+  clear: async () => Status.NotImplemented,
 }

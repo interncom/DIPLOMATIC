@@ -155,7 +155,7 @@ Deno.test("Decoder readBytes more than available", () => {
   const data = new Uint8Array([1, 2, 3]);
   const dec = new Decoder(data);
   const [bytes, status] = dec.readBytes(5);
-  assertEquals(status, Status.MissingBody);
+  assertEquals(status, Status.OutOfBounds);
   assertEquals(bytes, undefined);
 });
 
@@ -251,7 +251,7 @@ Deno.test("Decoder readBytes at exact end", () => {
   assertEquals(status, Status.Success);
   assertEquals(bytes, data);
   const [bytes2, status2] = dec.readBytes(1);
-  assertEquals(status2, Status.MissingBody);
+  assertEquals(status2, Status.OutOfBounds);
   assertEquals(bytes2, undefined);
 });
 
@@ -543,7 +543,7 @@ Deno.test("readVarString insufficient data for string", () => {
   const data = enc.result();
   const dec = new Decoder(data);
   const [str, status] = dec.readVarString();
-  assertEquals(status, Status.MissingBody);
+  assertEquals(status, Status.OutOfBounds);
   assertEquals(str, undefined);
 });
 

@@ -7,9 +7,9 @@ export const bagCodec: ICodecStruct<IBag> = {
   encode(enc, bag): Status {
     enc.writeBytes(bag.sig);
     enc.writeBytes(bag.kdm);
-    const s1 = enc.writeVarInt(bag.lenHeadCph);
+    const s1 = enc.writeVarInt(bag.headCph.length);
     if (s1 !== Status.Success) return s1;
-    const s2 = enc.writeVarInt(bag.lenBodyCph);
+    const s2 = enc.writeVarInt(bag.bodyCph.length);
     if (s2 !== Status.Success) return s2;
     enc.writeBytes(bag.headCph);
     enc.writeBytes(bag.bodyCph);
@@ -31,8 +31,6 @@ export const bagCodec: ICodecStruct<IBag> = {
     return ok({
       sig,
       kdm,
-      lenHeadCph,
-      lenBodyCph,
       headCph,
       bodyCph,
     });

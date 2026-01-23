@@ -74,8 +74,6 @@ export async function sealBag(
   return {
     sig,
     kdm,
-    lenHeadCph: headCph.length,
-    lenBodyCph: bodyCph.length,
     headCph,
     bodyCph,
   };

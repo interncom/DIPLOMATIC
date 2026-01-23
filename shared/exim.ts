@@ -81,7 +81,6 @@ export async function encodeFile(
     const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined ? bodyCph.length : 0;
     const item: IFileIndexItem = {
       kdm,
-      lenHead: headCph.length,
       headCph,
       lenBody,
       offBody: lenBody > 0 ? offset : undefined,

@@ -33,10 +33,10 @@ Deno.test("bag", async (t) => {
     assertEquals(encoded.slice(64, 72), op.kdm);
     // Check lenHeadCph varint
     assertEquals(encoded[72], 3); // varint for 3
-    // Check lenBodyCph varint
-    assertEquals(encoded[73], 2); // varint for 2
     // Check headCph
-    assertEquals(encoded.slice(74, 77), op.headCph);
+    assertEquals(encoded.slice(73, 76), op.headCph);
+    // Check lenBodyCph varint
+    assertEquals(encoded[76], 2); // varint for 2
     // Check bodyCph
     assertEquals(encoded.slice(77, 79), op.bodyCph);
   });

@@ -143,8 +143,6 @@ export interface IPushListener {
 export interface IBagHeader {
   sig: Uint8Array;
   kdm: Uint8Array;
-  lenHeadCph: number;
-  lenBodyCph: number;
 }
 
 export interface IBag extends IBagHeader {

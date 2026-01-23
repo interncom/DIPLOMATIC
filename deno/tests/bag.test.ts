@@ -11,7 +11,6 @@ import { type IMessage } from "../../shared/message.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
-import { kdmBytes } from "../../shared/consts.ts";
 
 Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
@@ -20,8 +19,6 @@ Deno.test("bag", async (t) => {
     const op: IBag = {
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
-      lenHeadCph: 3,
-      lenBodyCph: 2,
       headCph: new Uint8Array([10, 11, 12]),
       bodyCph: new Uint8Array([13, 14]),
     };
@@ -48,8 +45,6 @@ Deno.test("bag", async (t) => {
     const op: IBag = {
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
-      lenHeadCph: 3,
-      lenBodyCph: 2,
       headCph: new Uint8Array([10, 11, 12]),
       bodyCph: new Uint8Array([13, 14]),
     };
@@ -62,8 +57,6 @@ Deno.test("bag", async (t) => {
     if (status !== Status.Success) return;
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
-    assertEquals(decoded.lenHeadCph, op.lenHeadCph);
-    assertEquals(decoded.lenBodyCph, op.lenBodyCph);
     assertEquals(decoded.headCph, op.headCph);
     assertEquals(decoded.bodyCph, op.bodyCph);
     assertEquals(decoder.done(), true);

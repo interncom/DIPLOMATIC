@@ -35,8 +35,6 @@ Deno.test("pushEnd.handleReq - success", async () => {
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
-    lenHeadCph: 3,
-    lenBodyCph: 3,
     headCph: new Uint8Array([1, 2, 3]),
     bodyCph: new Uint8Array([4, 5, 6]),
   };
@@ -101,8 +99,6 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
-    lenHeadCph: 3,
-    lenBodyCph: 3,
     headCph: new Uint8Array([1, 2, 3]),
     bodyCph: new Uint8Array([4, 5, 6]),
   };
@@ -171,8 +167,6 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
   const bag: IBag = {
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
-    lenHeadCph: 3,
-    lenBodyCph: 3,
     headCph: new Uint8Array([1, 2, 3]),
     bodyCph: new Uint8Array([4, 5, 6]),
   };

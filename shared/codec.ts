@@ -1,6 +1,5 @@
 import { err, ok, ValStat } from "./valstat.ts";
 import { Status } from "./consts.ts";
-import { ICrypto } from "./types.ts";
 
 export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
   if (typeof n !== "bigint") n = BigInt(n);
@@ -108,6 +107,12 @@ export class Decoder {
     return ok(bytes);
   }
 
+  readVarBytes(): ValStat<Uint8Array> {
+    const [len, statLen] = this.readVarInt();
+    if (statLen !== Status.Success) return err(statLen);
+    return this.readBytes(len);
+  }
+
   readStruct<T>(codec: ICodecStruct<T>): ValStat<T> {
     return codec.decode(this);
   }
@@ -172,6 +177,13 @@ export class Encoder {
 
   writeBytes(bytes: Uint8Array): void {
     this.parts.push(bytes);
+  }
+
+  writeVarBytes(bytes: Uint8Array): Status {
+    const statLen = this.writeVarInt(bytes.length);
+    if (statLen !== Status.Success) return statLen;
+    this.writeBytes(bytes);
+    return Status.Success;
   }
 
   writeStruct<T>(codec: ICodecStruct<T>, str: T): Status {

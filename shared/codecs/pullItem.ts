@@ -11,18 +11,15 @@ export interface IBagPullItem {
 export const pullItemCodec: ICodecStruct<IBagPullItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
-    const s = enc.writeVarInt(item.bodyCph.length);
+    const s = enc.writeVarBytes(item.bodyCph);
     if (s !== Status.Success) return s;
-    enc.writeBytes(item.bodyCph);
     return Status.Success;
   },
   decode(dec) {
     const [hash, s1] = dec.readBytes(hashBytes);
     if (s1 !== Status.Success) return err(s1);
-    const [len, s2] = dec.readVarInt();
+    const [bodyCph, s2] = dec.readVarBytes();
     if (s2 !== Status.Success) return err(s2);
-    const [bodyCph, s3] = dec.readBytes(len);
-    if (s3 !== Status.Success) return err(s3);
     return ok({ hash: hash as Hash, bodyCph });
   },
 };

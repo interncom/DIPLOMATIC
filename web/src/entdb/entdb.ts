@@ -104,4 +104,4 @@ export const nullEntDB: IEntDB = {
   countEntities: async () => [undefined, Status.NotImplemented],
   apply: async (op: IOp) => Status.NotImplemented,
   clear: async () => Status.NotImplemented,
-}
+};

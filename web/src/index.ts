@@ -1,6 +1,12 @@
 import { SyncClient } from "./client";
 import libsodiumCrypto from "./crypto";
-import { EntitiesQuery, entStateManager, IEntDB, IEntity, nullEntDB } from "./entdb/entdb";
+import {
+  EntitiesQuery,
+  entStateManager,
+  IEntDB,
+  IEntity,
+  nullEntDB,
+} from "./entdb/entdb";
 import { EntIDB } from "./entdb/idb";
 import { EntDBMemory } from "./entdb/memory";
 import {
@@ -47,26 +53,27 @@ export async function genWebClient(
 
 export {
   btoh,
-  htob,
-  openIDBStore,
-  MasterSeed,
   Clock,
-  IStore,
-  IDBStore,
-  MemoryStore,
-  EntIDB,
   EntDBMemory,
-  IEntDB,
-  IEntity,
+  EntIDB,
   EntitiesQuery,
   EntityID,
-  GroupID,
-  nullEntDB,
   entStateManager,
-  libsodiumCrypto,
-  StateManager,
+  GroupID,
+  htob,
+  HTTPTransport,
+  IDBStore,
+  IEntDB,
+  IEntity,
   IStateManager,
+  IStore,
+  libsodiumCrypto,
+  MasterSeed,
+  MemoryStore,
+  nullEntDB,
   nullStateManager,
+  openIDBStore,
+  StateManager,
   Status,
   SyncClient,
   useClientState,
@@ -74,7 +81,6 @@ export {
   useStateWatcher,
   useStateWatcherSuspense,
   useSyncOnResume,
-  HTTPTransport,
 };
 
 export type { IDiplomaticClientState, IOp };

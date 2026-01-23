@@ -12,9 +12,8 @@ export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
     enc.writeDate(item.recordedAt);
-    const s = enc.writeVarInt(item.headCph.length);
+    const s = enc.writeVarBytes(item.headCph);
     if (s !== Status.Success) return s;
-    enc.writeBytes(item.headCph);
     return Status.Success;
   },
   decode(dec) {
@@ -22,9 +21,7 @@ export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
     if (s1 !== Status.Success) return err(s1);
     const [recordedAt, s2] = dec.readDate();
     if (s2 !== Status.Success) return err(s2);
-    const [headCphLen, s3] = dec.readVarInt();
-    if (s3 !== Status.Success) return err(s3);
-    const [headCph, s4] = dec.readBytes(headCphLen);
+    const [headCph, s4] = dec.readVarBytes();
     if (s4 !== Status.Success) return err(s4);
     return ok({ hash, recordedAt, headCph });
   },

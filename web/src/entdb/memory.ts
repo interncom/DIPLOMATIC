@@ -2,7 +2,7 @@
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
 import { IEntDB, IEntity } from "./entdb";
-import { bytesEqual } from "../shared/binary";
+import { btoh, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { ok, ValStat } from "../shared/valstat.ts";
@@ -21,22 +21,25 @@ type EntitiesQuery = {
 };
 
 export class EntDBMemory implements IEntDB {
-  ents: Map<EntityID, IEntity<unknown>> = new Map();
+  ents: Map<string, IEntity<unknown>> = new Map();
 
   constructor(initEnts: IEntity<unknown>[] = []) {
     for (const ent of initEnts) {
-      this.ents.set(ent.eid, ent);
+      const key = `${btoh(ent.eid)}-${ent.createdAt.getTime()}`;
+      this.ents.set(key, ent);
     }
   }
 
   async apply(op: IOp): Promise<Status> {
-    const curr = this.ents.get(op.eid);
+    const key = `${btoh(op.eid)}-${op.clk.getTime()}`;
+    const curr = this.ents.get(key);
     const [ent, stat] = updateEnt(curr, op);
     if (stat !== Status.Success) {
       return stat;
     }
 
-    this.ents.set(op.eid, ent);
+    const newKey = `${btoh(ent.eid)}-${ent.createdAt.getTime()}`;
+    this.ents.set(newKey, ent);
     return Status.Success;
   }
 
@@ -45,9 +48,9 @@ export class EntDBMemory implements IEntDB {
     return Status.Success;
   }
 
-  async getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>> {
-    const ent = this.ents.get(eid) as IEntity<T> | undefined;
-    return ok(ent);
+  async getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>> {
+    const key = `${btoh(eid)}-${createdAt.getTime()}`;
+    return ok(this.ents.get(key) as IEntity<T> | undefined);
   }
 
   async getEntities<T>(

@@ -1,10 +1,11 @@
 import { ICodecStruct } from "../codec.ts";
-import { eidBytes, hshBytes, Status } from "../consts.ts";
+import { hshBytes, Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
 
 export interface IMessageHead {
   eid: Uint8Array;
   clk: Date;
+  off: number;
   ctr: number;
   len: number;
   hsh?: Uint8Array;
@@ -12,35 +13,41 @@ export interface IMessageHead {
 
 export const messageHeadCodec: ICodecStruct<IMessageHead> = {
   encode(enc, msg) {
-    enc.writeBytes(msg.eid);
+    const s0 = enc.writeVarBytes(msg.eid);
+    if (s0 !== Status.Success) return s0;
     enc.writeDate(msg.clk);
-    const s1 = enc.writeVarInt(msg.ctr);
+    const s1 = enc.writeVarInt(msg.off);
     if (s1 !== Status.Success) return s1;
-    const s2 = enc.writeVarInt(msg.len);
+    const s2 = enc.writeVarInt(msg.ctr);
     if (s2 !== Status.Success) return s2;
+    const s3 = enc.writeVarInt(msg.len);
+    if (s3 !== Status.Success) return s3;
     if (msg.hsh) {
       enc.writeBytes(msg.hsh);
     }
     return Status.Success;
   },
   decode(dec) {
-    const [eid, s1] = dec.readBytes(eidBytes);
+    const [eid, s1] = dec.readVarBytes();
     if (s1 !== Status.Success) return err(s1);
     const [clk, s2] = dec.readDate();
     if (s2 !== Status.Success) return err(s2);
-    const [ctr, s3] = dec.readVarInt();
+    const [off, s3] = dec.readVarInt();
     if (s3 !== Status.Success) return err(s3);
-    const [len, s4] = dec.readVarInt();
+    const [ctr, s4] = dec.readVarInt();
     if (s4 !== Status.Success) return err(s4);
+    const [len, s5] = dec.readVarInt();
+    if (s5 !== Status.Success) return err(s5);
     let hsh: Uint8Array | undefined;
     if ((len as number) > 0) {
-      const [h, s5] = dec.readBytes(hshBytes);
-      if (s5 !== Status.Success) return err(s5);
+      const [h, s6] = dec.readBytes(hshBytes);
+      if (s6 !== Status.Success) return err(s6);
       hsh = h;
     }
     return ok({
       eid,
       clk,
+      off,
       ctr,
       len,
       hsh,

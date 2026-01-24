@@ -88,6 +88,7 @@ Deno.test("bag", async (t) => {
     const msg: IMessage = {
       eid,
       clk: new Date(),
+      off: 0,
       ctr: 1,
       len: bod.length,
       bod,

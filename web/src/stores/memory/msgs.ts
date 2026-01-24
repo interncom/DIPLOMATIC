@@ -29,17 +29,17 @@ export class MemoryMessageStore implements IMessageStore {
     return this.messages.values();
   }
 
-  // last returns the stored message with given eid and highest ctr.
-  async last(eid: EntityID) {
+  // last returns the stored message with given eid, clk and highest ctr/off.
+  async last(eid: EntityID, clk: Date) {
     let latest: IStoredMessage | undefined;
     for (const [, msg] of this.messages) {
-      if (bytesEqual(eid, msg.head.eid) === false) {
+      if (bytesEqual(eid, msg.head.eid) === false || msg.head.clk.getTime() !== clk.getTime()) {
         continue;
       }
       if (latest === undefined) {
         latest = msg;
-      }
-      if (msg.head.ctr > latest.head.ctr) {
+      } else if (msg.head.ctr > latest.head.ctr ||
+                 (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)) {
         latest = msg;
       }
     }

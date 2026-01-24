@@ -94,7 +94,7 @@ export interface IMessageStore {
   has: (hash: Hash) => Promise<boolean>;
   del: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
-  last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
+  last: (eid: EntityID, clk: Date) => Promise<IStoredMessage | undefined>;
   wipe(): Promise<void>;
 }
 
@@ -124,7 +124,7 @@ export interface IClient<Handle extends HostHandle> {
   disconnect(): Promise<void>;
 
   insertRaw(content: SerializedContent): Promise<Status>;
-  upsertRaw(eid: EntityID, content: SerializedContent): Promise<Status>;
+  upsertRaw(eid: EntityID, clk: Date, content: SerializedContent): Promise<Status>;
   delete(eid: EntityID): Promise<Status>;
 
   sync(): Promise<void>;

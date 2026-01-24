@@ -1,7 +1,7 @@
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IBagPeekItem, peekItemCodec } from "../codecs/peekItem.ts";
-import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { validateAuthTimestamp } from "../auth.ts";
 
 export const peekEnd: IAuthenticatedEndpoint<

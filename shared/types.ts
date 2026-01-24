@@ -9,7 +9,8 @@ export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;
 
 export interface IOp<T = unknown> {
-  ts: Date;
+  clk: Date;
+  off: number;
   ctr: number;
   eid: EntityID;
   // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
@@ -20,7 +21,7 @@ export interface IOp<T = unknown> {
 }
 
 export type IInsertParams<T> = Omit<IOp<T>, "ts" | "ctr" | "eid">;
-export type IUpsertParams<T> = IInsertParams<T> & { eid?: EntityID };
+export type IUpsertParams<T> = IInsertParams<T> & { eid?: EntityID; clk?: Date };
 
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;

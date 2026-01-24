@@ -42,10 +42,10 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
-  const client = new SyncClient<IProtoHost>(clock, state, store, transport);
+  const client = new SyncClient<IProtoHost>(clock, state, store, transport, libsodiumCrypto);
   return { store, state, client };
 };
 
@@ -147,13 +147,13 @@ describe("NeoClient", () => {
       const eid = new Uint8Array(16).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
-      await client.upsertRaw(eid, body1);
+      await client.upsertRaw(eid, new Date(1234567890000), body1);
       let messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(1);
       expect(messages[0].head.ctr).toBe(0);
       expect(messages[0].body).toEqual(body1);
       expect(messages[0].head.len).toBe(body1.length);
-      await client.upsertRaw(eid, body2);
+      await client.upsertRaw(eid, new Date(1234567890000), body2);
       messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
       expect(messages[1].head.ctr).toBe(1);
@@ -170,8 +170,8 @@ describe("NeoClient", () => {
         now: () => new Date(1234567890000),
       });
       const eid = new Uint8Array(16).fill(1);
-      await client.upsertRaw(eid, new Uint8Array([10, 11]));
-      await client.delete(eid);
+      await client.upsertRaw(eid, new Date(1234567890000), new Uint8Array([10, 11]));
+      await client.delete(eid, new Date(1234567890000));
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
       const upsertMsg = messages[0];
@@ -245,6 +245,7 @@ describe("NeoClient", () => {
       const msg: IMessage = {
         eid: new Uint8Array(16).fill(0),
         clk: lpcHost.clock.now(),
+        off: 0,
         ctr: 0,
         len: body.length,
         bod: body,

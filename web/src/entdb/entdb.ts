@@ -39,7 +39,7 @@ export type EntitiesQuery = {
 export interface IEntDB {
   apply: (op: IOp) => Promise<Status>;
   clear: () => Promise<Status>;
-  getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>>;
+  getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>>;
   getEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
@@ -54,22 +54,27 @@ export function updateEnt(
   curr: IEntity<unknown> | undefined,
   op: IOp,
 ): [IEntity<unknown>, Status] {
-  if (curr && curr.createdAt < op.ts && curr.updatedAt > op.ts) {
+  const messageTs = new Date(op.clk.getTime() + op.off);
+  if (curr && messageTs <= curr.createdAt) {
     return [nullEnt, Status.NoChange];
   }
 
-  // If op came before curr, use op's ts as the createdAt.
-  // If op came after curr, use op's ts as the updatedAt.
-  const ts = op.ts.getTime();
-  const createdTs = curr ? min(curr.createdAt.getTime(), ts) : ts;
-  const updatedTs = curr ? max(curr.updatedAt.getTime(), ts) : ts;
+  if (curr && curr.createdAt.getTime() !== op.clk.getTime()) {
+    // CLK is part of the entity ID.
+    // If CLK's don't match, they are not the same entity.
+    return [nullEnt, Status.NotFound];
+  }
+  const createdTs = op.clk.getTime();
+
+  // updatedAt is max of current and messageTs
+  const updatedTs = curr ? max(curr.updatedAt.getTime(), messageTs.getTime()) : messageTs.getTime();
 
   let updatedCtr: number;
   if (!curr) {
     updatedCtr = op.ctr;
   } else {
     const currTime = curr.updatedAt.getTime();
-    const opTime = op.ts.getTime();
+    const opTime = messageTs.getTime();
     if (opTime > currTime) {
       updatedCtr = op.ctr;
     } else if (opTime < currTime) {
@@ -79,8 +84,9 @@ export function updateEnt(
     }
   }
 
-  const isOpNewer = !curr || op.ts > curr.updatedAt ||
-    (op.ts.getTime() === curr.updatedAt.getTime() &&
+  const ts = op.clk.getTime() + op.off;
+  const isOpNewer = !curr || ts > curr.updatedAt.getTime() ||
+    (ts === curr.updatedAt.getTime() &&
       op.ctr > (curr.updatedCtr ?? 0));
   const body = isOpNewer ? op.body : curr.body;
 

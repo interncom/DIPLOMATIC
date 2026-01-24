@@ -25,6 +25,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const op: IMessage = {
       eid: createFilledArray(16, 0x11),
       clk: new Date(1234567890000),
+      off: 0,
       ctr: 0, // Small counter
       len: bod.length,
       bod,
@@ -33,6 +34,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const msgHead: IMessageHead = {
       eid: op.eid,
       clk: op.clk,
+      off: op.off,
       ctr: op.ctr,
       len: op.len,
       hsh,
@@ -68,6 +70,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const op: IMessage = {
       eid: createFilledArray(16, 0x22),
       clk: new Date(9876543210000),
+      off: 0,
       ctr: 123456789, // Large counter (fits in var-int)
       len: bod.length,
       bod,
@@ -76,6 +79,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const msgHead: IMessageHead = {
       eid: op.eid,
       clk: op.clk,
+      off: op.off,
       ctr: op.ctr,
       len: op.len,
       hsh,
@@ -105,14 +109,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("delete operation (len=0, no body)", async () => {
-    const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999);
+    const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999, 0);
     const hsh = undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
       clk: op.clk,
+      off: op.off,
       ctr: op.ctr,
-      len: op.len,
-      hsh,
+      len: 0,
     };
     const enc = new Encoder();
     messageHeadCodec.encode(enc, msgHead);
@@ -142,6 +146,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const op: IMessage = {
       eid: createFilledArray(16, 0x44),
       clk: new Date(1111111110000),
+      off: 0,
       ctr: 1,
       len: 0,
       bod: undefined,
@@ -150,6 +155,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const msgHead: IMessageHead = {
       eid: op.eid,
       clk: op.clk,
+      off: op.off,
       ctr: op.ctr,
       len: op.len,
       hsh,
@@ -182,7 +188,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const clk = new Date(999999999000);
     const ctr = 777;
     const content = createFilledArray(20, 0x77);
-    const op = genUpsert(eid, clk, ctr, content);
+    const op = genUpsert(eid, clk, ctr, 0, content);
     assertEquals(op.eid, eid);
     assertEquals(op.clk, clk);
     assertEquals(op.ctr, ctr);
@@ -206,6 +212,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const op: IMessage = {
       eid: createFilledArray(16, 0xee),
       clk: new Date(1234567890000),
+      off: 0,
       ctr: 5,
       len: bod.length,
       bod,
@@ -215,6 +222,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const msgHead: IMessageHead = {
       eid: op.eid,
       clk: op.clk,
+      off: op.off,
       ctr: op.ctr,
       len: op.len,
       hsh,
@@ -225,20 +233,23 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const fullEncoded = concat(header, op.bod || new Uint8Array(0));
     const dec = new Decoder(fullEncoded);
     const [decodedHead, headStatus] = messageHeadCodec.decode(dec);
-    assertEquals(headStatus, Status.Success);
-    const decodedHeadVal = decodedHead!;
+    if (headStatus !== Status.Success) {
+      assertEquals(headStatus, Status.Success);
+      return;
+    }
     let decodedBod: Uint8Array | undefined;
-    if (decodedHeadVal.len > 0) {
-      const [bod, bodStatus] = dec.readBytes(decodedHeadVal.len);
+    if (decodedHead.len > 0) {
+      const [bod, bodStatus] = dec.readBytes(decodedHead.len);
       assertEquals(bodStatus, Status.Success);
       decodedBod = bod!;
     }
     const decoded: IMessage = {
-      eid: decodedHeadVal.eid,
-      clk: decodedHeadVal.clk,
-      ctr: decodedHeadVal.ctr,
-      len: decodedHeadVal.len,
-      hsh: decodedHeadVal.hsh,
+      eid: decodedHead.eid,
+      clk: decodedHead.clk,
+      off: decodedHead.off,
+      ctr: decodedHead.ctr,
+      len: decodedHead.len,
+      hsh: decodedHead.hsh,
       bod: decodedBod,
     };
     assertEquals(decoded.hsh, expectedHsh);

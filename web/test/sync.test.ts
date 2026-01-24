@@ -108,7 +108,8 @@ describe("Sync Integration", () => {
 
     // Upsert one
     const eid = messages[0].head.eid;
-    await clientA.upsertRaw(eid, new Uint8Array([3]));
+    const clk = messages[0].head.clk;
+    await clientA.upsertRaw(eid, clk, new Uint8Array([3]));
     await clientA.sync();
     await clientB.sync();
 

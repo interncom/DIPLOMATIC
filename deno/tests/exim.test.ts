@@ -124,7 +124,7 @@ Deno.test("encodeFile", async (t) => {
 
   await t.step("single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
-    const head: IMessageHead = genDeleteHead(eid, new Date(), 1);
+    const head: IMessageHead = genDeleteHead(eid, new Date(), 1, 0);
     const msgs = [{ head }];
     const [fileData, statFile] = await encodeFile(
       "test-label",
@@ -151,9 +151,11 @@ Deno.test("encodeFile", async (t) => {
   await t.step("single message with body", async () => {
     const eid = await crypto.gen128BitRandomID();
     const body = new TextEncoder().encode("test body");
+    const now = new Date();
     const head: IMessageHead = await genUpsertHead(
+      now,
       eid,
-      new Date(),
+      now,
       1,
       body,
       crypto,
@@ -188,9 +190,11 @@ Deno.test("encodeFile", async (t) => {
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;
+      const now = new Date();
       const head: IMessageHead = await genUpsertHead(
+        now,
         eid,
-        new Date(),
+        now,
         i,
         body || new Uint8Array(0),
         crypto,
@@ -238,7 +242,7 @@ Deno.test("decodeFile", async (t) => {
 
   await t.step("round-trip single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
-    const head = genDeleteHead(eid, new Date(), 1);
+    const head = genDeleteHead(eid, new Date(), 1, 0);
     const msgs = [{ head }];
     const [file, statEnc] = await encodeFile(lbl, 0, msgs, crypto, enclave);
     assertEquals(statEnc, Status.Success);
@@ -257,9 +261,11 @@ Deno.test("decodeFile", async (t) => {
   await t.step("round-trip single message with body", async () => {
     const eid = await crypto.gen128BitRandomID();
     const body = new TextEncoder().encode("test body");
+    const now = new Date();
     const head: IMessageHead = await genUpsertHead(
+      now,
       eid,
-      new Date(),
+      now,
       1,
       body,
       crypto,
@@ -292,9 +298,11 @@ Deno.test("decodeFile", async (t) => {
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;
+      const now = new Date();
       const head: IMessageHead = await genUpsertHead(
+        now,
         eid,
-        new Date(),
+        now,
         i,
         body || new Uint8Array(0),
         crypto,

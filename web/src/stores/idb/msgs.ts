@@ -66,8 +66,8 @@ export class IDBMessageStore implements IMessageStore {
     });
   }
 
-  // last returns the stored message with given eid and highest ctr.
-  async last(eid: EntityID) {
+  // last returns the stored message with given eid, clk and highest ctr/off.
+  async last(eid: EntityID, clk: Date) {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage | undefined>((resolve, reject) => {
@@ -76,10 +76,11 @@ export class IDBMessageStore implements IMessageStore {
         const allMsgs = req.result;
         let latest: IStoredMessage | undefined;
         for (const msg of allMsgs) {
-          if (bytesEqual(eid, msg.head.eid) === false) {
+          if (bytesEqual(eid, msg.head.eid) === false || msg.head.clk.getTime() !== clk.getTime()) {
             continue;
           }
-          if (!latest || msg.head.ctr > latest.head.ctr) {
+          if (!latest || msg.head.ctr > latest.head.ctr ||
+              (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)) {
             latest = msg;
           }
         }

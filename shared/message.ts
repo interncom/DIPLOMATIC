@@ -8,8 +8,9 @@ export type SerializedContent = Uint8Array;
 
 // IMessage is an operation.
 export interface IMessageHead {
-  eid: EntityID;
+  eid: Uint8Array;
   clk: Date;
+  off: number;
   ctr: number;
   len: number;
   hsh?: Uint8Array;
@@ -34,39 +35,44 @@ export type EncryptedMessage = Uint8Array;
 
 // TODO: reorganize these and use to implement corresponding methods on neoclient.
 export async function genInsert(
-  clk: Date,
+  now: Date,
   content: SerializedContent,
   crypto: ICrypto,
 ): Promise<IUpsertMessage> {
-  const eid = await crypto.gen128BitRandomID();
-  return genUpsert(eid, clk, 0, content);
+  const eidFull = await crypto.gen128BitRandomID();
+  const eid = eidFull.slice(0, 8);
+  return genUpsert(eid, now, 0, 0, content);
 }
 
 export async function genInsertHead(
-  clk: Date,
+  now: Date,
   content: SerializedContent,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
-  const eid = await crypto.gen128BitRandomID();
-  return genUpsertHead(eid, clk, 0, content, crypto);
+  const eidFull = await crypto.gen128BitRandomID();
+  const eid = eidFull.slice(0, 8);
+  return genUpsertHead(now, eid, now, 0, content, crypto);
 }
+
+// NOTE: if using a non-random eid from multiple devices independently,
+// set creationClk to 0 to ensure they all point to the same entity.
 export async function genUpsertHead(
+  now: Date,
   eid: EntityID,
-  clk: Date,
+  creationClk: Date,
   ctr: number,
   content: SerializedContent,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
-  if (eid.length !== eidBytes) {
-    throw new Error("Invalid EID");
-  }
+  const off = now.getTime() - creationClk.getTime();
   let hsh: Uint8Array | undefined;
   if (content.length > 0) {
     hsh = await crypto.blake3(content);
   }
   return {
     eid,
-    clk,
+    clk: creationClk,
+    off,
     ctr,
     len: content.length,
     hsh,
@@ -77,11 +83,13 @@ export function genUpsert(
   eid: EntityID,
   clk: Date,
   ctr: number,
+  off: number,
   content: SerializedContent,
 ): IUpsertMessage {
   return {
     eid,
     clk,
+    off,
     ctr,
     len: content.length,
     bod: content,
@@ -92,10 +100,12 @@ export function genDelete(
   eid: EntityID,
   clk: Date,
   ctr: number,
+  off: number,
 ): IDeleteMessage {
   return {
     eid,
     clk,
+    off,
     ctr,
     len: 0,
   };
@@ -105,10 +115,12 @@ export function genDeleteHead(
   eid: EntityID,
   clk: Date,
   ctr: number,
+  off: number,
 ): IMessageHead {
   return {
     eid,
     clk,
+    off,
     ctr,
     len: 0,
   };

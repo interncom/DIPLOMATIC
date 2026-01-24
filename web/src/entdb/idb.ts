@@ -60,7 +60,7 @@ export class EntIDB implements IEntDB {
         }
         if (!db.objectStoreNames.contains(entityTableName)) {
           db.createObjectStore(entityTableName, {
-            keyPath: "eid",
+            keyPath: ["eid", "createdAt"],
             autoIncrement: false,
           });
         }
@@ -130,7 +130,7 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getEnt<T>(eid: EntityID): Promise<ValStat<IEntity<T> | undefined>> {
+  async getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -138,7 +138,7 @@ export class EntIDB implements IEntDB {
     const tx = this.db.transaction(entityTableName, "readonly");
     const store = tx.objectStore(entityTableName);
     return new Promise((resolve) => {
-      const req = store.get(eidHex);
+      const req = store.get([eidHex, createdAt]);
       req.onsuccess = () => {
         const stored = req.result;
         if (!stored) {

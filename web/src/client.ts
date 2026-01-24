@@ -102,16 +102,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async insertRaw(body: EncodedMessage) {
-    const clk = this.clock.now();
-    const head = await genInsertHead(clk, body, this.crypto);
+    const { clock, crypto } = this;
+    const head = await genInsertHead(clock.now(), body, crypto);
     return this.apply(head, body);
   }
 
-  public async upsertRaw(eid: EntityID, body: EncodedMessage) {
-    const clk = this.clock.now();
-    const last = await this.store.messages.last(eid);
+  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage) {
+    const { clock, crypto } = this;
+    const last = await this.store.messages.last(eid, clk);
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = await genUpsertHead(eid, clk, ctr, body, libsodiumCrypto);
+    const msg = await genUpsertHead(clock.now(), eid, clk, ctr, body, crypto);
     return this.apply(msg, body);
   }
 
@@ -121,19 +121,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async upsert<T = unknown>(op: IUpsertParams<T>) {
-    const { eid, ...rest } = op;
+    const { eid, clk, ...rest } = op;
     const body = encode(rest);
-    if (eid === undefined) {
+    if (eid === undefined || clk === undefined) {
       return this.insertRaw(body);
     }
-    return this.upsertRaw(eid, body);
+    return this.upsertRaw(eid, clk, body);
   }
 
-  public async delete(eid: EntityID) {
-    const clk = this.clock.now();
-    const last = await this.store.messages.last(eid);
+  public async delete(eid: EntityID, clk: Date) {
+    const now = this.clock.now();
+    const last = await this.store.messages.last(eid, clk);
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = genDeleteHead(eid, clk, ctr);
+    const off = now.getTime() - clk.getTime();
+    const msg = genDeleteHead(eid, clk, ctr, off);
     return this.apply(msg, undefined);
   }
 

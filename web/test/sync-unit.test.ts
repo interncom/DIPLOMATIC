@@ -118,6 +118,7 @@ describe("syncPush", () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
+      off: 0,
       ctr: 0,
       len: 4,
       bod: new Uint8Array([1, 2, 3, 4]),
@@ -177,6 +178,7 @@ describe("syncPull", () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
+      off: 0,
       ctr: 0,
       len: 4,
       bod: new Uint8Array([1, 2, 3, 4]),
@@ -224,6 +226,7 @@ describe("syncPull", () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
       clk: new Date(1000),
+      off: 0,
       ctr: 0,
       len: 0,
     };

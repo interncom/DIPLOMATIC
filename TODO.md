@@ -3,14 +3,15 @@
 GENERAL
 - deal with eid's as `type EID = { id: Uint8Array, clk: Date }`
 - rename fields clk -> t0 for entity creation and off -> dt for offset from creation, also eid -> id, then the true eid becomes [id, t0]
+- reconcile IOp and IMessage--are they the same?
 - make params to genUpsertHead, etc... be objects rather than positional
 - Fix all `// TODO:` in codebase
 
 ARCH
+- replace host hash with seq
 - handle clock skew (how should client deal with server notice it's skewed)
 - generalize crypto random bytes function to genRandomBytes(numBytes)
 - change updateEnt to return a ValStat<IEntity<T = unknown>>
-- reconcile IOp and IMessage--are they the same?
 
 CLIENT
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey

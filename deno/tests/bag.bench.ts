@@ -41,6 +41,7 @@ async function bench(size: number, suffix: string) {
   const op: IMessage = {
     eid,
     clk: new Date(),
+    off: 0,
     ctr: 1,
     len: bod.length,
     bod,

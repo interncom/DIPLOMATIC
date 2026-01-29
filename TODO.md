@@ -8,8 +8,13 @@ GENERAL
 - Fix all `// TODO:` in codebase
 
 ARCH
+- server reject push with warning (ClockSkew status) in case of skew
+- client return status from sync() to surface this
+- client override server skewed push rejection with a force flag (update push codec)
+- host return NTP timestamps in all responses
+- client store host clock offset in hosts table row
+
 - replace host hash with seq
-- handle clock skew (how should client deal with server notice it's skewed)
 - generalize crypto random bytes function to genRandomBytes(numBytes)
 - change updateEnt to return a ValStat<IEntity<T = unknown>>
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency

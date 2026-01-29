@@ -7,6 +7,7 @@ import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import {
   EncodedMessage,
+  genDeleteHead,
   genInsertHead,
   genUpsertHead,
   IMessageHead,
@@ -108,7 +109,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return ok(head);
   }
 
-  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined) {
+  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined, force = false) {
     const { clock, crypto, store } = this;
     const now = clock.now();
     const last = await store.messages.last(eid, clk);
@@ -118,7 +119,29 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         // last was created in the future. So either:
         // a) another client's clock is skewed into the future, or
         // b) this client's clock is skewed into the past.
-        return err<IMessageHead>(Status.ClockOutOfSync);
+
+        if (force === false) {
+          return err<IMessageHead>(Status.ClockOutOfSync);
+        }
+
+        // We need to recover from skew.
+        // We do so by deleting the invalid entity and replacing it.
+        // To overwrite the skewed entity, the delete must increment off,
+        // even if that places the delete into the future as well.
+        const offDel = last.head.off + 1;
+        const offCtr = last.head.ctr + 1;
+        const delHead = { eid, clk, off: offDel, ctr: offCtr, len: 0 };
+        const statDel = await this.apply(delHead, undefined);
+        if (statDel !== Status.Success) {
+          return err<IMessageHead>(statDel);
+        }
+
+        // Replace with a new msg that retains the old id.
+        // The clk portion of the ID will be now.
+        const clkRepl = now;
+        const repl = await genUpsertHead(now, eid, clkRepl, 0, body, crypto);
+        await this.apply(repl, body);
+        return ok(repl);
       }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;

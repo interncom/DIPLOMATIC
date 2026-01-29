@@ -108,12 +108,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined) {
     const { clock, crypto } = this;
+    const now = clock.now();
     const last = await this.store.messages.last(eid, clk);
-    if (last && last.head.clk.getTime() + last.head.off > clock.now().getTime()) {
-      return Status.ClockOutOfSync;
+    if (last) {
+      const ts = last.head.clk.getTime() + last.head.off;
+      if (ts > now.getTime()) {
+        // last was created in the future. So either:
+        // a) another client's clock is skewed into the future, or
+        // b) this client's clock is skewed into the past.
+        return Status.ClockOutOfSync;
+      }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = await genUpsertHead(clock.now(), eid, clk, ctr, body, crypto);
+    const msg = await genUpsertHead(now, eid, clk, ctr, body, crypto);
     return this.apply(msg, body);
   }
 

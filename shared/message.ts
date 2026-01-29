@@ -61,12 +61,13 @@ export async function genUpsertHead(
   eid: EntityID,
   creationClk: Date,
   ctr: number,
-  content: SerializedContent,
+  content: SerializedContent | undefined,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
   const off = now.getTime() - creationClk.getTime();
   let hsh: Uint8Array | undefined;
-  if (content.length > 0) {
+  const len = content?.length ?? 0;
+  if (content && len > 0) {
     hsh = await crypto.blake3(content);
   }
   return {
@@ -74,7 +75,7 @@ export async function genUpsertHead(
     clk: creationClk,
     off,
     ctr,
-    len: content.length,
+    len,
     hsh,
   };
 }
@@ -112,16 +113,11 @@ export function genDelete(
 }
 
 export function genDeleteHead(
+  now: Date,
   eid: EntityID,
   clk: Date,
   ctr: number,
-  off: number,
-): IMessageHead {
-  return {
-    eid,
-    clk,
-    off,
-    ctr,
-    len: 0,
-  };
+  crypto: ICrypto,
+): Promise<IMessageHead> {
+  return genUpsertHead(now, eid, clk, ctr, undefined, crypto);
 }

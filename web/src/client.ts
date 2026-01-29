@@ -7,7 +7,6 @@ import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import {
   EncodedMessage,
-  genDeleteHead,
   genInsertHead,
   genUpsertHead,
   IMessageHead,
@@ -107,7 +106,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.apply(head, body);
   }
 
-  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage) {
+  public async upsertRaw(eid: EntityID, clk: Date, body?: EncodedMessage) {
     const { clock, crypto } = this;
     const last = await this.store.messages.last(eid, clk);
     const ctr = (last?.head.ctr ?? -1) + 1;
@@ -122,20 +121,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async upsert<T = unknown>(op: IUpsertParams<T>) {
     const { eid, clk, ...rest } = op;
-    const body = encode(rest);
     if (eid === undefined || clk === undefined) {
-      return this.insertRaw(body);
+      return this.insert(op);
     }
+    const body = encode(rest);
     return this.upsertRaw(eid, clk, body);
   }
 
   public async delete(eid: EntityID, clk: Date) {
-    const now = this.clock.now();
-    const last = await this.store.messages.last(eid, clk);
-    const ctr = (last?.head.ctr ?? -1) + 1;
-    const off = now.getTime() - clk.getTime();
-    const msg = genDeleteHead(eid, clk, ctr, off);
-    return this.apply(msg, undefined);
+    return this.upsertRaw(eid, clk, undefined);
   }
 
   public async sync() {

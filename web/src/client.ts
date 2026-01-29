@@ -49,6 +49,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private store: IStore<Handle>,
     private transport: ITransport,
     private crypto: ICrypto = libsodiumCrypto,
+
+    // Client can be set to always force skew handling, to hide the pain.
+    private forceSkewHandlingByDefault = true,
   ) {
     this.clientState = new StateEmitter(() => this.getClientState());
     this.xferState = new StateEmitter(() => this.getXferState());
@@ -162,13 +165,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.insertRaw(body);
   }
 
-  public async upsert<T = unknown>(op: IUpsertParams<T>) {
+  public async upsert<T = unknown>(op: IUpsertParams<T>, force = this.forceSkewHandlingByDefault) {
     const { eid, clk, ...rest } = op;
     if (eid === undefined || clk === undefined) {
       return this.insert(op);
     }
     const body = encode(rest);
-    return this.upsertRaw(eid, clk, body);
+    return this.upsertRaw(eid, clk, body, force);
   }
 
   public async delete(eid: EntityID, clk: Date) {

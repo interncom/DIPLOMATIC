@@ -191,7 +191,7 @@ describe("NeoClient", () => {
         await store.messages.add([msg]);
 
         // Now upsert should return ClockOutOfSync
-        const result = await client.upsertRaw(eid, new Date(0), body);
+        const result = await client.upsertRaw(eid, new Date(0), body, false);
         expect(result[0]).toBeUndefined();
         expect(result[1]).toBe(Status.ClockOutOfSync);
       });

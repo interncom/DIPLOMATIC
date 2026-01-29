@@ -125,7 +125,7 @@ export interface IClient<Handle extends HostHandle> {
 
   insertRaw(content: SerializedContent): Promise<Status>;
   upsertRaw(eid: EntityID, clk: Date, content: SerializedContent): Promise<Status>;
-  delete(eid: EntityID): Promise<Status>;
+  delete(eid: EntityID, clk: Date): Promise<Status>;
 
   sync(): Promise<void>;
 

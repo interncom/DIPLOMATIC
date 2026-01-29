@@ -28,7 +28,8 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
 }
 
 const nullOp: IOp = {
-  ts: new Date(0),
+  clk: new Date(0),
+  off: 0,
   ctr: 0,
   eid: new Uint8Array(),
   type: "null",
@@ -45,7 +46,8 @@ export function msgToOp(msg: IMessage): [IOp, Status] {
     return [nullOp, Status.InvalidMessage];
   }
   const op = {
-    ts: msg.clk,
+    clk: msg.clk,
+    off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,
     gid: bodDec.gid,
@@ -62,7 +64,7 @@ export class StateManager implements IStateManager {
   constructor(
     public applier: Applier,
     public clear: () => Promise<Status>,
-  ) {}
+  ) { }
 
   apply = async (msg: IMessage) => {
     const [op, statParse] = msgToOp(msg);
@@ -91,11 +93,11 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function (msg) {
+  apply: async function(msg) {
     return Status.Success;
   },
-  on: function (type, listener): void {
+  on: function(type, listener): void {
   },
-  off: function (type, listener): void {
+  off: function(type, listener): void {
   },
 };

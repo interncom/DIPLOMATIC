@@ -12,10 +12,12 @@ import memStorage from "../src/shared/storage/memory";
 import libsodiumCrypto from "../src/crypto";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
-import { EncodedMessage, IMessage } from "../src/shared/message";
+import { EncodedMessage, IMessage, IMessageHead } from "../src/shared/message";
 import { btoh, bytesEqual } from "../src/shared/binary";
+import { Encoder } from "../src/shared/codec";
+import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { hostKeys } from "../src/shared/endpoint";
-import { IDownloadMessage, IStateManager } from "../src/types";
+import { IDownloadMessage, IStateManager, IStoredMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { fail } from "assert";
 import { Status } from "../src/shared/consts";
@@ -161,6 +163,35 @@ describe("NeoClient", () => {
       expect(messages[1].head.len).toBe(body2.length);
       const uploads = await store.uploads.count();
       expect(uploads).toBe(2);
+    });
+
+    test("returns ClockOutOfSync when last message timestamp is ahead", async () => {
+      const mockClock = new MockClock(new Date(0));
+      const { store, client } = await createClient(mockClock);
+      const eid = new Uint8Array(16).fill(3);
+      const body: EncodedMessage = new Uint8Array([10, 11]);
+
+      // Create a message with future timestamp manually
+      const head: IMessageHead = {
+        eid,
+        clk: new Date(0),
+        off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+        ctr: 0,
+        len: 0,
+        hsh: undefined,
+      };
+
+      // Encode head and compute hash
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      const headEnc = enc.result();
+      const hash = await libsodiumCrypto.blake3(headEnc);
+      const msg: IStoredMessage = { hash, head, body: undefined };
+      await store.messages.add([msg]);
+
+      // Now upsert should return ClockOutOfSync
+      const status = await client.upsertRaw(eid, new Date(0), body);
+      expect(status).toBe(Status.ClockOutOfSync);
     });
   });
 

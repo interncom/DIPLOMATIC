@@ -256,6 +256,45 @@ describe("NeoClient", () => {
       const uploads = await store.uploads.count();
       expect(uploads).toBe(2);
     });
+
+    test("succeeds with clock skew by deleting the skewed entity", async () => {
+      const mockClock = new MockClock(new Date(0));
+      const { store, client } = await createClient(mockClock);
+      const eid = new Uint8Array(16).fill(5);
+
+      // Create a message with future timestamp manually
+      const head: IMessageHead = {
+        eid,
+        clk: new Date(0),
+        off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+        ctr: 0,
+        len: 2,
+        hsh: undefined,
+      };
+
+      // Encode head and compute hash
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      const headEnc = enc.result();
+      const hash = await libsodiumCrypto.blake3(headEnc);
+      const msg: IStoredMessage = { hash, head, body: new Uint8Array([30, 31]) };
+      await store.messages.add([msg]);
+
+      // Now delete should succeed despite clock skew
+      const result = await client.delete(eid, new Date(0));
+      expect(result[1]).toBe(Status.Success);
+      expect(result[0]).toBeDefined();
+      expect(result[0].eid).toEqual(eid);
+      expect(result[0].len).toBe(0); // delete message
+      expect(result[0].ctr).toBe(1); // incremented from 0
+
+      // Check that two messages are now stored: original upsert and the delete
+      const messages = Array.from(await store.messages.list());
+      expect(messages.length).toBe(2);
+      const deleteMsg = messages[1];
+      expect(deleteMsg.head.len).toBe(0);
+      expect(deleteMsg.head.ctr).toBe(1);
+    });
   });
 
   describe("sync", () => {

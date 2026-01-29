@@ -136,6 +136,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           return err<IMessageHead>(statDel);
         }
 
+        if (body === undefined) {
+          // This upsert was a delete.
+          // Therefore, we're done.
+          // There's no replacement left to insert.
+          return ok(delHead);
+        }
+
         // Replace with a new msg that retains the old id.
         // The clk portion of the ID will be now.
         const clkRepl = now;
@@ -165,7 +172,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async delete(eid: EntityID, clk: Date) {
-    return this.upsertRaw(eid, clk, undefined);
+    // NOTE: force (clock-skew handling) is set to true here.
+    // When deleting, there's no reason not to force skew handling.
+    return this.upsertRaw(eid, clk, undefined, true);
   }
 
   public async sync() {

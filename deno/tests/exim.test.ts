@@ -124,7 +124,8 @@ Deno.test("encodeFile", async (t) => {
 
   await t.step("single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
-    const head: IMessageHead = genDeleteHead(eid, new Date(), 1, 0);
+    const now = new Date();
+    const head: IMessageHead = await genDeleteHead(now, eid, now, 1, crypto);
     const msgs = [{ head }];
     const [fileData, statFile] = await encodeFile(
       "test-label",
@@ -242,7 +243,8 @@ Deno.test("decodeFile", async (t) => {
 
   await t.step("round-trip single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
-    const head = genDeleteHead(eid, new Date(), 1, 0);
+    const now = new Date();
+    const head = await genDeleteHead(now, eid, now, 1, crypto);
     const msgs = [{ head }];
     const [file, statEnc] = await encodeFile(lbl, 0, msgs, crypto, enclave);
     assertEquals(statEnc, Status.Success);

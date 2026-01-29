@@ -51,8 +51,8 @@ const createClient = async (clock = mockClock) => {
   return { store, state, client };
 };
 
-describe("NeoClient", () => {
-  test("instantiates NeoClient", async () => {
+describe("Client", () => {
+  test("instantiates Client", async () => {
     const { client } = await createClient();
     expect(client).toBeInstanceOf(SyncClient);
   });

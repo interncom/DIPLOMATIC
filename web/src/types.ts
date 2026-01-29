@@ -129,7 +129,7 @@ export interface IClient<Handle extends HostHandle> {
   // timeline. If that happens, the returned msg head will be different than
   // the one implied by the provided params.
   insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
-  upsertRaw(eid: EntityID, clk: Date, content: SerializedContent): Promise<ValStat<IMessageHead>>;
+  upsertRaw(eid: EntityID, clk: Date, content: SerializedContent, force?: boolean): Promise<ValStat<IMessageHead>>;
   delete(eid: EntityID, clk: Date): Promise<ValStat<IMessageHead>>;
 
   sync(): Promise<void>;

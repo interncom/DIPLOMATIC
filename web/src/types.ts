@@ -11,7 +11,9 @@ import type {
   Hash,
   HostHandle,
   IHostConnectionInfo,
+  IInsertParams,
   IOp,
+  IUpsertParams,
   MasterSeed,
 } from "./shared/types";
 import { ValStat } from "./shared/valstat";
@@ -130,6 +132,8 @@ export interface IClient<Handle extends HostHandle> {
   // the one implied by the provided params.
   insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
   upsertRaw(eid: EntityID, clk: Date, content: SerializedContent, force?: boolean): Promise<ValStat<IMessageHead>>;
+  insert<T = unknown>(op: IInsertParams<T>): Promise<ValStat<IMessageHead>>;
+  upsert<T = unknown>(op: IUpsertParams<T>, force?: boolean): Promise<ValStat<IMessageHead>>;
   delete(eid: EntityID, clk: Date): Promise<ValStat<IMessageHead>>;
 
   sync(): Promise<void>;

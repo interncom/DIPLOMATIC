@@ -34,6 +34,7 @@ import {
 import { Status } from "./shared/consts";
 import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
+import { err, ok } from "./shared/valstat";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -103,25 +104,27 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public async insertRaw(body: EncodedMessage) {
     const { clock, crypto } = this;
     const head = await genInsertHead(clock.now(), body, crypto);
-    return this.apply(head, body);
+    await this.apply(head, body);
+    return ok(head);
   }
 
   public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined) {
-    const { clock, crypto } = this;
+    const { clock, crypto, store } = this;
     const now = clock.now();
-    const last = await this.store.messages.last(eid, clk);
+    const last = await store.messages.last(eid, clk);
     if (last) {
       const ts = last.head.clk.getTime() + last.head.off;
       if (ts > now.getTime()) {
         // last was created in the future. So either:
         // a) another client's clock is skewed into the future, or
         // b) this client's clock is skewed into the past.
-        return Status.ClockOutOfSync;
+        return err<IMessageHead>(Status.ClockOutOfSync);
       }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;
     const msg = await genUpsertHead(now, eid, clk, ctr, body, crypto);
-    return this.apply(msg, body);
+    await this.apply(msg, body);
+    return ok(msg);
   }
 
   public async insert<T = unknown>(op: IInsertParams<T>) {

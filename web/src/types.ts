@@ -14,6 +14,7 @@ import type {
   IOp,
   MasterSeed,
 } from "./shared/types";
+import { ValStat } from "./shared/valstat";
 
 export interface IDiplomaticClientState {
   hasSeed: boolean;
@@ -123,9 +124,13 @@ export interface IClient<Handle extends HostHandle> {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 
-  insertRaw(content: SerializedContent): Promise<Status>;
-  upsertRaw(eid: EntityID, clk: Date, content: SerializedContent): Promise<Status>;
-  delete(eid: EntityID, clk: Date): Promise<Status>;
+  // insert/upsert/delete return the msg head, because in case of clock skew,
+  // they may issue a delete and replace with a new msg to get back on a valid
+  // timeline. If that happens, the returned msg head will be different than
+  // the one implied by the provided params.
+  insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
+  upsertRaw(eid: EntityID, clk: Date, content: SerializedContent): Promise<ValStat<IMessageHead>>;
+  delete(eid: EntityID, clk: Date): Promise<ValStat<IMessageHead>>;
 
   sync(): Promise<void>;
 

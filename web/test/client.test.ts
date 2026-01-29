@@ -165,33 +165,74 @@ describe("NeoClient", () => {
       expect(uploads).toBe(2);
     });
 
-    test("returns ClockOutOfSync when last message timestamp is ahead", async () => {
-      const mockClock = new MockClock(new Date(0));
-      const { store, client } = await createClient(mockClock);
-      const eid = new Uint8Array(16).fill(3);
-      const body: EncodedMessage = new Uint8Array([10, 11]);
+    describe("clock skew", () => {
+      test("returns ClockOutOfSync when last message timestamp is ahead", async () => {
+        const mockClock = new MockClock(new Date(0));
+        const { store, client } = await createClient(mockClock);
+        const eid = new Uint8Array(16).fill(3);
+        const body: EncodedMessage = new Uint8Array([10, 11]);
 
-      // Create a message with future timestamp manually
-      const head: IMessageHead = {
-        eid,
-        clk: new Date(0),
-        off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
-        ctr: 0,
-        len: 0,
-        hsh: undefined,
-      };
+        // Create a message with future timestamp manually
+        const head: IMessageHead = {
+          eid,
+          clk: new Date(0),
+          off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+          ctr: 0,
+          len: 0,
+          hsh: undefined,
+        };
 
-      // Encode head and compute hash
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
-      const headEnc = enc.result();
-      const hash = await libsodiumCrypto.blake3(headEnc);
-      const msg: IStoredMessage = { hash, head, body: undefined };
-      await store.messages.add([msg]);
+        // Encode head and compute hash
+        const enc = new Encoder();
+        enc.writeStruct(messageHeadCodec, head);
+        const headEnc = enc.result();
+        const hash = await libsodiumCrypto.blake3(headEnc);
+        const msg: IStoredMessage = { hash, head, body: undefined };
+        await store.messages.add([msg]);
 
-      // Now upsert should return ClockOutOfSync
-      const [, status] = await client.upsertRaw(eid, new Date(0), body);
-      expect(status).toBe(Status.ClockOutOfSync);
+        // Now upsert should return ClockOutOfSync
+        const result = await client.upsertRaw(eid, new Date(0), body);
+        expect(result[0]).toBeUndefined();
+        expect(result[1]).toBe(Status.ClockOutOfSync);
+      });
+
+      test("allows upsert when force=true despite clock skew", async () => {
+        const mockClock = new MockClock(new Date(0));
+        const { store, client } = await createClient(mockClock);
+        const eid = new Uint8Array(16).fill(4);
+        const body: EncodedMessage = new Uint8Array([20, 21]);
+
+        // Create a message with future timestamp manually
+        const head: IMessageHead = {
+          eid,
+          clk: new Date(0),
+          off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+          ctr: 5,
+          len: 0,
+          hsh: undefined,
+        };
+
+        // Encode head and compute hash
+        const enc = new Encoder();
+        enc.writeStruct(messageHeadCodec, head);
+        const headEnc = enc.result();
+        const hash = await libsodiumCrypto.blake3(headEnc);
+        const msg: IStoredMessage = { hash, head, body: undefined };
+        await store.messages.add([msg]);
+
+        // Now upsert with force=true should succeed
+        const [newMsg, stat] = await client.upsertRaw(head.eid, head.clk, body, true);
+        if (stat !== Status.Success) {
+          expect(stat).toBe(Status.Success);
+          return;
+        }
+        expect(newMsg).toBeDefined();
+        expect(newMsg.eid).toEqual(eid);
+        expect(newMsg.clk.getTime()).toBe(0); // replaced clk
+        expect(newMsg.ctr).toBe(0); // reset ctr
+        expect(newMsg.off).not.toBe(head.off);
+        expect(newMsg.off).toBe(0);
+      });
     });
   });
 

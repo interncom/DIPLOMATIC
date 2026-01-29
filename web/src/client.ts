@@ -106,9 +106,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.apply(head, body);
   }
 
-  public async upsertRaw(eid: EntityID, clk: Date, body?: EncodedMessage) {
+  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined) {
     const { clock, crypto } = this;
     const last = await this.store.messages.last(eid, clk);
+    if (last && last.head.clk.getTime() + last.head.off > clock.now().getTime()) {
+      return Status.ClockOutOfSync;
+    }
     const ctr = (last?.head.ctr ?? -1) + 1;
     const msg = await genUpsertHead(clock.now(), eid, clk, ctr, body, crypto);
     return this.apply(msg, body);

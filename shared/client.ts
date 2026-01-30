@@ -2,6 +2,7 @@ import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
 import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
+import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
@@ -26,7 +27,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     private host: IHostConnectionInfo<Handle>,
     public clock: IClock,
     private transport: ITransport,
-  ) {}
+  ) { }
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -47,7 +48,19 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
     if (encStatus !== Status.Success) return err(encStatus);
 
-    const dec = await transport.call(name, enc);
+    const [dec, statCall] = await transport.call(name, enc);
+    if (statCall !== Status.Success) {
+      return err(statCall);
+    }
+
+    const [head, statHead] = dec.readStruct(respHeadCodec);
+    if (statHead !== Status.Success) {
+      return err(statHead);
+    }
+
+    if (head.status !== Status.Success) {
+      return err(head.status);
+    }
 
     return endpoint.decodeResp(dec);
   }

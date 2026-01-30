@@ -7,6 +7,8 @@ import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
 import { IPushListener, ITransport } from "./types.ts";
 import { WebsocketListener } from "./http/listener.ts";
+import { IRespHead, respHeadCodec } from "./codecs/respHead.ts";
+import { err, ok, ValStat } from "./valstat.ts";
 
 export const api = {
   user: {
@@ -54,38 +56,22 @@ export class HTTPTransport implements ITransport {
   async call(name: APICallName, enc: Encoder) {
     const { path } = apiCalls[name];
     const url = new URL(path, this.url);
-    const dec = await post(url, enc);
-    return dec;
+    try {
+      const resp = await post(url, enc);
+      return resp;
+    } catch {
+      return err<Decoder>(Status.CommunicationError);
+    }
   }
 }
 
 export function respFor(status: Status): Response {
-  switch (status) {
-    case Status.InvalidSignature:
-      return new Response("Invalid signature", { status: 401 });
-    case Status.ClockOutOfSync:
-      return new Response("Clock out of sync", { status: 400 });
-    case Status.UserNotRegistered:
-      return new Response("Unauthorized", { status: 401 });
-    case Status.ServerMisconfigured:
-      return new Response("Server misconfigured", { status: 500 });
-    case Status.MissingBody:
-      return new Response("Missing request body", { status: 400 });
-    case Status.ExtraBodyContent:
-      return new Response("Extra body content", { status: 400 });
-    case Status.MissingParam:
-      return new Response("Missing from param", { status: 400 });
-    case Status.InvalidParam:
-      return new Response("Invalid from param", { status: 400 });
-    case Status.InvalidRequest:
-      return new Response("Invalid request format", { status: 400 });
-    case Status.InternalError:
-      return new Response("Internal error", { status: 500 });
-    case Status.NotFound:
-      return new Response("Not Found", { status: 404 });
-    default:
-      throw new Error(`Unhandled status: ${status}`);
+  const enc = new Encoder();
+  const statEnc = enc.writeStruct(respHeadCodec, { status });
+  if (statEnc !== Status.Success) {
+    return new Response(null, { status: 500 });
   }
+  return binResp(enc);
 }
 
 export function binResp(encoder: Encoder): Response {
@@ -110,13 +96,14 @@ export function cors(resp: Response): Response {
   });
 }
 
-export async function post(url: URL, enc: Encoder): Promise<Decoder> {
+export async function post(url: URL, enc: Encoder): Promise<ValStat<Decoder>> {
   const response = await fetch(url, {
     method: "POST",
     body: enc.result().slice(),
   });
   if (!response.ok) {
-    throw new Error("Request failed");
+    return err(Status.HostError);
   }
-  return Decoder.fromResponse(response);
+  const dec = await Decoder.fromResponse(response);
+  return ok(dec);
 }

@@ -1,6 +1,6 @@
 import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
-import { IClock } from "./clock.ts";
+ import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
@@ -48,7 +48,9 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
     if (encStatus !== Status.Success) return err(encStatus);
 
+    const timeSent = clock.now();
     const [dec, statCall] = await transport.call(name, enc);
+    const timeRcvd = clock.now();
     if (statCall !== Status.Success) {
       return err(statCall);
     }
@@ -57,6 +59,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     if (statHead !== Status.Success) {
       return err(statHead);
     }
+
+     // Compute clock offset between client and host.
+    const clockOffset = offset(timeSent, head.timeRcvd, head.timeSent, timeRcvd);
+    console.log("Clock offset:", clockOffset);
 
     if (head.status !== Status.Success) {
       return err(head.status);

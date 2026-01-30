@@ -150,7 +150,8 @@ Deno.test("server", async (t) => {
       headers: { "Content-Type": "application/octet-stream" },
     });
     assertEquals(response.status, 200);
-    await response.text();
+    const body = new Uint8Array(await response.arrayBuffer());
+    assertEquals(body[0], Status.InvalidSignature);
   });
 
   await t.step("POST /ops requires valid tsAuth", async () => {

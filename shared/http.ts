@@ -65,9 +65,9 @@ export class HTTPTransport implements ITransport {
   }
 }
 
-export function respFor(status: Status): Response {
+export function errResp(head: IRespHead): Response {
   const enc = new Encoder();
-  const statEnc = enc.writeStruct(respHeadCodec, { status });
+  const statEnc = enc.writeStruct(respHeadCodec, head);
   if (statEnc !== Status.Success) {
     return new Response(null, { status: 500 });
   }

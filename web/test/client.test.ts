@@ -44,10 +44,16 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) { },
-    off(type, listener) { },
+    on(type, listener) {},
+    off(type, listener) {},
   };
-  const client = new SyncClient<IProtoHost>(clock, state, store, transport, libsodiumCrypto);
+  const client = new SyncClient<IProtoHost>(
+    clock,
+    state,
+    store,
+    transport,
+    libsodiumCrypto,
+  );
   return { store, state, client };
 };
 
@@ -221,7 +227,12 @@ describe("Client", () => {
         await store.messages.add([msg]);
 
         // Now upsert with force=true should succeed
-        const [newMsg, stat] = await client.upsertRaw(head.eid, head.clk, body, true);
+        const [newMsg, stat] = await client.upsertRaw(
+          head.eid,
+          head.clk,
+          body,
+          true,
+        );
         if (stat !== Status.Success) {
           expect(stat).toBe(Status.Success);
           return;
@@ -242,7 +253,11 @@ describe("Client", () => {
         now: () => new Date(1234567890000),
       });
       const eid = new Uint8Array(16).fill(1);
-      await client.upsertRaw(eid, new Date(1234567890000), new Uint8Array([10, 11]));
+      await client.upsertRaw(
+        eid,
+        new Date(1234567890000),
+        new Uint8Array([10, 11]),
+      );
       await client.delete(eid, new Date(1234567890000));
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
@@ -277,7 +292,11 @@ describe("Client", () => {
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
       const hash = await libsodiumCrypto.blake3(headEnc);
-      const msg: IStoredMessage = { hash, head, body: new Uint8Array([30, 31]) };
+      const msg: IStoredMessage = {
+        hash,
+        head,
+        body: new Uint8Array([30, 31]),
+      };
       await store.messages.add([msg]);
 
       // Now delete should succeed despite clock skew
@@ -309,7 +328,7 @@ describe("Client", () => {
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       await client.insertRaw(body);
 
-      await client.sync();
+      expect(await client.sync()).toBe(Status.Success);
       expect(await store.uploads.count()).toBe(0);
       const enclave = (await store.seed.load())!;
       const keys = await hostKeys(
@@ -375,7 +394,7 @@ describe("Client", () => {
       expect(Array.from(await store.messages.list()).length).toBe(0);
 
       // Sync: attempts to peek and pull the message from the host
-      await client.sync();
+      expect(await client.sync()).toBe(Status.Success);
 
       // Verify download was cleared and message was stored
       expect(await store.downloads.count()).toBe(0);
@@ -406,15 +425,22 @@ describe("Client", () => {
       // ClientA inserts a message and syncs (pushes to host)
       const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
       await clientA.insertRaw(testMessage);
-      await clientA.sync();
+      expect(await clientA.sync()).toBe(Status.Success);
 
       // ClientB syncs (pulls from host)
-      await clientB.sync();
+      expect(await clientB.sync()).toBe(Status.Success);
 
       // Verify the message was synced to clientB
       const messages = Array.from(await storeB.messages.list());
       expect(messages.length).toBe(1);
       expect(messages[0].body).toEqual(testMessage);
+    });
+
+    test("returns MissingSeed when no seed is set", async () => {
+      const { client } = await createClient();
+      // Don't set seed
+      const result = await client.sync();
+      expect(result).toBe(Status.MissingSeed);
     });
   });
 });
@@ -458,9 +484,16 @@ describe("push notifications", () => {
     await clientA.connect();
     const testMessage: EncodedMessage = new Uint8Array([1, 2, 3, 4]);
     await clientA.insertRaw(testMessage);
-    await clientA.sync();
+    expect(await clientA.sync()).toBe(Status.Success);
 
     // Wait for the push notification to trigger sync on clientB
-    await vi.waitFor(() => syncSpy.mock.calls.length === 1, { timeout: 1000 });
+    await vi.waitFor(async () => {
+      if (syncSpy.mock.calls.length === 1) {
+        const result = await syncSpy.mock.results[0].value;
+        expect(result).toBe(Status.Success);
+        return true;
+      }
+      return false;
+    }, { timeout: 1000 });
   });
 });

@@ -8,8 +8,6 @@ GENERAL
 - Fix all `// TODO:` in codebase
 
 ARCH
-- server reject push with warning (ClockSkew status) in case of skew
-- client return status from sync() to surface this
 - client override server skewed push rejection with a force flag (update push codec)
 - host return NTP timestamps in all responses
 - client store host clock offset in hosts table row
@@ -32,9 +30,7 @@ ENTDB
 
 ERRORS
 - allow a ValStat to hold a list of Status codes, to capture the full stack (err can wrap an err(stat) return val) or is that too implementation specific? maybe better to have a location embedded within the status byte (or just more granular codes)
-- make client error handling use status enum too. the standard is zero string-based errors
 - (make a stringifier for status enum for console logs maybe)
-- prepend status byte to each API response to wire server errors through to client?
 - return ValStats from entdb queries
 
 TESTS

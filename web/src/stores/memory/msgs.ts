@@ -33,13 +33,18 @@ export class MemoryMessageStore implements IMessageStore {
   async last(eid: EntityID, clk: Date) {
     let latest: IStoredMessage | undefined;
     for (const [, msg] of this.messages) {
-      if (bytesEqual(eid, msg.head.eid) === false || msg.head.clk.getTime() !== clk.getTime()) {
+      if (
+        bytesEqual(eid, msg.head.eid) === false ||
+        msg.head.clk.getTime() !== clk.getTime()
+      ) {
         continue;
       }
       if (latest === undefined) {
         latest = msg;
-      } else if (msg.head.ctr > latest.head.ctr ||
-                 (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)) {
+      } else if (
+        msg.head.ctr > latest.head.ctr ||
+        (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)
+      ) {
         latest = msg;
       }
     }

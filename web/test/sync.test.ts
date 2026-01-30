@@ -76,10 +76,10 @@ describe("Sync Integration", () => {
     await clientA.insertRaw(testMessage);
 
     // Client A syncs (pushes the message)
-    await clientA.sync();
+    expect(await clientA.sync()).toBe(Status.Success);
 
     // Client B syncs (pulls the message)
-    await clientB.sync();
+    expect(await clientB.sync()).toBe(Status.Success);
 
     // Verify the message was synced to client B
     const messages = Array.from(await storeB.messages.list());
@@ -100,8 +100,8 @@ describe("Sync Integration", () => {
     // Insert multiple messages
     await clientA.insertRaw(new Uint8Array([1]));
     await clientA.insertRaw(new Uint8Array([2]));
-    await clientA.sync();
-    await clientB.sync();
+    expect(await clientA.sync()).toBe(Status.Success);
+    expect(await clientB.sync()).toBe(Status.Success);
 
     let messages = Array.from(await storeB.messages.list());
     expect(messages.length).toBe(2);
@@ -110,8 +110,8 @@ describe("Sync Integration", () => {
     const eid = messages[0].head.eid;
     const clk = messages[0].head.clk;
     await clientA.upsertRaw(eid, clk, new Uint8Array([3]));
-    await clientA.sync();
-    await clientB.sync();
+    expect(await clientA.sync()).toBe(Status.Success);
+    expect(await clientB.sync()).toBe(Status.Success);
 
     messages = Array.from(await storeB.messages.list());
     expect(messages.length).toBe(3); // Original + upsert
@@ -137,10 +137,10 @@ describe("Sync Integration", () => {
 
     // Insert and sync at time 1000
     await clientA.insertRaw(new Uint8Array([1]));
-    await clientA.sync();
+    expect(await clientA.sync()).toBe(Status.Success);
 
     // ClientB syncs with lastSyncedAt at 2000 - should not pull messages from 1000
-    await clientB.sync();
+    expect(await clientB.sync()).toBe(Status.Success);
     expect(Array.from(await storeB.messages.list()).length).toBe(0);
   });
 });

@@ -22,6 +22,7 @@ CLIENT
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey
 - split React portion into separate package?
 - eliminate fileSaver dependency
+- shared/client.ts return an updated host row on each call (or initialize it with a hook to update the host), to allow for updating offset and eventually remaining payment credits
 
 ENTDB
 - split EntDB into separate package?

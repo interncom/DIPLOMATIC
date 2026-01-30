@@ -2,7 +2,7 @@ import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 import { Status } from "../consts.ts";
-import { binResp, callPaths, cors, respFor } from "../http.ts";
+import { binResp, callPaths, cors, errResp } from "../http.ts";
 import type {
   IHostCrypto,
   IProtoHost,
@@ -35,16 +35,21 @@ export class DiplomaticHTTPServer implements IProtoHost {
   };
 
   handler = async (request: Request): Promise<Response> => {
+    const { clock } = this;
+    const timeRcvd = clock.now();
+
     const url = new URL(request.url);
 
     // All requests are POST with authentication.
     if (request.method !== "POST") {
-      return respFor(Status.NotFound);
+      const timeSent = clock.now();
+      return errResp({ status: Status.NotFound, timeRcvd, timeSent });
     }
 
     const body = request.body;
     if (!body) {
-      return respFor(Status.MissingBody);
+      const timeSent = clock.now();
+      return errResp({ status: Status.MissingBody, timeRcvd, timeSent });
     }
     const data = new Uint8Array(await request.arrayBuffer());
     const dec = new Decoder(data);
@@ -52,7 +57,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
     const path = url.pathname as keyof typeof callPaths;
     const endpoint = callPaths[path]?.endpoint;
     if (!endpoint) {
-      return respFor(Status.NotFound);
+      const timeSent = clock.now();
+      return errResp({ status: Status.NotFound, timeRcvd, timeSent });
     }
 
     try {
@@ -62,6 +68,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
       // Construct response header.
       const head: IRespHead = {
         status,
+        timeRcvd,
+        timeSent: this.clock.now(),
       };
       const encHead = new Encoder();
       const statEnc = encHead.writeStruct(respHeadCodec, head);
@@ -71,7 +79,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
 
       // If request failed, return header alone (with failure status).
       if (status !== Status.Success) {
-        return respFor(status);
+        const timeSent = clock.now();
+        return errResp({ status, timeRcvd, timeSent });
       }
 
       // Prepend header to response encoder.
@@ -79,7 +88,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
 
       return binResp(enc);
     } catch (err) {
-      return respFor(Status.InternalError);
+      const timeSent = clock.now();
+      return errResp({ status: Status.InternalError, timeRcvd, timeSent });
     }
   };
 }

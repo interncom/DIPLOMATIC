@@ -9,7 +9,6 @@ GENERAL
 
 ARCH
 - client override server skewed push rejection with a force flag (update push codec)
-- host return NTP timestamps in all responses
 - client store host clock offset in hosts table row
 
 - replace host hash with seq

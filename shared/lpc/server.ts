@@ -12,7 +12,7 @@ import type {
 } from "../types.ts";
 import { CallbackListener } from "./listener.ts";
 import { ValStat, err, ok } from "../valstat.ts";
-import { respHeadCodec } from "../codecs/respHead.ts";
+import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 
 export class DiplomaticLPCServer implements IProtoHost {
   constructor(
@@ -49,18 +49,24 @@ export class LPCTransport implements ITransport {
   }
 
   call = async (name: APICallName, enc: Encoder): Promise<ValStat<Decoder>> => {
+    const { clock } = this.host;
+    const timeRcvd = clock.now();
+
     const reqBody = enc.result();
     const reqDec = new Decoder(reqBody);
     const respEnc = new Encoder();
     const status = await this.host.handler(name, reqDec, respEnc);
 
     const headEnc = new Encoder();
-    const statEnc = headEnc.writeStruct(respHeadCodec, { status });
+    const timeSent = clock.now();
+    const head: IRespHead = { status, timeRcvd, timeSent };
+    const statEnc = headEnc.writeStruct(respHeadCodec, head);
     if (statEnc !== Status.Success) {
       return err(statEnc);
     }
 
     respEnc.prependBytes(headEnc.result());
-    return ok(new Decoder(respEnc.result()));
+    const respDec = new Decoder(respEnc.result());
+    return ok(respDec);
   };
 }

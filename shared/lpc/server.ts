@@ -11,6 +11,8 @@ import type {
   ITransport,
 } from "../types.ts";
 import { CallbackListener } from "./listener.ts";
+import { ValStat, err, ok } from "../valstat.ts";
+import { respHeadCodec } from "../codecs/respHead.ts";
 
 export class DiplomaticLPCServer implements IProtoHost {
   constructor(
@@ -18,7 +20,7 @@ export class DiplomaticLPCServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IPushNotifier,
     public clock: IClock,
-  ) {}
+  ) { }
 
   // To listen to notifier over LPC, just access .notifier on this host directly.
 
@@ -46,16 +48,19 @@ export class LPCTransport implements ITransport {
     );
   }
 
-  call = async (name: APICallName, enc: Encoder): Promise<Decoder> => {
+  call = async (name: APICallName, enc: Encoder): Promise<ValStat<Decoder>> => {
     const reqBody = enc.result();
     const reqDec = new Decoder(reqBody);
     const respEnc = new Encoder();
     const status = await this.host.handler(name, reqDec, respEnc);
-    if (status !== Status.Success) {
-      // TODO: figure out how to handle status. Maybe in an object response.
-      // Actually probably best to just have a status byte prepended to each response.
-      return new Decoder(new Uint8Array());
+
+    const headEnc = new Encoder();
+    const statEnc = headEnc.writeStruct(respHeadCodec, { status });
+    if (statEnc !== Status.Success) {
+      return err(statEnc);
     }
-    return new Decoder(respEnc.result());
+
+    respEnc.prependBytes(headEnc.result());
+    return ok(new Decoder(respEnc.result()));
   };
 }

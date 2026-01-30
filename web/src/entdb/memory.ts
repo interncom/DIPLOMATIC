@@ -48,7 +48,10 @@ export class EntDBMemory implements IEntDB {
     return Status.Success;
   }
 
-  async getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>> {
+  async getEnt<T>(
+    eid: EntityID,
+    createdAt: Date,
+  ): Promise<ValStat<IEntity<T> | undefined>> {
     const key = `${btoh(eid)}-${createdAt.getTime()}`;
     return ok(this.ents.get(key) as IEntity<T> | undefined);
   }

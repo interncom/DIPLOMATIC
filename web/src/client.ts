@@ -48,7 +48,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private store: IStore<Handle>,
     private transport: ITransport,
     private crypto: ICrypto = libsodiumCrypto,
-
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
   ) {
@@ -111,7 +110,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return ok(head);
   }
 
-  public async upsertRaw(eid: EntityID, clk: Date, body: EncodedMessage | undefined, force = false) {
+  public async upsertRaw(
+    eid: EntityID,
+    clk: Date,
+    body: EncodedMessage | undefined,
+    force = false,
+  ) {
     const { clock, crypto, store } = this;
     const now = clock.now();
     const last = await store.messages.last(eid, clk);
@@ -164,7 +168,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.insertRaw(body);
   }
 
-  public async upsert<T = unknown>(op: IUpsertParams<T>, force = this.forceSkewHandlingByDefault) {
+  public async upsert<T = unknown>(
+    op: IUpsertParams<T>,
+    force = this.forceSkewHandlingByDefault,
+  ) {
     const { eid, clk, ...rest } = op;
     if (eid === undefined || clk === undefined) {
       return this.insert(op);
@@ -183,7 +190,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const { clock, connections, crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
-      return;
+      return Status.MissingSeed;
     }
 
     for (const [label, conn] of connections) {
@@ -201,6 +208,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       );
       if (peekStat !== Status.Success) {
         console.error(`Failed to peek: ${peekStat}`);
+        return peekStat;
       }
       const pushStat = await syncPush(
         conn,
@@ -212,6 +220,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       );
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
+        return pushStat;
       }
       const pullStat = await syncPull(
         conn,
@@ -223,8 +232,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       );
       if (pullStat !== Status.Success) {
         console.error(`Failed to pull: ${pullStat}`);
+        return pullStat;
       }
     }
+    return Status.Success;
   }
 
   public async wipe() {

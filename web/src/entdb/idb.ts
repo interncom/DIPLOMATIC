@@ -130,7 +130,10 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>> {
+  async getEnt<T>(
+    eid: EntityID,
+    createdAt: Date,
+  ): Promise<ValStat<IEntity<T> | undefined>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }

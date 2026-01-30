@@ -76,11 +76,16 @@ export class IDBMessageStore implements IMessageStore {
         const allMsgs = req.result;
         let latest: IStoredMessage | undefined;
         for (const msg of allMsgs) {
-          if (bytesEqual(eid, msg.head.eid) === false || msg.head.clk.getTime() !== clk.getTime()) {
+          if (
+            bytesEqual(eid, msg.head.eid) === false ||
+            msg.head.clk.getTime() !== clk.getTime()
+          ) {
             continue;
           }
-          if (!latest || msg.head.ctr > latest.head.ctr ||
-              (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)) {
+          if (
+            !latest || msg.head.ctr > latest.head.ctr ||
+            (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)
+          ) {
             latest = msg;
           }
         }

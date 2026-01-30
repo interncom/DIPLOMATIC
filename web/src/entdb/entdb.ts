@@ -39,7 +39,10 @@ export type EntitiesQuery = {
 export interface IEntDB {
   apply: (op: IOp) => Promise<Status>;
   clear: () => Promise<Status>;
-  getEnt<T>(eid: EntityID, createdAt: Date): Promise<ValStat<IEntity<T> | undefined>>;
+  getEnt<T>(
+    eid: EntityID,
+    createdAt: Date,
+  ): Promise<ValStat<IEntity<T> | undefined>>;
   getEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
@@ -67,7 +70,9 @@ export function updateEnt(
   const createdTs = op.clk.getTime();
 
   // updatedAt is max of current and messageTs
-  const updatedTs = curr ? max(curr.updatedAt.getTime(), messageTs.getTime()) : messageTs.getTime();
+  const updatedTs = curr
+    ? max(curr.updatedAt.getTime(), messageTs.getTime())
+    : messageTs.getTime();
 
   let updatedCtr: number;
   if (!curr) {

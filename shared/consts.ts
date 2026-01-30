@@ -36,6 +36,8 @@ export enum Status {
   NotImplemented = 21,
   MissingSeed = 22,
   OutOfBounds = 23,
+  HostError = 24,
+  CommunicationError = 25,
 }
 
 export enum APICallName {

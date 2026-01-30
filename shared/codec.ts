@@ -175,6 +175,10 @@ export class Encoder {
     return Status.Success;
   }
 
+  prependBytes(bytes: Uint8Array): void {
+    this.parts.unshift(bytes);
+  }
+
   writeBytes(bytes: Uint8Array): void {
     this.parts.push(bytes);
   }
@@ -220,6 +224,8 @@ export class Encoder {
       yield part;
     }
   }
+
+
 }
 
 export interface ICodecStruct<T> {

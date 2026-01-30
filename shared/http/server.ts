@@ -1,5 +1,6 @@
 import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
+import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 import { Status } from "../consts.ts";
 import { binResp, callPaths, cors, respFor } from "../http.ts";
 import type {
@@ -15,7 +16,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) {}
+  ) { }
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
@@ -57,12 +58,27 @@ export class DiplomaticHTTPServer implements IProtoHost {
     try {
       const enc = new Encoder();
       const status = await endpoint.handleReq(this, dec, enc);
+
+      // Construct response header.
+      const head: IRespHead = {
+        status,
+      };
+      const encHead = new Encoder();
+      const statEnc = encHead.writeStruct(respHeadCodec, head);
+      if (statEnc !== Status.Success) {
+        return new Response(null, { status: 500 });
+      }
+
+      // If request failed, return header alone (with failure status).
       if (status !== Status.Success) {
         return respFor(status);
       }
+
+      // Prepend header to response encoder.
+      enc.prependBytes(encHead.result());
+
       return binResp(enc);
     } catch (err) {
-      console.error("ARGH", err);
       return respFor(Status.InternalError);
     }
   };

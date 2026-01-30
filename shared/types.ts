@@ -164,6 +164,6 @@ export interface IHostConnectionInfo<Handle extends HostHandle> {
 }
 
 export interface ITransport {
-  call: (name: APICallName, enc: Encoder) => Promise<Decoder>;
+  call: (name: APICallName, enc: Encoder) => Promise<ValStat<Decoder>>;
   listener: IPushListener;
 }

@@ -16,6 +16,8 @@ ARCH
 - generalize crypto random bytes function to genRandomBytes(numBytes)
 - change updateEnt to return a ValStat<IEntity<T = unknown>>
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
+- put upper bounds on all var-int lengths
+- use VarDate encoding that encodes timestamps with varints for milliseconds since UNIX epoch (or even advance the epoch forward to e.g. 2025 to shave a byte)
 
 CLIENT
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey

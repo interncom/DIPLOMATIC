@@ -7,7 +7,6 @@ import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import {
   EncodedMessage,
-  genDeleteHead,
   genInsertHead,
   genUpsertHead,
   IMessageHead,

@@ -6,7 +6,10 @@ const stateMgr = new StateManager(async (op: IOp) => {
     appState.count = op.body;
   }
   return Status.Success;
-}, async () => { appState.count = 0 })
+}, async () => {
+  appState.count = 0;
+  return Status.Success;
+})
 
 
 const url = new URL("http://localhost:3311");
@@ -14,6 +17,7 @@ const { client, setSeed } = await genWebClient(stateMgr, url);
 await setSeed("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")
 
 const eid = new Uint8Array(16).fill(0);
+const clk = new Date(0);
 
 export default function App() {
   const count = useStateWatcher(stateMgr, "count", async () => {
@@ -21,7 +25,8 @@ export default function App() {
     return appState.count;
   })
   const inc = async () => {
-    await client.upsert({ type: "count", body: (count ?? 0) + 1, eid });
+    const prev = count ?? 0;
+    await client.upsert({ type: "count", body: prev + 1, eid, clk, off: prev + 1 });
     console.log("inserted")
     try {
       await client.sync();

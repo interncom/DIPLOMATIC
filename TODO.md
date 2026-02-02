@@ -8,7 +8,6 @@ GENERAL
 - Fix all `// TODO:` in codebase
 
 ARCH
-- client store host clock offset in hosts table row
 - client override server skewed push rejection with a force flag (update push codec)
 
 - replace host hash with seq

@@ -1,6 +1,6 @@
 import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
- import { IClock, offset } from "./clock.ts";
+import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
@@ -60,7 +60,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       return err(statHead);
     }
 
-     // Compute clock offset between client and host.
+    // Compute clock offset between client and host.
     const clockOffset = offset(timeSent, head.timeRcvd, head.timeSent, timeRcvd);
     console.log("Clock offset:", clockOffset);
 

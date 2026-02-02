@@ -1,6 +1,23 @@
 import { ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
+import { IUsageQuota, usageQuotaCodec } from "./usageQuota.ts";
+
+// About 30 bytes.
+interface ISubscriptionMetadata {
+  // Duration of subscrption term in milliseconds.
+  // 0 indicates an indefinite term (either lifetime or pay-as-you-go).
+  term: number;
+
+  // Milliseconds since start of term.
+  elapsed: number;
+
+  // "static" usage, i.e. storage.
+  stat: IUsageQuota;
+
+  // "dynamic" usage, i.e. time (bandwidth, CPU time, ...).
+  dyn: IUsageQuota;
+}
 
 export interface IRespHead {
   // Overall status of the request.
@@ -9,6 +26,8 @@ export interface IRespHead {
   // NTP-style timestamps for client to compute offset from host clock.
   timeRcvd: Date;
   timeSent: Date;
+
+  subscription: ISubscriptionMetadata;
 }
 
 export const respHeadCodec: ICodecStruct<IRespHead> = {
@@ -26,6 +45,15 @@ export const respHeadCodec: ICodecStruct<IRespHead> = {
     if (s2 !== Status.Success) return err(s2);
     const [timeSent, s3] = dec.readDate();
     if (s3 !== Status.Success) return err(s3);
-    return ok({ status, timeRcvd, timeSent });
+    const [term, s4] = dec.readVarInt();
+    if (s4 !== Status.Success) return err(s4);
+    const [elapsed, s5] = dec.readVarInt();
+    if (s5 !== Status.Success) return err(s5);
+    const [stat, s6] = dec.readStruct(usageQuotaCodec);
+    if (s6 !== Status.Success) return err(s6);
+    const [dyn, s7] = dec.readStruct(usageQuotaCodec);
+    if (s7 !== Status.Success) return err(s7);
+    const subscription = { term, elapsed, stat, dyn };
+    return ok({ status, timeRcvd, timeSent, subscription });
   },
 };

@@ -1,9 +1,9 @@
-import { btoh, concat, htob } from "../binary.ts";
-import type { IStorage } from "../types.ts";
-import type { IBagPeekItem } from "../codecs/peekItem.ts";
+import { btoh, htob } from "../binary.ts";
 import { Encoder } from "../codec.ts";
+import type { IBagPeekItem } from "../codecs/peekItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
-import { Status } from "../consts.ts";
+import { nullSubMeta, type IStorage } from "../types.ts";
+import { ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
@@ -24,12 +24,17 @@ const memStorage: IMemoryStorage = {
   async addUser(pubKey) {
     const pubKeyHex = btoh(pubKey);
     this.users.add(pubKeyHex);
-    return [undefined, Status.Success];
+    return ok(undefined);
   },
 
   async hasUser(pubKey) {
     const pubKeyHex = btoh(pubKey);
-    return [this.users.has(pubKeyHex), Status.Success];
+    return ok(this.users.has(pubKeyHex));
+  },
+
+  async subMeta(pubKey) {
+    const meta = nullSubMeta;
+    return ok(meta);
   },
 
   async setBag(pubKey, recordedAt, bag, sha256) {
@@ -45,7 +50,7 @@ const memStorage: IMemoryStorage = {
       bodyCph,
       recordedAt,
     });
-    return [undefined, Status.Success];
+    return ok(undefined);
   },
 
   async getBody(pubKey, sha256) {
@@ -53,9 +58,9 @@ const memStorage: IMemoryStorage = {
     const sha256Hex = btoh(sha256);
     const item = this.bag.get(sha256Hex);
     if (item?.pubKeyHex !== pubKeyHex) {
-      return [undefined, Status.Success];
+      return ok(undefined);
     }
-    return [item.bodyCph, Status.Success];
+    return ok(item.bodyCph);
   },
 
   async listHeads(pubKey, begin, end) {
@@ -72,7 +77,7 @@ const memStorage: IMemoryStorage = {
         });
       }
     }
-    return [list, Status.Success];
+    return ok(list);
   },
 };
 

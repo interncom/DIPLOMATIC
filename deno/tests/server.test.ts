@@ -88,6 +88,7 @@ Deno.test("server", async (t) => {
     host,
     clock,
     new HTTPTransport(host.handle),
+    () => Promise.resolve(Status.Success),
   );
 
   await t.step("POST /users", async () => {

@@ -44,8 +44,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
   const client = new SyncClient<IProtoHost>(
     clock,
@@ -105,6 +105,7 @@ describe("Client", () => {
           clk: new Date(),
           ctr: 0,
           len: 0,
+          off: 0,
         },
         host: "label",
       };
@@ -140,6 +141,7 @@ describe("Client", () => {
       const msg = messages[0];
       if (!msg.body) {
         fail("No body");
+        return;
       }
       expect(bytesEqual(body, msg.body)).toBeTruthy();
       expect(msg.head.ctr).toBe(0);
@@ -301,7 +303,10 @@ describe("Client", () => {
 
       // Now delete should succeed despite clock skew
       const result = await client.delete(eid, new Date(0));
-      expect(result[1]).toBe(Status.Success);
+      if (result[1] !== Status.Success) {
+        expect(result[1]).toBe(Status.Success);
+        return;
+      }
       expect(result[0]).toBeDefined();
       expect(result[0].eid).toEqual(eid);
       expect(result[0].len).toBe(0); // delete message
@@ -357,6 +362,7 @@ describe("Client", () => {
       const host = await store.hosts.get("test");
       if (!host) {
         fail("No host");
+        return;
       }
       host.lastSyncedAt = new Date(0);
 

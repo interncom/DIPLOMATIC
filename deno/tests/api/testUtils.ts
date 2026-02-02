@@ -5,17 +5,20 @@ import {
   IPushNotifier,
   IPushOpenResponse,
   IStorage,
+  nullSubMeta,
   PublicKey,
   PushReceiver,
 } from "../../../shared/types.ts";
+import { ok } from "../../../shared/valstat.ts";
 
 // Base mock storage - can be overridden per test
 export const baseMockStorage: IStorage = {
-  hasUser: async () => [true, Status.Success],
-  addUser: async () => [undefined, Status.Success],
-  getBody: async () => [undefined, Status.Success],
-  listHeads: async () => [[], Status.Success],
-  setBag: async () => [undefined, Status.Success],
+  hasUser: async () => ok(true),
+  addUser: async () => ok(undefined),
+  subMeta: async () => ok(nullSubMeta),
+  getBody: async () => ok(undefined),
+  listHeads: async () => ok([]),
+  setBag: async () => ok(undefined),
 };
 
 // Base mock crypto

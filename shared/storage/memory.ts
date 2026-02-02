@@ -33,6 +33,7 @@ const memStorage: IMemoryStorage = {
   },
 
   async subMeta(pubKey) {
+    // TODO: actually compute this.
     const meta = nullSubMeta;
     return ok(meta);
   },

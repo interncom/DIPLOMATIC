@@ -1,5 +1,6 @@
 import { Status } from "../../shared/consts";
 import { IHostConnectionInfo, IHostMetadata } from "../../shared/types";
+import { err } from "../../shared/valstat";
 import type { IHostRow, IHostStore } from "../../types";
 import { HOSTS_TABLE } from "./store";
 
@@ -81,8 +82,12 @@ export class IDBHostStore implements IHostStore<URL> {
     if (!row) {
       return Status.NotFound;
     }
-    this.put({ ...row, ...meta });
-    return Status.Success;
+    try {
+      await this.put({ ...row, ...meta });
+      return Status.Success;
+    } catch {
+      return Status.DatabaseError;
+    }
   }
 
   async del(label: string) {

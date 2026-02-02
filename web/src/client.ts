@@ -299,7 +299,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         host,
         clock,
         transport,
-        () => Promise.resolve(Status.Success), // TODO: implement for real.
+        (meta) => this.store.hosts.set(host.label, meta),
       );
       await conn.register();
       if (listen) {

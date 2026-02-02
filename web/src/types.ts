@@ -11,6 +11,7 @@ import type {
   Hash,
   HostHandle,
   IHostConnectionInfo,
+  IHostMetadata,
   IInsertParams,
   IOp,
   IUpsertParams,
@@ -39,7 +40,7 @@ export interface ISeedStore {
 }
 
 export interface IHostRow<Handle extends HostHandle>
-  extends IHostConnectionInfo<Handle> {
+  extends IHostConnectionInfo<Handle>, Partial<IHostMetadata> {
   lastSyncedAt: Date;
 }
 
@@ -48,6 +49,7 @@ export interface IHostStore<Handle extends HostHandle> {
   add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
   get: (label: string) => Promise<IHostRow<Handle> | undefined>;
   del: (label: string) => Promise<void>;
+  set: (label: string, meta: IHostMetadata) => Promise<Status>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
   touch: (label: string, now: Date) => Promise<void>;

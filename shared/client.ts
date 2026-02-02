@@ -15,6 +15,7 @@ import type {
   IBag,
   ICrypto,
   IHostConnectionInfo,
+  IHostMetadata,
   ITransport,
   PushReceiver,
 } from "./types.ts";
@@ -27,6 +28,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     private host: IHostConnectionInfo<Handle>,
     public clock: IClock,
     private transport: ITransport,
+    private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
   ) { }
 
   private async call<ReqItem, Resp>(
@@ -39,15 +41,15 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const { clock, crypto, transport } = this;
     const { endpoint, name } = apiCall;
 
+    // Form request.
     const keys = await this.keys();
-
     const now = clock.now();
     const authTS = await makeAuthTimestamp(keys, now, crypto);
-
     const enc = new Encoder();
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
     if (encStatus !== Status.Success) return err(encStatus);
 
+    // Send request.
     const timeSent = clock.now();
     const [dec, statCall] = await transport.call(name, enc);
     const timeRcvd = clock.now();
@@ -55,19 +57,22 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       return err(statCall);
     }
 
+    // Update host metadata based on response header.
     const [head, statHead] = dec.readStruct(respHeadCodec);
     if (statHead !== Status.Success) {
       return err(statHead);
     }
-
-    // Compute clock offset between client and host.
     const clockOffset = offset(timeSent, head.timeRcvd, head.timeSent, timeRcvd);
-    console.log("Clock offset:", clockOffset);
+    const meta: IHostMetadata = { clockOffset, subscription: head.subscription };
+    const statMeta = await this.updateHostMeta(meta);
+    if (statMeta !== Status.Success) {
+      return err(statMeta);
+    }
 
+    // Return response.
     if (head.status !== Status.Success) {
       return err(head.status);
     }
-
     return endpoint.decodeResp(dec);
   }
 

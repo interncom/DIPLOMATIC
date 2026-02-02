@@ -1,23 +1,8 @@
 import { ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
-import { IUsageQuota, usageQuotaCodec } from "./usageQuota.ts";
-
-// About 30 bytes.
-interface ISubscriptionMetadata {
-  // Duration of subscrption term in milliseconds.
-  // 0 indicates an indefinite term (either lifetime or pay-as-you-go).
-  term: number;
-
-  // Milliseconds since start of term.
-  elapsed: number;
-
-  // "static" usage, i.e. storage.
-  stat: IUsageQuota;
-
-  // "dynamic" usage, i.e. time (bandwidth, CPU time, ...).
-  dyn: IUsageQuota;
-}
+import { usageQuotaCodec } from "./usageQuota.ts";
+import { ISubscriptionMetadata } from "../types.ts";
 
 export interface IRespHead {
   // Overall status of the request.

@@ -4,6 +4,8 @@ import type { IStorage } from "../../../shared/types.ts";
 import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 import { Status } from "../../../shared/consts.ts";
+import { nullSubMeta } from "../../../web/src/shared/types.ts";
+import { err, ok } from "../../../shared/valstat.ts";
 
 const db = new DB("diplomatic.db");
 db.query(`
@@ -29,9 +31,9 @@ const sqliteStorage: IStorage = {
       db.query("INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING", [
         pubKeyHex,
       ]);
-      return [undefined, Status.Success];
+      return ok(undefined);
     } catch {
-      return [undefined, Status.StorageError];
+      return err(Status.StorageError);
     }
   },
 
@@ -44,10 +46,15 @@ const sqliteStorage: IStorage = {
       );
       const row = rows?.[0];
       const has = row?.[0];
-      return [has ?? false, Status.Success];
+      return ok(has ?? false);
     } catch {
-      return [undefined, Status.StorageError];
+      return err(Status.StorageError);
     }
+  },
+
+  async subMeta(pubKey) {
+    // TODO: actually compute this.
+    return ok(nullSubMeta)
   },
 
   async setBag(pubKey, recordedAt, bag, sha256) {
@@ -62,9 +69,9 @@ const sqliteStorage: IStorage = {
         "INSERT INTO bag (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
         [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
       );
-      return [undefined, Status.Success];
+      return ok(undefined);
     } catch {
-      return [undefined, Status.StorageError];
+      return err(Status.StorageError);
     }
   },
 
@@ -77,11 +84,11 @@ const sqliteStorage: IStorage = {
       );
       const row = rows[0];
       if (!row) {
-        return [undefined, Status.Success];
+        return ok(undefined);
       }
-      return [new Uint8Array(row[0]), Status.Success];
+      return ok(new Uint8Array(row[0]));
     } catch {
-      return [undefined, Status.StorageError];
+      return err(Status.StorageError);
     }
   },
 
@@ -92,16 +99,13 @@ const sqliteStorage: IStorage = {
         "SELECT sha256, recordedAt, headCph FROM bag WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt <= ?",
         [pubKeyHex, begin, end],
       );
-      return [
-        rows.map(([sha256, recordedAt, headCph]) => ({
-          hash: sha256,
-          recordedAt: new Date(recordedAt),
-          headCph: new Uint8Array(headCph),
-        })),
-        Status.Success,
-      ];
+      return ok(rows.map(([sha256, recordedAt, headCph]) => ({
+        hash: sha256,
+        recordedAt: new Date(recordedAt),
+        headCph: new Uint8Array(headCph),
+      })));
     } catch {
-      return [undefined, Status.StorageError];
+      return err(Status.StorageError);
     }
   },
 };

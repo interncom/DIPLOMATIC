@@ -1,4 +1,5 @@
-import { IHostConnectionInfo } from "../../shared/types";
+import { Status } from "../../shared/consts";
+import { IHostConnectionInfo, IHostMetadata } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 import { HOSTS_TABLE } from "./store";
 
@@ -20,10 +21,14 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async add(info: IHostConnectionInfo<URL>) {
+    return this.put(info);
+  }
+
+  private async put(info: Omit<IHostRow<URL>, "lastSyncedAt"> & { lastSyncedAt?: Date }) {
     const host = {
       ...info,
       handle: info.handle.toString(),
-      lastSyncedAt: new Date(0),
+      lastSyncedAt: info.lastSyncedAt ?? new Date(0),
     };
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
@@ -69,6 +74,15 @@ export class IDBHostStore implements IHostStore<URL> {
       };
       req.onerror = () => reject(req.error);
     });
+  }
+
+  async set(label: string, meta: IHostMetadata) {
+    const row = await this.get(label);
+    if (!row) {
+      return Status.NotFound;
+    }
+    this.set(label, { ...row, ...meta });
+    return Status.Success;
   }
 
   async del(label: string) {

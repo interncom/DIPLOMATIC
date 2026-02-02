@@ -1,4 +1,5 @@
-import { HostHandle, IHostConnectionInfo } from "../../shared/types";
+import { Status } from "../../shared/consts";
+import { HostHandle, IHostConnectionInfo, IHostMetadata } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 
 export class MemoryHostStore<Handle extends HostHandle>
@@ -27,6 +28,15 @@ export class MemoryHostStore<Handle extends HostHandle>
 
   async get(label: string) {
     return this.hosts.get(label);
+  }
+
+  async set(label: string, meta: IHostMetadata) {
+    const row = this.hosts.get(label);
+    if (!row) {
+      return Status.NotFound;
+    }
+    this.hosts.set(label, { ...row, ...meta });
+    return Status.Success;
   }
 
   async del(label: string) {

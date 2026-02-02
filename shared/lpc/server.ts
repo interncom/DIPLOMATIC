@@ -2,13 +2,14 @@ import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { APICallName, Status } from "../consts.ts";
 import { apiCalls } from "../http.ts";
-import type {
-  IHostCrypto,
-  IProtoHost,
-  IPushListener,
-  IPushNotifier,
-  IStorage,
-  ITransport,
+import {
+  nullSubMeta,
+  type IHostCrypto,
+  type IProtoHost,
+  type IPushListener,
+  type IPushNotifier,
+  type IStorage,
+  type ITransport,
 } from "../types.ts";
 import { CallbackListener } from "./listener.ts";
 import { ValStat, err, ok } from "../valstat.ts";
@@ -59,7 +60,8 @@ export class LPCTransport implements ITransport {
 
     const headEnc = new Encoder();
     const timeSent = clock.now();
-    const head: IRespHead = { status, timeRcvd, timeSent };
+    const subscription = nullSubMeta;
+    const head: IRespHead = { status, timeRcvd, timeSent, subscription };
     const statEnc = headEnc.writeStruct(respHeadCodec, head);
     if (statEnc !== Status.Success) {
       return err(statEnc);

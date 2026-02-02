@@ -299,6 +299,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         host,
         clock,
         transport,
+        () => Promise.resolve(Status.Success), // TODO: implement for real.
       );
       await conn.register();
       if (listen) {

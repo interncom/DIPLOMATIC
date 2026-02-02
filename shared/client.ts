@@ -57,11 +57,16 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       return err(statCall);
     }
 
-    // Update host metadata based on response header.
+    // Process response.
     const [head, statHead] = dec.readStruct(respHeadCodec);
     if (statHead !== Status.Success) {
       return err(statHead);
     }
+    if (head.status !== Status.Success) {
+      return err(head.status);
+    }
+
+    // Update host metadata based on response header.
     const clockOffset = offset(timeSent, head.timeRcvd, head.timeSent, timeRcvd);
     const meta: IHostMetadata = { clockOffset, subscription: head.subscription };
     const statMeta = await this.updateHostMeta(meta);
@@ -70,9 +75,6 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     }
 
     // Return response.
-    if (head.status !== Status.Success) {
-      return err(head.status);
-    }
     return endpoint.decodeResp(dec);
   }
 

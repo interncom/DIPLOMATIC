@@ -27,6 +27,7 @@ export type IUpsertParams<T> = IInsertParams<T> & { eid?: EntityID; clk?: Date }
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
   hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
+  subMeta: (pubKey: PublicKey) => Promise<ValStat<ISubscriptionMetadata>>;
   setBag: (
     pubKey: PublicKey,
     recordedAt: Date,
@@ -179,6 +180,7 @@ export interface ISubscriptionMetadata {
   // "dynamic" usage, i.e. time (bandwidth, CPU time, ...).
   dyn: IUsageQuota;
 }
+export const nullSubMeta: ISubscriptionMetadata = { term: 0, elapsed: 0, stat: { quota: 0 }, dyn: { quota: 0 } };
 
 export interface IHostMetadata {
   subscription: ISubscriptionMetadata;

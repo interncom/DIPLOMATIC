@@ -20,6 +20,12 @@ export const respHeadCodec: ICodecStruct<IRespHead> = {
     enc.writeBytes(new Uint8Array([head.status]));
     enc.writeDate(head.timeRcvd);
     enc.writeDate(head.timeSent);
+
+    enc.writeVarInt(head.subscription.term);
+    enc.writeVarInt(head.subscription.elapsed);
+    enc.writeStruct(usageQuotaCodec, head.subscription.stat);
+    enc.writeStruct(usageQuotaCodec, head.subscription.dyn);
+
     return Status.Success;
   },
   decode(dec) {

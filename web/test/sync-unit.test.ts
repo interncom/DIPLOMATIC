@@ -65,6 +65,7 @@ describe("syncPeek", () => {
       host,
       clock,
       transport,
+      () => Promise.resolve(Status.Success),
     );
     const keys = await conn.keys();
     const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
@@ -108,6 +109,7 @@ describe("syncPush", () => {
       host,
       clock,
       transport,
+      () => Promise.resolve(Status.Success),
     );
     const keys = await conn.keys();
     const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
@@ -168,6 +170,7 @@ describe("syncPull", () => {
       host,
       clock,
       transport,
+      () => Promise.resolve(Status.Success),
     );
     const keys = await conn.keys();
     const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);

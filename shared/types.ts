@@ -2,6 +2,7 @@ import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
+import { IUsageQuota } from "./codecs/usageQuota.ts";
 import { APICallName, Status } from "./consts.ts";
 import { ValStat } from "./valstat.ts";
 
@@ -161,6 +162,27 @@ export interface IHostConnectionInfo<Handle extends HostHandle> {
   handle: Handle;
   label: string;
   idx: number;
+}
+
+// About 30 bytes.
+export interface ISubscriptionMetadata {
+  // Duration of subscrption term in milliseconds.
+  // 0 indicates an indefinite term (either lifetime or pay-as-you-go).
+  term: number;
+
+  // Milliseconds since start of term.
+  elapsed: number;
+
+  // "static" usage, i.e. storage.
+  stat: IUsageQuota;
+
+  // "dynamic" usage, i.e. time (bandwidth, CPU time, ...).
+  dyn: IUsageQuota;
+}
+
+export interface IHostMetadata {
+  subscription: ISubscriptionMetadata;
+  clockOffset: number;
 }
 
 export interface ITransport {

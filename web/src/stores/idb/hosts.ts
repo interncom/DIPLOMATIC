@@ -81,7 +81,7 @@ export class IDBHostStore implements IHostStore<URL> {
     if (!row) {
       return Status.NotFound;
     }
-    this.set(label, { ...row, ...meta });
+    this.put({ ...row, ...meta });
     return Status.Success;
   }
 

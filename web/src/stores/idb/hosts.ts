@@ -1,6 +1,5 @@
 import { Status } from "../../shared/consts";
 import { IHostConnectionInfo, IHostMetadata } from "../../shared/types";
-import { err } from "../../shared/valstat";
 import type { IHostRow, IHostStore } from "../../types";
 import { HOSTS_TABLE } from "./store";
 
@@ -10,6 +9,8 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
     handle: new URL(row.handle),
     idx: row.idx,
     lastSyncedAt: row.lastSyncedAt,
+    clockOffset: row.clockOffset,
+    subscription: row.subscription,
   };
   return host;
 }

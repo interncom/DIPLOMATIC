@@ -8,7 +8,7 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
     label: row.label,
     handle: new URL(row.handle),
     idx: row.idx,
-    lastSyncedAt: row.lastSyncedAt,
+    lastSeq: row.lastSeq || 0,
     clockOffset: row.clockOffset,
     subscription: row.subscription,
   };
@@ -27,12 +27,12 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   private async put(
-    info: Omit<IHostRow<URL>, "lastSyncedAt"> & { lastSyncedAt?: Date },
+    info: Omit<IHostRow<URL>, "lastSeq"> & { lastSeq?: number },
   ) {
     const host = {
       ...info,
       handle: info.handle.toString(),
-      lastSyncedAt: info.lastSyncedAt ?? new Date(0),
+      lastSeq: info.lastSeq ?? 0,
     };
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
@@ -43,7 +43,7 @@ export class IDBHostStore implements IHostStore<URL> {
     });
   }
 
-  async touch(label: string, now: Date) {
+  async touch(label: string, seq: number) {
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
@@ -55,7 +55,7 @@ export class IDBHostStore implements IHostStore<URL> {
         if (row) {
           const next = {
             ...row,
-            lastSyncedAt: now,
+            lastSeq: seq,
           };
           store.put(next);
         }

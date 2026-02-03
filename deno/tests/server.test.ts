@@ -124,7 +124,7 @@ Deno.test("server", async (t) => {
   });
 
   await t.step("POST /peek", async () => {
-    const [peekedHeaders, peekStatus] = await client.peek(new Date(0));
+    const [peekedHeaders, peekStatus] = await client.peek(0);
     assertEquals(peekStatus, Status.Success);
 
     // Should have 2 items

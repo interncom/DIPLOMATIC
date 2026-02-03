@@ -39,7 +39,7 @@ export interface ISeedStore {
 
 export interface IHostRow<Handle extends HostHandle>
   extends IHostConnectionInfo<Handle>, Partial<IHostMetadata> {
-  lastSyncedAt: Date;
+  lastSeq: number;
 }
 
 // IHostStore handles persistence of hosts table.
@@ -50,7 +50,7 @@ export interface IHostStore<Handle extends HostHandle> {
   set: (label: string, meta: IHostMetadata) => Promise<Status>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
-  touch: (label: string, now: Date) => Promise<void>;
+  touch: (label: string, seq: number) => Promise<void>;
 }
 
 // What to index msgs on?

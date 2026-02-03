@@ -49,7 +49,7 @@ describe("syncPeek", () => {
     store = new MemoryStore();
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
-    host = { label: "test", idx: 1, lastSyncedAt: new Date(0) };
+    host = { label: "test", idx: 1, lastSyncedAt: new Date(0), lastSeq: 0 };
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(

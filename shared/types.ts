@@ -77,15 +77,14 @@ export interface IStorage {
     recordedAt: Date,
     bag: IBag,
     sha256: Uint8Array,
-  ) => Promise<ValStat<void>>;
+  ) => Promise<ValStat<number>>;
   getBody: (
     pubKey: PublicKey,
     sha256: Uint8Array,
   ) => Promise<ValStat<Uint8Array | undefined>>;
   listHeads: (
     pubKey: PublicKey,
-    begin: string,
-    end: string,
+    minSeq: number,
   ) => Promise<ValStat<IBagPeekItem[]>>;
 }
 

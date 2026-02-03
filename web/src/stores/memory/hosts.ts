@@ -13,19 +13,19 @@ export class MemoryHostStore<Handle extends HostHandle>
   async add(info: IHostConnectionInfo<Handle>) {
     const host: IHostRow<Handle> = {
       ...info,
-      lastSyncedAt: new Date(0),
+      lastSeq: 0,
     };
     this.hosts.set(info.label, host);
   }
 
-  async touch(label: string, now: Date) {
+  async touch(label: string, seq: number) {
     const host = await this.get(label);
     if (!host) {
       return;
     }
     const next: IHostRow<Handle> = {
       ...host,
-      lastSyncedAt: now,
+      lastSeq: seq,
     };
     this.hosts.set(label, next);
   }

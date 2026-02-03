@@ -12,11 +12,26 @@ export type EntityID = Uint8Array;
 export type SerializedContent = Uint8Array;
 
 export interface IMessageHead {
+  // eid will generally be a random identifier.
   eid: Uint8Array;
+
+  // clk is the creation timestamp of the entity.
   clk: Date;
+
+  // [eid, clk] combined form a unique identifier of an entity.
+  // This reduces the length required for eid to distinguish entities.
+  // They only need to be distinct within the millisecond of creation (clk).
+
+  // off is the number of milliseconds since entity creation (clk).
   off: number;
+
+  // ctr is the prior max(ctr) + 1 for messages updating this entity.
   ctr: number;
+
+  // len is the number of bytes in the message body (0 for deletes).
   len: number;
+
+  // hsh is the blake3 hash of the message body.
   hsh?: Uint8Array;
 }
 

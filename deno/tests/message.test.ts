@@ -6,7 +6,7 @@ import {
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
 import { Status } from "../../shared/consts.ts";
-import { genDelete, genUpsert } from "../../shared/message.ts";
+import { genDelete } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { IMessage } from "../../shared/types.ts";
 
@@ -110,7 +110,13 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("delete operation (len=0, no body)", async () => {
-    const op = genDelete(createFilledArray(16, 0x33), new Date(0), 999, 0);
+    const op = await genDelete({
+      eid: createFilledArray(16, 0x33),
+      clk: new Date(0),
+      ctr: 999,
+      now: new Date(),
+      crypto: libsodiumCrypto,
+    });
     const hsh = undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
@@ -182,19 +188,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined);
     assertEquals(decoded.hsh, undefined); // No hsh for empty body
-  });
-
-  await t.step("genUpsert", () => {
-    const eid = createFilledArray(16, 0x55);
-    const clk = new Date(999999999000);
-    const ctr = 777;
-    const content = createFilledArray(20, 0x77);
-    const op = genUpsert(eid, clk, ctr, 0, content);
-    assertEquals(op.eid, eid);
-    assertEquals(op.clk, clk);
-    assertEquals(op.ctr, ctr);
-    assertEquals(op.len, content.length);
-    assertEquals(op.bod, content);
   });
 
   await t.step("message head decode with insufficient data", async () => {

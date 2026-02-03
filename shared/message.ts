@@ -15,36 +15,29 @@ interface IDeleteMessage extends Omit<IMessage, "bod"> {
 
 export type EncodedMessage = Uint8Array;
 
-// TODO: reorganize these and use to implement corresponding methods on neoclient.
-export async function genInsert(
-  now: Date,
-  content: SerializedContent,
-  crypto: ICrypto,
-): Promise<IUpsertMessage> {
-  const eidFull = await crypto.gen128BitRandomID();
-  const eid = eidFull.slice(0, 8);
-  return genUpsert(eid, now, 0, 0, content);
+interface IInsertParams {
+  now: Date;
+  bod: SerializedContent;
+  crypto: ICrypto;
 }
 
 export async function genInsertHead(
-  now: Date,
-  bod: SerializedContent,
-  crypto: ICrypto,
+  { now, bod, crypto }: IInsertParams,
 ): Promise<IMessageHead> {
   const eidFull = await crypto.gen128BitRandomID();
   const eid = eidFull.slice(0, 8);
-  return genUpsertHead(now, eid, now, 0, bod, crypto);
+  return genUpsertHead({ now, eid, clk: now, ctr: 0, bod, crypto });
+}
+
+interface IUpsertParams extends Omit<IMessage, "off" | "len" | "hsh"> {
+  now: Date;
+  crypto: ICrypto;
 }
 
 // NOTE: if using a non-random eid from multiple devices independently,
 // set clk to 0 to ensure they all point to the same entity.
 export async function genUpsertHead(
-  now: Date,
-  eid: Uint8Array,
-  clk: Date,
-  ctr: number,
-  bod: SerializedContent | undefined,
-  crypto: ICrypto,
+  { now, eid, clk, ctr, bod, crypto }: IUpsertParams,
 ): Promise<IMessageHead> {
   const off = now.getTime() - clk.getTime();
   let hsh: Uint8Array | undefined;
@@ -55,32 +48,28 @@ export async function genUpsertHead(
   return { eid, clk, off, ctr, len, hsh };
 }
 
-export function genUpsert(
-  eid: Uint8Array,
-  clk: Date,
-  ctr: number,
-  off: number,
-  bod: SerializedContent,
-): IUpsertMessage {
-  const len = bod.length;
-  return { eid, clk, off, ctr, len, bod };
-}
-
-export function genDelete(
-  eid: Uint8Array,
-  clk: Date,
-  ctr: number,
-  off: number,
-): IDeleteMessage {
-  return { eid, clk, off, ctr, len: 0 };
+interface IDeleteParams extends Omit<IMessage, "off" | "len" | "hsh" | "bod"> {
+  now: Date;
+  crypto: ICrypto;
 }
 
 export function genDeleteHead(
-  now: Date,
-  eid: Uint8Array,
-  clk: Date,
-  ctr: number,
-  crypto: ICrypto,
+  { now, eid, clk, ctr, crypto }: IDeleteParams,
 ): Promise<IMessageHead> {
-  return genUpsertHead(now, eid, clk, ctr, undefined, crypto);
+  return genUpsertHead({ now, eid, clk, ctr, bod: undefined, crypto });
+}
+
+// Test helpers.
+export async function genInsert(
+  { now, bod, crypto }: IInsertParams,
+): Promise<IUpsertMessage> {
+  const head = await genInsertHead({ now, bod, crypto });
+  return { ...head, bod };
+}
+
+export async function genDelete(
+  params: IDeleteParams,
+): Promise<IDeleteMessage> {
+  const { eid, clk, off, ctr } = await genDeleteHead(params);
+  return { eid, clk, off, ctr, len: 0 };
 }

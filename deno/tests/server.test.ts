@@ -94,9 +94,9 @@ Deno.test("server", async (t) => {
   });
 
   // Test PUSH
-  const content = denoMsgpack.encode("test operation data");
-  const op1 = await genInsert(now, content, libsodiumCrypto);
-  const op2 = await genInsert(now, content, libsodiumCrypto);
+  const bod = denoMsgpack.encode("test operation data");
+  const op1 = await genInsert({ now, bod, crypto: libsodiumCrypto });
+  const op2 = await genInsert({ now, bod, crypto: libsodiumCrypto });
   const bags = [await client.seal(op1), await client.seal(op2)];
   let result: Array<{ status: number; hash: Uint8Array }>;
   await t.step("POST /ops", async () => {

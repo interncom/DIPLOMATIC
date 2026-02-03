@@ -1,7 +1,6 @@
 # TODOS
 
 GENERAL
-- make params to genUpsertHead, etc... be objects rather than positional
 - Fix all `// TODO:` in codebase
 
 ARCH

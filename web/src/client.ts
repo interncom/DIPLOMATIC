@@ -99,17 +99,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return stat;
   }
 
-  public async insertRaw(body: EncodedMessage) {
+  public async insertRaw(bod: EncodedMessage) {
     const { clock, crypto } = this;
-    const head = await genInsertHead(clock.now(), body, crypto);
-    await this.apply(head, body);
+    const head = await genInsertHead({ now: clock.now(), bod, crypto });
+    await this.apply(head, bod);
     return ok(head);
   }
 
   public async upsertRaw(
     eid: EntityID,
     clk: Date,
-    body: EncodedMessage | undefined,
+    bod: EncodedMessage | undefined,
     force = false,
   ) {
     const { clock, crypto, store } = this;
@@ -138,24 +138,23 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           return err<IMessageHead>(statDel);
         }
 
-        if (body === undefined) {
+        if (bod === undefined) {
           // This upsert was a delete.
           // Therefore, we're done.
           // There's no replacement left to insert.
           return ok(delHead);
         }
 
-        // Replace with a new msg that retains the old id.
-        // The clk portion of the ID will be now.
-        const clkRepl = now;
-        const repl = await genUpsertHead(now, eid, clkRepl, 0, body, crypto);
-        await this.apply(repl, body);
+        // Replace with a new msg that retains the old eid but clk of now.
+        const replParams = { now, eid, clk: now, ctr: 0, bod, crypto };
+        const repl = await genUpsertHead(replParams);
+        await this.apply(repl, bod);
         return ok(repl);
       }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = await genUpsertHead(now, eid, clk, ctr, body, crypto);
-    await this.apply(msg, body);
+    const msg = await genUpsertHead({ now, eid, clk, ctr, bod, crypto });
+    await this.apply(msg, bod);
     return ok(msg);
   }
 

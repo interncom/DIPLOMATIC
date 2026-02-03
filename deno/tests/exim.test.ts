@@ -129,7 +129,13 @@ Deno.test("encodeFile", async (t) => {
   await t.step("single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
     const now = new Date();
-    const head: IMessageHead = await genDeleteHead(now, eid, now, 1, crypto);
+    const head: IMessageHead = await genDeleteHead({
+      now,
+      eid,
+      clk: now,
+      ctr: 1,
+      crypto,
+    });
     const msgs = [{ head }];
     const [fileData, statFile] = await encodeFile(
       "test-label",
@@ -157,14 +163,14 @@ Deno.test("encodeFile", async (t) => {
     const eid = await crypto.gen128BitRandomID();
     const body = new TextEncoder().encode("test body");
     const now = new Date();
-    const head: IMessageHead = await genUpsertHead(
+    const head: IMessageHead = await genUpsertHead({
       now,
       eid,
-      now,
-      1,
-      body,
+      clk: now,
+      ctr: 1,
+      bod: body,
       crypto,
-    );
+    });
     const msgs = [{ head, body }];
     const [fileData, statFile] = await encodeFile(
       "test-label",
@@ -196,14 +202,14 @@ Deno.test("encodeFile", async (t) => {
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;
       const now = new Date();
-      const head: IMessageHead = await genUpsertHead(
+      const head: IMessageHead = await genUpsertHead({
         now,
         eid,
-        now,
-        i,
-        body || new Uint8Array(0),
+        clk: now,
+        ctr: i,
+        bod: body || new Uint8Array(0),
         crypto,
-      );
+      });
       msgs.push({ head, body });
     }
     const [fileData, statFile] = await encodeFile(
@@ -248,7 +254,7 @@ Deno.test("decodeFile", async (t) => {
   await t.step("round-trip single message without body", async () => {
     const eid = await crypto.gen128BitRandomID();
     const now = new Date();
-    const head = await genDeleteHead(now, eid, now, 1, crypto);
+    const head = await genDeleteHead({ now, eid, clk: now, ctr: 1, crypto });
     const msgs = [{ head }];
     const [file, statEnc] = await encodeFile(lbl, 0, msgs, crypto, enclave);
     assertEquals(statEnc, Status.Success);
@@ -268,14 +274,14 @@ Deno.test("decodeFile", async (t) => {
     const eid = await crypto.gen128BitRandomID();
     const body = new TextEncoder().encode("test body");
     const now = new Date();
-    const head: IMessageHead = await genUpsertHead(
+    const head: IMessageHead = await genUpsertHead({
       now,
       eid,
-      now,
-      1,
-      body,
+      clk: now,
+      ctr: 1,
+      bod: body,
       crypto,
-    );
+    });
     const originalMsgs = [{ head, body }];
     const [fileData, statEnc] = await encodeFile(
       lbl,
@@ -305,14 +311,14 @@ Deno.test("decodeFile", async (t) => {
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;
       const now = new Date();
-      const head: IMessageHead = await genUpsertHead(
+      const head: IMessageHead = await genUpsertHead({
         now,
         eid,
-        now,
-        i,
-        body || new Uint8Array(0),
+        clk: now,
+        ctr: i,
+        bod: body || new Uint8Array(0),
         crypto,
-      );
+      });
       msgs.push({ head, body });
     }
     const [file, statEnc] = await encodeFile(lbl, 1, msgs, crypto, enclave);

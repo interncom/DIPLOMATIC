@@ -1,7 +1,7 @@
 import { max, min } from "../lib";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
-import { ValStat } from "../shared/valstat.ts";
+import { err, ok, ValStat } from "../shared/valstat.ts";
 import { StateManager } from "../state.ts";
 
 export interface IEntity<T> {
@@ -12,7 +12,7 @@ export interface IEntity<T> {
   updatedAt: Date;
   updatedCtr: number;
   createdAt: Date;
-  body: T;
+  body: T | undefined;
 }
 
 const nullEnt: IEntity<undefined> = {
@@ -53,19 +53,19 @@ export function entStateManager(edb: IEntDB): StateManager {
   return new StateManager(edb.apply, edb.clear);
 }
 
-export function updateEnt(
-  curr: IEntity<unknown> | undefined,
-  op: IOp,
-): [IEntity<unknown>, Status] {
+export function updateEnt<T = unknown>(
+  curr: IEntity<T> | undefined,
+  op: IOp<T>,
+): ValStat<IEntity<T>> {
   const messageTs = new Date(op.clk.getTime() + op.off);
   if (curr && messageTs <= curr.createdAt) {
-    return [nullEnt, Status.NoChange];
+    return err(Status.NoChange);
   }
 
   if (curr && curr.createdAt.getTime() !== op.clk.getTime()) {
     // CLK is part of the entity ID.
     // If CLK's don't match, they are not the same entity.
-    return [nullEnt, Status.NotFound];
+    return err(Status.NotFound);
   }
   const createdTs = op.clk.getTime();
 
@@ -95,7 +95,7 @@ export function updateEnt(
       op.ctr > (curr.updatedCtr ?? 0));
   const body = isOpNewer ? op.body : curr.body;
 
-  const ent: IEntity<unknown> = {
+  const ent: IEntity<T> = {
     eid: op.eid,
     gid: isOpNewer ? op.gid : curr.gid,
     pid: isOpNewer ? op.pid : curr.pid,
@@ -106,7 +106,7 @@ export function updateEnt(
     body,
   };
 
-  return [ent, Status.Success];
+  return ok(ent);
 }
 
 export const nullEntDB: IEntDB = {

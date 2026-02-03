@@ -7,7 +7,6 @@ ARCH
 - client override server skewed push rejection with a force flag (update push codec)
 
 - replace host hash with seq
-- generalize crypto random bytes function to genRandomBytes(numBytes)
 - change updateEnt to return a ValStat<IEntity<T = unknown>>
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
 - put upper bounds on all var-int lengths

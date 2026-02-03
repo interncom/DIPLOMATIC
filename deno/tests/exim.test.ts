@@ -14,8 +14,8 @@ import type {
 
 // Mock implementations for deterministic testing
 class MockCrypto implements ICrypto {
-  async gen128BitRandomID(): Promise<Uint8Array> {
-    return new Uint8Array(16).fill(0xAA);
+  async genRandomBytes(bytes: number): Promise<Uint8Array> {
+    return new Uint8Array(bytes).fill(0xAA);
   }
 
   async gen256BitSecureRandomSeed(): Promise<Uint8Array> {
@@ -127,7 +127,7 @@ Deno.test("encodeFile", async (t) => {
   });
 
   await t.step("single message without body", async () => {
-    const eid = await crypto.gen128BitRandomID();
+    const eid = await crypto.genRandomBytes(16);
     const now = new Date();
     const head: IMessageHead = await genDeleteHead({
       now,
@@ -160,7 +160,7 @@ Deno.test("encodeFile", async (t) => {
   });
 
   await t.step("single message with body", async () => {
-    const eid = await crypto.gen128BitRandomID();
+    const eid = await crypto.genRandomBytes(16);
     const body = new TextEncoder().encode("test body");
     const now = new Date();
     const head: IMessageHead = await genUpsertHead({
@@ -197,7 +197,7 @@ Deno.test("encodeFile", async (t) => {
   await t.step("multiple messages", async () => {
     const msgs: Array<{ head: IMessageHead; body?: Uint8Array }> = [];
     for (let i = 0; i < 3; i++) {
-      const eid = await crypto.gen128BitRandomID();
+      const eid = await crypto.genRandomBytes(16);
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;
@@ -252,7 +252,7 @@ Deno.test("decodeFile", async (t) => {
   });
 
   await t.step("round-trip single message without body", async () => {
-    const eid = await crypto.gen128BitRandomID();
+    const eid = await crypto.genRandomBytes(16);
     const now = new Date();
     const head = await genDeleteHead({ now, eid, clk: now, ctr: 1, crypto });
     const msgs = [{ head }];
@@ -271,7 +271,7 @@ Deno.test("decodeFile", async (t) => {
   });
 
   await t.step("round-trip single message with body", async () => {
-    const eid = await crypto.gen128BitRandomID();
+    const eid = await crypto.genRandomBytes(16);
     const body = new TextEncoder().encode("test body");
     const now = new Date();
     const head: IMessageHead = await genUpsertHead({
@@ -306,7 +306,7 @@ Deno.test("decodeFile", async (t) => {
   await t.step("round-trip multiple messages", async () => {
     const msgs: Array<{ head: IMessageHead; body?: Uint8Array }> = [];
     for (let i = 0; i < 3; i++) {
-      const eid = await crypto.gen128BitRandomID();
+      const eid = await crypto.genRandomBytes(16);
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
         : undefined;

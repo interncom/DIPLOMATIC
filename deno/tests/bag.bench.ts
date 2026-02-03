@@ -36,7 +36,7 @@ async function bench(size: number, suffix: string) {
   const bod = size === 16
     ? new TextEncoder().encode("HELLO DIPLOMATIC")
     : createBod(size);
-  const eid = await crypto.gen128BitRandomID();
+  const eid = await crypto.genRandomBytes(16);
   const op: IMessage = {
     eid,
     clk: new Date(),

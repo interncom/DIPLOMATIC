@@ -83,7 +83,7 @@ Deno.test("bag", async (t) => {
     ) as HostSpecificKeyPair;
 
     // Create a test message
-    const eid = await crypto.gen128BitRandomID();
+    const eid = await crypto.genRandomBytes(16);
     const bod = new TextEncoder().encode("HELLO DIPLOMATIC");
     const msg: IMessage = {
       eid,

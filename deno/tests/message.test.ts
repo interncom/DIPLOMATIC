@@ -273,6 +273,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const encoded = concat(eid, concat(clkBytes, invalidVarint));
     const dec = new Decoder(encoded);
     const [, status] = messageHeadCodec.decode(dec);
-    assertEquals(status, Status.InvalidMessage);
+    assertEquals(status, Status.VarLimitExceeded);
   });
 });

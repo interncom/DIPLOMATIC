@@ -25,7 +25,6 @@ ENTDB
 ERRORS
 - allow a ValStat to hold a list of Status codes, to capture the full stack (err can wrap an err(stat) return val) or is that too implementation specific? maybe better to have a location embedded within the status byte (or just more granular codes)
 - (make a stringifier for status enum for console logs maybe)
-- return ValStats from entdb queries
 
 TESTS
 - test import/export at client level

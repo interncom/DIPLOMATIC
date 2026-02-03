@@ -1,5 +1,4 @@
 import type {
-  EntityID,
   ICrypto,
   IMessage,
   IMessageHead,
@@ -15,7 +14,6 @@ interface IDeleteMessage extends Omit<IMessage, "bod"> {
 }
 
 export type EncodedMessage = Uint8Array;
-export type EncryptedMessage = Uint8Array;
 
 // TODO: reorganize these and use to implement corresponding methods on neoclient.
 export async function genInsert(
@@ -30,75 +28,56 @@ export async function genInsert(
 
 export async function genInsertHead(
   now: Date,
-  content: SerializedContent,
+  bod: SerializedContent,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
   const eidFull = await crypto.gen128BitRandomID();
   const eid = eidFull.slice(0, 8);
-  return genUpsertHead(now, eid, now, 0, content, crypto);
+  return genUpsertHead(now, eid, now, 0, bod, crypto);
 }
 
 // NOTE: if using a non-random eid from multiple devices independently,
-// set creationClk to 0 to ensure they all point to the same entity.
+// set clk to 0 to ensure they all point to the same entity.
 export async function genUpsertHead(
   now: Date,
-  eid: EntityID,
-  creationClk: Date,
+  eid: Uint8Array,
+  clk: Date,
   ctr: number,
-  content: SerializedContent | undefined,
+  bod: SerializedContent | undefined,
   crypto: ICrypto,
 ): Promise<IMessageHead> {
-  const off = now.getTime() - creationClk.getTime();
+  const off = now.getTime() - clk.getTime();
   let hsh: Uint8Array | undefined;
-  const len = content?.length ?? 0;
-  if (content && len > 0) {
-    hsh = await crypto.blake3(content);
+  const len = bod?.length ?? 0;
+  if (bod && len > 0) {
+    hsh = await crypto.blake3(bod);
   }
-  return {
-    eid,
-    clk: creationClk,
-    off,
-    ctr,
-    len,
-    hsh,
-  };
+  return { eid, clk, off, ctr, len, hsh };
 }
 
 export function genUpsert(
-  eid: EntityID,
+  eid: Uint8Array,
   clk: Date,
   ctr: number,
   off: number,
-  content: SerializedContent,
+  bod: SerializedContent,
 ): IUpsertMessage {
-  return {
-    eid,
-    clk,
-    off,
-    ctr,
-    len: content.length,
-    bod: content,
-  };
+  const len = bod.length;
+  return { eid, clk, off, ctr, len, bod };
 }
 
 export function genDelete(
-  eid: EntityID,
+  eid: Uint8Array,
   clk: Date,
   ctr: number,
   off: number,
 ): IDeleteMessage {
-  return {
-    eid,
-    clk,
-    off,
-    ctr,
-    len: 0,
-  };
+  return { eid, clk, off, ctr, len: 0 };
 }
 
 export function genDeleteHead(
   now: Date,
-  eid: EntityID,
+  eid: Uint8Array,
   clk: Date,
   ctr: number,
   crypto: ICrypto,

@@ -131,7 +131,6 @@ Deno.test("server", async (t) => {
     assertEquals((peekedHeaders as IBagPeekItem[]).length, 2);
     for (const header of peekedHeaders as IBagPeekItem[]) {
       assertEquals(header.hash.length, 32);
-      assert(header.recordedAt instanceof Date);
       assert(header.headCph.length > 0);
     }
   });

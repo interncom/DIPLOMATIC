@@ -77,10 +77,9 @@ const memStorage: IMemoryStorage = {
       if (item.pubKeyHex === pubKeyHex && item.seq > minSeq) {
         const sha256 = htob(key);
         list.push({
-          hash: sha256,
-          recordedAt: item.recordedAt,
-          headCph: item.headCph,
           seq: item.seq,
+          hash: sha256,
+          headCph: item.headCph,
         });
       }
     }

@@ -3,31 +3,27 @@ import { hashBytes, Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
 
 export interface IBagPeekItem {
-  hash: Uint8Array;
-  recordedAt: Date;
-  headCph: Uint8Array;
   seq: number;
+  hash: Uint8Array;
+  headCph: Uint8Array;
 }
 
 export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
   encode(enc, item) {
     enc.writeBytes(item.hash);
-    enc.writeDate(item.recordedAt);
-    const s = enc.writeVarBytes(item.headCph);
-    if (s !== Status.Success) return s;
-    const s5 = enc.writeVarInt(item.seq);
-    if (s5 !== Status.Success) return s5;
+    const s1 = enc.writeVarBytes(item.headCph);
+    if (s1 !== Status.Success) return s1;
+    const s2 = enc.writeVarInt(item.seq);
+    if (s2 !== Status.Success) return s2;
     return Status.Success;
   },
   decode(dec) {
     const [hash, s1] = dec.readBytes(hashBytes);
     if (s1 !== Status.Success) return err(s1);
-    const [recordedAt, s2] = dec.readDate();
+    const [headCph, s2] = dec.readVarBytes();
     if (s2 !== Status.Success) return err(s2);
-    const [headCph, s4] = dec.readVarBytes();
-    if (s4 !== Status.Success) return err(s4);
-    const [seq, s5] = dec.readVarInt();
-    if (s5 !== Status.Success) return err(s5);
-    return ok({ hash, recordedAt, headCph, seq });
+    const [seq, s3] = dec.readVarInt();
+    if (s3 !== Status.Success) return err(s3);
+    return ok({ hash, headCph, seq });
   },
 };

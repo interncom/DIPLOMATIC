@@ -38,6 +38,7 @@ export enum Status {
   OutOfBounds = 23,
   HostError = 24,
   CommunicationError = 25,
+  VarLimitExceeded = 26,
 }
 
 export enum APICallName {

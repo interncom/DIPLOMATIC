@@ -17,6 +17,9 @@ export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
   if (bytes.length === 0) {
     return ok(new Uint8Array([0]));
   }
+  if (bytes.length > 8) {
+    return err(Status.VarLimitExceeded);
+  }
   return ok(new Uint8Array(bytes));
 }
 
@@ -34,14 +37,17 @@ export function decodeVarInt(
     const byte = bytes[i++];
     result |= BigInt(byte & 0x7f) << BigInt(shift);
     if ((byte & 0x80) === 0) {
+      if (i - offset > 8) {
+        return err(Status.VarLimitExceeded);
+      }
       return ok({
         value: result > 0x1fffffffffffffn ? result : Number(result),
         bytesRead: i - offset,
       });
     }
     shift += 7;
-    if (shift >= 64) {
-      return err(Status.InvalidMessage);
+    if (shift >= 56) {
+      return err(Status.VarLimitExceeded);
     }
   }
 }

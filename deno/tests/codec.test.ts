@@ -291,7 +291,7 @@ Deno.test("roundtrip small numbers", () => {
 });
 
 Deno.test("roundtrip large number", () => {
-  const n = 0x7fffffffffffffffn;
+  const n = (1n << 56n) - 1n; // Max for 8-byte varInt
   const [encoded, encStatus] = encodeVarInt(n);
   assertEquals(encStatus, Status.Success);
   if (encStatus !== Status.Success) return;
@@ -332,7 +332,25 @@ Deno.test("decode_varint too long throws error", () => {
   const longVarint = new Uint8Array(10);
   longVarint.fill(0x80);
   const [res, status] = decodeVarInt(longVarint);
-  assertEquals(status, Status.InvalidMessage);
+  assertEquals(status, Status.VarLimitExceeded);
+  assertEquals(res, undefined);
+});
+
+Deno.test("encode_varint oversize throws VarLimitExceeded", () => {
+  // A number that requires more than 8 bytes to encode
+  const largeNum = 2n ** 60n; // Should need ~9 bytes
+  const [res, status] = encodeVarInt(largeNum);
+  assertEquals(status, Status.VarLimitExceeded);
+  assertEquals(res, undefined);
+});
+
+Deno.test("decode_varint oversize throws VarLimitExceeded", () => {
+  // Create a varint that is 9 bytes long
+  const nineByteVarint = new Uint8Array(9);
+  nineByteVarint.fill(0x80);
+  nineByteVarint[8] = 0; // Last byte no continuation
+  const [res, status] = decodeVarInt(nineByteVarint);
+  assertEquals(status, Status.VarLimitExceeded);
   assertEquals(res, undefined);
 });
 

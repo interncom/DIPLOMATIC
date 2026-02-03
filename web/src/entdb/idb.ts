@@ -159,9 +159,9 @@ export class EntIDB implements IEntDB {
     opType: string,
     start: Date,
     end: Date,
-  ): Promise<IEntity<T>[]> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
-      return [];
+      return err(Status.DatabaseClosed);
     }
     const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeUpdatedAtIndexName);
@@ -171,18 +171,18 @@ export class EntIDB implements IEntDB {
       );
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
-        resolve(storedEnts.map(storedToEntity));
+        resolve(ok(storedEnts.map(storedToEntity)));
       };
-      req.onerror = () => resolve([]);
+      req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
 
   async getGroupMembers<T>(
     opType: string,
     gid: GroupID,
-  ): Promise<IEntity<T>[]> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
-      return [];
+      return err(Status.DatabaseClosed);
     }
     const gidHex = typeof gid === "string" ? gid : btoh(gid);
     const tx = this.db.transaction(entityTableName, "readonly");
@@ -191,15 +191,15 @@ export class EntIDB implements IEntDB {
       const req = index.getAll(IDBKeyRange.only([opType, gidHex]));
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
-        resolve(storedEnts.map(storedToEntity));
+        resolve(ok(storedEnts.map(storedToEntity)));
       };
-      req.onerror = () => resolve([]);
+      req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
 
-  async getAllOfType<T>(opType: string): Promise<IEntity<T>[]> {
+  async getAllOfType<T>(opType: string): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
-      return [];
+      return err(Status.DatabaseClosed);
     }
     const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
@@ -209,9 +209,9 @@ export class EntIDB implements IEntDB {
       );
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
-        resolve(storedEnts.map(storedToEntity));
+        resolve(ok(storedEnts.map(storedToEntity)));
       };
-      req.onerror = () => resolve([]);
+      req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
 
@@ -235,18 +235,15 @@ export class EntIDB implements IEntDB {
         req.onerror = () => resolve(err(Status.DatabaseError));
       });
     } else if (gid !== undefined) {
-      const ents = await this.getGroupMembers<T>(type, gid);
-      return ok(ents);
+      return await this.getGroupMembers<T>(type, gid);
     } else if (updatedBetween !== undefined) {
-      const ents = await this.getAllOfTypeUpdatedBetween<T>(
+      return await this.getAllOfTypeUpdatedBetween<T>(
         type,
         updatedBetween.start,
         updatedBetween.end,
       );
-      return ok(ents);
     }
-    const ents = await this.getAllOfType<T>(type);
-    return ok(ents);
+    return await this.getAllOfType<T>(type);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {

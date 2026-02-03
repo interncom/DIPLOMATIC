@@ -1,4 +1,4 @@
-import { max, min } from "../lib";
+import { max } from "../lib";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";

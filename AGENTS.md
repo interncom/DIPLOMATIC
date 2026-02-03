@@ -25,5 +25,4 @@ Prefer terse variable names, even at the expense of immediate readability to an 
   - `deno bench` from `deno` dir.
   
 - Format the code.
-  - `deno fmt` in the `deno` dir.
-  - `deno fmt` in the `web` dir.
+  - `deno fmt <FILENAME>` for the specific files you edit.

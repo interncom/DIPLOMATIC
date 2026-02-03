@@ -1,8 +1,7 @@
 import { TypedEventEmitter } from "./events";
 import type { Applier, IStateManager } from "./types";
-import { IMessage } from "./shared/message";
 import { Status } from "./shared/consts";
-import { EntityID, GroupID, IOp } from "./shared/types";
+import { EntityID, GroupID, IMessage, IOp } from "./shared/types";
 import { decode } from "@msgpack/msgpack";
 
 export interface IMsgEntBody {

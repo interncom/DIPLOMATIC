@@ -7,8 +7,7 @@ import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { IMessageHead } from "./message.ts";
-import { HostSpecificKeyPair, ICrypto } from "./types.ts";
+import { HostSpecificKeyPair, ICrypto, IMessageHead } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 /* File format
@@ -78,7 +77,9 @@ export async function encodeFile(
       ? await crypto.encryptXSalsa20Poly1305Combined(msg.body, key)
       : new Uint8Array(0);
 
-    const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined ? bodyCph.length : 0;
+    const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined
+      ? bodyCph.length
+      : 0;
     const item: IFileIndexItem = {
       kdm,
       headCph,
@@ -173,10 +174,18 @@ export async function decodeFile(
     let itemBodyEnc: Uint8Array | undefined;
     if (item.lenBody > 0 && item.offBody !== undefined) {
       if (msgHead.hsh === undefined) return err(Status.InvalidMessage);
-      const itemBodyCph = bodyEnc.slice(item.offBody, item.offBody + item.lenBody);
-      itemBodyEnc = await crypto.decryptXSalsa20Poly1305Combined(itemBodyCph, key);
+      const itemBodyCph = bodyEnc.slice(
+        item.offBody,
+        item.offBody + item.lenBody,
+      );
+      itemBodyEnc = await crypto.decryptXSalsa20Poly1305Combined(
+        itemBodyCph,
+        key,
+      );
       const hashItemBody = await crypto.blake3(itemBodyEnc);
-      if (!bytesEqual(hashItemBody, msgHead.hsh)) return err(Status.HashMismatch);
+      if (!bytesEqual(hashItemBody, msgHead.hsh)) {
+        return err(Status.HashMismatch);
+      }
       // TODO: per-item failure codes. Allow partial import.
     }
 

@@ -31,7 +31,8 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
 
   // Mock makeAuthTimestamp globally
   const originalMakeAuthTimestamp = (globalThis as any).makeAuthTimestamp;
-  (globalThis as any).makeAuthTimestamp = async () => ({ sig: new Uint8Array(64), ts: new Date() } as any);
+  (globalThis as any).makeAuthTimestamp =
+    async () => ({ sig: new Uint8Array(64), ts: new Date() } as any);
 
   const mockTransport = {
     call: async (_name: any, _enc: Encoder) => {
@@ -69,12 +70,16 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
   );
 
   // Mock the keys method
-  (client as any).keys = async () => ({ pubKey: new Uint8Array(32), privKey: new Uint8Array(32) } as any);
+  (client as any).keys = async () => ({
+    pubKey: new Uint8Array(32),
+    privKey: new Uint8Array(32),
+  } as any);
 
   // Mock endpoint for register
   const mockEndpoint = {
     encodeReq: async () => Status.Success,
-    decodeResp: (dec: Decoder) => [undefined, Status.Success] as ValStat<undefined>,
+    decodeResp: (dec: Decoder) =>
+      [undefined, Status.Success] as ValStat<undefined>,
   };
 
   // Call a method that triggers call

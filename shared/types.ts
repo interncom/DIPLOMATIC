@@ -9,11 +9,37 @@ import { ValStat } from "./valstat.ts";
 export type GroupID = Uint8Array | string;
 export type EntityID = Uint8Array;
 
-export interface IOp<T = unknown> {
+export type SerializedContent = Uint8Array;
+
+export interface IMessageHead {
+  eid: Uint8Array;
   clk: Date;
   off: number;
   ctr: number;
-  eid: EntityID;
+  len: number;
+  hsh?: Uint8Array;
+}
+
+// IMessage is the atomic unit of data in DIPLOMATIC.
+// A message contains the metadata necessary for clients to sort messages and
+// apply them in-order, producing a global, eventually-consistent data state
+// across the distributed system.
+// The header of the message contains that metadata.
+// The body of a message (bod) is contains application-specific information.
+export interface IMessage extends IMessageHead {
+  bod?: SerializedContent;
+}
+
+export interface IMessageWithHash extends IMessage {
+  headHash: Hash;
+}
+
+// IOp is an update to application state.
+// Each IOp is a complete overwrite of an "entity" specified by [eid, clk].
+// It reuses the header information from a message to identify a specific
+// entity, with created at timestamp (clk) and updated at timestamp (clk + off).
+// An IOp additionally has type, gid, and pid fields for indexing the entity.
+export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh"> {
   // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
   gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   pid?: EntityID; // Optional parent ID to support hierarchical structure.
@@ -22,7 +48,10 @@ export interface IOp<T = unknown> {
 }
 
 export type IInsertParams<T> = Omit<IOp<T>, "ts" | "ctr" | "eid">;
-export type IUpsertParams<T> = IInsertParams<T> & { eid?: EntityID; clk?: Date };
+export type IUpsertParams<T> = IInsertParams<T> & {
+  eid?: EntityID;
+  clk?: Date;
+};
 
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
@@ -180,7 +209,12 @@ export interface ISubscriptionMetadata {
   // "dynamic" usage, i.e. time (bandwidth, CPU time, ...).
   dyn: IUsageQuota;
 }
-export const nullSubMeta: ISubscriptionMetadata = { term: 0, elapsed: 0, stat: { quota: 0 }, dyn: { quota: 0 } };
+export const nullSubMeta: ISubscriptionMetadata = {
+  term: 0,
+  elapsed: 0,
+  stat: { quota: 0 },
+  dyn: { quota: 0 },
+};
 
 export interface IHostMetadata {
   subscription: ISubscriptionMetadata;

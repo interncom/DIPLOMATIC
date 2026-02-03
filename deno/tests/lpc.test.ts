@@ -75,7 +75,7 @@ Deno.test("lpc integration", async (t) => {
     assertEquals(listener.connected(), false);
 
     // Connect
-    await listener.connect(authTS, receiver, () => { });
+    await listener.connect(authTS, receiver, () => {});
     assertEquals(listener.connected(), true);
 
     // Push data
@@ -141,8 +141,8 @@ Deno.test("lpc integration", async (t) => {
     };
 
     // Connect both
-    await listener1.connect(authTS, receiver1, () => { });
-    await listener2.connect(authTS, receiver2, () => { });
+    await listener1.connect(authTS, receiver1, () => {});
+    await listener2.connect(authTS, receiver2, () => {});
 
     // Push data
     const testData = new TextEncoder().encode("MULTI TEST");
@@ -195,7 +195,7 @@ Deno.test("lpc integration", async (t) => {
     // Tamper with signature to make it invalid
     authTS.sig[0] ^= 1; // Flip a byte
 
-    const status = await listener.connect(authTS, () => { }, () => { });
+    const status = await listener.connect(authTS, () => {}, () => {});
     assertEquals(status, Status.InvalidSignature);
     assertEquals(listener.connected(), false);
   });
@@ -216,38 +216,59 @@ Deno.test("lpc integration", async (t) => {
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
     const authTS = await makeAuthTimestamp(keys, oldTs, cryptoImpl);
 
-    const status = await listener.connect(authTS, () => { }, () => { });
+    const status = await listener.connect(authTS, () => {}, () => {});
     assertEquals(status, Status.ClockOutOfSync);
     assertEquals(listener.connected(), false);
   });
 
-  await t.step("transport clock skew returns Status.ClockOutOfSync", async () => {
-    // Create server with skewed clock
-    const skewedClock = new MockClock(new Date(Date.now() - 60 * 60 * 1000));
-    const storage = memStorage;
-    const server = new DiplomaticLPCServer(storage, baseMockCrypto, notifier, skewedClock);
-    const transport = new LPCTransport(server);
+  await t.step(
+    "transport clock skew returns Status.ClockOutOfSync",
+    async () => {
+      // Create server with skewed clock
+      const skewedClock = new MockClock(new Date(Date.now() - 60 * 60 * 1000));
+      const storage = memStorage;
+      const server = new DiplomaticLPCServer(
+        storage,
+        baseMockCrypto,
+        notifier,
+        skewedClock,
+      );
+      const transport = new LPCTransport(server);
 
-    // Mock keys
-    const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
-    const privateKey = new Uint8Array(64).fill(0x42) as any;
-    const keys: KeyPair = { keyType: "private", publicKey, privateKey };
-    const now = baseMockClock.now(); // original time
-    const authTS = await makeAuthTimestamp(keys, now, baseCryptoImpl);
+      // Mock keys
+      const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
+      const privateKey = new Uint8Array(64).fill(0x42) as any;
+      const keys: KeyPair = { keyType: "private", publicKey, privateKey };
+      const now = baseMockClock.now(); // original time
+      const authTS = await makeAuthTimestamp(keys, now, baseCryptoImpl);
 
-    // Encode request using peekEnd
-    const mockClient = { crypto: baseCryptoImpl, enclave: null as any, clock: baseMockClock };
-    const items = [now]; // for peek, from date
-    const reqEnc = new Encoder();
-    const encStatus = await peekEnd.encodeReq(mockClient as any, keys as any, authTS, items, reqEnc);
-    assertEquals(encStatus, Status.Success);
+      // Encode request using peekEnd
+      const mockClient = {
+        crypto: baseCryptoImpl,
+        enclave: null as any,
+        clock: baseMockClock,
+      };
+      const items = [now]; // for peek, from date
+      const reqEnc = new Encoder();
+      const encStatus = await peekEnd.encodeReq(
+        mockClient as any,
+        keys as any,
+        authTS,
+        items,
+        reqEnc,
+      );
+      assertEquals(encStatus, Status.Success);
 
-    const [decoder, callStat] = await transport.call(APICallName.Peek, reqEnc);
-    assertEquals(callStat, Status.Success);
-    if (!decoder) throw new Error("Decoder undefined");
+      const [decoder, callStat] = await transport.call(
+        APICallName.Peek,
+        reqEnc,
+      );
+      assertEquals(callStat, Status.Success);
+      if (!decoder) throw new Error("Decoder undefined");
 
-    const [statusByte, readStat] = decoder.readBytes(1);
-    assertEquals(readStat, Status.Success);
-    assertEquals(statusByte![0], Status.ClockOutOfSync);
-  });
+      const [statusByte, readStat] = decoder.readBytes(1);
+      assertEquals(readStat, Status.Success);
+      assertEquals(statusByte![0], Status.ClockOutOfSync);
+    },
+  );
 });

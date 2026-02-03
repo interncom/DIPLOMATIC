@@ -5,9 +5,9 @@ import { Status } from "../../shared/consts.ts";
 import type {
   HostSpecificKeyPair,
   IBag,
+  IMessage,
   MasterSeed,
 } from "../../shared/types.ts";
-import { type IMessage } from "../../shared/message.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";

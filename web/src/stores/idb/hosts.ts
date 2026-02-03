@@ -26,7 +26,9 @@ export class IDBHostStore implements IHostStore<URL> {
     return this.put(info);
   }
 
-  private async put(info: Omit<IHostRow<URL>, "lastSyncedAt"> & { lastSyncedAt?: Date }) {
+  private async put(
+    info: Omit<IHostRow<URL>, "lastSyncedAt"> & { lastSyncedAt?: Date },
+  ) {
     const host = {
       ...info,
       handle: info.handle.toString(),

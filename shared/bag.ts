@@ -5,15 +5,17 @@ import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { concat, bytesEqual } from "./binary.ts";
-import { EncodedMessage, IMessage, IMessageWithHash } from "./message.ts";
-import { ok, err, type ValStat } from "./valstat.ts";
+import { bytesEqual, concat } from "./binary.ts";
+import { EncodedMessage } from "./message.ts";
+import { err, ok, type ValStat } from "./valstat.ts";
 import type {
   Hash,
   HostSpecificKeyPair,
   IBag,
   ICrypto,
   IHostCrypto,
+  IMessage,
+  IMessageWithHash,
   PublicKey,
 } from "./types.ts";
 
@@ -79,12 +81,17 @@ export async function sealBag(
   };
 }
 
+interface IOpenBag {
+  msgHead: IMessageHead;
+  bod?: EncodedMessage;
+  headHash: Hash;
+}
 export async function openBagBody(
   headEnc: Uint8Array,
   bodyCph: Uint8Array | undefined,
   key: Uint8Array,
   crypto: ICrypto,
-): Promise<ValStat<{ msgHead: IMessageHead; bod?: EncodedMessage; headHash: Hash }>> {
+): Promise<ValStat<IOpenBag>> {
   // Decode message.
   const dec = new Decoder(headEnc);
   const [msgHead, status] = messageHeadCodec.decode(dec);
@@ -102,20 +109,23 @@ export async function openBagBody(
     return err(Status.DecryptionError);
   }
 
+  // Check body hash.
   const bodyMissing = msgHead.hsh && msgBody === undefined;
   const hashMissing = msgHead.hsh === undefined && msgBody !== undefined;
   if (bodyMissing || hashMissing) {
     return err(Status.HashMismatch);
   }
-
-  // Check body hash.
   if (msgHead.hsh && msgBody) {
     const bodyHash = await crypto.blake3(msgBody);
     if (!bytesEqual(bodyHash, msgHead.hsh)) {
       return err(Status.HashMismatch);
     }
   }
+
+  // NOTE: openBagBody returns headHash so that callers don't need to re-encode
+  // the message head in order to produce that hash for use as a message index.
   const headHash = await crypto.blake3(headEnc);
+
   return ok({ msgHead, bod: msgBody, headHash });
 }
 
@@ -141,7 +151,12 @@ export async function openBag(
   );
 
   // Use openBagBody for the rest.
-  const [contents, status] = await openBagBody(msgHeadEnc, bag.bodyCph, key, crypto);
+  const [contents, status] = await openBagBody(
+    msgHeadEnc,
+    bag.bodyCph,
+    key,
+    crypto,
+  );
   if (status !== Status.Success) {
     return err(status);
   }

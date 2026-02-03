@@ -1,11 +1,6 @@
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/enclave";
-import type {
-  EncodedMessage,
-  IMessage,
-  IMessageHead,
-  SerializedContent,
-} from "./shared/message";
+import type { EncodedMessage } from "./shared/message";
 import type {
   EntityID,
   Hash,
@@ -13,9 +8,12 @@ import type {
   IHostConnectionInfo,
   IHostMetadata,
   IInsertParams,
+  IMessage,
+  IMessageHead,
   IOp,
   IUpsertParams,
   MasterSeed,
+  SerializedContent,
 } from "./shared/types";
 import { ValStat } from "./shared/valstat";
 

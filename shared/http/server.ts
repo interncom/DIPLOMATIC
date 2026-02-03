@@ -4,11 +4,11 @@ import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 import { Status } from "../consts.ts";
 import { binResp, callPaths, cors, errResp } from "../http.ts";
 import {
-  nullSubMeta,
   type IHostCrypto,
   type IProtoHost,
   type IStorage,
   type IWebSocketPushNotifier,
+  nullSubMeta,
 } from "../types.ts";
 
 export class DiplomaticHTTPServer implements IProtoHost {
@@ -17,7 +17,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) { }
+  ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
@@ -44,13 +44,23 @@ export class DiplomaticHTTPServer implements IProtoHost {
     // All requests are POST with authentication.
     if (request.method !== "POST") {
       const timeSent = clock.now();
-      return errResp({ status: Status.NotFound, timeRcvd, timeSent, subscription: nullSubMeta });
+      return errResp({
+        status: Status.NotFound,
+        timeRcvd,
+        timeSent,
+        subscription: nullSubMeta,
+      });
     }
 
     const body = request.body;
     if (!body) {
       const timeSent = clock.now();
-      return errResp({ status: Status.MissingBody, timeRcvd, timeSent, subscription: nullSubMeta });
+      return errResp({
+        status: Status.MissingBody,
+        timeRcvd,
+        timeSent,
+        subscription: nullSubMeta,
+      });
     }
     const data = new Uint8Array(await request.arrayBuffer());
     const dec = new Decoder(data);
@@ -59,7 +69,12 @@ export class DiplomaticHTTPServer implements IProtoHost {
     const endpoint = callPaths[path]?.endpoint;
     if (!endpoint) {
       const timeSent = clock.now();
-      return errResp({ status: Status.NotFound, timeRcvd, timeSent, subscription: nullSubMeta });
+      return errResp({
+        status: Status.NotFound,
+        timeRcvd,
+        timeSent,
+        subscription: nullSubMeta,
+      });
     }
 
     try {
@@ -86,7 +101,12 @@ export class DiplomaticHTTPServer implements IProtoHost {
       // If request failed, return header alone (with failure status).
       if (status !== Status.Success) {
         const timeSent = clock.now();
-        return errResp({ status, timeRcvd, timeSent, subscription: nullSubMeta });
+        return errResp({
+          status,
+          timeRcvd,
+          timeSent,
+          subscription: nullSubMeta,
+        });
       }
 
       // Prepend header to response encoder.
@@ -95,7 +115,12 @@ export class DiplomaticHTTPServer implements IProtoHost {
       return binResp(enc);
     } catch (err) {
       const timeSent = clock.now();
-      return errResp({ status: Status.InternalError, timeRcvd, timeSent, subscription: nullSubMeta });
+      return errResp({
+        status: Status.InternalError,
+        timeRcvd,
+        timeSent,
+        subscription: nullSubMeta,
+      });
     }
   };
 }

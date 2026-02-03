@@ -4,9 +4,13 @@ import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
-import type { IMessageHead } from "../../shared/message.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
-import type { Hash, ICrypto, MasterSeed } from "../../shared/types.ts";
+import type {
+  Hash,
+  ICrypto,
+  IMessageHead,
+  MasterSeed,
+} from "../../shared/types.ts";
 
 // Mock implementations for deterministic testing
 class MockCrypto implements ICrypto {

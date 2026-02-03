@@ -44,8 +44,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) { },
-    off(type, listener) { },
+    on(type, listener) {},
+    off(type, listener) {},
   };
   const client = new SyncClient<IProtoHost>(
     clock,

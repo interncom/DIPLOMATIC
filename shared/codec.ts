@@ -224,8 +224,6 @@ export class Encoder {
       yield part;
     }
   }
-
-
 }
 
 export interface ICodecStruct<T> {

@@ -23,8 +23,8 @@ const baseCryptoImpl: ICrypto = {
   ): Promise<Uint8Array> => {
     return new Uint8Array(64).fill(0x99); // mock signature
   },
-  gen128BitRandomID: async (): Promise<Uint8Array> =>
-    new Uint8Array(16).fill(0x11),
+  genRandomBytes: async (bytes: number): Promise<Uint8Array> =>
+    new Uint8Array(bytes).fill(0x11),
   gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
     new Uint8Array(32).fill(0x22),
   deriveXSalsa20Poly1305Key: async (

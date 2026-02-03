@@ -24,8 +24,7 @@ interface IInsertParams {
 export async function genInsertHead(
   { now, bod, crypto }: IInsertParams,
 ): Promise<IMessageHead> {
-  const eidFull = await crypto.gen128BitRandomID();
-  const eid = eidFull.slice(0, 8);
+  const eid = await crypto.genRandomBytes(8);
   return genUpsertHead({ now, eid, clk: now, ctr: 0, bod, crypto });
 }
 

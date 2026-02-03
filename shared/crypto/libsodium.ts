@@ -9,8 +9,8 @@ export class LibsodiumCrypto implements ICrypto {
     this.sodium = sodium;
   }
 
-  async gen128BitRandomID(): Promise<Uint8Array> {
-    return this.sodium.randombytes_buf(16);
+  async genRandomBytes(bytes: number): Promise<Uint8Array> {
+    return this.sodium.randombytes_buf(bytes);
   }
 
   async gen256BitSecureRandomSeed(): Promise<Uint8Array> {

@@ -124,7 +124,7 @@ export interface IHostCrypto {
 }
 
 export interface ICrypto extends IHostCrypto {
-  gen128BitRandomID: () => Promise<Uint8Array>;
+  genRandomBytes: (bytes: number) => Promise<Uint8Array>;
   gen256BitSecureRandomSeed: () => Promise<Uint8Array>;
   deriveXSalsa20Poly1305Key: (
     seed: Uint8Array,

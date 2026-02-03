@@ -23,6 +23,3 @@ Prefer terse variable names, even at the expense of immediate readability to an 
   
 - Run the benchmarks before and after as well, to check for meaningful regressions.
   - `deno bench` from `deno` dir.
-  
-- Format the code.
-  - `deno fmt <FILENAME>` for the specific files you edit.

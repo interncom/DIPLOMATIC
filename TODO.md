@@ -1,8 +1,6 @@
 # TODOS
 
 GENERAL
-- deal with eid's as `type EID = { id: Uint8Array, clk: Date }`
-- rename fields clk -> t0 for entity creation and off -> dt for offset from creation, also eid -> id, then the true eid becomes [id, t0]
 - make params to genUpsertHead, etc... be objects rather than positional
 - Fix all `// TODO:` in codebase
 

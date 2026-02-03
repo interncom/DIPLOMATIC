@@ -21,7 +21,7 @@ interface IStoredEntity<T = unknown> {
   updatedAt: Date;
   updatedCtr: number;
   createdAt: Date;
-  body: T;
+  body: T | undefined;
 }
 
 function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {

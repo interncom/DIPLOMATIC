@@ -7,6 +7,7 @@ import { ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
+  seqCounters: Map<string, number>;
   bag: Map<
     string,
     {
@@ -14,11 +15,13 @@ interface IMemoryStorage extends IStorage {
       bodyCph: Uint8Array;
       recordedAt: Date;
       pubKeyHex: string;
+      seq: number;
     }
   >;
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
+  seqCounters: new Map<string, number>(),
   bag: new Map(), // Sha256Hex => bag parts.
 
   async addUser(pubKey) {
@@ -40,6 +43,8 @@ const memStorage: IMemoryStorage = {
 
   async setBag(pubKey, recordedAt, bag, sha256) {
     const pubKeyHex = btoh(pubKey);
+    const seq = (this.seqCounters.get(pubKeyHex) || 0) + 1;
+    this.seqCounters.set(pubKeyHex, seq);
     const storageKey = btoh(sha256);
     const enc = new Encoder();
     enc.writeStruct(peekItemHeadCodec, bag);
@@ -50,8 +55,9 @@ const memStorage: IMemoryStorage = {
       headCph,
       bodyCph,
       recordedAt,
+      seq,
     });
-    return ok(undefined);
+    return ok(seq);
   },
 
   async getBody(pubKey, sha256) {
@@ -64,20 +70,21 @@ const memStorage: IMemoryStorage = {
     return ok(item.bodyCph);
   },
 
-  async listHeads(pubKey, begin, end) {
+  async listHeads(pubKey, minSeq) {
     const pubKeyHex = btoh(pubKey);
     const list: IBagPeekItem[] = [];
     for (const [key, item] of this.bag.entries()) {
-      const ts = item.recordedAt.toISOString();
-      if (item.pubKeyHex === pubKeyHex && ts >= begin && ts <= end) {
+      if (item.pubKeyHex === pubKeyHex && item.seq > minSeq) {
         const sha256 = htob(key);
         list.push({
           hash: sha256,
           recordedAt: item.recordedAt,
           headCph: item.headCph,
+          seq: item.seq,
         });
       }
     }
+    list.sort((a, b) => a.seq - b.seq);
     return ok(list);
   },
 };

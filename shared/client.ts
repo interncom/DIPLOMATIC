@@ -99,7 +99,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   };
 
   register = () => this.call(api.user, []);
-  peek = (from: Date) => this.call(api.peek, [from]);
+  peek = (lastSeq: number) => this.call(api.peek, [lastSeq]);
   push = (bags: IBag[]) => this.call(api.push, bags);
   pull = (hashes: Hash[]) => this.call(api.pull, hashes);
 

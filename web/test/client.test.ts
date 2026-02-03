@@ -364,7 +364,7 @@ describe("Client", () => {
         fail("No host");
         return;
       }
-      host.lastSyncedAt = new Date(0);
+      host.lastSeq = 0;
 
       // Manually add a message to the host storage
       const enclave = await store.seed.load();

@@ -22,7 +22,7 @@ export async function syncPeek<Handle extends HostHandle>(
 ): Promise<Status> {
   const hostKeys = await conn.keys();
   const dls: IDownloadMessage[] = [];
-  const [items, peekStatus] = await conn.peek(host.lastSyncedAt);
+  const [items, peekStatus] = await conn.peek(host.lastSeq);
   if (peekStatus !== Status.Success) {
     return peekStatus;
   }
@@ -61,8 +61,11 @@ export async function syncPeek<Handle extends HostHandle>(
   }
   await store.downloads.enq(dls);
 
-  // TODO: update host lastSyncedAt (touch method?) using timestamp returned from host (may need to change API).
-  await store.hosts.touch(host.label, clock.now());
+  // Update host lastSeq to the max seq from peeked items.
+  if (items.length > 0) {
+    const maxSeq = Math.max(...items.map((i) => i.seq));
+    await store.hosts.touch(host.label, maxSeq);
+  }
 
   return Status.Success;
 }

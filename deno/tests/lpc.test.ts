@@ -75,7 +75,7 @@ Deno.test("lpc integration", async (t) => {
     assertEquals(listener.connected(), false);
 
     // Connect
-    await listener.connect(authTS, receiver, () => {});
+    await listener.connect(authTS, receiver, () => { });
     assertEquals(listener.connected(), true);
 
     // Push data
@@ -141,8 +141,8 @@ Deno.test("lpc integration", async (t) => {
     };
 
     // Connect both
-    await listener1.connect(authTS, receiver1, () => {});
-    await listener2.connect(authTS, receiver2, () => {});
+    await listener1.connect(authTS, receiver1, () => { });
+    await listener2.connect(authTS, receiver2, () => { });
 
     // Push data
     const testData = new TextEncoder().encode("MULTI TEST");
@@ -195,7 +195,7 @@ Deno.test("lpc integration", async (t) => {
     // Tamper with signature to make it invalid
     authTS.sig[0] ^= 1; // Flip a byte
 
-    const status = await listener.connect(authTS, () => {}, () => {});
+    const status = await listener.connect(authTS, () => { }, () => { });
     assertEquals(status, Status.InvalidSignature);
     assertEquals(listener.connected(), false);
   });
@@ -216,7 +216,7 @@ Deno.test("lpc integration", async (t) => {
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
     const authTS = await makeAuthTimestamp(keys, oldTs, cryptoImpl);
 
-    const status = await listener.connect(authTS, () => {}, () => {});
+    const status = await listener.connect(authTS, () => { }, () => { });
     assertEquals(status, Status.ClockOutOfSync);
     assertEquals(listener.connected(), false);
   });
@@ -248,7 +248,7 @@ Deno.test("lpc integration", async (t) => {
         enclave: null as any,
         clock: baseMockClock,
       };
-      const items = [now]; // for peek, from date
+      const items = [0]; // for peek, from date
       const reqEnc = new Encoder();
       const encStatus = await peekEnd.encodeReq(
         mockClient as any,

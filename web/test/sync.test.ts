@@ -128,9 +128,9 @@ describe("Sync Integration", () => {
     // Set host clock to time of push
     hostClock.set(new Date(1000));
 
-    // Set clientB's lastSyncedAt to after the push time
+    // Set clientB's lastSeq to after the push seq
     const hostB = await storeB.hosts.get("test");
-    if (hostB) hostB.lastSyncedAt = new Date(2000);
+    if (hostB) hostB.lastSeq = 1;
 
     await clientA.connect(false);
     await clientB.connect(false);

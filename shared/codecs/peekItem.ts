@@ -6,6 +6,7 @@ export interface IBagPeekItem {
   hash: Uint8Array;
   recordedAt: Date;
   headCph: Uint8Array;
+  seq: number;
 }
 
 export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
@@ -14,6 +15,8 @@ export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
     enc.writeDate(item.recordedAt);
     const s = enc.writeVarBytes(item.headCph);
     if (s !== Status.Success) return s;
+    const s5 = enc.writeVarInt(item.seq);
+    if (s5 !== Status.Success) return s5;
     return Status.Success;
   },
   decode(dec) {
@@ -23,6 +26,8 @@ export const peekItemCodec: ICodecStruct<IBagPeekItem> = {
     if (s2 !== Status.Success) return err(s2);
     const [headCph, s4] = dec.readVarBytes();
     if (s4 !== Status.Success) return err(s4);
-    return ok({ hash, recordedAt, headCph });
+    const [seq, s5] = dec.readVarInt();
+    if (s5 !== Status.Success) return err(s5);
+    return ok({ hash, recordedAt, headCph, seq });
   },
 };

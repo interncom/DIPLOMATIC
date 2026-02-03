@@ -1,26 +1,10 @@
-import { eidBytes } from "./consts.ts";
-import type { EntityID, Hash, ICrypto } from "./types.ts";
-
-// Message is also known as the "operation".
-// This is the serialized content, plus header data, which determines ordered application.
-
-export type SerializedContent = Uint8Array;
-
-// IMessage is an operation.
-export interface IMessageHead {
-  eid: Uint8Array;
-  clk: Date;
-  off: number;
-  ctr: number;
-  len: number;
-  hsh?: Uint8Array;
-}
-export interface IMessage extends IMessageHead {
-  bod?: SerializedContent;
-}
-export interface IMessageWithHash extends IMessage {
-  headHash: Hash;
-}
+import type {
+  EntityID,
+  ICrypto,
+  IMessage,
+  IMessageHead,
+  SerializedContent,
+} from "./types.ts";
 
 interface IUpsertMessage extends IMessage {
   bod: SerializedContent;

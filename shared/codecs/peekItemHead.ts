@@ -1,6 +1,6 @@
 import { ICodecStruct } from "../codec.ts";
 import { kdmBytes, sigBytes, Status } from "../consts.ts";
-import { ValStat, ok, err } from "../valstat.ts";
+import { err, ok, ValStat } from "../valstat.ts";
 
 export interface IBagPeekItemHead {
   sig: Uint8Array;

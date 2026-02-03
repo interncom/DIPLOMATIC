@@ -9,7 +9,7 @@ export class Clock implements IClock {
 }
 
 export class MockClock implements IClock {
-  constructor(private _now: Date) { }
+  constructor(private _now: Date) {}
   set(_now: Date) {
     this._now = _now;
   }
@@ -27,7 +27,12 @@ export class MockClock implements IClock {
 //   T3 = timeSentHost (server send time)
 //   T4 = timeRcvdClient (client receive time)
 // This formula averages the two one-way delays to estimate the clock difference.
-export function offset(timeSentClient: Date, timeRcvdHost: Date, timeSentHost: Date, timeRcvdClient: Date): number {
+export function offset(
+  timeSentClient: Date,
+  timeRcvdHost: Date,
+  timeSentHost: Date,
+  timeRcvdClient: Date,
+): number {
   const delayHostRecv = timeRcvdHost.getTime() - timeSentClient.getTime();
   const delayClientRecv = timeSentHost.getTime() - timeRcvdClient.getTime();
   const offsetMs = (delayHostRecv + delayClientRecv) / 2;

@@ -7,7 +7,6 @@ import { APICallName, Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
-import { type IMessage } from "./message.ts";
 import type {
   Hash,
   HostHandle,
@@ -16,10 +15,11 @@ import type {
   ICrypto,
   IHostConnectionInfo,
   IHostMetadata,
+  IMessage,
   ITransport,
   PushReceiver,
 } from "./types.ts";
-import { ValStat, err } from "./valstat.ts";
+import { err, ValStat } from "./valstat.ts";
 
 export default class DiplomaticClientAPI<Handle extends HostHandle> {
   constructor(
@@ -29,7 +29,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     public clock: IClock,
     private transport: ITransport,
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
-  ) { }
+  ) {}
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -67,8 +67,16 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     }
 
     // Update host metadata based on response header.
-    const clockOffset = offset(timeSent, head.timeRcvd, head.timeSent, timeRcvd);
-    const meta: IHostMetadata = { clockOffset, subscription: head.subscription };
+    const clockOffset = offset(
+      timeSent,
+      head.timeRcvd,
+      head.timeSent,
+      timeRcvd,
+    );
+    const meta: IHostMetadata = {
+      clockOffset,
+      subscription: head.subscription,
+    };
     const statMeta = await this.updateHostMeta(meta);
     if (statMeta !== Status.Success) {
       return err(statMeta);

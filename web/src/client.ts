@@ -5,18 +5,14 @@ import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
-import {
-  EncodedMessage,
-  genInsertHead,
-  genUpsertHead,
-  IMessageHead,
-} from "./shared/message";
+import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import {
   EntityID,
   HostHandle,
   ICrypto,
   IHostConnectionInfo,
   IInsertParams,
+  IMessageHead,
   ITransport,
   IUpsertParams,
   MasterSeed,

@@ -6,8 +6,9 @@ import {
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
 import { Status } from "../../shared/consts.ts";
-import { genDelete, genUpsert, IMessage } from "../../shared/message.ts";
+import { genDelete, genUpsert } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
+import { IMessage } from "../../shared/types.ts";
 
 // Constants that remain fixed
 const eidBytes = 16;

@@ -3,16 +3,16 @@ import { Decoder, Encoder } from "../codec.ts";
 import { APICallName, Status } from "../consts.ts";
 import { apiCalls } from "../http.ts";
 import {
-  nullSubMeta,
   type IHostCrypto,
   type IProtoHost,
   type IPushListener,
   type IPushNotifier,
   type IStorage,
   type ITransport,
+  nullSubMeta,
 } from "../types.ts";
 import { CallbackListener } from "./listener.ts";
-import { ValStat, err, ok } from "../valstat.ts";
+import { err, ok, ValStat } from "../valstat.ts";
 import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 
 export class DiplomaticLPCServer implements IProtoHost {
@@ -21,7 +21,7 @@ export class DiplomaticLPCServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IPushNotifier,
     public clock: IClock,
-  ) { }
+  ) {}
 
   // To listen to notifier over LPC, just access .notifier on this host directly.
 

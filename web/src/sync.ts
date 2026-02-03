@@ -7,8 +7,8 @@ import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import { EncodedMessage, IMessage } from "./shared/message";
-import { Hash, HostHandle, IBag, ICrypto } from "./shared/types";
+import { EncodedMessage } from "./shared/message";
+import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
 
 // Phase 1: Peek for new items and enqueue downloads

@@ -1,5 +1,9 @@
 import { Status } from "../../shared/consts";
-import { HostHandle, IHostConnectionInfo, IHostMetadata } from "../../shared/types";
+import {
+  HostHandle,
+  IHostConnectionInfo,
+  IHostMetadata,
+} from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 
 export class MemoryHostStore<Handle extends HostHandle>

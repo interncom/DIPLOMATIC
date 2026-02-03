@@ -54,7 +54,7 @@ const sqliteStorage: IStorage = {
 
   async subMeta(pubKey) {
     // TODO: actually compute this.
-    return ok(nullSubMeta)
+    return ok(nullSubMeta);
   },
 
   async setBag(pubKey, recordedAt, bag, sha256) {

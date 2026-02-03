@@ -1,8 +1,7 @@
 import { openBag, sealBag } from "../../shared/bag.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
-import type { HostSpecificKeyPair } from "../../shared/types.ts";
-import { type IMessage } from "../../shared/message.ts";
+import type { IMessage, HostSpecificKeyPair } from "../../shared/types.ts";
 
 import libsodiumCrypto from "../src/crypto.ts";
 import type { MasterSeed } from "../../shared/types.ts";

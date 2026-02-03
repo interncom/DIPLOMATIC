@@ -2,7 +2,7 @@ import { btoh, htob } from "../binary.ts";
 import { Encoder } from "../codec.ts";
 import type { IBagPeekItem } from "../codecs/peekItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
-import { nullSubMeta, type IStorage } from "../types.ts";
+import { type IStorage, nullSubMeta } from "../types.ts";
 import { ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {

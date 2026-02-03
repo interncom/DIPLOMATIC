@@ -35,7 +35,6 @@ const mockStorage: IStorage = {
     return ok([
       {
         hash: new Uint8Array(hashBytes).fill(1),
-        recordedAt: new Date(),
         headCph: new Uint8Array([1, 2, 3]),
         seq: 1,
       },
@@ -117,7 +116,6 @@ Deno.test("peekEnd.handleReq - extra body content", async () => {
 Deno.test("peekEnd.decodeResp", () => {
   const item: IBagPeekItem = {
     hash: new Uint8Array(hashBytes).fill(1),
-    recordedAt: new Date(),
     headCph: new Uint8Array([1, 2, 3]),
     seq: 1,
   };

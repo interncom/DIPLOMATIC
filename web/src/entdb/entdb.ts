@@ -15,15 +15,6 @@ export interface IEntity<T> {
   body: T | undefined;
 }
 
-const nullEnt: IEntity<undefined> = {
-  eid: new Uint8Array(),
-  type: "",
-  updatedCtr: 0,
-  updatedAt: new Date(0),
-  createdAt: new Date(0),
-  body: undefined,
-};
-
 export interface IDateRange {
   start: Date;
   end: Date;
@@ -110,9 +101,9 @@ export function updateEnt<T = unknown>(
 }
 
 export const nullEntDB: IEntDB = {
-  getEnt: async () => [undefined, Status.NotImplemented],
-  getEntities: async () => [undefined, Status.NotImplemented],
-  countEntities: async () => [undefined, Status.NotImplemented],
+  getEnt: async () => err(Status.NotImplemented),
+  getEntities: async () => err(Status.NotImplemented),
+  countEntities: async () => err(Status.NotImplemented),
   apply: async (op: IOp) => Status.NotImplemented,
   clear: async () => Status.NotImplemented,
 };

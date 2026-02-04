@@ -389,7 +389,6 @@ describe("Client", () => {
         bod: body,
       };
       const bag = await sealBag(msg, keys, libsodiumCrypto, enclave);
-      const sha256 = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
       const [_, setStatus] = await lpcHost.storage.setBag(
         keys.publicKey,
         bag,

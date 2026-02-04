@@ -45,7 +45,6 @@ const baseCryptoImpl: ICrypto = {
     privateKey: new Uint8Array(64).fill(0x66) as any,
   }),
   blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
-  sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
 };
 
 Deno.test("lpc integration", async (t) => {

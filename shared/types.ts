@@ -72,14 +72,14 @@ export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
   hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
   subMeta: (pubKey: PublicKey) => Promise<ValStat<ISubscriptionMetadata>>;
-   setBag: (
-     pubKey: PublicKey,
-     bag: IBag,
-   ) => Promise<ValStat<number>>;
-   getBody: (
-     pubKey: PublicKey,
-     seq: number,
-   ) => Promise<ValStat<Uint8Array | undefined>>;
+  setBag: (
+    pubKey: PublicKey,
+    bag: IBag,
+  ) => Promise<ValStat<number>>;
+  getBody: (
+    pubKey: PublicKey,
+    seq: number,
+  ) => Promise<ValStat<Uint8Array | undefined>>;
   listHeads: (
     pubKey: PublicKey,
     minSeq: number,
@@ -116,8 +116,6 @@ export interface IHostCrypto {
     message: Uint8Array | string,
     pubKey: PublicKey,
   ) => Promise<boolean>;
-  sha256Hash: (data: Uint8Array) => Promise<Uint8Array>;
-  blake3: (data: Uint8Array) => Promise<Uint8Array>;
 }
 
 export interface ICrypto extends IHostCrypto {

@@ -29,7 +29,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     public clock: IClock,
     private transport: ITransport,
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
-  ) {}
+  ) { }
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -101,7 +101,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   register = () => this.call(api.user, []);
   peek = (lastSeq: number) => this.call(api.peek, [lastSeq]);
   push = (bags: IBag[]) => this.call(api.push, bags);
-  pull = (hashes: Hash[]) => this.call(api.pull, hashes);
+  pull = (seqs: number[]) => this.call(api.pull, seqs);
 
   // listen for new bags.
   listen = async (recv: PushReceiver) => {

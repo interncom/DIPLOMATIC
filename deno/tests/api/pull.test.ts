@@ -30,10 +30,10 @@ const mockStorage: IStorage = {
   ...baseMockStorage,
   getBody: (
     pubKey: Uint8Array,
-    headHash: Uint8Array,
+    seq: number,
   ): Promise<ValStat<Uint8Array | undefined>> => {
-    // Mock: return some data for one hash, undefined for others
-    if (headHash[0] === 1) {
+    // Mock: return some data for seq 1, undefined for others
+    if (seq === 1) {
       return Promise.resolve(ok(new Uint8Array([10, 20, 30])));
     }
     return Promise.resolve(ok(undefined));
@@ -51,29 +51,25 @@ Deno.test("pullEnd.encodeReq", () => {
     new Uint8Array(32).fill(1) as PublicKey,
     new Date("2023-01-01T00:00:00.000Z"),
   );
-  const hashes: Hash[] = [
-    new Uint8Array(hashBytes).fill(1) as Hash,
-    new Uint8Array(hashBytes).fill(4) as Hash,
-  ];
+  const seqs: number[] = [1, 4];
   const reqEnc = new Encoder();
 
-  pullEnd.encodeReq(client as any, keys, tsAuth, hashes, reqEnc);
+  pullEnd.encodeReq(client as any, keys, tsAuth, seqs, reqEnc);
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();
   expectedEnc.writeStruct(authTimestampCodec, tsAuth);
-  expectedEnc.writeBytesSeq(hashes);
+  for (const seq of seqs) {
+    expectedEnc.writeVarInt(seq);
+  }
   assertEquals(encoded, expectedEnc.result());
 });
 
 Deno.test("pullEnd.handleReq - success with some bodies", async () => {
-  const hashes: Uint8Array[] = [
-    new Uint8Array(hashBytes).fill(1),
-    new Uint8Array(hashBytes).fill(4),
-  ];
+  const seqs = [1, 4];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
-  reqEnc.writeBytesSeq(hashes);
+  for (const seq of seqs) reqEnc.writeVarInt(seq);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
 
@@ -90,13 +86,12 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   const respData = respEnc.result();
   const respDec = new Decoder(respData);
   const [results, decodeStatus] = pullEnd.decodeResp(respDec);
-  assertEquals(decodeStatus, Status.Success);
-  if (decodeStatus !== Status.Success) return;
-  assertEquals(results.length, 1); // Only one hash has body
-  assertEquals(
-    results[0].hash,
-    new Uint8Array(hashBytes).fill(1) as Hash,
-  );
+  if (decodeStatus !== Status.Success) {
+    assertEquals(decodeStatus, Status.Success);
+    return;
+  }
+  assertEquals(results.length, 1); // Only one seq has body
+  assertEquals(results[0].seq, 1);
   assertEquals(
     results[0].bodyCph,
     new Uint8Array([10, 20, 30]),
@@ -104,10 +99,12 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
 });
 
 Deno.test("pullEnd.handleReq - no bodies", async () => {
-  const hashes: Uint8Array[] = [new Uint8Array(hashBytes).fill(0)]; // No body
+  const seqs: number[] = [0];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
-  reqEnc.writeBytesSeq(hashes);
+  for (const seq of seqs) {
+    reqEnc.writeVarInt(seq);
+  }
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
 
@@ -130,7 +127,7 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
 
 Deno.test("pullEnd.decodeResp", () => {
   const item: IBagPullItem = {
-    hash: new Uint8Array(hashBytes).fill(1) as Hash,
+    seq: 1,
     bodyCph: new Uint8Array([10, 20, 30]),
   };
   const enc = new Encoder();
@@ -142,10 +139,7 @@ Deno.test("pullEnd.decodeResp", () => {
   assertEquals(decodeStatus, Status.Success);
   if (decodeStatus !== Status.Success) return;
   assertEquals(results.length, 1);
-  assertEquals(
-    results[0].hash,
-    new Uint8Array(hashBytes).fill(1) as Hash,
-  );
+  assertEquals(results[0].seq, 1);
   assertEquals(
     results[0].bodyCph,
     new Uint8Array([10, 20, 30]),
@@ -153,12 +147,12 @@ Deno.test("pullEnd.decodeResp", () => {
 });
 
 Deno.test("pullEnd.handleReq - clock out of sync", async () => {
-  const hashes: Uint8Array[] = [
-    new Uint8Array(hashBytes).fill(1),
-  ];
+  const seqs: number[] = [1];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
-  reqEnc.writeBytesSeq(hashes);
+  for (const seq of seqs) {
+    reqEnc.writeVarInt(seq);
+  }
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
 

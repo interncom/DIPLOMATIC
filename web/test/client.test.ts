@@ -44,8 +44,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msg) {
       return Status.Success;
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(type, listener) { },
+    off(type, listener) { },
   };
   const client = new SyncClient<IProtoHost>(
     clock,
@@ -345,10 +345,12 @@ describe("Client", () => {
         "test",
         1,
       );
-      const pubKeyHex = btoh(keys.publicKey);
-      const messagesOnHost = Array.from((lpcHost.storage as any).bag.values())
-        .filter((item: any) => item.pubKeyHex === pubKeyHex);
-      expect(messagesOnHost.length).toBe(1);
+      const [list, statList] = await lpcHost.storage.listHeads(keys.publicKey, 0);
+      if (statList !== Status.Success) {
+        expect(statList).toEqual(Status.Success);
+        return;
+      }
+      expect(list.length).toBe(1);
     });
 
     test("pulls message from host if one is present", async () => {
@@ -390,9 +392,7 @@ describe("Client", () => {
       const sha256 = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
       const [_, setStatus] = await lpcHost.storage.setBag(
         keys.publicKey,
-        lpcHost.clock.now(),
         bag,
-        sha256,
       );
       expect(setStatus).toBe(Status.Success);
 

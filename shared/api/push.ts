@@ -5,8 +5,11 @@ import { bagCodec } from "../codecs/bag.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
-import { Hash, IBag } from "../types.ts";
+import { IBag } from "../types.ts";
 
+// PUSH accepts a list of bags and returns a list of the same size.
+// Returned list items give the status of each bag and its index in the request.
+// For each successfully stored bag, the list item also includes its host seq.
 export const pushEnd: IAuthenticatedEndpoint<
   IBag,
   IBagPushItem[]
@@ -20,7 +23,6 @@ export const pushEnd: IAuthenticatedEndpoint<
   },
   async handleReq(host, reqDec, respEnc) {
     const { clock, crypto, storage, notifier } = host;
-    const now = clock.now();
 
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
@@ -38,20 +40,21 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     const [bags, s3] = reqDec.readStructs(bagCodec);
     if (s3 !== Status.Success) return s3;
-    for (const bag of bags) {
-      const hash = await crypto.sha256Hash(bag.headCph) as Hash;
+    for (let idx = 0; idx < bags.length; idx++) {
+      const bag = bags[idx];
       const sigValid = await bagSigValid(bag, pubKey, crypto);
       if (!sigValid) {
-        const item: IBagPushItem = { status: Status.InvalidSignature, hash };
+        const item: IBagPushItem = { idx, status: Status.InvalidSignature };
         const itemStatus = respEnc.writeStruct(pushItemCodec, item);
         if (itemStatus !== Status.Success) return itemStatus;
         continue;
       }
-      const [_, setStatus] = await storage.setBag(pubKey, now, bag, hash);
-      if (setStatus === Status.Success) {
-        notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
+      const [seq, setStatus] = await storage.setBag(pubKey, bag);
+      if (setStatus !== Status.Success) {
+        return setStatus;
       }
-      const item: IBagPushItem = { status: setStatus, hash };
+      notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
+      const item: IBagPushItem = { idx, status: setStatus, seq };
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;
     }

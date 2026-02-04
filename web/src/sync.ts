@@ -57,7 +57,7 @@ export async function syncPeek<Handle extends HostHandle>(
       // TODO: handle error
       continue;
     }
-    dls.push({ hash: item.hash as Hash, kdm, head, host: host.label });
+    dls.push({ seq: item.seq, kdm, head, host: host.label });
   }
   await store.downloads.enq(dls);
 
@@ -79,8 +79,9 @@ export async function syncPush<Handle extends HostHandle>(
   host: IHostRow<Handle>,
   crypto: ICrypto,
 ): Promise<Status> {
+  // Form bags.
   const bags: IBag[] = [];
-  const remoteToLocalHash: Map<string, string> = new Map();
+  const hashes: Hash[] = [];
   for (const msgHeadEncHash of await store.uploads.list()) {
     const storedMsg = await store.messages.get(msgHeadEncHash);
     if (!storedMsg) {
@@ -89,31 +90,32 @@ export async function syncPush<Handle extends HostHandle>(
     const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
     const bag = await conn.seal(msg);
     bags.push(bag);
-    const headCphHash = await crypto.sha256Hash(bag.headCph) as Hash;
-    remoteToLocalHash.set(btoh(headCphHash), btoh(msgHeadEncHash));
+    hashes.push(msgHeadEncHash);
   }
-  if (bags.length > 0) {
-    const [results, pushStatus] = await conn.push(bags);
-    if (pushStatus !== Status.Success) {
-      return pushStatus;
-    }
 
-    // Remove successful uploads from queue.
-    for (const item of results) {
-      if (item.status !== Status.Success) {
-        // TODO: handle errors, some of which may be non-retryable.
-        console.error("push err", item);
-        continue;
-      }
-      // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
-      const msgHeadEncHashHex = remoteToLocalHash.get(btoh(item.hash));
-      if (!msgHeadEncHashHex) {
-        console.error("no hash", item, btoh(item.hash));
-        continue;
-      }
-      const msgHeadEncHash = htob(msgHeadEncHashHex) as Hash;
-      await store.uploads.deq([msgHeadEncHash]);
+  // Push bags.
+  if (bags.length < 1) {
+    return Status.Success;
+  }
+  const [results, pushStatus] = await conn.push(bags);
+  if (pushStatus !== Status.Success) {
+    return pushStatus;
+  }
+
+  // Remove successful uploads from queue.
+  for (const item of results) {
+    if (item.status !== Status.Success) {
+      // TODO: handle errors, some of which may be non-retryable.
+      console.error("push err", item);
+      continue;
     }
+    // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
+    const msgHeadEncHash = hashes[item.idx];
+    if (!msgHeadEncHash) {
+      console.error("no hash", item);
+      continue;
+    }
+    await store.uploads.deq([msgHeadEncHash]);
   }
   return Status.Success;
 }
@@ -131,20 +133,20 @@ export async function syncPull<Handle extends HostHandle>(
     upload: boolean,
   ) => Promise<Status>,
 ): Promise<Status> {
-  const dls: Map<string, IDownloadMessage> = new Map();
+  const dls: Map<number, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
   const items = Array.from(allItems).filter((i) => i.host === host.label);
-  const hshs: Hash[] = [];
+  const seqs: number[] = [];
   for (const item of items) {
-    dls.set(btoh(item.hash), item);
-    hshs.push(item.hash);
+    dls.set(item.seq, item);
+    seqs.push(item.seq);
   }
-  const [result, stat] = await conn.pull(hshs);
+  const [result, stat] = await conn.pull(seqs);
   if (stat !== Status.Success) {
     return stat;
   }
-  for (const { hash, bodyCph } of result) {
-    const dl = dls.get(btoh(hash));
+  for (const { seq, bodyCph } of result) {
+    const dl = dls.get(seq);
     if (!dl) {
       continue;
     }
@@ -160,14 +162,14 @@ export async function syncPull<Handle extends HostHandle>(
     const [contents, status] = await openBagBody(headEnc, bodyCph, key, crypto);
     if (status !== Status.Success) {
       // TODO: determine if this is sufficient handling.
-      dls.delete(btoh(hash));
+      dls.delete(seq);
       continue;
     }
     const { bod: body, headHash: properHash } = contents;
     const msg: IStoredMessage = { hash: properHash, head, body };
     await store.messages.add([msg]);
-    dls.delete(btoh(hash));
-    await store.downloads.deq([hash]);
+    dls.delete(seq);
+    await store.downloads.deq(host.label, [seq]);
     // TODO: should apply happen before storing the message and deq-ing the download?
     const stat = await apply(head, body, false);
     if (stat !== Status.Success) {

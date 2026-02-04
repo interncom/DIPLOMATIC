@@ -20,6 +20,7 @@ import {
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { IMessage } from "../src/shared/message";
+import { IDownloadMessage } from "../src/types";
 
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
@@ -192,19 +193,20 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    const [_, setStatus] = await lpcHost.storage.setBag(
+    const [seq, setStatus] = await lpcHost.storage.setBag(
       keys.publicKey,
-      new Date(1000),
       bag,
-      hash,
     );
-    expect(setStatus).toBe(Status.Success);
+    if (setStatus !== Status.Success) {
+      expect(setStatus).toBe(Status.Success);
+      return;
+    }
 
-    const download = {
-      hash,
+    const download: IDownloadMessage = {
       kdm: bag.kdm,
       head: message,
       host: "test",
+      seq,
     };
     await store.downloads.enq([download]);
 
@@ -238,19 +240,20 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    const [_, setStatus] = await lpcHost.storage.setBag(
+    const [seq, setStatus] = await lpcHost.storage.setBag(
       keys.publicKey,
-      new Date(1000),
       bag,
-      hash,
     );
-    expect(setStatus).toBe(Status.Success);
+    if (setStatus !== Status.Success) {
+      expect(setStatus).toBe(Status.Success);
+      return;
+    }
 
-    const download = {
-      hash,
+    const download: IDownloadMessage = {
       kdm: bag.kdm,
       head: message,
       host: "test",
+      seq,
     };
     await store.downloads.enq([download]);
 

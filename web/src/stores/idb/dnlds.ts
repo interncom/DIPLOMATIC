@@ -1,5 +1,3 @@
-import { btoh, htob } from "../../shared/binary";
-import { Hash } from "../../shared/types";
 import { IDownloadMessage, IDownloadQueue } from "../../types";
 import { DOWNLOAD_QUEUE_TABLE } from "./store";
 
@@ -19,23 +17,23 @@ export class IDBDownloadQueue implements IDownloadQueue {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       for (const msg of messages) {
-        const hex = btoh(msg.hash);
-        store.put(msg, hex);
+        const key = `${msg.host}:${msg.seq}`;
+        store.put(msg, key);
       }
     });
   }
 
-  async deq(hshs: Iterable<Hash>) {
-    const hashes = [...hshs];
-    if (hashes.length === 0) return;
+  async deq(host: string, seqs: Iterable<number>) {
+    const seqArray = [...seqs];
+    if (seqArray.length === 0) return;
     const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readwrite");
     const store = tx.objectStore(DOWNLOAD_QUEUE_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-      for (const hash of hashes) {
-        const hex = btoh(hash);
-        store.delete(hex);
+      for (const seq of seqArray) {
+        const key = `${host}:${seq}`;
+        store.delete(key);
       }
     });
   }

@@ -6,13 +6,16 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { Hash } from "../types.ts";
 
 export const pullEnd: IAuthenticatedEndpoint<
-  Hash,
+  number,
   IBagPullItem[]
 > = {
-  async encodeReq(_client, _keys, authTS, hashes, reqEnc): Promise<Status> {
+  async encodeReq(_client, _keys, authTS, seqs, reqEnc): Promise<Status> {
     const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
     if (s1 !== Status.Success) return s1;
-    reqEnc.writeBytesSeq(hashes);
+    for (const seq of seqs) {
+      const s = reqEnc.writeVarInt(seq);
+      if (s !== Status.Success) return s;
+    }
     return Status.Success;
   },
   async handleReq(host, reqDec, respEnc) {
@@ -32,16 +35,20 @@ export const pullEnd: IAuthenticatedEndpoint<
     if (hasStatus !== Status.Success) return hasStatus;
     if (!hasUser) return Status.UserNotRegistered;
 
-    const [hashes, s3] = reqDec.readBytesSeq(hashBytes);
-    if (s3 !== Status.Success) return s3;
-    for (const headHash of hashes) {
+    const seqs: number[] = [];
+    while (!reqDec.done()) {
+      const [seq, s3] = reqDec.readVarInt();
+      if (s3 !== Status.Success) return s3;
+      seqs.push(seq);
+    }
+    for (const seq of seqs) {
       const [bodyCph, getStatus] = await storage.getBody(
         pubKey,
-        headHash as Hash,
+        seq,
       );
       if (getStatus !== Status.Success) return getStatus;
       if (bodyCph) {
-        const item: IBagPullItem = { hash: headHash as Hash, bodyCph };
+        const item: IBagPullItem = { seq, bodyCph };
         const itemStatus = respEnc.writeStruct(pullItemCodec, item);
         if (itemStatus !== Status.Success) return itemStatus;
       }

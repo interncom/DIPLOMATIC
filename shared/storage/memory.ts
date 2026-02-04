@@ -1,28 +1,21 @@
-import { btoh, htob } from "../binary.ts";
+import { btoh } from "../binary.ts";
 import { Encoder } from "../codec.ts";
 import type { IBagPeekItem } from "../codecs/peekItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
+import { Status } from "../consts.ts";
 import { type IStorage, nullSubMeta } from "../types.ts";
-import { ok } from "../valstat.ts";
+import { err, ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
-  seqCounters: Map<string, number>;
-  bag: Map<
-    string,
-    {
-      headCph: Uint8Array;
-      bodyCph: Uint8Array;
-      recordedAt: Date;
-      pubKeyHex: string;
-      seq: number;
-    }
-  >;
+  bag: Map<string, Map<number, {
+    headCph: Uint8Array;
+    bodyCph: Uint8Array;
+  }>>;
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.
-  seqCounters: new Map<string, number>(),
-  bag: new Map(), // Sha256Hex => bag parts.
+  bag: new Map(), // pubKeyHex => seq => bag parts.
 
   async addUser(pubKey) {
     const pubKeyHex = btoh(pubKey);
@@ -41,46 +34,63 @@ const memStorage: IMemoryStorage = {
     return ok(meta);
   },
 
-  async setBag(pubKey, recordedAt, bag, sha256) {
+  async setBag(pubKey, bag) {
+    // Get user's bags.
     const pubKeyHex = btoh(pubKey);
-    const seq = (this.seqCounters.get(pubKeyHex) || 0) + 1;
-    this.seqCounters.set(pubKeyHex, seq);
-    const storageKey = btoh(sha256);
+    let userBags = this.bag.get(pubKeyHex);
+    if (!userBags) {
+      userBags = new Map();
+      this.bag.set(pubKeyHex, userBags);
+    }
+
+    // Compute seq for bag.
+    let maxSeq = 0;
+    for (const seq of userBags.keys()) {
+      if (seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+    const seq = maxSeq + 1;
+
+    // Encode bag.
     const enc = new Encoder();
-    enc.writeStruct(peekItemHeadCodec, bag);
+    const status = enc.writeStruct(peekItemHeadCodec, bag);
+    if (status !== Status.Success) {
+      return err(status);
+    }
     const headCph = enc.result();
     const bodyCph = bag.bodyCph;
-    this.bag.set(storageKey, {
-      pubKeyHex,
+
+    // Store bag.
+    userBags.set(seq, {
       headCph,
       bodyCph,
-      recordedAt,
-      seq,
     });
     return ok(seq);
   },
 
-  async getBody(pubKey, sha256) {
+  async getBody(pubKey, seq) {
     const pubKeyHex = btoh(pubKey);
-    const sha256Hex = btoh(sha256);
-    const item = this.bag.get(sha256Hex);
-    if (item?.pubKeyHex !== pubKeyHex) {
+    const userBags = this.bag.get(pubKeyHex);
+    if (!userBags) {
       return ok(undefined);
     }
-    return ok(item.bodyCph);
+    const item = userBags.get(seq);
+    return ok(item?.bodyCph);
   },
 
   async listHeads(pubKey, minSeq) {
     const pubKeyHex = btoh(pubKey);
     const list: IBagPeekItem[] = [];
-    for (const [key, item] of this.bag.entries()) {
-      if (item.pubKeyHex === pubKeyHex && item.seq > minSeq) {
-        const sha256 = htob(key);
-        list.push({
-          seq: item.seq,
-          hash: sha256,
-          headCph: item.headCph,
-        });
+    const userBags = this.bag.get(pubKeyHex);
+    if (userBags) {
+      for (const [seq, item] of userBags.entries()) {
+        if (seq > minSeq) {
+          list.push({
+            seq,
+            headCph: item.headCph,
+          });
+        }
       }
     }
     list.sort((a, b) => a.seq - b.seq);

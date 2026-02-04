@@ -34,7 +34,6 @@ const mockStorage: IStorage = {
     // Mock: return some items
     return ok([
       {
-        hash: new Uint8Array(hashBytes).fill(1),
         headCph: new Uint8Array([1, 2, 3]),
         seq: 1,
       },
@@ -81,16 +80,16 @@ Deno.test("peekEnd.handleReq - success", async () => {
   );
   assertEquals(status, Status.Success);
 
-  // Check response
-  const respData = respEnc.result();
-  const respDec = new Decoder(respData);
-  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
-  assertEquals(decodeStatus, Status.Success);
-  assertEquals((results as IBagPeekItem[]).length, 1);
-  assertEquals(
-    (results as IBagPeekItem[])[0].hash,
-    new Uint8Array(hashBytes).fill(1),
-  );
+   // Check response
+   const respData = respEnc.result();
+   const respDec = new Decoder(respData);
+   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+   assertEquals(decodeStatus, Status.Success);
+   assertEquals((results as IBagPeekItem[]).length, 1);
+   assertEquals(
+     (results as IBagPeekItem[])[0].seq,
+     1,
+   );
 });
 
 Deno.test("peekEnd.handleReq - extra body content", async () => {
@@ -115,7 +114,6 @@ Deno.test("peekEnd.handleReq - extra body content", async () => {
 
 Deno.test("peekEnd.decodeResp", () => {
   const item: IBagPeekItem = {
-    hash: new Uint8Array(hashBytes).fill(1),
     headCph: new Uint8Array([1, 2, 3]),
     seq: 1,
   };
@@ -124,13 +122,13 @@ Deno.test("peekEnd.decodeResp", () => {
   const respData = enc.result();
   const respDec = new Decoder(respData);
 
-  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
-  assertEquals(decodeStatus, Status.Success);
-  assertEquals((results as IBagPeekItem[]).length, 1);
-  assertEquals(
-    (results as IBagPeekItem[])[0].hash,
-    new Uint8Array(hashBytes).fill(1),
-  );
+   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+   assertEquals(decodeStatus, Status.Success);
+   assertEquals((results as IBagPeekItem[]).length, 1);
+   assertEquals(
+     (results as IBagPeekItem[])[0].seq,
+     1,
+   );
 });
 
 Deno.test("peekEnd.handleReq - clock out of sync", async () => {

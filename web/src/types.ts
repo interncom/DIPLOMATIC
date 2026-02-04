@@ -74,13 +74,13 @@ export interface IDeltaListItem {
 
 export interface IDownloadMessage {
   kdm: Uint8Array;
-  hash: Hash;
+  seq: number;
   head: IMessageHead;
   host: string;
 }
 export interface IDownloadQueue {
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
-  deq: (hshs: Iterable<Hash>) => Promise<void>;
+  deq: (host: string, seqs: Iterable<number>) => Promise<void>;
   list: () => Promise<Iterable<IDownloadMessage>>;
   count: () => Promise<number>;
   wipe(): Promise<void>;

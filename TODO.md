@@ -2,11 +2,9 @@
 
 GENERAL
 - Fix all `// TODO:` in codebase
-- extract 
 
 ARCH
 - client override server skewed push rejection with a force flag (update push codec)
-
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
 - use VarDate encoding that encodes timestamps with varints for milliseconds since UNIX epoch (or even advance the epoch forward to e.g. 2025 to shave a byte)
 
@@ -19,7 +17,6 @@ ENTDB
 - split EntDB into separate package?
 - use eid index to optimize last()
 - unit test with fake indexeddb
-- lost some tests in EID re-arch--bring back
 
 ERRORS
 - allow a ValStat to hold a list of Status codes, to capture the full stack (err can wrap an err(stat) return val) or is that too implementation specific? maybe better to have a location embedded within the status byte (or just more granular codes)

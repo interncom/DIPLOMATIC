@@ -189,7 +189,6 @@ describe("syncPull", () => {
       hsh: await libsodiumCrypto.blake3(new Uint8Array([1, 2, 3, 4])),
     };
     const bag = await createTestBag(message, enclave);
-    const hash = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
@@ -236,7 +235,6 @@ describe("syncPull", () => {
       len: 0,
     };
     const bag = await createTestBag(message, enclave);
-    const hash = await libsodiumCrypto.sha256Hash(bag.headCph) as Hash;
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);

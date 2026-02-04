@@ -72,16 +72,14 @@ export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
   hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
   subMeta: (pubKey: PublicKey) => Promise<ValStat<ISubscriptionMetadata>>;
-  setBag: (
-    pubKey: PublicKey,
-    recordedAt: Date,
-    bag: IBag,
-    sha256: Uint8Array,
-  ) => Promise<ValStat<number>>;
-  getBody: (
-    pubKey: PublicKey,
-    sha256: Uint8Array,
-  ) => Promise<ValStat<Uint8Array | undefined>>;
+   setBag: (
+     pubKey: PublicKey,
+     bag: IBag,
+   ) => Promise<ValStat<number>>;
+   getBody: (
+     pubKey: PublicKey,
+     seq: number,
+   ) => Promise<ValStat<Uint8Array | undefined>>;
   listHeads: (
     pubKey: PublicKey,
     minSeq: number,

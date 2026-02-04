@@ -16,11 +16,10 @@ db.query(`
 db.query(`
   CREATE TABLE IF NOT EXISTS bag (
       userPubKey TEXT,
-      recordedAt TEXT,
-      sha256 BLOB,
+      seq INTEGER,
       headCph BLOB,
       bodyCph BLOB,
-      PRIMARY KEY (userPubKey, sha256)
+      PRIMARY KEY (userPubKey, seq)
     );
 `);
 
@@ -57,30 +56,35 @@ const sqliteStorage: IStorage = {
     return ok(nullSubMeta);
   },
 
-  async setBag(pubKey, recordedAt, bag, sha256) {
+  async setBag(pubKey, bag) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const recAtStr = recordedAt.toISOString();
+      const rows = db.query<[number]>(
+        "SELECT MAX(seq) FROM bag WHERE userPubKey = ?",
+        [pubKeyHex],
+      );
+      const maxSeq = rows[0]?.[0] || 0;
+      const seq = maxSeq + 1;
       const enc = new Encoder();
       enc.writeStruct(peekItemHeadCodec, bag);
       const headCph = enc.result();
       const bodyCph = bag.bodyCph;
       db.query(
-        "INSERT INTO bag (sha256, userPubKey, recordedAt, headCph, bodyCph) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-        [sha256, pubKeyHex, recAtStr, headCph, bodyCph],
+        "INSERT INTO bag (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
+        [pubKeyHex, seq, headCph, bodyCph],
       );
-      return ok(undefined);
+      return ok(seq);
     } catch {
       return err(Status.StorageError);
     }
   },
 
-  async getBody(pubKey, sha256) {
+  async getBody(pubKey, seq) {
     try {
       const pubKeyHex = btoh(pubKey);
       const rows = db.query<[Uint8Array]>(
-        "SELECT bodyCph FROM bag WHERE userPubKey = ? AND sha256 = ?",
-        [pubKeyHex, sha256],
+        "SELECT bodyCph FROM bag WHERE userPubKey = ? AND seq = ?",
+        [pubKeyHex, seq],
       );
       const row = rows[0];
       if (!row) {
@@ -92,16 +96,15 @@ const sqliteStorage: IStorage = {
     }
   },
 
-  async listHeads(pubKey, begin, end) {
+  async listHeads(pubKey, minSeq) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const rows = db.query<[Uint8Array, string, Uint8Array]>(
-        "SELECT sha256, recordedAt, headCph FROM bag WHERE userPubKey = ? AND recordedAt >= ? AND recordedAt <= ?",
-        [pubKeyHex, begin, end],
+      const rows = db.query<[number, Uint8Array]>(
+        "SELECT seq, headCph FROM bag WHERE userPubKey = ? AND seq > ? ORDER BY seq",
+        [pubKeyHex, minSeq],
       );
-      return ok(rows.map(([sha256, recordedAt, headCph]) => ({
-        hash: sha256,
-        recordedAt: new Date(recordedAt),
+      return ok(rows.map(([seq, headCph]) => ({
+        seq,
         headCph: new Uint8Array(headCph),
       })));
     } catch {

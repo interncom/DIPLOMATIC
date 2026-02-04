@@ -2,6 +2,10 @@ import { err, ok, ValStat } from "./valstat.ts";
 import { Status } from "./consts.ts";
 
 export function encodeVarInt(n: number | bigint): ValStat<Uint8Array> {
+  if (n < 0) {
+    console.info("N", n);
+    console.trace();
+  }
   if (typeof n !== "bigint") n = BigInt(n);
   if (n < 0n) return err(Status.InvalidParam);
   const bytes: number[] = [];
@@ -32,6 +36,7 @@ export function decodeVarInt(
   let i = offset;
   while (true) {
     if (i >= bytes.length) {
+      console.info("ruh roh")
       return err(Status.InvalidMessage);
     }
     const byte = bytes[i++];

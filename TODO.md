@@ -2,11 +2,11 @@
 
 GENERAL
 - Fix all `// TODO:` in codebase
+- extract 
 
 ARCH
 - client override server skewed push rejection with a force flag (update push codec)
 
-- replace host hash with seq
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
 - use VarDate encoding that encodes timestamps with varints for milliseconds since UNIX epoch (or even advance the epoch forward to e.g. 2025 to shave a byte)
 

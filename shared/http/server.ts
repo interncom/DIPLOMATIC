@@ -17,7 +17,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) {}
+  ) { }
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {
@@ -115,6 +115,8 @@ export class DiplomaticHTTPServer implements IProtoHost {
       return binResp(enc);
     } catch (err) {
       const timeSent = clock.now();
+      console.error(err);
+      console.trace();
       return errResp({
         status: Status.InternalError,
         timeRcvd,

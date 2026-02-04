@@ -7,7 +7,6 @@ import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import { genInsert } from "../../shared/message.ts";
 import memStorage from "../../shared/storage/memory.ts";
 import {
-  Hash,
   IProtoHost,
   IPushOpenResponse,
   IWebSocketPushNotifier,
@@ -23,6 +22,7 @@ import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
+import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 
 // Server config.
 const port = 3331;
@@ -98,27 +98,36 @@ Deno.test("server", async (t) => {
   const op1 = await genInsert({ now, bod, crypto: libsodiumCrypto });
   const op2 = await genInsert({ now, bod, crypto: libsodiumCrypto });
   const bags = [await client.seal(op1), await client.seal(op2)];
-  let result: Array<{ status: number; hash: Uint8Array }>;
+  let result: IBagPushItem[];
   await t.step("POST /ops", async () => {
     const [pushResults, pushStatus] = await client.push(bags);
-    assertEquals(pushStatus, Status.Success);
-    result = pushResults as typeof result;
+    if (pushStatus !== Status.Success) {
+      console.info('fdsa', pushStatus)
+      assertEquals(pushStatus, Status.Success);
+      return;
+    }
+    result = pushResults;
     assertEquals(result.length, 2); // Should return status-hash pairs for each bag
     for (const res of result) {
       assertEquals(res.status, Status.Success);
-      assertEquals(res.hash.length, 32);
     }
   });
 
   await t.step("POST /pull", async () => {
-    const hashes = result.map((r) => r.hash as Hash);
-    const [pulledItems, pullStatus] = await client.pull(hashes);
+    const seqs: number[] = [];
+    for (const item of result) {
+      if (item.status !== Status.Success) {
+        continue;
+      }
+      seqs.push(item.seq);
+    }
+    const [pulledItems, pullStatus] = await client.pull(seqs);
     assertEquals(pullStatus, Status.Success);
     assertEquals((pulledItems as IBagPullItem[]).length, 2);
 
     // Verify item structure (integration test, skip decryption)
     for (const item of pulledItems as IBagPullItem[]) {
-      assertEquals(item.hash.length, 32);
+      assert(item.seq >= 0);
       assert(item.bodyCph.length >= 0);
     }
   });
@@ -130,7 +139,7 @@ Deno.test("server", async (t) => {
     // Should have 2 items
     assertEquals((peekedHeaders as IBagPeekItem[]).length, 2);
     for (const header of peekedHeaders as IBagPeekItem[]) {
-      assertEquals(header.hash.length, 32);
+      assert(typeof header.seq === 'number');
       assert(header.headCph.length > 0);
     }
   });

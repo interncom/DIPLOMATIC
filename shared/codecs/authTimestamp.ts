@@ -13,7 +13,8 @@ export const authTimestampCodec: ICodecStruct<IAuthTimestamp> = {
   encode(enc, item) {
     enc.writeBytes(item.pubKey);
     enc.writeBytes(item.sig);
-    enc.writeDate(item.timestamp);
+    const statDate = enc.writeDate(item.timestamp);
+    if (statDate !== Status.Success) return statDate;
     return Status.Success;
   },
   decode(dec) {

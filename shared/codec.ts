@@ -166,9 +166,10 @@ export class Encoder {
     this.parts.push(arr);
   }
 
-  writeDate(ts: Date): void {
+  writeDate(ts: Date): Status {
     const timestampMs = ts.getTime();
     this.writeBigInt(BigInt(timestampMs));
+    return Status.Success;
   }
 
   writeVarInt(n: number): Status {

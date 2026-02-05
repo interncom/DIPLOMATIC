@@ -15,7 +15,8 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
   encode(enc, msg) {
     const s0 = enc.writeVarBytes(msg.eid);
     if (s0 !== Status.Success) return s0;
-    enc.writeDate(msg.clk);
+    const statClk = enc.writeDate(msg.clk);
+    if (statClk !== Status.Success) return statClk;
     const s1 = enc.writeVarInt(msg.off);
     if (s1 !== Status.Success) return s1;
     const s2 = enc.writeVarInt(msg.ctr);

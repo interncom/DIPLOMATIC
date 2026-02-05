@@ -60,9 +60,9 @@ export interface IHostStore<Handle extends HostHandle> {
 // So in this context, hash means blake3 hash of encoded message header.
 
 export interface IUploadQueue {
-  enq: (hshs: Iterable<Hash>) => Promise<void>;
-  deq: (hshs: Iterable<Hash>) => Promise<void>;
-  list: () => Promise<Iterable<Hash>>;
+  enq: (host: string, hshs: Iterable<Hash>) => Promise<void>;
+  deq: (host: string, hshs: Iterable<Hash>) => Promise<void>;
+  list: (host: string) => Promise<Hash[]>;
   count: () => Promise<number>;
   wipe(): Promise<void>;
 }

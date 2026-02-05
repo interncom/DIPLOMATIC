@@ -134,7 +134,7 @@ describe("syncPush", () => {
     const hash = await libsodiumCrypto.blake3(headEnc) as Hash;
     const storedMsg = { hash, head: message, body: message.bod };
     await store.messages.add([storedMsg]);
-    await store.uploads.enq([hash]);
+    await store.uploads.enq("test", [hash]);
 
     await syncPush(conn, store, enclave, clock, host, libsodiumCrypto);
 

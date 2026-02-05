@@ -10,7 +10,7 @@ export class IDBUploadQueue implements IUploadQueue {
     this.db = db;
   }
 
-  async enq(hshs: Iterable<Hash>) {
+  async enq(host: string, hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
     const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readwrite");
@@ -20,12 +20,12 @@ export class IDBUploadQueue implements IUploadQueue {
       tx.onerror = () => reject(tx.error);
       for (const hash of hashes) {
         const hex = btoh(hash);
-        store.put(null, hex);
+        store.put({ host, hash: hex });
       }
     });
   }
 
-  async deq(hshs: Iterable<Hash>) {
+  async deq(host: string, hshs: Iterable<Hash>) {
     const hashes = [...hshs];
     if (hashes.length === 0) return;
     const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readwrite");
@@ -35,18 +35,19 @@ export class IDBUploadQueue implements IUploadQueue {
       tx.onerror = () => reject(tx.error);
       for (const hash of hashes) {
         const hex = btoh(hash);
-        store.delete(hex);
+        store.delete([host, hex]);
       }
     });
   }
 
-  async list() {
+  async list(host: string) {
     const tx = this.db.transaction(UPLOAD_QUEUE_TABLE, "readonly");
     const store = tx.objectStore(UPLOAD_QUEUE_TABLE);
     return new Promise<Hash[]>((resolve, reject) => {
-      const req = store.getAllKeys();
+      const req = store.getAll();
       req.onsuccess = () => {
-        const hexes = req.result as string[];
+        const items = req.result as { host: string; hash: string }[];
+        const hexes = items.filter(item => item.host === host).map(item => item.hash);
         resolve(hexes.map((hex) => htob(hex)) as Hash[]);
       };
       req.onerror = () => reject(req.error);

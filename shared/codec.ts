@@ -57,32 +57,6 @@ export function decodeVarInt(
   }
 }
 
-export function encodeSignedVarInt(n: number | bigint): ValStat<Uint8Array> {
-  if (typeof n !== "bigint") n = BigInt(n);
-  const zigzag = (n << 1n) ^ (n >> 63n);
-  return encodeVarInt(zigzag);
-}
-
-export function decodeSignedVarInt(
-  bytes: Uint8Array,
-  offset: number = 0,
-): ValStat<{ value: number | bigint; bytesRead: number }> {
-  const [res, status] = decodeVarInt(bytes, offset);
-  if (status !== Status.Success) return err(status);
-  const zigzag = res.value;
-  let signed: bigint;
-  if (typeof zigzag === "bigint") {
-    signed = (zigzag >> 1n) ^ -(zigzag & 1n);
-  } else {
-    signed = BigInt((zigzag >> 1) ^ -(zigzag & 1));
-  }
-  const abs = signed < 0n ? -signed : signed;
-  return ok({
-    value: abs > 0x1fffffffffffffn ? signed : Number(signed),
-    bytesRead: res.bytesRead,
-  });
-}
-
 export class Decoder {
   private data: Uint8Array;
   private pos: number = 0;
@@ -110,9 +84,9 @@ export class Decoder {
   }
 
   readDate(): ValStat<Date> {
-    const [timestampMs, status] = this.readBigInt();
+    const [offset, status] = this.readVarInt();
     if (status !== Status.Success) return err(status);
-    return ok(new Date(Number(timestampMs)));
+    return ok(new Date(offset));
   }
 
   readVarInt(): ValStat<number> {
@@ -121,13 +95,6 @@ export class Decoder {
     this.pos += res.bytesRead;
     const val = res.value;
     return ok(typeof val === "bigint" ? Number(val) : val);
-  }
-
-  readSignedVarInt(): ValStat<number | bigint> {
-    const [res, status] = decodeSignedVarInt(this.data, this.pos);
-    if (status !== Status.Success) return err(status);
-    this.pos += res.bytesRead;
-    return ok(res.value);
   }
 
   readVarString(): ValStat<string> {
@@ -201,19 +168,11 @@ export class Encoder {
 
   writeDate(ts: Date): Status {
     const timestampMs = ts.getTime();
-    this.writeBigInt(BigInt(timestampMs));
-    return Status.Success;
+    return this.writeVarInt(timestampMs);
   }
 
   writeVarInt(n: number): Status {
     const [bytes, status] = encodeVarInt(n);
-    if (status !== Status.Success) return status;
-    this.parts.push(bytes);
-    return Status.Success;
-  }
-
-  writeSignedVarInt(n: number | bigint): Status {
-    const [bytes, status] = encodeSignedVarInt(n);
     if (status !== Status.Success) return status;
     this.parts.push(bytes);
     return Status.Success;

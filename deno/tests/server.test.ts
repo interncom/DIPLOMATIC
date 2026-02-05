@@ -144,9 +144,9 @@ Deno.test("server", async (t) => {
     }
   });
 
-  const nowMs = BigInt(Date.now());
-  const timestampBytes = new Uint8Array(8);
-  new DataView(timestampBytes.buffer).setBigUint64(0, nowMs, false);
+  const enc = new Encoder();
+  enc.writeDate(new Date());
+  const timestampBytes = enc.result();
   const invalidTsAuth = new Uint8Array(tsAuthSize);
   invalidTsAuth.set(timestampBytes, 96);
 

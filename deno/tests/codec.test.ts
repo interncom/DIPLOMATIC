@@ -1,11 +1,9 @@
 import {
   assert,
-  assertEquals,
-  assertThrows,
+  assertEquals
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { Decoder } from "../../shared/codec.ts";
-import { decodeVarInt, encodeVarInt, decodeSignedVarInt, encodeSignedVarInt } from "../../shared/codec.ts";
 import { concat } from "../../shared/binary.ts";
+import { Decoder, decodeVarInt, encodeVarInt } from "../../shared/codec.ts";
 import { Status } from "../../shared/consts.ts";
 
 Deno.test("Decoder readBytes", () => {
@@ -27,76 +25,6 @@ Deno.test("Decoder readBigInt", () => {
   assertEquals(bigint, 1234567890123456789n);
   assertEquals(dec.done(), true);
 });
-
-Deno.test("encode/decode signed varint roundtrip", () => {
-  const testValues = [0, 1, -1, 42, -42];
-  for (const val of testValues) {
-    const [encoded, encStatus] = encodeSignedVarInt(val);
-    assertEquals(encStatus, Status.Success);
-    assert(encoded !== undefined);
-    const [decoded, decStatus] = decodeSignedVarInt(encoded);
-    assertEquals(decStatus, Status.Success);
-    assert(decoded !== undefined);
-    assertEquals(decoded.value, val);
-    assertEquals(typeof decoded.value, "number");
-  }
-});
-
-Deno.test("signed varint large numbers", () => {
-  const largeVal = 2n ** 53n;
-  const [encoded, encStatus] = encodeSignedVarInt(largeVal);
-  assertEquals(encStatus, Status.Success);
-  assert(encoded !== undefined);
-  const [decoded, decStatus] = decodeSignedVarInt(encoded);
-  assertEquals(decStatus, Status.Success);
-  assert(decoded !== undefined);
-  assertEquals(decoded.value, largeVal);
-  assertEquals(typeof decoded.value, "bigint");
-});
-
-Deno.test("Encoder writeSignedVarInt", () => {
-  const enc = new Encoder();
-  const status = enc.writeSignedVarInt(-42);
-  assertEquals(status, Status.Success);
-  const result = enc.result();
-  const dec = new Decoder(result);
-  const [val, decStatus] = dec.readSignedVarInt();
-  assertEquals(decStatus, Status.Success);
-  assertEquals(val, -42);
-  assertEquals(typeof val, "number");
-});
-
-Deno.test("Decoder readSignedVarInt large", () => {
-  const enc = new Encoder();
-  enc.writeSignedVarInt(2n ** 53n);
-  const data = enc.result();
-  const dec = new Decoder(data);
-  const [val, status] = dec.readSignedVarInt();
-  assertEquals(status, Status.Success);
-  assertEquals(val, 2n ** 53n);
-  assertEquals(typeof val, "bigint");
-});
-
-Deno.test("signed varint zigzag correctness", () => {
-  // Test specific zigzag mappings
-  const tests = [
-    [0, 0],
-    [1, 2],
-    [-1, 1],
-    [2, 4],
-    [-2, 3],
-  ];
-  for (const [input, expectedZigzag] of tests) {
-    const [encoded, encStatus] = encodeSignedVarInt(input);
-    assertEquals(encStatus, Status.Success);
-    assert(encoded !== undefined);
-    const [decodedZigzag, decStatus] = decodeVarInt(encoded);
-    assertEquals(decStatus, Status.Success);
-    assert(decodedZigzag !== undefined);
-    assertEquals(decodedZigzag.value, expectedZigzag);
-  }
-});
-
 
 Deno.test("Decoder sequential reads", () => {
   // Create some data: 4 bytes, then 8 bytes bigint, then varint, then 2 bytes
@@ -416,11 +344,11 @@ Deno.test("decode_varint oversize throws VarLimitExceeded", () => {
 
 Deno.test("Encoder writeDate", () => {
   const enc = new Encoder();
-  const date = new Date("2023-10-01T12:00:00Z");
+  const date = new Date("2020-01-02T00:00:00Z");
   enc.writeDate(date);
   const result = enc.result();
-  // Date encodes to 8 bytes BigInt
-  assertEquals(result.length, 8);
+  // Date encodes to compact varint (much less than 8 bytes)
+  assert(result.length < 8);
   // Decode back to verify
   const dec = new Decoder(result);
   const [decodedDate, status] = dec.readDate();
@@ -430,7 +358,7 @@ Deno.test("Encoder writeDate", () => {
 });
 
 Deno.test("Decoder readDate", () => {
-  const date = new Date();
+  const date = new Date("2020-01-03T00:00:00Z");
   const enc = new Encoder();
   enc.writeDate(date);
   const data = enc.result();
@@ -441,9 +369,23 @@ Deno.test("Decoder readDate", () => {
   assertEquals(decodedDate.getTime(), date.getTime());
 });
 
+Deno.test("Date roundtrip UNIX epoch", () => {
+  const date = new Date(0);
+  const enc = new Encoder();
+  enc.writeDate(date);
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [decodedDate, s1] = dec.readDate();
+  if (s1 !== Status.Success) {
+    assertEquals(s1, Status.Success);
+    return;
+  }
+  assertEquals(decodedDate.getTime(), date.getTime());
+});
+
 Deno.test("Date roundtrip sequential", () => {
-  const date1 = new Date(1000);
-  const date2 = new Date(2000);
+  const date1 = new Date("2020-01-02T00:00:00Z");
+  const date2 = new Date("2020-01-03T00:00:00Z");
   const enc = new Encoder();
   enc.writeDate(date1);
   enc.writeDate(date2);
@@ -451,17 +393,19 @@ Deno.test("Date roundtrip sequential", () => {
   const dec = new Decoder(data);
   const [decodedDate1, s1] = dec.readDate();
   assertEquals(s1, Status.Success);
+  assert(decodedDate1 !== undefined);
   const [decodedDate2, s2] = dec.readDate();
   assertEquals(s2, Status.Success);
-  assertEquals(decodedDate1, date1);
-  assertEquals(decodedDate2, date2);
+  assert(decodedDate2 !== undefined);
+  assertEquals(decodedDate1.getTime(), date1.getTime());
+  assertEquals(decodedDate2.getTime(), date2.getTime());
 });
 
 Deno.test("Decoder readDate not enough data", () => {
-  const data = new Uint8Array(7); // less than 8
+  const data = new Uint8Array(0); // no data
   const dec = new Decoder(data);
   const [date, status] = dec.readDate();
-  assertEquals(status, Status.MissingBody);
+  assertEquals(status, Status.InvalidMessage);
   assertEquals(date, undefined);
 });
 

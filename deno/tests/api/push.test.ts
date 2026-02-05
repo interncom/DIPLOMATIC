@@ -120,7 +120,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
       sig: Uint8Array,
       message: Uint8Array | string,
       pubKey: PublicKey,
-    ) => Promise.resolve((message as Uint8Array).length === 8),
+    ) => Promise.resolve((message as Uint8Array).length === 6), // NOTE: this depends on the varint encoding of the tsAuth Date
     sha256Hash: (data: Uint8Array) =>
       Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };

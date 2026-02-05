@@ -1,9 +1,10 @@
 import {
+  assert,
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Decoder } from "../../shared/codec.ts";
-import { decodeVarInt, encodeVarInt } from "../../shared/codec.ts";
+import { decodeVarInt, encodeVarInt, decodeSignedVarInt, encodeSignedVarInt } from "../../shared/codec.ts";
 import { concat } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 
@@ -27,16 +28,75 @@ Deno.test("Decoder readBigInt", () => {
   assertEquals(dec.done(), true);
 });
 
-Deno.test("Decoder readVarInt", () => {
-  const [varint, encStatus] = encodeVarInt(42);
-  assertEquals(encStatus, Status.Success);
-  if (encStatus !== Status.Success) return;
-  const dec = new Decoder(varint);
-  const [num, decStatus] = dec.readVarInt();
-  assertEquals(decStatus, Status.Success);
-  assertEquals(num, 42);
-  assertEquals(dec.done(), true);
+Deno.test("encode/decode signed varint roundtrip", () => {
+  const testValues = [0, 1, -1, 42, -42];
+  for (const val of testValues) {
+    const [encoded, encStatus] = encodeSignedVarInt(val);
+    assertEquals(encStatus, Status.Success);
+    assert(encoded !== undefined);
+    const [decoded, decStatus] = decodeSignedVarInt(encoded);
+    assertEquals(decStatus, Status.Success);
+    assert(decoded !== undefined);
+    assertEquals(decoded.value, val);
+    assertEquals(typeof decoded.value, "number");
+  }
 });
+
+Deno.test("signed varint large numbers", () => {
+  const largeVal = 2n ** 53n;
+  const [encoded, encStatus] = encodeSignedVarInt(largeVal);
+  assertEquals(encStatus, Status.Success);
+  assert(encoded !== undefined);
+  const [decoded, decStatus] = decodeSignedVarInt(encoded);
+  assertEquals(decStatus, Status.Success);
+  assert(decoded !== undefined);
+  assertEquals(decoded.value, largeVal);
+  assertEquals(typeof decoded.value, "bigint");
+});
+
+Deno.test("Encoder writeSignedVarInt", () => {
+  const enc = new Encoder();
+  const status = enc.writeSignedVarInt(-42);
+  assertEquals(status, Status.Success);
+  const result = enc.result();
+  const dec = new Decoder(result);
+  const [val, decStatus] = dec.readSignedVarInt();
+  assertEquals(decStatus, Status.Success);
+  assertEquals(val, -42);
+  assertEquals(typeof val, "number");
+});
+
+Deno.test("Decoder readSignedVarInt large", () => {
+  const enc = new Encoder();
+  enc.writeSignedVarInt(2n ** 53n);
+  const data = enc.result();
+  const dec = new Decoder(data);
+  const [val, status] = dec.readSignedVarInt();
+  assertEquals(status, Status.Success);
+  assertEquals(val, 2n ** 53n);
+  assertEquals(typeof val, "bigint");
+});
+
+Deno.test("signed varint zigzag correctness", () => {
+  // Test specific zigzag mappings
+  const tests = [
+    [0, 0],
+    [1, 2],
+    [-1, 1],
+    [2, 4],
+    [-2, 3],
+  ];
+  for (const [input, expectedZigzag] of tests) {
+    const [encoded, encStatus] = encodeSignedVarInt(input);
+    assertEquals(encStatus, Status.Success);
+    assert(encoded !== undefined);
+    const [decodedZigzag, decStatus] = decodeVarInt(encoded);
+    assertEquals(decStatus, Status.Success);
+    assert(decodedZigzag !== undefined);
+    assertEquals(decodedZigzag.value, expectedZigzag);
+  }
+});
+
 
 Deno.test("Decoder sequential reads", () => {
   // Create some data: 4 bytes, then 8 bytes bigint, then varint, then 2 bytes

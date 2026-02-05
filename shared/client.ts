@@ -44,7 +44,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     // Form request.
     const keys = await this.keys();
     const now = clock.now();
-    const authTS = await makeAuthTimestamp(keys, now, crypto);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    if (statAuthTS !== Status.Success) {
+      return err(statAuthTS);
+    }
     const enc = new Encoder();
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
     if (encStatus !== Status.Success) return err(encStatus);
@@ -109,7 +112,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const { listener } = transport;
     const keys = await hostKeys(this, host.label, host.idx);
     const now = clock.now();
-    const authTS = await makeAuthTimestamp(keys, now, crypto);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    if (statAuthTS !== Status.Success) {
+      return statAuthTS;
+    }
     return await listener.connect(authTS, recv, () => {
       // TODO: handle disconnection, perhaps reconnect
       console.log("Disconnected from push listener");

@@ -3,6 +3,7 @@ import { Encoder } from "./codec.ts";
 import { type IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { clockToleranceMs, Status } from "./consts.ts";
 import type { ICrypto, IHostCrypto, KeyPair } from "./types.ts";
+import { err, ok, ValStat } from "./valstat.ts";
 
 export type EncodedAuthTimestamp = Uint8Array;
 
@@ -17,16 +18,19 @@ export async function makeAuthTimestamp(
   keys: KeyPair,
   ts: Date,
   crypto: ICrypto,
-): Promise<IAuthTimestamp> {
+): Promise<ValStat<IAuthTimestamp>> {
   const enc = new Encoder();
-  enc.writeDate(ts);
+  const statTs = enc.writeDate(ts);
+  if (statTs !== Status.Success) {
+    return err(statTs);
+  }
   const encodedTs = enc.result();
   const sig = await crypto.signEd25519(encodedTs, keys.privateKey);
-  return {
+  return ok({
     pubKey: keys.publicKey,
     sig,
     timestamp: ts,
-  };
+  });
 }
 
 export async function validateAuthTimestamp(

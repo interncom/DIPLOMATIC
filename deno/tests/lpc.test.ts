@@ -63,7 +63,11 @@ Deno.test("lpc integration", async (t) => {
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl = baseCryptoImpl;
     const now = baseMockClock.now();
-    const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
+    if (statAuthTS !== Status.Success) {
+      assertEquals(statAuthTS, Status.Success);
+      return
+    }
 
     let receivedData: Uint8Array | undefined;
     const receiver = (data: Uint8Array) => {
@@ -127,7 +131,11 @@ Deno.test("lpc integration", async (t) => {
         new Uint8Array(headerAndCipher.length - 32).fill(0x55),
     };
     const now = baseMockClock.now();
-    const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
+    if (statAuthTS !== Status.Success) {
+      assertEquals(statAuthTS, Status.Success);
+      return
+    }
 
     let received1: Uint8Array | undefined;
     let received2: Uint8Array | undefined;
@@ -189,7 +197,11 @@ Deno.test("lpc integration", async (t) => {
       sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
     };
     const now = baseMockClock.now();
-    const authTS = await makeAuthTimestamp(keys, now, cryptoImpl);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
+    if (statAuthTS !== Status.Success) {
+      assertEquals(statAuthTS, Status.Success);
+      return
+    }
 
     // Tamper with signature to make it invalid
     authTS.sig[0] ^= 1; // Flip a byte
@@ -213,7 +225,11 @@ Deno.test("lpc integration", async (t) => {
     const cryptoImpl = baseCryptoImpl;
     // Create authTS with old timestamp
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
-    const authTS = await makeAuthTimestamp(keys, oldTs, cryptoImpl);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, oldTs, cryptoImpl);
+    if (statAuthTS !== Status.Success) {
+      assertEquals(statAuthTS, Status.Success);
+      return
+    }
 
     const status = await listener.connect(authTS, () => { }, () => { });
     assertEquals(status, Status.ClockOutOfSync);
@@ -239,7 +255,11 @@ Deno.test("lpc integration", async (t) => {
       const privateKey = new Uint8Array(64).fill(0x42) as any;
       const keys: KeyPair = { keyType: "private", publicKey, privateKey };
       const now = baseMockClock.now(); // original time
-      const authTS = await makeAuthTimestamp(keys, now, baseCryptoImpl);
+      const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, baseCryptoImpl);
+      if (statAuthTS !== Status.Success) {
+        assertEquals(statAuthTS, Status.Success);
+        return
+      }
 
       // Encode request using peekEnd
       const mockClient = {

@@ -18,13 +18,19 @@ export interface IRespHead {
 export const respHeadCodec: ICodecStruct<IRespHead> = {
   encode(enc, head) {
     enc.writeBytes(new Uint8Array([head.status]));
-    enc.writeDate(head.timeRcvd);
-    enc.writeDate(head.timeSent);
+    const statRcvd = enc.writeDate(head.timeRcvd);
+    if (statRcvd !== Status.Success) return statRcvd;
+    const statSent = enc.writeDate(head.timeSent);
+    if (statSent !== Status.Success) return statSent;
 
-    enc.writeVarInt(head.subscription.term);
-    enc.writeVarInt(head.subscription.elapsed);
-    enc.writeStruct(usageQuotaCodec, head.subscription.stat);
-    enc.writeStruct(usageQuotaCodec, head.subscription.dyn);
+    const statTerm = enc.writeVarInt(head.subscription.term);
+    if (statTerm !== Status.Success) return statTerm;
+    const statElapsed = enc.writeVarInt(head.subscription.elapsed);
+    if (statElapsed !== Status.Success) return statElapsed;
+    const statUStat = enc.writeStruct(usageQuotaCodec, head.subscription.stat);
+    if (statUStat !== Status.Success) return statUStat;
+    const statUDyn = enc.writeStruct(usageQuotaCodec, head.subscription.dyn);
+    if (statUDyn !== Status.Success) return statUDyn;
 
     return Status.Success;
   },

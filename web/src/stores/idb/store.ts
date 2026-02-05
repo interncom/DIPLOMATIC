@@ -42,7 +42,7 @@ export class IDBStore implements IStore<URL> {
 
 export async function openIDBStore(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("diplomatic-store-db", 1);
+    const req = indexedDB.open("diplomatic-store-db", 2);
     req.onupgradeneeded = (event) => {
       const db = req.result;
       if (!db.objectStoreNames.contains(SEED_META_TABLE)) {
@@ -54,7 +54,9 @@ export async function openIDBStore(): Promise<IDBDatabase> {
         });
       }
       if (!db.objectStoreNames.contains(UPLOAD_QUEUE_TABLE)) {
-        db.createObjectStore(UPLOAD_QUEUE_TABLE);
+        db.createObjectStore(UPLOAD_QUEUE_TABLE, {
+          keyPath: ["host", "hash"],
+        });
       }
       if (!db.objectStoreNames.contains(DOWNLOAD_QUEUE_TABLE)) {
         db.createObjectStore(DOWNLOAD_QUEUE_TABLE);

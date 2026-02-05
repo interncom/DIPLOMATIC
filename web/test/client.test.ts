@@ -109,7 +109,7 @@ describe("Client", () => {
         },
         host: "label",
       };
-      await store.uploads.enq([hash1, hash2]);
+      await store.uploads.enq("label", [hash1, hash2]);
       await store.downloads.enq([dl]);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({ numDownloads: 1, numUploads: 2 });
@@ -132,6 +132,7 @@ describe("Client", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
+      await client.link(testHost);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       await client.insertRaw(body);
       const uploads = await store.uploads.count();
@@ -154,6 +155,7 @@ describe("Client", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
+      await client.link(testHost);
       const eid = new Uint8Array(16).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
@@ -254,6 +256,7 @@ describe("Client", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
+      await client.link(testHost);
       const eid = new Uint8Array(16).fill(1);
       await client.upsertRaw(
         eid,

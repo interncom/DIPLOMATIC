@@ -92,7 +92,7 @@ export async function syncPush<Handle extends HostHandle>(
   // Form bags.
   const bags: IBag[] = [];
   const hashes: Hash[] = [];
-  for (const msgHeadEncHash of await store.uploads.list()) {
+  for (const msgHeadEncHash of await store.uploads.list(host.label)) {
     const storedMsg = await store.messages.get(msgHeadEncHash);
     if (!storedMsg) {
       continue;
@@ -122,13 +122,12 @@ export async function syncPush<Handle extends HostHandle>(
       console.error("push err", item);
       continue;
     }
-    // TODO: make uploads host-specific (add a host label column), so we don't dequeue for all hosts.
     const msgHeadEncHash = hashes[item.idx];
     if (!msgHeadEncHash) {
       console.error("no hash", item);
       continue;
     }
-    await store.uploads.deq([msgHeadEncHash]);
+    await store.uploads.deq(host.label, [msgHeadEncHash]);
   }
   return Status.Success;
 }

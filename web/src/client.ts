@@ -88,7 +88,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // If message is being applied via sync, don't upload.
     if (upload) {
       // NOTE: important to enqueue upload before storing it.
-      await this.store.uploads.enq([hash]);
+      const hosts = await this.store.hosts.list();
+      for (const host of hosts) {
+        await this.store.uploads.enq(host.label, [hash]);
+      }
     }
 
     await this.store.messages.add([msg]);

@@ -1,14 +1,23 @@
 # TODOS
 
+## v0.1
+
 GENERAL
 - Fix all `// TODO:` in codebase
 
 ARCH
-- client override server skewed push rejection with a force flag (update push codec)
-- use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
 - use VarDate encoding that encodes timestamps with varints for milliseconds since UNIX epoch (or even advance the epoch forward to e.g. 2025 to shave a byte)
 
+## Later
+
+GENERAL
+- Rearchitect Encoder/Decoder so that each primitive has an ICodecPrimitive (like ICodecStruct--maybe same) that holds both encoder and decoder for the primitive in one place
+
+ARCH
+- use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
+
 CLIENT
+- client override server skewed push rejection by adjusting local timestamp with host offset (no API change necessary)
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey
 - split React portion into separate package?
 - eliminate fileSaver dependency

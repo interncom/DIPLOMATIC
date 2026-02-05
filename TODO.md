@@ -5,9 +5,6 @@
 GENERAL
 - Fix all `// TODO:` in codebase
 
-ARCH
-- use VarDate encoding that encodes timestamps with varints for milliseconds since UNIX epoch (or even advance the epoch forward to e.g. 2025 to shave a byte)
-
 ## Later
 
 GENERAL

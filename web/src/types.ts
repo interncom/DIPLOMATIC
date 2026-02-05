@@ -67,11 +67,6 @@ export interface IUploadQueue {
   wipe(): Promise<void>;
 }
 
-export interface IDeltaListItem {
-  sha256: Uint8Array;
-  recordedAt: Date;
-}
-
 export interface IDownloadMessage {
   kdm: Uint8Array;
   seq: number;

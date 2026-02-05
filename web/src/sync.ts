@@ -173,16 +173,26 @@ export async function syncPull<Handle extends HostHandle>(
     const key = await enclave.deriveFromKDM(dl.kdm);
     const [contents, status] = await openBagBody(headEnc, bodyCph, key, crypto);
     if (status !== Status.Success) {
-      // TODO: determine if this is sufficient handling.
+      // Failed to open bag.
+      // This is not retry-able.
       dls.delete(seq);
+      await store.downloads.deq(host.label, [seq]);
       continue;
     }
+
+    // Store message.
     const { bod: body, headHash: properHash } = contents;
     const msg: IStoredMessage = { hash: properHash, head, body };
     await store.messages.add([msg]);
+
+    // Remove download.
     dls.delete(seq);
     await store.downloads.deq(host.label, [seq]);
+
+    // Apply message to local state.
     // TODO: should apply happen before storing the message and deq-ing the download?
+    // No. Application should be a separate phase.
+    // Messages should be tagged with whether they've been applied or not.
     const stat = await apply(head, body, false);
     if (stat !== Status.Success) {
       console.error("ERR applying", stat);

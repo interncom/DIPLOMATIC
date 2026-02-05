@@ -2,7 +2,6 @@ import { IStateEmitter } from "./types";
 
 type TypedListener<T> = (data: T) => void;
 
-// TODO: consolidate with eventEmitter.
 export class TypedEventEmitter<T> {
   private listeners: Map<string, Set<TypedListener<T>>> = new Map();
 

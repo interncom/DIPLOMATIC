@@ -1,15 +1,47 @@
 import { openBagBody } from "./shared/bag";
-import { btoh, htob } from "./shared/binary";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
+import { IBagPeekItem } from "./shared/codecs/peekItem";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
 import { EncodedMessage } from "./shared/message";
-import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
+import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
+import { err, ok, ValStat } from "./shared/valstat";
 import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
+
+async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, head: IMessageHead }>> {
+  const dec = new Decoder(item.headCph);
+  const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
+  if (readStatus !== Status.Success) {
+    return err(readStatus);
+  }
+  const { sig, kdm, headCph } = peekItem;
+  const valid = await crypto.checkSigEd25519(
+    sig,
+    headCph,
+    hostKeys.publicKey,
+  );
+  if (!valid) {
+    return err(Status.InvalidSignature);
+  }
+  const key = await enclave.deriveFromKDM(kdm);
+  let headEnc: Uint8Array;
+  try {
+    headEnc = await crypto.decryptXSalsa20Poly1305Combined(headCph, key);
+  } catch {
+    // Decryption failed, skip
+    return err(Status.DecryptionError);
+  }
+  const headDec = new Decoder(headEnc);
+  const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+  if (headStatus !== Status.Success) {
+    return err(headStatus);
+  }
+  return ok({ kdm, head });
+}
 
 // Phase 1: Peek for new items and enqueue downloads
 export async function syncPeek<Handle extends HostHandle>(
@@ -27,37 +59,15 @@ export async function syncPeek<Handle extends HostHandle>(
     return peekStatus;
   }
   for (const item of items) {
-    const dec = new Decoder(item.headCph);
-    const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
-    if (readStatus !== Status.Success) {
-      // TODO: handle error
+    const [dlm, stat] = await parsePeekItem(item, hostKeys, enclave, crypto);
+    if (stat !== Status.Success) {
+      console.error("Parsing peek item", stat);
       continue;
+      // NOTE: skipping here has the potential to create out-of-sync issues.
+      // The resolution will be the CHECK mechanism to ensure client and host
+      // have the same set of messages.
     }
-    const { sig, kdm, headCph } = peekItem;
-    const valid = await crypto.checkSigEd25519(
-      sig,
-      headCph,
-      hostKeys.publicKey,
-    );
-    if (!valid) {
-      // TODO: handle error non-silently.
-      continue;
-    }
-    const key = await enclave.deriveFromKDM(kdm);
-    let headEnc: Uint8Array;
-    try {
-      headEnc = await crypto.decryptXSalsa20Poly1305Combined(headCph, key);
-    } catch {
-      // Decryption failed, skip
-      continue;
-    }
-    const headDec = new Decoder(headEnc);
-    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
-      // TODO: handle error
-      continue;
-    }
-    dls.push({ seq: item.seq, kdm, head, host: host.label });
+    dls.push({ ...dlm, seq: item.seq, host: host.label });
   }
   await store.downloads.enq(dls);
 
@@ -105,7 +115,10 @@ export async function syncPush<Handle extends HostHandle>(
   // Remove successful uploads from queue.
   for (const item of results) {
     if (item.status !== Status.Success) {
-      // TODO: handle errors, some of which may be non-retryable.
+      // TODO: distinguish retry-able from non-retry-able errors.
+      // Non-retry-able errors should be also removed from the upload queue,
+      // but will require user feedback to indicate that the local state is
+      // not *ever* going to be persisted to at least this particular host.
       console.error("push err", item);
       continue;
     }

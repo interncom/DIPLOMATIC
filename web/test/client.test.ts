@@ -134,7 +134,11 @@ describe("Client", () => {
       });
       await client.link(testHost);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
-      await client.insertRaw(body);
+      const [head, statHead] = await client.insertRaw(body);
+      if (statHead !== Status.Success) {
+        expect(statHead).toEqual(Status.Success);
+        return;
+      }
       const uploads = await store.uploads.count();
       expect(uploads).toBe(1);
       const messages = Array.from(await store.messages.list());

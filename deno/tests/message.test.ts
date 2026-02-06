@@ -9,6 +9,7 @@ import { Status } from "../../shared/consts.ts";
 import { genDelete } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { IMessage } from "../../shared/types.ts";
+import { eidCodec } from "../../shared/codecs/eid.ts";
 
 // Constants that remain fixed
 const eidBytes = 16;
@@ -110,13 +111,26 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("delete operation (len=0, no body)", async () => {
-    const op = await genDelete({
-      eid: createFilledArray(16, 0x33),
+    const eidObj = { id: createFilledArray(8, 0x33), ts: new Date(0) };
+    const encEid = new Encoder();
+    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
+    const eid = encEid.result();
+
+    const [op, s1] = await genDelete({
+      eid,
       clk: new Date(0),
       ctr: 999,
       now: new Date(),
       crypto: libsodiumCrypto,
     });
+    if (s1 !== Status.Success) {
+      assertEquals(s1, Status.Success);
+      return;
+    }
     const hsh = undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,

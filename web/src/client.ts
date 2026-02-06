@@ -104,7 +104,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async insertRaw(bod: EncodedMessage) {
     const { clock, crypto } = this;
-    const head = await genInsertHead({ now: clock.now(), bod, crypto });
+    const [head, stat] = await genInsertHead({ now: clock.now(), bod, crypto });
+    if (stat !== Status.Success) {
+      return err<IMessageHead>(stat);
+    }
     await this.apply(head, bod);
     return ok(head);
   }
@@ -150,13 +153,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
         // Replace with a new msg that retains the old eid but clk of now.
         const replParams = { now, eid, clk: now, ctr: 0, bod, crypto };
-        const repl = await genUpsertHead(replParams);
+        const [repl, statRepl] = await genUpsertHead(replParams);
+        if (statRepl !== Status.Success) {
+          return err<IMessageHead>(statRepl);
+        }
         await this.apply(repl, bod);
         return ok(repl);
       }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const msg = await genUpsertHead({ now, eid, clk, ctr, bod, crypto });
+    const [msg, statMsg] = await genUpsertHead({ now, eid, clk, ctr, bod, crypto });
+    if (statMsg !== Status.Success) {
+      return err<IMessageHead>(statMsg);
+    }
     await this.apply(msg, bod);
     return ok(msg);
   }

@@ -7,13 +7,15 @@ import { APICallName, Status } from "./consts.ts";
 import { ValStat } from "./valstat.ts";
 
 export type GroupID = Uint8Array | string;
-export type EntityID = Uint8Array;
+
+const entityIDSymbol = Symbol("EntityID");
+export type EntityID = Uint8Array & { readonly [entityIDSymbol]: true };
 
 export type SerializedContent = Uint8Array;
 
 export interface IMessageHead {
   // eid will generally be a random identifier.
-  eid: Uint8Array;
+  eid: EntityID;
 
   // clk is the creation timestamp of the entity.
   clk: Date;

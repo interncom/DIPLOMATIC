@@ -3,6 +3,7 @@ import { openBag, sealBag } from "../../shared/bag.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import { Status } from "../../shared/consts.ts";
 import type {
+  EntityID,
   HostSpecificKeyPair,
   IBag,
   IMessage,
@@ -83,7 +84,7 @@ Deno.test("bag", async (t) => {
     ) as HostSpecificKeyPair;
 
     // Create a test message
-    const eid = await crypto.genRandomBytes(16);
+    const eid = await crypto.genRandomBytes(16) as EntityID;
     const bod = new TextEncoder().encode("HELLO DIPLOMATIC");
     const msg: IMessage = {
       eid,

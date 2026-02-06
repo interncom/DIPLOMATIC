@@ -58,12 +58,12 @@ export class EntIDB implements IEntDB {
         if (!tx) {
           throw new Error("Transaction is null during upgrade");
         }
-        if (!db.objectStoreNames.contains(entityTableName)) {
-          db.createObjectStore(entityTableName, {
-            keyPath: ["eid", "createdAt"],
-            autoIncrement: false,
-          });
-        }
+         if (!db.objectStoreNames.contains(entityTableName)) {
+           db.createObjectStore(entityTableName, {
+             keyPath: "eid",
+             autoIncrement: false,
+           });
+         }
         const store = tx.objectStore(entityTableName);
         if (!store.indexNames.contains(typeIndexName)) {
           store.createIndex(typeIndexName, ["type", "createdAt"], {
@@ -132,7 +132,6 @@ export class EntIDB implements IEntDB {
 
   async getEnt<T>(
     eid: EntityID,
-    createdAt: Date,
   ): Promise<ValStat<IEntity<T> | undefined>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
@@ -141,7 +140,7 @@ export class EntIDB implements IEntDB {
     const tx = this.db.transaction(entityTableName, "readonly");
     const store = tx.objectStore(entityTableName);
     return new Promise((resolve) => {
-      const req = store.get([eidHex, createdAt]);
+      const req = store.get(eidHex);
       req.onsuccess = () => {
         const stored = req.result;
         if (!stored) {

@@ -40,7 +40,6 @@ export interface IEntDB {
   clear: () => Promise<Status>;
   getEnt<T>(
     eid: EntityID,
-    createdAt: Date,
   ): Promise<ValStat<IEntity<T> | undefined>>;
   getEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,

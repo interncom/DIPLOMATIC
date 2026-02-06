@@ -95,14 +95,21 @@ Deno.test("server", async (t) => {
 
   // Test PUSH
   const bod = denoMsgpack.encode("test operation data");
-  const op1 = await genInsert({ now, bod, crypto: libsodiumCrypto });
-  const op2 = await genInsert({ now, bod, crypto: libsodiumCrypto });
+  const [op1, s1] = await genInsert({ now, bod, crypto: libsodiumCrypto });
+  if (s1 !== Status.Success) {
+    assertEquals(s1, Status.Success);
+    return;
+  }
+  const [op2, s2] = await genInsert({ now, bod, crypto: libsodiumCrypto });
+  if (s2 !== Status.Success) {
+    assertEquals(s2, Status.Success);
+    return;
+  }
   const bags = [await client.seal(op1), await client.seal(op2)];
   let result: IBagPushItem[];
   await t.step("POST /ops", async () => {
     const [pushResults, pushStatus] = await client.push(bags);
     if (pushStatus !== Status.Success) {
-      console.info('fdsa', pushStatus)
       assertEquals(pushStatus, Status.Success);
       return;
     }

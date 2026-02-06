@@ -12,7 +12,7 @@ import type {
   IMessageHead,
   MasterSeed,
 } from "../../shared/types.ts";
-import { eidCodec } from "../../shared/codecs/eid.ts";
+import { eidCodec, makeEID } from "../../shared/codecs/eid.ts";
 
 // Mock implementations for deterministic testing
 class MockCrypto implements ICrypto {
@@ -133,18 +133,15 @@ Deno.test("encodeFile", async (t) => {
     const id = await crypto.genRandomBytes(8);
 
     const eidObj = { id: id as EntityID, ts: now };
-    const encEid = new Encoder();
-    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    const [eid, statEid] = makeEID(eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result() as EntityID;
 
     const [head, statHead] = await genDeleteHead({
       now,
       eid,
-      clk: now,
       ctr: 1,
       crypto,
     });
@@ -180,19 +177,16 @@ Deno.test("encodeFile", async (t) => {
     const id = await crypto.genRandomBytes(8);
 
     const eidObj = { id: id as EntityID, ts: now };
-    const encEid = new Encoder();
-    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    const [eid, statEid] = makeEID(eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result() as EntityID;
 
     const body = new TextEncoder().encode("test body");
     const [head, statHead] = await genUpsertHead({
       now,
       eid,
-      clk: now,
       ctr: 1,
       bod: body,
       crypto,
@@ -231,13 +225,11 @@ Deno.test("encodeFile", async (t) => {
       const id = await crypto.genRandomBytes(8);
 
       const eidObj = { id, ts: now };
-      const encEid = new Encoder();
-      const statEid = encEid.writeStruct(eidCodec, eidObj);
+      const [eid, statEid] = makeEID(eidObj);
       if (statEid !== Status.Success) {
         assertEquals(statEid, Status.Success);
         return;
       }
-      const eid = encEid.result() as EntityID;
 
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
@@ -245,7 +237,6 @@ Deno.test("encodeFile", async (t) => {
       const [head, statHead] = await genUpsertHead({
         now,
         eid,
-        clk: now,
         ctr: i,
         bod: body || new Uint8Array(0),
         crypto,
@@ -300,15 +291,13 @@ Deno.test("decodeFile", async (t) => {
     const id = await crypto.genRandomBytes(8);
 
     const eidObj = { id, ts: now };
-    const encEid = new Encoder();
-    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    const [eid, statEid] = makeEID(eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result() as EntityID;
 
-    const [head, statHead] = await genDeleteHead({ now, eid, clk: now, ctr: 1, crypto });
+    const [head, statHead] = await genDeleteHead({ now, eid, ctr: 1, crypto });
     if (statHead !== Status.Success) {
       assertEquals(statHead, Status.Success);
       return;
@@ -333,19 +322,16 @@ Deno.test("decodeFile", async (t) => {
     const id = await crypto.genRandomBytes(8);
 
     const eidObj = { id, ts: now };
-    const encEid = new Encoder();
-    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    const [eid, statEid] = makeEID(eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result() as EntityID;
 
     const body = new TextEncoder().encode("test body");
     const [head, statHead] = await genUpsertHead({
       now,
       eid,
-      clk: now,
       ctr: 1,
       bod: body,
       crypto,
@@ -382,13 +368,11 @@ Deno.test("decodeFile", async (t) => {
       const id = await crypto.genRandomBytes(8);
 
       const eidObj = { id, ts: now };
-      const encEid = new Encoder();
-      const statEid = encEid.writeStruct(eidCodec, eidObj);
+      const [eid, statEid] = makeEID(eidObj);
       if (statEid !== Status.Success) {
         assertEquals(statEid, Status.Success);
         return;
       }
-      const eid = encEid.result() as EntityID;
 
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
@@ -396,7 +380,6 @@ Deno.test("decodeFile", async (t) => {
       const [head, statHead] = await genUpsertHead({
         now,
         eid,
-        clk: now,
         ctr: i,
         bod: body || new Uint8Array(0),
         crypto,

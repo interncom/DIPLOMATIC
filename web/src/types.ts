@@ -92,7 +92,7 @@ export interface IMessageStore {
   has: (hash: Hash) => Promise<boolean>;
   del: (hshs: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
-  last: (eid: EntityID, clk: Date) => Promise<IStoredMessage | undefined>;
+  last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
   wipe(): Promise<void>;
 }
 
@@ -128,7 +128,6 @@ export interface IClient<Handle extends HostHandle> {
   insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
   upsertRaw(
     eid: EntityID,
-    clk: Date,
     content: SerializedContent,
     force?: boolean,
   ): Promise<ValStat<IMessageHead>>;
@@ -137,7 +136,7 @@ export interface IClient<Handle extends HostHandle> {
     op: IUpsertParams<T>,
     force?: boolean,
   ): Promise<ValStat<IMessageHead>>;
-  delete(eid: EntityID, clk: Date): Promise<ValStat<IMessageHead>>;
+  delete(eid: EntityID): Promise<ValStat<IMessageHead>>;
 
   sync(): Promise<Status>;
 

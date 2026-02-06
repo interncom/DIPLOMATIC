@@ -1,11 +1,11 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { IEntDB, IEntity } from "./entdb";
+import { IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity } from "./entdb";
 import { btoh, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
-import { ok, ValStat } from "../shared/valstat.ts";
+import { err, ok, ValStat } from "../shared/valstat.ts";
 import { updateEnt } from "./entdb";
 
 interface IDateRange {
@@ -21,9 +21,9 @@ type EntitiesQuery = {
 };
 
 export class EntDBMemory implements IEntDB {
-  ents: Map<string, IEntity<unknown>> = new Map();
+  ents: Map<string, IPossiblyDeletedEntity<unknown>> = new Map();
 
-  constructor(initEnts: IEntity<unknown>[] = []) {
+  constructor(initEnts: IPossiblyDeletedEntity<unknown>[] = []) {
     for (const ent of initEnts) {
       const key = `${btoh(ent.eid)}-${ent.createdAt.getTime()}`;
       this.ents.set(key, ent);
@@ -53,17 +53,21 @@ export class EntDBMemory implements IEntDB {
     createdAt: Date,
   ): Promise<ValStat<IEntity<T> | undefined>> {
     const key = `${btoh(eid)}-${createdAt.getTime()}`;
-    return ok(this.ents.get(key) as IEntity<T> | undefined);
+    const ent = this.ents.get(key);
+    if (ent && isLiveEntity(ent)) {
+      return ok(ent as IEntity<T>);
+    }
+    return ok(undefined);
   }
 
-  async getEntities<T>(
+  private async getAllEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
-  ): Promise<ValStat<IEntity<T>[]>> {
-    const results: IEntity<T>[] = [];
+  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+    const results: IPossiblyDeletedEntity<T>[] = [];
     if (pid !== undefined) {
       for (const ent of this.ents.values()) {
         if (ent.type === type && ent.pid && bytesEqual(ent.pid, pid)) {
-          results.push(ent as IEntity<T>);
+          results.push(ent as IPossiblyDeletedEntity<T>);
         }
       }
     } else if (gid !== undefined) {
@@ -74,7 +78,7 @@ export class EntDBMemory implements IEntDB {
             (ent.gid instanceof Uint8Array && gid instanceof Uint8Array &&
               bytesEqual(ent.gid, gid)))
         ) {
-          results.push(ent as IEntity<T>);
+          results.push(ent as IPossiblyDeletedEntity<T>);
         }
       }
     } else if (updatedBetween !== undefined) {
@@ -83,17 +87,28 @@ export class EntDBMemory implements IEntDB {
           ent.type === type && ent.updatedAt >= updatedBetween.start &&
           ent.updatedAt <= updatedBetween.end
         ) {
-          results.push(ent as IEntity<T>);
+          results.push(ent as IPossiblyDeletedEntity<T>);
         }
       }
     } else {
       for (const ent of this.ents.values()) {
         if (ent.type === type) {
-          results.push(ent as IEntity<T>);
+          results.push(ent as IPossiblyDeletedEntity<T>);
         }
       }
     }
     return ok(results);
+  }
+
+  async getEntities<T>(
+    query: EntitiesQuery,
+  ): Promise<ValStat<IEntity<T>[]>> {
+    const [ents, stat] = await this.getAllEntities<T>(query);
+    if (stat !== Status.Success) {
+      return err(stat);
+    }
+    const liveEnts = ents.filter(isLiveEntity);
+    return ok(liveEnts);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {

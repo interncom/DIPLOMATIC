@@ -4,7 +4,7 @@
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-import { EntitiesQuery, IEntDB, IEntity, updateEnt } from "./entdb";
+import { EntitiesQuery, IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity, updateEnt } from "./entdb";
 import { btoh, htob } from "../shared/binary";
 
 export const entityTableName = "entities";
@@ -24,7 +24,7 @@ interface IStoredEntity<T = unknown> {
   body: T | undefined;
 }
 
-function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
+function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   return {
     ...ent,
     eid: btoh(ent.eid),
@@ -35,7 +35,7 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   };
 }
 
-function storedToEntity<T>(stored: IStoredEntity<T>): IEntity<T> {
+function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> {
   return {
     ...stored,
     eid: htob(stored.eid),
@@ -148,7 +148,11 @@ export class EntIDB implements IEntDB {
           resolve(ok(undefined));
         } else {
           const ent = storedToEntity(stored as IStoredEntity<T>);
-          resolve(ok(ent));
+          if (isLiveEntity(ent)) {
+            resolve(ok(ent));
+          } else {
+            resolve(ok(undefined));
+          }
         }
       };
       req.onerror = () => resolve(err(Status.DatabaseError));
@@ -159,7 +163,7 @@ export class EntIDB implements IEntDB {
     opType: string,
     start: Date,
     end: Date,
-  ): Promise<ValStat<IEntity<T>[]>> {
+  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -180,7 +184,7 @@ export class EntIDB implements IEntDB {
   async getGroupMembers<T>(
     opType: string,
     gid: GroupID,
-  ): Promise<ValStat<IEntity<T>[]>> {
+  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -197,7 +201,7 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getAllOfType<T>(opType: string): Promise<ValStat<IEntity<T>[]>> {
+  async getAllOfType<T>(opType: string): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -215,9 +219,9 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getEntities<T>(
+  private async getAllEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
-  ): Promise<ValStat<IEntity<T>[]>> {
+  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -244,6 +248,17 @@ export class EntIDB implements IEntDB {
       );
     }
     return await this.getAllOfType<T>(type);
+  }
+
+  async getEntities<T>(
+    query: EntitiesQuery,
+  ): Promise<ValStat<IEntity<T>[]>> {
+    const [ents, stat] = await this.getAllEntities<T>(query);
+    if (stat !== Status.Success) {
+      return err(stat);
+    }
+    const liveEnts = ents.filter(isLiveEntity);
+    return ok(liveEnts);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {

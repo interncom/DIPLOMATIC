@@ -4,7 +4,7 @@ import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 import { StateManager } from "../state.ts";
 
-export interface IEntity<T> {
+export interface IPossiblyDeletedEntity<T> {
   eid: EntityID;
   gid?: GroupID;
   pid?: EntityID; // Parent entity ID. Not necessarily of same type.
@@ -13,6 +13,14 @@ export interface IEntity<T> {
   updatedCtr: number;
   createdAt: Date;
   body: T | undefined;
+}
+
+export interface IEntity<T> extends Omit<IPossiblyDeletedEntity<T>, 'body'> {
+  body: T;
+}
+
+export function isLiveEntity<T>(ent: IPossiblyDeletedEntity<T>): ent is IEntity<T> {
+  return ent.body !== undefined;
 }
 
 export interface IDateRange {
@@ -45,9 +53,9 @@ export function entStateManager(edb: IEntDB): StateManager {
 }
 
 export function updateEnt<T = unknown>(
-  curr: IEntity<T> | undefined,
+  curr: IPossiblyDeletedEntity<T> | undefined,
   op: IOp<T>,
-): ValStat<IEntity<T>> {
+): ValStat<IPossiblyDeletedEntity<T>> {
   const messageTs = new Date(op.clk.getTime() + op.off);
   if (curr && messageTs <= curr.createdAt) {
     return err(Status.NoChange);
@@ -86,7 +94,7 @@ export function updateEnt<T = unknown>(
       op.ctr > (curr.updatedCtr ?? 0));
   const body = isOpNewer ? op.body : curr.body;
 
-  const ent: IEntity<T> = {
+  const ent: IPossiblyDeletedEntity<T> = {
     eid: op.eid,
     gid: isOpNewer ? op.gid : curr.gid,
     pid: isOpNewer ? op.pid : curr.pid,

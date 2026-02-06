@@ -25,20 +25,20 @@ export class EntDBMemory implements IEntDB {
 
   constructor(initEnts: IPossiblyDeletedEntity<unknown>[] = []) {
     for (const ent of initEnts) {
-      const key = `${btoh(ent.eid)}-${ent.createdAt.getTime()}`;
+      const key = btoh(ent.eid);
       this.ents.set(key, ent);
     }
   }
 
   async apply(op: IOp): Promise<Status> {
-    const key = `${btoh(op.eid)}-${op.clk.getTime()}`;
+    const key = btoh(op.eid);
     const curr = this.ents.get(key);
     const [ent, stat] = updateEnt(curr, op);
     if (stat !== Status.Success) {
       return stat;
     }
 
-    const newKey = `${btoh(ent.eid)}-${ent.createdAt.getTime()}`;
+    const newKey = btoh(ent.eid);
     this.ents.set(newKey, ent);
     return Status.Success;
   }
@@ -50,9 +50,8 @@ export class EntDBMemory implements IEntDB {
 
   async getEnt<T>(
     eid: EntityID,
-    createdAt: Date,
   ): Promise<ValStat<IEntity<T> | undefined>> {
-    const key = `${btoh(eid)}-${createdAt.getTime()}`;
+    const key = btoh(eid);
     const ent = this.ents.get(key);
     if (ent && isLiveEntity(ent)) {
       return ok(ent as IEntity<T>);

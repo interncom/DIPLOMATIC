@@ -27,7 +27,7 @@ describe("EntDBMemory.apply()", () => {
       const result = await db.apply(op);
       expect(result).toBe(Status.Success);
 
-      const [entity, entityStatus] = await db.getEnt(eid, op.clk);
+      const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
@@ -71,7 +71,7 @@ describe("EntDBMemory.apply()", () => {
       const result = await db.apply(newOp);
       expect(result).toBe(Status.Success);
 
-      const [entity, entityStatus] = await db.getEnt(eid, new Date(500));
+      const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: "new" });
       expect(entity?.createdAt).toEqual(new Date(500));
@@ -100,7 +100,7 @@ describe("EntDBMemory.apply()", () => {
       };
       await db.apply(op);
 
-      const [entity, entityStatus] = await db.getEnt(eid, new Date(1000));
+      const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: "higher" });
       expect(entity?.updatedCtr).toBe(5);
@@ -128,7 +128,7 @@ describe("EntDBMemory.apply()", () => {
       };
       await db.apply(op);
 
-      const [entity, entityStatus] = await db.getEnt(eid, new Date(1000));
+      const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: "higher" });
       expect(entity?.updatedCtr).toBe(5);

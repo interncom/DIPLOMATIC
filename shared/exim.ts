@@ -7,7 +7,7 @@ import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { HostSpecificKeyPair, ICrypto, IMessageHead } from "./types.ts";
+import { EntityID, HostSpecificKeyPair, ICrypto, IMessageHead } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 /* File format
@@ -170,6 +170,7 @@ export async function decodeFile(
       new Decoder(headEnc),
     );
     if (headStatus !== Status.Success) return err(headStatus);
+    const msgHeadBranded = { ...msgHead, eid: msgHead.eid as EntityID };
 
     let itemBodyEnc: Uint8Array | undefined;
     if (item.lenBody > 0 && item.offBody !== undefined) {
@@ -189,7 +190,7 @@ export async function decodeFile(
       // TODO: per-item failure codes. Allow partial import.
     }
 
-    messages.push({ head: msgHead, body: itemBodyEnc });
+    messages.push({ head: msgHeadBranded, body: itemBodyEnc });
   }
 
   return ok(messages);

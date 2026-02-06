@@ -6,6 +6,7 @@ import { Enclave } from "../../shared/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type {
+  EntityID,
   Hash,
   ICrypto,
   IMessageHead,
@@ -131,14 +132,14 @@ Deno.test("encodeFile", async (t) => {
     const now = new Date();
     const id = await crypto.genRandomBytes(8);
 
-    const eidObj = { id, ts: now };
+    const eidObj = { id: id as EntityID, ts: now };
     const encEid = new Encoder();
     const statEid = encEid.writeStruct(eidCodec, eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result();
+    const eid = encEid.result() as EntityID;
 
     const [head, statHead] = await genDeleteHead({
       now,
@@ -178,14 +179,14 @@ Deno.test("encodeFile", async (t) => {
     const now = new Date();
     const id = await crypto.genRandomBytes(8);
 
-    const eidObj = { id, ts: now };
+    const eidObj = { id: id as EntityID, ts: now };
     const encEid = new Encoder();
     const statEid = encEid.writeStruct(eidCodec, eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result();
+    const eid = encEid.result() as EntityID;
 
     const body = new TextEncoder().encode("test body");
     const [head, statHead] = await genUpsertHead({
@@ -236,7 +237,7 @@ Deno.test("encodeFile", async (t) => {
         assertEquals(statEid, Status.Success);
         return;
       }
-      const eid = encEid.result();
+      const eid = encEid.result() as EntityID;
 
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)
@@ -305,7 +306,7 @@ Deno.test("decodeFile", async (t) => {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result();
+    const eid = encEid.result() as EntityID;
 
     const [head, statHead] = await genDeleteHead({ now, eid, clk: now, ctr: 1, crypto });
     if (statHead !== Status.Success) {
@@ -338,7 +339,7 @@ Deno.test("decodeFile", async (t) => {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result();
+    const eid = encEid.result() as EntityID;
 
     const body = new TextEncoder().encode("test body");
     const [head, statHead] = await genUpsertHead({
@@ -387,7 +388,7 @@ Deno.test("decodeFile", async (t) => {
         assertEquals(statEid, Status.Success);
         return;
       }
-      const eid = encEid.result();
+      const eid = encEid.result() as EntityID;
 
       const body = i % 2 === 0
         ? new TextEncoder().encode(`body ${i}`)

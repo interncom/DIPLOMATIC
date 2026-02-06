@@ -1,9 +1,10 @@
 import { ICodecStruct } from "../codec.ts";
 import { hshBytes, Status } from "../consts.ts";
+import { EntityID } from "../types.ts";
 import { err, ok } from "../valstat.ts";
 
 export interface IMessageHead {
-  eid: Uint8Array;
+  eid: EntityID;
   clk: Date;
   off: number;
   ctr: number;
@@ -46,7 +47,7 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
       hsh = h;
     }
     return ok({
-      eid,
+      eid: eid as EntityID,
       clk,
       off,
       ctr,

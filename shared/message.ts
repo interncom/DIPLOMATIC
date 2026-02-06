@@ -2,6 +2,7 @@ import { Decoder, Encoder } from "./codec.ts";
 import { eidCodec } from "./codecs/eid.ts";
 import { Status } from "./consts.ts";
 import type {
+  EntityID,
   ICrypto,
   IMessage,
   IMessageHead,
@@ -30,11 +31,11 @@ export async function genInsertHead(
 ): Promise<ValStat<IMessageHead>> {
   const id = await crypto.genRandomBytes(8);
   const encEid = new Encoder();
-  const statEid = encEid.writeStruct(eidCodec, { id, ts: now });
+  const statEid = encEid.writeStruct(eidCodec, { id: id as EntityID, ts: now });
   if (statEid !== Status.Success) {
     return err(statEid);
   }
-  const eid = encEid.result();
+  const eid = encEid.result() as EntityID;
 
   return genUpsertHead({ now, eid, clk: now, ctr: 0, bod, crypto });
 }

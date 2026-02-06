@@ -8,7 +8,7 @@ import {
 import { Status } from "../../shared/consts.ts";
 import { genDelete } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import { IMessage } from "../../shared/types.ts";
+import { EntityID, IMessage } from "../../shared/types.ts";
 import { eidCodec } from "../../shared/codecs/eid.ts";
 
 // Constants that remain fixed
@@ -25,7 +25,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   await t.step("small values round-trip", async () => {
     const bod = createFilledArray(5, 0xaa); // Small body
     const op: IMessage = {
-      eid: createFilledArray(16, 0x11),
+      eid: createFilledArray(16, 0x11) as EntityID,
       clk: new Date(1234567890000),
       off: 0,
       ctr: 0, // Small counter
@@ -70,7 +70,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   await t.step("large ctr and len round-trip", async () => {
     const bod = createFilledArray(100000, 0xbb); // Large body
     const op: IMessage = {
-      eid: createFilledArray(16, 0x22),
+      eid: createFilledArray(16, 0x22) as EntityID,
       clk: new Date(9876543210000),
       off: 0,
       ctr: 123456789, // Large counter (fits in var-int)
@@ -118,7 +118,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result();
+    const eid = encEid.result() as EntityID;
 
     const [op, s1] = await genDelete({
       eid,
@@ -165,7 +165,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
 
   await t.step("edge: empty body (upsert)", async () => {
     const op: IMessage = {
-      eid: createFilledArray(16, 0x44),
+      eid: createFilledArray(16, 0x44) as EntityID,
       clk: new Date(1111111110000),
       off: 0,
       ctr: 1,
@@ -218,7 +218,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   await t.step("encodeOp sets hsh correctly", async () => {
     const bod = createFilledArray(10, 0xdd);
     const op: IMessage = {
-      eid: createFilledArray(16, 0xee),
+      eid: createFilledArray(16, 0xee) as EntityID,
       clk: new Date(1234567890000),
       off: 0,
       ctr: 5,

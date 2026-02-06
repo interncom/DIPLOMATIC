@@ -38,11 +38,11 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
 function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> {
   return {
     ...stored,
-    eid: htob(stored.eid),
+    eid: htob(stored.eid) as EntityID,
     gid: stored.gid
       ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid)
       : undefined,
-    pid: stored.pid ? htob(stored.pid) : undefined,
+    pid: stored.pid ? htob(stored.pid) as EntityID : undefined,
   };
 }
 
@@ -58,12 +58,12 @@ export class EntIDB implements IEntDB {
         if (!tx) {
           throw new Error("Transaction is null during upgrade");
         }
-         if (!db.objectStoreNames.contains(entityTableName)) {
-           db.createObjectStore(entityTableName, {
-             keyPath: "eid",
-             autoIncrement: false,
-           });
-         }
+        if (!db.objectStoreNames.contains(entityTableName)) {
+          db.createObjectStore(entityTableName, {
+            keyPath: "eid",
+            autoIncrement: false,
+          });
+        }
         const store = tx.objectStore(entityTableName);
         if (!store.indexNames.contains(typeIndexName)) {
           store.createIndex(typeIndexName, ["type", "createdAt"], {

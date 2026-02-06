@@ -1,4 +1,6 @@
 import { max } from "../lib";
+import { Decoder } from "../shared/codec.ts";
+import { eidCodec } from "../shared/codecs/eid.ts";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
@@ -55,17 +57,23 @@ export function updateEnt<T = unknown>(
   curr: IPossiblyDeletedEntity<T> | undefined,
   op: IOp<T>,
 ): ValStat<IPossiblyDeletedEntity<T>> {
-  const messageTs = new Date(op.clk.getTime() + op.off);
+  const decOpEid = new Decoder(op.eid);
+  const [opEID, statOpEID] = decOpEid.readStruct(eidCodec);
+  if (statOpEID !== Status.Success) {
+    return err(statOpEID);
+  }
+
+  const messageTs = new Date(opEID.ts.getTime() + op.off);
   if (curr && messageTs <= curr.createdAt) {
     return err(Status.NoChange);
   }
 
-  if (curr && curr.createdAt.getTime() !== op.clk.getTime()) {
+  if (curr && curr.createdAt.getTime() !== opEID.ts.getTime()) {
     // CLK is part of the entity ID.
     // If CLK's don't match, they are not the same entity.
     return err(Status.NotFound);
   }
-  const createdTs = op.clk.getTime();
+  const createdTs = opEID.ts.getTime();
 
   // updatedAt is max of current and messageTs
   const updatedTs = curr
@@ -87,7 +95,7 @@ export function updateEnt<T = unknown>(
     }
   }
 
-  const ts = op.clk.getTime() + op.off;
+  const ts = opEID.ts.getTime() + op.off;
   const isOpNewer = !curr || ts > curr.updatedAt.getTime() ||
     (ts === curr.updatedAt.getTime() &&
       op.ctr > (curr.updatedCtr ?? 0));

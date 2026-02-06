@@ -3,7 +3,7 @@ import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { Encoder } from "./shared/codec";
+import { Decoder, Encoder } from "./shared/codec";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import {
@@ -31,6 +31,7 @@ import { Status } from "./shared/consts";
 import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
 import { err, ok } from "./shared/valstat";
+import { eidCodec, makeEID } from "./shared/codecs/eid";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -114,15 +115,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async upsertRaw(
     eid: EntityID,
-    clk: Date,
     bod: EncodedMessage | undefined,
     force = false,
   ) {
     const { clock, crypto, store } = this;
     const now = clock.now();
-    const last = await store.messages.last(eid, clk);
+    const last = await store.messages.last(eid);
     if (last) {
-      const ts = last.head.clk.getTime() + last.head.off;
+      const decEid = new Decoder(eid);
+      const [eidDec, statEid] = decEid.readStruct(eidCodec);
+      if (statEid !== Status.Success) {
+        return err<IMessageHead>(statEid);
+      }
+
+      const ts = eidDec.ts.getTime() + last.head.off;
       if (ts > now.getTime()) {
         // last was created in the future. So either:
         // a) another client's clock is skewed into the future, or
@@ -138,7 +144,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         // even if that places the delete into the future as well.
         const offDel = last.head.off + 1;
         const offCtr = last.head.ctr + 1;
-        const delHead = { eid, clk, off: offDel, ctr: offCtr, len: 0 };
+        const delHead = { eid, off: offDel, ctr: offCtr, len: 0 };
         const statDel = await this.apply(delHead, undefined);
         if (statDel !== Status.Success) {
           return err<IMessageHead>(statDel);
@@ -152,7 +158,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         }
 
         // Replace with a new msg that retains the old eid but clk of now.
-        const replParams = { now, eid, clk: now, ctr: 0, bod, crypto };
+        const [replEID, statReplEID] = makeEID({ id: eidDec.id, ts: now });
+        if (statReplEID !== Status.Success) {
+          return err<IMessageHead>(statReplEID);
+        }
+        const replParams = { now, eid: replEID, ctr: 0, bod, crypto };
         const [repl, statRepl] = await genUpsertHead(replParams);
         if (statRepl !== Status.Success) {
           return err<IMessageHead>(statRepl);
@@ -162,7 +172,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
     }
     const ctr = (last?.head.ctr ?? -1) + 1;
-    const [msg, statMsg] = await genUpsertHead({ now, eid, clk, ctr, bod, crypto });
+    const [msg, statMsg] = await genUpsertHead({ now, eid, ctr, bod, crypto });
     if (statMsg !== Status.Success) {
       return err<IMessageHead>(statMsg);
     }
@@ -179,18 +189,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     op: IUpsertParams<T>,
     force = this.forceSkewHandlingByDefault,
   ) {
-    const { eid, clk, ...rest } = op;
-    if (eid === undefined || clk === undefined) {
+    const { eid, ...rest } = op;
+    if (eid === undefined) {
       return this.insert(op);
     }
     const body = encode(rest);
-    return this.upsertRaw(eid, clk, body, force);
+    return this.upsertRaw(eid, body, force);
   }
 
-  public async delete(eid: EntityID, clk: Date) {
+  public async delete(eid: EntityID) {
     // NOTE: force (clock-skew handling) is set to true here.
     // When deleting, there's no reason not to force skew handling.
-    return this.upsertRaw(eid, clk, undefined, true);
+    return this.upsertRaw(eid, undefined, true);
   }
 
   public async sync() {

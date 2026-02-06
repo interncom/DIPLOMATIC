@@ -170,7 +170,6 @@ export async function decodeFile(
       new Decoder(headEnc),
     );
     if (headStatus !== Status.Success) return err(headStatus);
-    const msgHeadBranded = { ...msgHead, eid: msgHead.eid as EntityID };
 
     let itemBodyEnc: Uint8Array | undefined;
     if (item.lenBody > 0 && item.offBody !== undefined) {
@@ -190,7 +189,7 @@ export async function decodeFile(
       // TODO: per-item failure codes. Allow partial import.
     }
 
-    messages.push({ head: msgHeadBranded, body: itemBodyEnc });
+    messages.push({ head: msgHead, body: itemBodyEnc });
   }
 
   return ok(messages);

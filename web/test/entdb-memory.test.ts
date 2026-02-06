@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { EntDBMemory } from "../src/entdb/memory";
 import { Status } from "../src/shared/consts";
 import { IOp } from "../src/shared/types";
+import libsodiumCrypto from "../src/crypto";
+import { makeEID } from "../src/shared/codecs/eid";
 
 describe("EntDBMemory.apply()", () => {
   let db: EntDBMemory;
@@ -12,14 +14,19 @@ describe("EntDBMemory.apply()", () => {
 
   describe("no pre-existing entity", () => {
     it("creates new entity with op data", async () => {
-      const eid = new Uint8Array(16).fill(1);
+      const id = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj = { id, ts: new Date(1000) };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
+
       const op: IOp = {
-        clk: new Date(1000),
         off: 0,
         ctr: 1,
         eid,
         gid: "group1",
-        pid: new Uint8Array(16).fill(2),
         type: "test",
         body: { data: "new" },
       };
@@ -32,7 +39,6 @@ describe("EntDBMemory.apply()", () => {
       expect(entity).toEqual({
         eid,
         gid: "group1",
-        pid: new Uint8Array(16).fill(2),
         type: "test",
         createdAt: new Date(1000),
         updatedAt: new Date(1000),
@@ -44,11 +50,17 @@ describe("EntDBMemory.apply()", () => {
 
   describe("pre-existing entity older than op", () => {
     it("overwrites body and updates timestamps", async () => {
-      const eid = new Uint8Array(16).fill(1);
+      const id = await libsodiumCrypto.genRandomBytes(8);
       const t0 = new Date(500);
+      const eidObj = { id, ts: t0 };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
+
       // First, apply an older op
       const oldOp: IOp = {
-        clk: t0,
         off: 0,
         ctr: 2,
         eid,
@@ -59,12 +71,11 @@ describe("EntDBMemory.apply()", () => {
 
       // Then apply newer op
       const newOp: IOp = {
-        clk: t0,
         off: 10,
         ctr: 2,
         eid,
         gid: "group2",
-        pid: new Uint8Array(16).fill(3),
+        // pid: new Uint8Array(16).fill(3),
         type: "test2",
         body: { data: "new" },
       };
@@ -80,9 +91,15 @@ describe("EntDBMemory.apply()", () => {
     });
 
     it("ctr tiebreaker: equal ctr keeps current", async () => {
-      const eid = new Uint8Array(16).fill(2);
+      const id = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj = { id, ts: new Date(1000) };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
+
       await db.apply({
-        clk: new Date(1000),
         off: 0,
         ctr: 5,
         eid,
@@ -91,7 +108,6 @@ describe("EntDBMemory.apply()", () => {
       });
 
       const op: IOp = {
-        clk: new Date(1000),
         off: 0,
         ctr: 1,
         eid,
@@ -107,9 +123,15 @@ describe("EntDBMemory.apply()", () => {
     });
 
     it("ctr tiebreaker: lower ctr keeps current", async () => {
-      const eid = new Uint8Array(16).fill(3);
+      const id = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj = { id, ts: new Date(1000) };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
+
       await db.apply({
-        clk: new Date(1000),
         off: 0,
         ctr: 5,
         eid,
@@ -119,7 +141,6 @@ describe("EntDBMemory.apply()", () => {
 
       // Same ts, lower ctr
       const op: IOp = {
-        clk: new Date(1000),
         off: 0,
         ctr: 2,
         eid,
@@ -140,21 +161,35 @@ describe("EntDBMemory.apply()", () => {
       const gid1 = new Uint8Array([1, 2, 3]);
       const gid2 = new Uint8Array([1, 2, 3]); // equivalent but different instance
 
+      const id1 = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj1 = { id: id1, ts: new Date(1000) };
+      const [eid1, statEID1] = makeEID(eidObj1);
+      if (statEID1 !== Status.Success) {
+        expect(statEID1).toEqual(Status.Success);
+        return;
+      }
+
+      const id2 = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj2 = { id: id2, ts: new Date(1000) };
+      const [eid2, statEID2] = makeEID(eidObj2);
+      if (statEID2 !== Status.Success) {
+        expect(statEID2).toEqual(Status.Success);
+        return;
+      }
+
       // Add two entities with equivalent gids
       await db.apply({
-        clk: new Date(1000),
         off: 0,
         ctr: 1,
-        eid: new Uint8Array(16).fill(1),
+        eid: eid1,
         gid: gid1,
         type: "test",
         body: { id: 1 },
       });
       await db.apply({
-        clk: new Date(1000),
         off: 0,
         ctr: 1,
-        eid: new Uint8Array(16).fill(2),
+        eid: eid2,
         gid: gid2,
         type: "test",
         body: { id: 2 },

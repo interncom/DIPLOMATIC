@@ -9,7 +9,7 @@ import { Status } from "../../shared/consts.ts";
 import { genDelete } from "../../shared/message.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { EntityID, IMessage } from "../../shared/types.ts";
-import { eidCodec } from "../../shared/codecs/eid.ts";
+import { eidCodec, makeEID } from "../../shared/codecs/eid.ts";
 
 // Constants that remain fixed
 const eidBytes = 16;
@@ -23,10 +23,15 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   const crypto = libsodiumCrypto;
 
   await t.step("small values round-trip", async () => {
+    const eidObj = { id: createFilledArray(8, 0x11), ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
     const bod = createFilledArray(5, 0xaa); // Small body
     const op: IMessage = {
-      eid: createFilledArray(16, 0x11) as EntityID,
-      clk: new Date(1234567890000),
+      eid,
       off: 0,
       ctr: 0, // Small counter
       len: bod.length,
@@ -35,7 +40,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
-      clk: op.clk,
       off: op.off,
       ctr: op.ctr,
       len: op.len,
@@ -57,7 +61,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
-    assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
@@ -68,10 +71,15 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("large ctr and len round-trip", async () => {
+    const eidObj = { id: createFilledArray(8, 0x22), ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
     const bod = createFilledArray(100000, 0xbb); // Large body
     const op: IMessage = {
-      eid: createFilledArray(16, 0x22) as EntityID,
-      clk: new Date(9876543210000),
+      eid,
       off: 0,
       ctr: 123456789, // Large counter (fits in var-int)
       len: bod.length,
@@ -80,7 +88,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
-      clk: op.clk,
       off: op.off,
       ctr: op.ctr,
       len: op.len,
@@ -102,7 +109,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
-    assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, op.bod);
@@ -112,17 +118,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
 
   await t.step("delete operation (len=0, no body)", async () => {
     const eidObj = { id: createFilledArray(8, 0x33), ts: new Date(0) };
-    const encEid = new Encoder();
-    const statEid = encEid.writeStruct(eidCodec, eidObj);
+    const [eid, statEid] = makeEID(eidObj);
     if (statEid !== Status.Success) {
       assertEquals(statEid, Status.Success);
       return;
     }
-    const eid = encEid.result() as EntityID;
 
     const [op, s1] = await genDelete({
       eid,
-      clk: new Date(0),
       ctr: 999,
       now: new Date(),
       crypto: libsodiumCrypto,
@@ -134,7 +137,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const hsh = undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
-      clk: op.clk,
       off: op.off,
       ctr: op.ctr,
       len: 0,
@@ -155,7 +157,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
-    assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined);
@@ -164,9 +165,14 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("edge: empty body (upsert)", async () => {
+    const eidObj = { id: createFilledArray(8, 0x44), ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
     const op: IMessage = {
-      eid: createFilledArray(16, 0x44) as EntityID,
-      clk: new Date(1111111110000),
+      eid,
       off: 0,
       ctr: 1,
       len: 0,
@@ -175,7 +181,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const hsh = undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
-      clk: op.clk,
       off: op.off,
       ctr: op.ctr,
       len: op.len,
@@ -197,7 +202,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     }
     const decoded: IMessage = { ...decodedHead, bod: decodedBod };
     assertEquals(decoded.eid, op.eid);
-    assertEquals(decoded.clk.getTime(), op.clk.getTime());
     assertEquals(decoded.ctr, op.ctr);
     assertEquals(decoded.len, op.len);
     assertEquals(decoded.bod, undefined);
@@ -216,10 +220,15 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("encodeOp sets hsh correctly", async () => {
+    const eidObj = { id: createFilledArray(8, 0xee), ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
     const bod = createFilledArray(10, 0xdd);
     const op: IMessage = {
-      eid: createFilledArray(16, 0xee) as EntityID,
-      clk: new Date(1234567890000),
+      eid,
       off: 0,
       ctr: 5,
       len: bod.length,
@@ -229,7 +238,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     const hsh = op.bod && op.len > 0 ? await crypto.blake3(op.bod) : undefined;
     const msgHead: IMessageHead = {
       eid: op.eid,
-      clk: op.clk,
       off: op.off,
       ctr: op.ctr,
       len: op.len,
@@ -253,7 +261,6 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
     }
     const decoded: IMessage = {
       eid: decodedHead.eid,
-      clk: decodedHead.clk,
       off: decodedHead.off,
       ctr: decodedHead.ctr,
       len: decodedHead.len,
@@ -265,7 +272,12 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
 
   await t.step("message head decode with invalid varint", async () => {
     // Create encoded with invalid varint for ctr
-    const eid = createFilledArray(16, 0x99);
+    const eidObj = { id: createFilledArray(8, 0x99), ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
     const clkBytes = new Uint8Array(8);
     new DataView(clkBytes.buffer).setBigUint64(
       0,

@@ -12,6 +12,7 @@ import type {
 import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
+import { makeEID } from "../../shared/codecs/eid.ts";
 
 Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
@@ -84,11 +85,17 @@ Deno.test("bag", async (t) => {
     ) as HostSpecificKeyPair;
 
     // Create a test message
-    const eid = await crypto.genRandomBytes(16) as EntityID;
+    const id = await crypto.genRandomBytes(8);
+    const eidObj = { id, ts: new Date(0) };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
+
     const bod = new TextEncoder().encode("HELLO DIPLOMATIC");
     const msg: IMessage = {
       eid,
-      clk: new Date(),
       off: 0,
       ctr: 1,
       len: bod.length,
@@ -110,7 +117,6 @@ Deno.test("bag", async (t) => {
 
       // Verify contents
       assertEquals(openedMsg!.eid, msg.eid);
-      assertEquals(openedMsg!.clk.getTime(), msg.clk.getTime());
       assertEquals(openedMsg!.ctr, msg.ctr);
       assertEquals(openedMsg!.len, msg.len);
       assertEquals(openedMsg!.bod, msg.bod);

@@ -1,6 +1,6 @@
-import { ICodecStruct } from "../codec.ts";
+import { Decoder, Encoder, ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
-import { err, ok } from "../valstat.ts";
+import { err, ok, ValStat } from "../valstat.ts";
 
 import { EntityID } from "../types.ts";
 
@@ -28,3 +28,13 @@ export const eidCodec: ICodecStruct<IEntityID> = {
     return ok({ id: id as EntityID, ts });
   },
 };
+
+export function makeEID(eidObj: IEntityID): ValStat<EntityID> {
+  const encEid = new Encoder();
+  const stat = encEid.writeStruct(eidCodec, eidObj);
+  if (stat !== Status.Success) {
+    return err(stat);
+  }
+  const eid = encEid.result() as EntityID;
+  return ok(eid);
+}

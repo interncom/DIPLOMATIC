@@ -15,10 +15,8 @@ export type SerializedContent = Uint8Array;
 
 export interface IMessageHead {
   // eid will generally be a random identifier.
+  // eid is an ID packed together with a created at timestamp for the entity.
   eid: EntityID;
-
-  // clk is the creation timestamp of the entity.
-  clk: Date;
 
   // [eid, clk] combined form a unique identifier of an entity.
   // This reduces the length required for eid to distinguish entities.
@@ -67,7 +65,6 @@ export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh"> {
 export type IInsertParams<T> = Omit<IOp<T>, "ts" | "ctr" | "eid">;
 export type IUpsertParams<T> = IInsertParams<T> & {
   eid?: EntityID;
-  clk?: Date;
 };
 
 export interface IStorage {

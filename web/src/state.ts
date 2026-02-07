@@ -3,12 +3,13 @@ import type { Applier, IStateManager } from "./types";
 import { Status } from "./shared/consts";
 import { EntityID, GroupID, IMessage, IOp } from "./shared/types";
 import { decode } from "@msgpack/msgpack";
+import { err, ok, ValStat } from "./shared/valstat";
 
-export interface IMsgEntBody {
+export interface IMsgEntBody<T = unknown> {
   gid?: GroupID;
   pid?: EntityID; // Parent entity ID. Not necessarily of same type.
   type: string;
-  body: unknown;
+  body: T;
 }
 export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   if (!bodDec) {
@@ -26,22 +27,15 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   return true;
 }
 
-const nullOp: IOp = {
-  off: 0,
-  ctr: 0,
-  eid: new Uint8Array() as EntityID,
-  type: "null",
-};
-
-export function msgToOp(msg: IMessage): [IOp, Status] {
+export function msgToOp(msg: IMessage): ValStat<IOp> {
   // If an IMessage represents an entity update (i.e. it's used in EntDB),
-  // then the bod of the IMessage must be an msgpack-encoded IEmsgEntBod.
+  // then the bod of the IMessage must be an msgpack-encoded IMsgEntBod.
   if (!msg.bod) {
-    return [nullOp, Status.MissingBody];
+    return err(Status.MissingBody);
   }
   const bodDec = decode(msg.bod);
   if (isMsgEntBody(bodDec) === false) {
-    return [nullOp, Status.InvalidMessage];
+    return err(Status.InvalidMessage);
   }
   const op = {
     off: msg.off,
@@ -52,7 +46,7 @@ export function msgToOp(msg: IMessage): [IOp, Status] {
     type: bodDec.type,
     body: bodDec.body,
   };
-  return [op, Status.Success];
+  return ok(op);
 }
 
 // StateManager emits events named by the op type which has just been updated.

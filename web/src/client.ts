@@ -32,6 +32,7 @@ import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
 import { err, ok } from "./shared/valstat";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
+import { IMsgEntBody } from "./state";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -181,20 +182,23 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async insert<T = unknown>(op: IInsertParams<T>) {
-    const body = encode(op);
-    return this.insertRaw(body);
+    const { body, type, gid, pid } = op;
+    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const entBodyEnc = encode(entBody);
+    return this.insertRaw(entBodyEnc);
   }
 
   public async upsert<T = unknown>(
     op: IUpsertParams<T>,
     force = this.forceSkewHandlingByDefault,
   ) {
-    const { eid, ...rest } = op;
+    const { eid, body, type, gid, pid } = op;
     if (eid === undefined) {
       return this.insert(op);
     }
-    const body = encode(rest);
-    return this.upsertRaw(eid, body, force);
+    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const entBodyEnc = encode(entBody);
+    return this.upsertRaw(eid, entBodyEnc, force);
   }
 
   public async delete(eid: EntityID) {

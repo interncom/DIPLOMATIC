@@ -2,7 +2,8 @@ import { Decoder, Encoder, ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { err, ok, ValStat } from "../valstat.ts";
 
-import { EntityID } from "../types.ts";
+import { EntityID, ICrypto } from "../types.ts";
+import { IClock } from "../clock.ts";
 
 // An EID (EntityID) is a composite.
 // It has an ID component, typically random.
@@ -37,4 +38,9 @@ export function makeEID(eidObj: IEntityID): ValStat<EntityID> {
   }
   const eid = encEid.result() as EntityID;
   return ok(eid);
+}
+
+export async function genSingletonEID(id: Uint8Array): Promise<ValStat<EntityID>> {
+  const ts = new Date(0);
+  return makeEID({ id, ts });
 }

@@ -13,6 +13,14 @@ export type EntityID = Uint8Array & { readonly [entityIDSymbol]: true };
 
 export type SerializedContent = Uint8Array;
 
+export interface IMsgEntBody<T = unknown> {
+  // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
+  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
+  pid?: EntityID; // Parent entity ID. Not necessarily of same type.
+  type: string;
+  body?: T;
+}
+
 export interface IMessageHead {
   // eid will generally be a random identifier.
   // eid is an ID packed together with a created at timestamp for the entity.
@@ -55,16 +63,12 @@ export interface IMessageWithHash extends IMessage {
 // entity, with created at timestamp embedded in the eid, and updated at
 // timestamp encoded via the milliseconds offset from created at (off).
 // An IOp additionally has type, gid, and pid fields for indexing the entity.
-export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh" | "off"> {
-  // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
-  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
-  pid?: EntityID; // Optional parent ID to support hierarchical structure.
-  type: string;
-  body?: T;
-}
+export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh" | "bod">, IMsgEntBody<T> { }
 
-export type IInsertParams<T> = Omit<IOp<T>, "ts" | "ctr" | "eid">;
-export type IUpsertParams<T> = IInsertParams<T> & {
+export interface IInsertParams<T> extends IMsgEntBody<T> {
+  id?: Uint8Array;
+};
+export interface IUpsertParams<T> extends IMsgEntBody<T> {
   eid?: EntityID;
 };
 

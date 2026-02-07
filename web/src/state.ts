@@ -1,16 +1,10 @@
-import { TypedEventEmitter } from "./events";
-import type { Applier, IStateManager } from "./types";
-import { Status } from "./shared/consts";
-import { EntityID, GroupID, IMessage, IOp } from "./shared/types";
 import { decode } from "@msgpack/msgpack";
+import { TypedEventEmitter } from "./events";
+import { Status } from "./shared/consts";
+import { IMessage, IMsgEntBody, IOp } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
+import type { Applier, IStateManager } from "./types";
 
-export interface IMsgEntBody<T = unknown> {
-  gid?: GroupID;
-  pid?: EntityID; // Parent entity ID. Not necessarily of same type.
-  type: string;
-  body: T;
-}
 export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   if (!bodDec) {
     return false;

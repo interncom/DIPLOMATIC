@@ -2,19 +2,15 @@ import { max } from "../lib";
 import { Decoder } from "../shared/codec.ts";
 import { eidCodec } from "../shared/codecs/eid.ts";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp } from "../shared/types";
+import { EntityID, GroupID, IMsgEntBody, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 import { StateManager } from "../state.ts";
 
-export interface IPossiblyDeletedEntity<T> {
+export interface IPossiblyDeletedEntity<T> extends IMsgEntBody<T> {
   eid: EntityID;
-  gid?: GroupID;
-  pid?: EntityID; // Parent entity ID. Not necessarily of same type.
-  type: string;
   updatedAt: Date;
-  updatedCtr: number;
   createdAt: Date;
-  body: T | undefined;
+  ctr: number;
 }
 
 export interface IEntity<T> extends Omit<IPossiblyDeletedEntity<T>, 'body'> {
@@ -80,25 +76,25 @@ export function updateEnt<T = unknown>(
     ? max(curr.updatedAt.getTime(), messageTs.getTime())
     : messageTs.getTime();
 
-  let updatedCtr: number;
+  let ctr: number;
   if (!curr) {
-    updatedCtr = op.ctr;
+    ctr = op.ctr;
   } else {
     const currTime = curr.updatedAt.getTime();
     const opTime = messageTs.getTime();
     if (opTime > currTime) {
-      updatedCtr = op.ctr;
+      ctr = op.ctr;
     } else if (opTime < currTime) {
-      updatedCtr = curr.updatedCtr ?? 0;
+      ctr = curr.ctr ?? 0;
     } else {
-      updatedCtr = Math.max(curr.updatedCtr ?? 0, op.ctr);
+      ctr = Math.max(curr.ctr ?? 0, op.ctr);
     }
   }
 
   const ts = opEID.ts.getTime() + op.off;
   const isOpNewer = !curr || ts > curr.updatedAt.getTime() ||
     (ts === curr.updatedAt.getTime() &&
-      op.ctr > (curr.updatedCtr ?? 0));
+      op.ctr > (curr.ctr ?? 0));
   const body = isOpNewer ? op.body : curr.body;
 
   const ent: IPossiblyDeletedEntity<T> = {
@@ -108,7 +104,7 @@ export function updateEnt<T = unknown>(
     type: isOpNewer ? op.type : curr.type,
     createdAt: new Date(createdTs),
     updatedAt: new Date(updatedTs),
-    updatedCtr,
+    ctr,
     body,
   };
 

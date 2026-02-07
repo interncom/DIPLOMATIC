@@ -13,6 +13,7 @@ import {
   IHostConnectionInfo,
   IInsertParams,
   IMessageHead,
+  IMsgEntBody,
   ITransport,
   IUpsertParams,
   MasterSeed,
@@ -30,9 +31,8 @@ import {
 import { Status } from "./shared/consts";
 import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
-import { err, ok } from "./shared/valstat";
+import { err, ok, ValStat } from "./shared/valstat";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
-import { IMsgEntBody } from "./state";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -205,6 +205,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // NOTE: force (clock-skew handling) is set to true here.
     // When deleting, there's no reason not to force skew handling.
     return this.upsertRaw(eid, undefined, true);
+  }
+
+  public async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {
+    const { clock, crypto } = this;
+    const ts = clock.now();
+    if (id !== undefined) {
+      return makeEID({ id, ts });
+    }
+    const randId = await crypto.genRandomBytes(8);
+    return makeEID({ id: randId, ts });
   }
 
   public async sync() {

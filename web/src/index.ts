@@ -19,6 +19,7 @@ import useStateWatcher, {
 } from "./react/useStateWatcher";
 import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
+import { genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
 import { HTTPTransport } from "./shared/http";
 import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
@@ -59,6 +60,7 @@ export {
   EntitiesQuery,
   EntityID,
   entStateManager,
+  genSingletonEID,
   GroupID,
   htob,
   HTTPTransport,

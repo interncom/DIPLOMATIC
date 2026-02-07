@@ -19,14 +19,16 @@ interface IStoredEntity<T = unknown> {
   pid?: string;
   type: string;
   updatedAt: Date;
-  updatedCtr: number;
+  ctr: number;
   createdAt: Date;
-  body: T | undefined;
+  body?: T;
 }
 
 function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   return {
     ...ent,
+    body: ent.body,
+    ctr: ent.ctr,
     eid: btoh(ent.eid),
     gid: ent.gid
       ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
@@ -91,7 +93,7 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async apply(op: IOp) {
+  apply = async (op: IOp) => {
     if (!this.db) {
       return Status.DatabaseClosed;
     }

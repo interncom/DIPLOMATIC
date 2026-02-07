@@ -42,7 +42,7 @@ describe("EntDBMemory.apply()", () => {
         type: "test",
         createdAt: new Date(1000),
         updatedAt: new Date(1000),
-        updatedCtr: 1,
+        ctr: 1,
         body: { data: "new" },
       });
     });
@@ -87,7 +87,7 @@ describe("EntDBMemory.apply()", () => {
       expect(entity?.body).toEqual({ data: "new" });
       expect(entity?.createdAt).toEqual(new Date(500));
       expect(entity?.updatedAt).toEqual(new Date(510));
-      expect(entity?.updatedCtr).toBe(2);
+      expect(entity?.ctr).toBe(2);
     });
 
     it("ctr tiebreaker: equal ctr keeps current", async () => {
@@ -119,7 +119,7 @@ describe("EntDBMemory.apply()", () => {
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: "higher" });
-      expect(entity?.updatedCtr).toBe(5);
+      expect(entity?.ctr).toBe(5);
     });
 
     it("ctr tiebreaker: lower ctr keeps current", async () => {
@@ -152,7 +152,7 @@ describe("EntDBMemory.apply()", () => {
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
       expect(entity?.body).toEqual({ data: "higher" });
-      expect(entity?.updatedCtr).toBe(5);
+      expect(entity?.ctr).toBe(5);
     });
   });
 

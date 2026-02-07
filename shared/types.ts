@@ -52,9 +52,10 @@ export interface IMessageWithHash extends IMessage {
 // IOp is an update to application state.
 // Each IOp is a complete overwrite of an "entity" specified by [eid, clk].
 // It reuses the header information from a message to identify a specific
-// entity, with created at timestamp (clk) and updated at timestamp (clk + off).
+// entity, with created at timestamp embedded in the eid, and updated at
+// timestamp encoded via the milliseconds offset from created at (off).
 // An IOp additionally has type, gid, and pid fields for indexing the entity.
-export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh"> {
+export interface IOp<T = unknown> extends Omit<IMessageHead, "len" | "hsh" | "off"> {
   // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
   gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   pid?: EntityID; // Optional parent ID to support hierarchical structure.

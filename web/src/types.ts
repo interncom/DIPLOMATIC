@@ -150,7 +150,7 @@ export interface IClient<Handle extends HostHandle> {
 }
 
 export interface IStateManager {
-  apply: (msg: IMessage) => Promise<Status>;
+  apply: (msg: IMessage, quiet?: boolean) => Promise<Status>;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

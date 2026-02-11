@@ -80,6 +80,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     head: IMessageHead,
     body: EncodedMessage | undefined,
     upload = true,
+    quiet = false,
   ) {
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
@@ -100,7 +101,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     // TODO: decide what should happen if there's an error while applying.
     // Dequeue upload and remove message?
-    const stat = await this.state.apply({ ...head, bod: body });
+    const stat = await this.state.apply({ ...head, bod: body }, quiet);
     return stat;
   }
 
@@ -286,8 +287,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (statDec !== Status.Success) return statDec;
 
     for (const msg of msgs) {
-      const statApp = await this.apply(msg.head, msg.body, true);
-      if (statApp !== Status.Success) {
+      const statApp = await this.apply(msg.head, msg.body, true, true);
+      if (statApp !== Status.Success && statApp !== Status.NoChange) {
         if (strict) {
           return statApp;
         } else {

@@ -29,6 +29,7 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
   }
   const bodDec = decode(msg.bod);
   if (isMsgEntBody(bodDec) === false) {
+    console.warn(`msg body invalid`, bodDec)
     return err(Status.InvalidMessage);
   }
   const op = {
@@ -51,7 +52,7 @@ export class StateManager implements IStateManager {
     public clear: () => Promise<Status>,
   ) { }
 
-  apply = async (msg: IMessage) => {
+  apply = async (msg: IMessage, quiet = false) => {
     const [op, statParse] = msgToOp(msg);
     if (statParse !== Status.Success) {
       return statParse;
@@ -63,7 +64,9 @@ export class StateManager implements IStateManager {
       return statApply;
     }
 
-    this.emitter.emit(op.type, null);
+    if (!quiet) {
+      this.emitter.emit(op.type, null);
+    }
     return Status.Success;
   };
 

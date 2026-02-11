@@ -25,7 +25,7 @@ interface IStoredEntity<T = unknown> {
 }
 
 function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
-  return {
+  const stored: IStoredEntity<T> = {
     ...ent,
     body: ent.body,
     ctr: ent.ctr,
@@ -35,6 +35,14 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
       : undefined,
     pid: ent.pid ? btoh(ent.pid) : undefined,
   };
+  // NOTE: IndexedDB *will* store undefined attributes unless deleted. Wasteful.
+  if (stored.gid === undefined) {
+    delete stored.gid;
+  }
+  if (stored.pid === undefined) {
+    delete stored.pid;
+  }
+  return stored;
 }
 
 function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> {

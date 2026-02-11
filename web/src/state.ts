@@ -32,7 +32,7 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
     console.warn(`msg body invalid`, bodDec)
     return err(Status.InvalidMessage);
   }
-  const op = {
+  const op: IOp = {
     off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,

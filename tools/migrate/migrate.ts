@@ -4,12 +4,12 @@ import { ZipReader, BlobReader, Uint8ArrayWriter } from "https://deno.land/x/zip
 import libsodiumCrypto from "../../deno/src/crypto.ts";
 import denoMempack from "../../deno/src/codec.ts";
 import { btoh, htob } from "../../shared/binary.ts";
-import { IMessageHead } from "../../shared/message.ts";
 import { encodeFile } from "../../shared/exim.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { MasterSeed } from "../../shared/types.ts";
+import { IMessageHead, MasterSeed } from "../../shared/types.ts";
 import { eidBytes, Status } from "../../shared/consts.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
+import { makeEID } from "../../shared/codecs/eid.ts";
 
 async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValStat<Uint8Array>> {
   const data = await Deno.readFile(filePath);
@@ -33,29 +33,38 @@ async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValSt
 
   // Sort ascending by timestamp.
   console.time("Sorting...");
-  // ops.sort((o1, o2) => o1.ts.localeCompare(o2.localCompare));
+  ops.sort((o1, o2) => o1.ts.localeCompare(o2.ts));
   console.timeEnd("Sorting...");
 
   // Assign ctrs and transform into new structure.
   console.time("Transforming...");
   const counters = new Map<string, number>();
+  const createds = new Map<string, Date>(); // When the eid was first seen
   const msgs: Array<{ head: IMessageHead, body?: Uint8Array }> = [];
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i];
-    const { eid, gid, pid, ts, type, verb, ver, body: opBody } = op;
-    const eidHex = btoh(eid);
+    const { eid: id, gid, pid, ts: tsRaw, type, verb, ver, body: opBody } = op;
 
-    if (eid.length !== eidBytes) {
-      console.warn("Invalid EID length", eid);
+    const eidHex = btoh(id);
+    const prevCtr = counters.get(eidHex);
+    const ctr = (prevCtr ?? -1) + 1;
+    counters.set(eidHex, ctr);
+
+    const ts = new Date(tsRaw);
+    const createdAt = createds.get(eidHex) ?? ts;
+    createds.set(eidHex, createdAt);
+
+    const off = ts.getTime() - createdAt.getTime();
+
+    const eidObj = { id, ts: createdAt };
+    const [eid, statEid] = makeEID(eidObj);
+    if (statEid !== Status.Success) {
+      console.warn(`error transforming EID: ${eidHex}\t${ts} (${statEid})`);
       continue;
     }
 
     try {
-      const prevCtr = counters.get(eidHex);
-      const ctr = (prevCtr ?? -1) + 1;
-      counters.set(eidHex, ctr);
-
-      const body: any = opBody ? { ...opBody, type } : { type };
+      const body: any = opBody ? { body: opBody, type } : { type };
       if (pid) {
         body.pid = pid;
       }
@@ -66,14 +75,10 @@ async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValSt
 
       const head: IMessageHead = {
         eid,
-        clk: new Date(ts),
         ctr,
+        off,
         len: bodyEnc?.length ?? 0,
         hsh: await libsodiumCrypto.blake3(bodyEnc),
-      }
-
-      if (i === 348) {
-        console.log(head, bodyEnc);
       }
 
       msgs.push({ head, body: bodyEnc });

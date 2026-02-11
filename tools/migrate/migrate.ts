@@ -81,7 +81,9 @@ async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValSt
         hsh: await libsodiumCrypto.blake3(bodyEnc),
       }
 
-      msgs.push({ head, body: bodyEnc });
+      // NOTE: we unshift rather than push so the resulting file is ordered descending by time.
+      // When the client imports in descending order, it can skip more overwritten msgs.
+      msgs.unshift({ head, body: bodyEnc });
     } catch (err) {
       console.error("AAAAH", eidHex, err)
     }

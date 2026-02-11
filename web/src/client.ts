@@ -276,7 +276,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   }
 
-  public async import(file: File) {
+  public import = async (file: File, strict = true) => {
     const { crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) return Status.MissingSeed;
@@ -287,7 +287,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     for (const msg of msgs) {
       const statApp = await this.apply(msg.head, msg.body, true);
-      if (statApp !== Status.Success) return statApp;
+      if (statApp !== Status.Success) {
+        if (strict) {
+          return statApp;
+        } else {
+          console.warn(`failed to import msg: ${statApp}`);
+        }
+      }
     }
 
     return Status.Success;

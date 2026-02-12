@@ -1,4 +1,4 @@
-import { btoh, bytesEqual, htob } from "../../shared/binary";
+import { btob64, bytesEqual, b64tob } from "../../shared/binary";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
@@ -9,17 +9,17 @@ export class MemoryMessageStore implements IMessageStore {
   constructor(private crypto: ICrypto) {}
 
   async add(key: Hash, data: IStoredMessageData) {
-    this.messages.set(btoh(key), data);
+    this.messages.set(btob64(key), data);
   }
 
   async del(keys: Iterable<Hash>) {
     for (const key of keys) {
-      this.messages.delete(btoh(key));
+      this.messages.delete(btob64(key));
     }
   }
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
-    const data = this.messages.get(btoh(key));
+    const data = this.messages.get(btob64(key));
     if (data) {
       return await toStoredMessage(key, data, this.crypto);
     }
@@ -27,13 +27,13 @@ export class MemoryMessageStore implements IMessageStore {
   }
 
   async has(key: Hash) {
-    return this.messages.has(btoh(key));
+    return this.messages.has(btob64(key));
   }
 
   async list(): Promise<Iterable<IStoredMessage>> {
     const entries = Array.from(this.messages.entries());
     const msgs = await Promise.all(entries.map(([keyStr, data]) => {
-      const hash = htob(keyStr) as Hash;
+      const hash = b64tob(keyStr) as Hash;
       return toStoredMessage(hash, data, this.crypto);
     }));
     return msgs;
@@ -46,7 +46,7 @@ export class MemoryMessageStore implements IMessageStore {
       if (bytesEqual(eid, data.eid) === false) {
         continue;
       }
-      const hash = htob(keyStr) as Hash;
+      const hash = b64tob(keyStr) as Hash;
       if (latest === undefined) {
         latest = { hash, data };
       } else if (

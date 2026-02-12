@@ -16,6 +16,7 @@ import type {
   SerializedContent,
 } from "./shared/types";
 import { ValStat } from "./shared/valstat";
+import { ICrypto } from "./shared/types";
 
 export interface IDiplomaticClientState {
   hasSeed: boolean;
@@ -86,11 +87,26 @@ export interface IStoredMessage {
   head: IMessageHead;
   body?: EncodedMessage;
 }
+export interface IStoredMessageData {
+  eid: EntityID;
+  off?: number;
+  ctr?: number;
+  body?: EncodedMessage;
+}
+export async function toStoredMessage(hash: Hash, data: IStoredMessageData, crypto: ICrypto): Promise<IStoredMessage> {
+  const len = data.body?.length ?? 0;
+  let hsh: Uint8Array | undefined;
+  if (data.body && len > 0) {
+    hsh = await crypto.blake3(data.body);
+  }
+  const head: IMessageHead = { eid: data.eid, off: data.off ?? 0, ctr: data.ctr ?? 0, len, hsh };
+  return { hash, head, body: data.body };
+}
 export interface IMessageStore {
-  add: (msgs: Iterable<IStoredMessage>) => Promise<void>;
-  get: (hash: Hash) => Promise<IStoredMessage | undefined>;
-  has: (hash: Hash) => Promise<boolean>;
-  del: (hshs: Iterable<Hash>) => Promise<void>;
+  add: (key: Hash, data: IStoredMessageData) => Promise<void>;
+  get: (key: Hash) => Promise<IStoredMessage | undefined>;
+  has: (key: Hash) => Promise<boolean>;
+  del: (keys: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
   wipe(): Promise<void>;

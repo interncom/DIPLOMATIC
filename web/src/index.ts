@@ -35,7 +35,7 @@ export async function genWebClient(
   { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
 > {
   const idb = await openIDBStore();
-  const idbStore = new IDBStore(idb);
+  const idbStore = new IDBStore(idb, libsodiumCrypto);
   const transport = new HTTPTransport(url);
   const client = new SyncClient<URL>(
     new Clock(),

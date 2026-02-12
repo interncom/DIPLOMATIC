@@ -17,7 +17,7 @@ import { btoh, bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { hostKeys } from "../src/shared/endpoint";
-import { IDownloadMessage, IStateManager, IStoredMessage } from "../src/types";
+import { IDownloadMessage, IStateManager, IStoredMessageData } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { fail } from "assert";
 import { Status } from "../src/shared/consts";
@@ -41,7 +41,7 @@ const testHost: IHostConnectionInfo<IProtoHost> = {
 };
 
 const createClient = async (clock = mockClock) => {
-  const store = new MemoryStore<IProtoHost>();
+  const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
   const state: IStateManager = {
     async apply(msg) {
       return Status.Success;
@@ -202,8 +202,13 @@ describe("Client", () => {
         enc.writeStruct(messageHeadCodec, head);
         const headEnc = enc.result();
         const hash = await libsodiumCrypto.blake3(headEnc);
-        const msg: IStoredMessage = { hash, head, body: undefined };
-        await store.messages.add([msg]);
+        const data: IStoredMessageData = {
+          eid: head.eid,
+          ...(head.off !== 0 ? { off: head.off } : {}),
+          ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+          body: undefined
+        };
+        await store.messages.add(hash, data);
 
         // Now upsert should return ClockOutOfSync
         const result = await client.upsertRaw(eid, body, false);
@@ -239,8 +244,13 @@ describe("Client", () => {
         enc.writeStruct(messageHeadCodec, head);
         const headEnc = enc.result();
         const hash = await libsodiumCrypto.blake3(headEnc);
-        const msg: IStoredMessage = { hash, head, body: undefined };
-        await store.messages.add([msg]);
+        const data: IStoredMessageData = {
+          eid: head.eid,
+          ...(head.off !== 0 ? { off: head.off } : {}),
+          ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+          body: undefined
+        };
+        await store.messages.add(hash, data);
 
         // Now upsert with force=true should succeed
         const [newMsg, stat] = await client.upsertRaw(
@@ -306,12 +316,13 @@ describe("Client", () => {
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
       const hash = await libsodiumCrypto.blake3(headEnc);
-      const msg: IStoredMessage = {
-        hash,
-        head,
+      const data: IStoredMessageData = {
+        eid: head.eid,
+        ...(head.off !== 0 ? { off: head.off } : {}),
+        ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
       };
-      await store.messages.add([msg]);
+      await store.messages.add(hash, data);
 
       // Now delete should succeed despite clock skew
       const result = await client.delete(eid, new Date(0));

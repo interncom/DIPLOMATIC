@@ -20,7 +20,7 @@ import {
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { IMessage } from "../src/shared/message";
-import { IDownloadMessage } from "../src/types";
+import { IDownloadMessage, IStoredMessageData } from "../src/types";
 
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
@@ -47,7 +47,7 @@ describe("syncPeek", () => {
   let transport: LPCTransport;
 
   beforeEach(async () => {
-    store = new MemoryStore();
+    store = new MemoryStore(libsodiumCrypto);
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1, lastSyncedAt: new Date(0), lastSeq: 0 };
@@ -91,7 +91,7 @@ describe("syncPush", () => {
   let transport: LPCTransport;
 
   beforeEach(async () => {
-    store = new MemoryStore();
+    store = new MemoryStore(libsodiumCrypto);
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };
@@ -132,8 +132,13 @@ describe("syncPush", () => {
     enc.writeStruct(messageHeadCodec, message);
     const headEnc = enc.result();
     const hash = await libsodiumCrypto.blake3(headEnc) as Hash;
-    const storedMsg = { hash, head: message, body: message.bod };
-    await store.messages.add([storedMsg]);
+    const storedData: IStoredMessageData = {
+      eid: message.eid,
+      ...(message.off !== 0 ? { off: message.off } : {}),
+      ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
+      body: message.bod
+    };
+    await store.messages.add(hash, storedData);
     await store.uploads.enq("test", [hash]);
 
     await syncPush(conn, store, enclave, clock, host, libsodiumCrypto);
@@ -152,7 +157,7 @@ describe("syncPull", () => {
   let transport: LPCTransport;
 
   beforeEach(async () => {
-    store = new MemoryStore();
+    store = new MemoryStore(libsodiumCrypto);
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };

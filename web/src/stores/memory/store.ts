@@ -1,4 +1,4 @@
-import { HostHandle } from "../../shared/types";
+import { HostHandle, ICrypto } from "../../shared/types";
 import { IStore } from "../../types";
 import { MemoryDownloadQueue } from "./dnlds";
 import { MemoryHostStore } from "./hosts";
@@ -11,7 +11,11 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
   hosts = new MemoryHostStore<Handle>();
   uploads = new MemoryUploadQueue();
   downloads = new MemoryDownloadQueue();
-  messages = new MemoryMessageStore();
+  messages: MemoryMessageStore;
+
+  constructor(crypto: ICrypto) {
+    this.messages = new MemoryMessageStore(crypto);
+  }
 
   async wipe() {
     await this.seed.wipe();

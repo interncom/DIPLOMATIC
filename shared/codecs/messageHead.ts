@@ -57,3 +57,38 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
     });
   },
 };
+
+export interface IMinimalMessageHead {
+  eid: EntityID;
+  off: number;
+  ctr: number;
+}
+
+export const minimalMessageHeadCodec: ICodecStruct<IMinimalMessageHead> = {
+  encode(enc, msg) {
+    const s0 = enc.writeVarBytes(msg.eid);
+    if (s0 !== Status.Success) return s0;
+    const s1 = enc.writeVarInt(msg.off);
+    if (s1 !== Status.Success) return s1;
+    const s2 = enc.writeVarInt(msg.ctr);
+    return s2;
+  },
+  decode(dec) {
+    const [eid, s1] = dec.readVarBytes();
+    if (s1 !== Status.Success) return err(s1);
+
+    const decEid = new Decoder(eid as Uint8Array);
+    const [, statEid] = eidCodec.decode(decEid);
+    if (statEid !== Status.Success) return err(statEid);
+
+    const [off, s2] = dec.readVarInt();
+    if (s2 !== Status.Success) return err(s2);
+    const [ctr, s3] = dec.readVarInt();
+    if (s3 !== Status.Success) return err(s3);
+    return ok({
+      eid: eid as EntityID,
+      off,
+      ctr,
+    });
+  },
+};

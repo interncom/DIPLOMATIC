@@ -1,51 +1,65 @@
-import { btoh, bytesEqual } from "../../shared/binary";
+import { btoh, bytesEqual, htob } from "../../shared/binary";
+import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
-import { IMessageStore, IStoredMessage } from "../../types";
+import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
 
 export class MemoryMessageStore implements IMessageStore {
-  messages = new Map<string, IStoredMessage>();
+  messages = new Map<string, IStoredMessageData>();
 
-  async add(msgs: Iterable<IStoredMessage>) {
-    for (const msg of msgs) {
-      this.messages.set(btoh(msg.hash), msg);
+  constructor(private crypto: ICrypto) {}
+
+  async add(key: Hash, data: IStoredMessageData) {
+    this.messages.set(btoh(key), data);
+  }
+
+  async del(keys: Iterable<Hash>) {
+    for (const key of keys) {
+      this.messages.delete(btoh(key));
     }
   }
 
-  async del(hshs: Iterable<Hash>) {
-    for (const hash of hshs) {
-      this.messages.delete(btoh(hash));
+  async get(key: Hash): Promise<IStoredMessage | undefined> {
+    const data = this.messages.get(btoh(key));
+    if (data) {
+      return await toStoredMessage(key, data, this.crypto);
     }
+    return undefined;
   }
 
-  async get(hash: Hash) {
-    return this.messages.get(btoh(hash));
+  async has(key: Hash) {
+    return this.messages.has(btoh(key));
   }
 
-  async has(hash: Hash) {
-    return this.messages.has(btoh(hash));
-  }
-
-  async list() {
-    return this.messages.values();
+  async list(): Promise<Iterable<IStoredMessage>> {
+    const entries = Array.from(this.messages.entries());
+    const msgs = await Promise.all(entries.map(([keyStr, data]) => {
+      const hash = htob(keyStr) as Hash;
+      return toStoredMessage(hash, data, this.crypto);
+    }));
+    return msgs;
   }
 
   // last returns the stored message with given eid and highest ctr/off.
-  async last(eid: EntityID) {
-    let latest: IStoredMessage | undefined;
-    for (const [, msg] of this.messages) {
-      if (bytesEqual(eid, msg.head.eid) === false) {
+  async last(eid: EntityID): Promise<IStoredMessage | undefined> {
+    let latest: { hash: Hash; data: IStoredMessageData } | undefined;
+    for (const [keyStr, data] of this.messages) {
+      if (bytesEqual(eid, data.eid) === false) {
         continue;
       }
+      const hash = htob(keyStr) as Hash;
       if (latest === undefined) {
-        latest = msg;
+        latest = { hash, data };
       } else if (
-        msg.head.ctr > latest.head.ctr ||
-        (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)
+        (data.ctr ?? 0) > (latest.data.ctr ?? 0) ||
+        ((data.ctr ?? 0) === (latest.data.ctr ?? 0) && (data.off ?? 0) > (latest.data.off ?? 0))
       ) {
-        latest = msg;
+        latest = { hash, data };
       }
     }
-    return latest;
+    if (latest) {
+      return await toStoredMessage(latest.hash, latest.data, this.crypto);
+    }
+    return undefined;
   }
 
   async wipe() {

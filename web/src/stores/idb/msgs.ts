@@ -1,32 +1,29 @@
-import { btoh, bytesEqual } from "../../shared/binary";
+import { btoh, bytesEqual, htob } from "../../shared/binary";
+import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
-import { IMessageStore, IStoredMessage } from "../../types";
+import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
 import { MESSAGES_TABLE } from "./store";
 
 export class IDBMessageStore implements IMessageStore {
   db: IDBDatabase;
 
-  constructor(db: IDBDatabase) {
+  constructor(db: IDBDatabase, private crypto: ICrypto) {
     this.db = db;
   }
 
-  async add(msgs: Iterable<IStoredMessage>) {
-    const messages = [...msgs];
-    if (messages.length === 0) return;
+  async add(key: Hash, data: IStoredMessageData) {
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      for (const msg of messages) {
-        const hex = btoh(msg.hash);
-        store.put(msg, hex);
-      }
+      const hex = btoh(key);
+      const req = store.put(data, hex);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
     });
   }
 
-  async del(hshs: Iterable<Hash>) {
-    const hashes = [...hshs];
+  async del(keys: Iterable<Hash>) {
+    const hashes = [...keys];
     if (hashes.length === 0) return;
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
@@ -40,53 +37,81 @@ export class IDBMessageStore implements IMessageStore {
     });
   }
 
-  async get(hash: Hash) {
+  async get(key: Hash): Promise<IStoredMessage | undefined> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
-    return new Promise<IStoredMessage>((resolve, reject) => {
-      const hex = btoh(hash);
+    return new Promise<IStoredMessage | undefined>((resolve, reject) => {
+      const hex = btoh(key);
       const req = store.get(hex);
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = async () => {
+        const data = req.result;
+        if (data) {
+          resolve(await toStoredMessage(key, data, this.crypto));
+        } else {
+          resolve(undefined);
+        }
+      };
       req.onerror = () => reject(req.error);
     });
   }
 
-  async has(hash: Hash) {
-    const result = await this.get(hash);
+  async has(key: Hash) {
+    const result = await this.get(key);
     return result !== undefined;
   }
 
-  async list() {
+  async list(): Promise<Iterable<IStoredMessage>> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
-    return new Promise<IStoredMessage[]>((resolve, reject) => {
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result);
+    return new Promise<Iterable<IStoredMessage>>((resolve, reject) => {
+      const msgs: IStoredMessage[] = [];
+      const req = store.openCursor();
+      req.onsuccess = async (event) => {
+        const cursor = (event.target as IDBRequest).result;
+        if (cursor) {
+          const key = cursor.key as string;
+          const data = cursor.value as IStoredMessageData;
+          const hash = htob(key) as Hash;
+          const msg = await toStoredMessage(hash, data, this.crypto);
+          msgs.push(msg);
+          cursor.continue();
+        } else {
+          resolve(msgs);
+        }
+      };
       req.onerror = () => reject(req.error);
     });
   }
 
   // last returns the stored message with given eid, clk and highest ctr/off.
-  async last(eid: EntityID) {
+  async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage | undefined>((resolve, reject) => {
-      const req = store.getAll();
-      req.onsuccess = () => {
-        const allMsgs = req.result;
-        let latest: IStoredMessage | undefined;
-        for (const msg of allMsgs) {
-          if (bytesEqual(eid, msg.head.eid) === false) {
-            continue;
+      let latest: { key: string; data: IStoredMessageData } | undefined;
+      const req = store.openCursor();
+      req.onsuccess = async (event) => {
+        const cursor = (event.target as IDBRequest).result;
+        if (cursor) {
+          const key = cursor.key as string;
+          const data = cursor.value as IStoredMessageData;
+          if (bytesEqual(eid, data.eid)) {
+            if (
+              !latest || (data.ctr ?? 0) > (latest.data.ctr ?? 0) ||
+              ((data.ctr ?? 0) === (latest.data.ctr ?? 0) && (data.off ?? 0) > (latest.data.off ?? 0))
+            ) {
+              latest = { key, data };
+            }
           }
-          if (
-            !latest || msg.head.ctr > latest.head.ctr ||
-            (msg.head.ctr === latest.head.ctr && msg.head.off > latest.head.off)
-          ) {
-            latest = msg;
+          cursor.continue();
+        } else {
+          if (latest) {
+            const hash = htob(latest.key) as Hash;
+            resolve(await toStoredMessage(hash, latest.data, this.crypto));
+          } else {
+            resolve(undefined);
           }
         }
-        resolve(latest);
       };
       req.onerror = () => reject(req.error);
     });

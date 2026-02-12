@@ -2,7 +2,7 @@
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
 import { IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity } from "./entdb";
-import { btoh, bytesEqual } from "../shared/binary";
+import { btob64, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
@@ -25,20 +25,20 @@ export class EntDBMemory implements IEntDB {
 
   constructor(initEnts: IPossiblyDeletedEntity<unknown>[] = []) {
     for (const ent of initEnts) {
-      const key = btoh(ent.eid);
+      const key = btob64(ent.eid);
       this.ents.set(key, ent);
     }
   }
 
   async apply(op: IOp): Promise<Status> {
-    const key = btoh(op.eid);
+    const key = btob64(op.eid);
     const curr = this.ents.get(key);
     const [ent, stat] = updateEnt(curr, op);
     if (stat !== Status.Success) {
       return stat;
     }
 
-    const newKey = btoh(ent.eid);
+    const newKey = btob64(ent.eid);
     this.ents.set(newKey, ent);
     return Status.Success;
   }
@@ -51,7 +51,7 @@ export class EntDBMemory implements IEntDB {
   async getEnt<T>(
     eid: EntityID,
   ): Promise<ValStat<IEntity<T> | undefined>> {
-    const key = btoh(eid);
+    const key = btob64(eid);
     const ent = this.ents.get(key);
     if (ent && isLiveEntity(ent)) {
       return ok(ent as IEntity<T>);

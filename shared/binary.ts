@@ -22,6 +22,14 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return a.every((byte, i) => byte === b[i]);
 }
 
+export function btob64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+export function b64tob(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   const res = new Uint8Array(a.length + b.length);
   res.set(a, 0);

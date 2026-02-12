@@ -1,4 +1,4 @@
-import { HostHandle } from "../../shared/types";
+import { ICrypto } from "../../shared/types";
 import { IStore } from "../../types";
 import { IDBDownloadQueue } from "./dnlds";
 import { IDBHostStore } from "./hosts";
@@ -22,13 +22,13 @@ export class IDBStore implements IStore<URL> {
   messages: IDBMessageStore;
   db: IDBDatabase;
 
-  constructor(db: IDBDatabase) {
+  constructor(db: IDBDatabase, crypto: ICrypto) {
     this.db = db;
     this.seed = new IDBSeedStore(db);
     this.hosts = new IDBHostStore(db);
     this.uploads = new IDBUploadQueue(db);
     this.downloads = new IDBDownloadQueue(db);
-    this.messages = new IDBMessageStore(db);
+    this.messages = new IDBMessageStore(db, crypto);
   }
 
   async wipe() {

@@ -10,7 +10,7 @@ import { Enclave } from "./shared/enclave";
 import { EncodedMessage } from "./shared/message";
 import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { IDownloadMessage, IHostRow, IStore, IStoredMessage } from "./types";
+import { IDownloadMessage, IHostRow, IStore, IStoredMessageData } from "./types";
 
 async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, head: IMessageHead }>> {
   const dec = new Decoder(item.headCph);
@@ -168,6 +168,7 @@ export async function syncPull<Handle extends HostHandle>(
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
+    const properHash = await crypto.blake3(headEnc);
 
     // Unseal body.
     const key = await enclave.deriveFromKDM(dl.kdm);
@@ -181,9 +182,14 @@ export async function syncPull<Handle extends HostHandle>(
     }
 
     // Store message.
-    const { bod: body, headHash: properHash } = contents;
-    const msg: IStoredMessage = { hash: properHash, head, body };
-    await store.messages.add([msg]);
+    const { bod: body } = contents;
+    const data: IStoredMessageData = {
+      eid: head.eid,
+      ...(head.off !== 0 ? { off: head.off } : {}),
+      ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+      body
+    };
+    await store.messages.add(properHash, data);
 
     // Remove download.
     dls.delete(seq);

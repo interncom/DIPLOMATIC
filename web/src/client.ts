@@ -26,7 +26,7 @@ import {
   IStateEmitter,
   IStateManager,
   IStore,
-  IStoredMessage,
+  IStoredMessageData,
 } from "./types";
 import { Status } from "./shared/consts";
 import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
@@ -86,7 +86,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
     const hash = await this.crypto.blake3(headEnc);
-    const msg: IStoredMessage = { hash, head, body };
+    const data: IStoredMessageData = {
+      eid: head.eid,
+      ...(head.off !== 0 ? { off: head.off } : {}),
+      ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+      body
+    };
 
     // If message is being applied via sync, don't upload.
     if (upload) {
@@ -97,7 +102,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
     }
 
-    await this.store.messages.add([msg]);
+    await this.store.messages.add(hash, data);
 
     // TODO: decide what should happen if there's an error while applying.
     // Dequeue upload and remove message?

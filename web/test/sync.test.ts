@@ -35,7 +35,7 @@ beforeEach(() => {
 });
 
 const createClient = async (seed: Uint8Array) => {
-  const store = new MemoryStore<any>();
+  const store = new MemoryStore<any>(libsodiumCrypto);
   const state: IStateManager = {
     async apply(msg) {
       return Status.Success;

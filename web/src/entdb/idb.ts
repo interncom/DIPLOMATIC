@@ -14,26 +14,28 @@ export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
 
 interface IStoredEntity<T = unknown> {
+  bod?: T;
+  crd: Date; // createdAt
+  ctr: number;
   eid: string;
   gid?: string;
   pid?: string;
-  type: string;
-  updatedAt: Date;
-  ctr: number;
-  createdAt: Date;
-  body?: T;
+  typ: string;
+  upd: Date; // updatedAt
 }
 
 function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   const stored: IStoredEntity<T> = {
-    ...ent,
-    body: ent.body,
+    bod: ent.body,
+    crd: ent.createdAt,
     ctr: ent.ctr,
     eid: btoh(ent.eid),
     gid: ent.gid
       ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
       : undefined,
     pid: ent.pid ? btoh(ent.pid) : undefined,
+    typ: ent.type,
+    upd: ent.updatedAt,
   };
   // NOTE: IndexedDB *will* store undefined attributes unless deleted. Wasteful.
   if (stored.gid === undefined) {
@@ -47,7 +49,11 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
 
 function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> {
   return {
-    ...stored,
+    body: stored.bod,
+    createdAt: stored.crd,
+    updatedAt: stored.upd,
+    ctr: stored.ctr,
+    type: stored.typ,
     eid: htob(stored.eid) as EntityID,
     gid: stored.gid
       ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid)
@@ -61,7 +67,7 @@ export class EntIDB implements IEntDB {
 
   async init() {
     this.db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open("db", 10);
+      const req = indexedDB.open("db", 11);
       req.onupgradeneeded = (event) => {
         const db = req.result;
         const tx = req.transaction;
@@ -76,22 +82,22 @@ export class EntIDB implements IEntDB {
         }
         const store = tx.objectStore(entityTableName);
         if (!store.indexNames.contains(typeIndexName)) {
-          store.createIndex(typeIndexName, ["type", "createdAt"], {
+          store.createIndex(typeIndexName, ["typ", "crd"], {
             unique: false,
           });
         }
         if (!store.indexNames.contains(typeUpdatedAtIndexName)) {
-          store.createIndex(typeUpdatedAtIndexName, ["type", "updatedAt"], {
+          store.createIndex(typeUpdatedAtIndexName, ["typ", "upd"], {
             unique: false,
           });
         }
         if (!store.indexNames.contains(typeGroupIndexName)) {
-          store.createIndex(typeGroupIndexName, ["type", "gid"], {
+          store.createIndex(typeGroupIndexName, ["typ", "gid"], {
             unique: false,
           });
         }
         if (!store.indexNames.contains(typeParentIndexName)) {
-          store.createIndex(typeParentIndexName, ["type", "pid"], {
+          store.createIndex(typeParentIndexName, ["typ", "pid"], {
             unique: false,
           });
         }
@@ -277,9 +283,8 @@ export class EntIDB implements IEntDB {
     const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
-      const req = index.count(
-        IDBKeyRange.bound([type], [type, new Date(Infinity)]),
-      );
+      const range = IDBKeyRange.bound([type], [type, []]);
+      const req = index.count(range);
       req.onsuccess = () => resolve(ok(req.result));
       req.onerror = () => resolve(err(Status.DatabaseError));
     });

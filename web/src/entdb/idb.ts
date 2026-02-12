@@ -16,7 +16,7 @@ export const typeParentIndexName = "entity_type_parent_id";
 interface IStoredEntity<T = unknown> {
   bod?: T;
   crd: Date; // createdAt
-  ctr: number;
+  ctr?: number;
   eid: string;
   gid?: string;
   pid?: string;
@@ -28,7 +28,7 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   const stored: IStoredEntity<T> = {
     bod: ent.body,
     crd: ent.createdAt,
-    ctr: ent.ctr,
+    ...(ent.ctr !== 0 ? { ctr: ent.ctr } : {}),
     eid: btob64(ent.eid),
     gid: ent.gid
       ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
@@ -44,6 +44,9 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   if (stored.pid === undefined) {
     delete stored.pid;
   }
+  if (stored.ctr === undefined) {
+    delete stored.ctr;
+  }
   return stored;
 }
 
@@ -52,7 +55,7 @@ function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> 
     body: stored.bod,
     createdAt: stored.crd,
     updatedAt: stored.upd,
-    ctr: stored.ctr,
+    ctr: stored.ctr ?? 0,
     type: stored.typ,
     eid: b64tob(stored.eid) as EntityID,
     gid: stored.gid

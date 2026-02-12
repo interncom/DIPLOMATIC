@@ -1,4 +1,4 @@
-import { btoh, bytesEqual, htob } from "../../shared/binary";
+import { btob64, bytesEqual, b64tob } from "../../shared/binary";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
@@ -15,8 +15,8 @@ export class IDBMessageStore implements IMessageStore {
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<void>((resolve, reject) => {
-      const hex = btoh(key);
-      const req = store.put(data, hex);
+      const b64 = btob64(key);
+      const req = store.put(data, b64);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -31,8 +31,8 @@ export class IDBMessageStore implements IMessageStore {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       for (const hash of hashes) {
-        const hex = btoh(hash);
-        store.delete(hex);
+        const b64 = btob64(hash);
+        store.delete(b64);
       }
     });
   }
@@ -41,8 +41,8 @@ export class IDBMessageStore implements IMessageStore {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage | undefined>((resolve, reject) => {
-      const hex = btoh(key);
-      const req = store.get(hex);
+      const b64 = btob64(key);
+      const req = store.get(b64);
       req.onsuccess = async () => {
         const data = req.result;
         if (data) {
@@ -71,7 +71,7 @@ export class IDBMessageStore implements IMessageStore {
         if (cursor) {
           const key = cursor.key as string;
           const data = cursor.value as IStoredMessageData;
-          const hash = htob(key) as Hash;
+          const hash = b64tob(key) as Hash;
           const msg = await toStoredMessage(hash, data, this.crypto);
           msgs.push(msg);
           cursor.continue();
@@ -106,7 +106,7 @@ export class IDBMessageStore implements IMessageStore {
           cursor.continue();
         } else {
           if (latest) {
-            const hash = htob(latest.key) as Hash;
+            const hash = b64tob(latest.key) as Hash;
             resolve(await toStoredMessage(hash, latest.data, this.crypto));
           } else {
             resolve(undefined);

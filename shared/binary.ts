@@ -30,8 +30,54 @@ export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 // btob128 encodes bytes to base 128 using 1-byte UTF-8 code points.
+// export function btob128(bytes: Uint8Array): string {
+//   let result = '';
+//   let bits = 0;
+//   let bitCount = 0;
+
+//   for (const byte of bytes) {
+//     bits |= byte << bitCount;
+//     bitCount += 8;
+
+//     while (bitCount >= 7) {
+//       result += String.fromCharCode(bits & 0x7F);
+//       bits >>>= 7;
+//       bitCount -= 7;
+//     }
+//   }
+
+//   if (bitCount > 0) {
+//     result += String.fromCharCode(bits & 0x7F);
+//   }
+
+//   return result;
+// }
+
+// b128tob decodes a base 128 string to bytes using 1-byte UTF-8 code points.
+// export function b128tob(str: string): Uint8Array {
+//   const bytes: number[] = [];
+//   let bits = 0;
+//   let bitCount = 0;
+
+//   for (let i = 0; i < str.length; i++) {
+//     const c = str.charCodeAt(i);
+//     if (c > 127) throw new Error('Invalid base128 character');
+
+//     bits |= c << bitCount;
+//     bitCount += 7;
+
+//     while (bitCount >= 8) {
+//       bytes.push(bits & 0xFF);
+//       bits >>>= 8;
+//       bitCount -= 8;
+//     }
+//   }
+
+//   return new Uint8Array(bytes);
+// }
+
 export function btob128(bytes: Uint8Array): string {
-  let result = '';
+  const out: number[] = [];
   let bits = 0;
   let bitCount = 0;
 
@@ -40,20 +86,25 @@ export function btob128(bytes: Uint8Array): string {
     bitCount += 8;
 
     while (bitCount >= 7) {
-      result += String.fromCharCode(bits & 0x7F);
+      out.push(bits & 0x7F);
       bits >>>= 7;
       bitCount -= 7;
     }
   }
 
   if (bitCount > 0) {
-    result += String.fromCharCode(bits & 0x7F);
+    out.push(bits & 0x7F);
   }
 
-  return result;
+  // Build string in safe chunks
+  const CHUNK = 8192;
+  let str = '';
+  for (let j = 0; j < out.length; j += CHUNK) {
+    str += String.fromCharCode(...out.slice(j, j + CHUNK));
+  }
+  return str;
 }
 
-// b128tob decodes a base 128 string to bytes using 1-byte UTF-8 code points.
 export function b128tob(str: string): Uint8Array {
   const bytes: number[] = [];
   let bits = 0;
@@ -67,7 +118,7 @@ export function b128tob(str: string): Uint8Array {
     bitCount += 7;
 
     while (bitCount >= 8) {
-      bytes.push(bits & 0xFF);
+      bytes.push(bits & 255);
       bits >>>= 8;
       bitCount -= 8;
     }

@@ -5,7 +5,7 @@ import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 import { EntitiesQuery, IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity, updateEnt } from "./entdb";
-import { btoh, htob } from "../shared/binary";
+import { btoh, btob64, b64tob, htob } from "../shared/binary";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -29,11 +29,11 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
     bod: ent.body,
     crd: ent.createdAt,
     ctr: ent.ctr,
-    eid: btoh(ent.eid),
+    eid: btob64(ent.eid),
     gid: ent.gid
       ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
       : undefined,
-    pid: ent.pid ? btoh(ent.pid) : undefined,
+    pid: ent.pid ? btob64(ent.pid) : undefined,
     typ: ent.type,
     upd: ent.updatedAt,
   };
@@ -54,11 +54,11 @@ function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> 
     updatedAt: stored.upd,
     ctr: stored.ctr,
     type: stored.typ,
-    eid: htob(stored.eid) as EntityID,
+    eid: b64tob(stored.eid) as EntityID,
     gid: stored.gid
       ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid)
       : undefined,
-    pid: stored.pid ? htob(stored.pid) as EntityID : undefined,
+    pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
   };
 }
 
@@ -111,7 +111,7 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return Status.DatabaseClosed;
     }
-    const currHex = btoh(op.eid);
+    const currHex = btob64(op.eid);
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status>((resolve) => {
@@ -152,7 +152,7 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
-    const eidHex = btoh(eid);
+    const eidHex = btob64(eid);
     const tx = this.db.transaction(entityTableName, "readonly");
     const store = tx.objectStore(entityTableName);
     return new Promise((resolve) => {
@@ -241,7 +241,7 @@ export class EntIDB implements IEntDB {
       return err(Status.DatabaseClosed);
     }
     if (pid !== undefined) {
-      const pidHex = btoh(pid);
+      const pidHex = btob64(pid);
       const tx = this.db.transaction(entityTableName, "readonly");
       const index = tx.objectStore(entityTableName).index(typeParentIndexName);
       return new Promise((resolve) => {

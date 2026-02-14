@@ -282,8 +282,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   }
 
-  public import = async (file: File, strict = true) => {
+  public import = async (file: File, options?: { strict?: boolean; onProgress?: (index: number, status: Status) => void }): Promise<Status> => {
     const { crypto, store } = this;
+    const onProgress = options?.onProgress;
     const enclave = await store.seed.load();
     if (!enclave) return Status.MissingSeed;
 
@@ -291,10 +292,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
 
-    for (const msg of msgs) {
+    for (let i = 0; i < msgs.length; i++) {
+      const msg = msgs[i];
       const statApp = await this.apply(msg.head, msg.body, true, true);
+      if (onProgress) queueMicrotask(() => onProgress(i, statApp));
       if (statApp !== Status.Success && statApp !== Status.NoChange) {
-        if (strict) {
+        if (options?.strict) {
           return statApp;
         } else {
           console.warn(`failed to import msg: ${statApp}`);

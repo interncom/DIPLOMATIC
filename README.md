@@ -16,7 +16,7 @@ From `deno` dir, `deno vendor src/*.ts tests/* --force` to vendor new deps.
 
 ### Server
 
-`DIPLOMATIC_HOST_PORT=31337 DIPLOMATIC_HOST_ID=abc123 deno run --allow-net --allow-read --allow-write --allow-env hosts/deno/server.ts`
+`DIPLOMATIC_HOST_PORT=31337 deno run --allow-net --allow-read --allow-write --allow-env hosts/deno/server.ts`
 
 ### CLI
 

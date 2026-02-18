@@ -124,7 +124,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     eid: EntityID,
     bod: EncodedMessage | undefined,
     force = false,
-  ) {
+  ): Promise<ValStat<IMessageHead>> {
     const { clock, crypto, store } = this;
     const now = clock.now();
     const last = await store.messages.last(eid);
@@ -282,7 +282,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   }
 
-  public import = async (file: File, options?: { strict?: boolean; onProgress?: (index: number, status: Status) => void }): Promise<Status> => {
+  public import = async (file: File, options?: { strict?: boolean; onProgress?: (index: number, total: number, status: Status) => void }): Promise<Status> => {
     const { crypto, store } = this;
     const onProgress = options?.onProgress;
     const enclave = await store.seed.load();
@@ -295,7 +295,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     for (let i = 0; i < msgs.length; i++) {
       const msg = msgs[i];
       const statApp = await this.apply(msg.head, msg.body, true, true);
-      if (onProgress) queueMicrotask(() => onProgress(i, statApp));
+      if (onProgress) queueMicrotask(() => onProgress(i, msgs.length, statApp));
       if (statApp !== Status.Success && statApp !== Status.NoChange) {
         if (options?.strict) {
           return statApp;

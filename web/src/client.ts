@@ -49,9 +49,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
   ) {
+
     this.clientState = new StateEmitter(() => this.getClientState());
+
     this.xferState = new StateEmitter(() => this.getXferState());
+
   }
+
+  private readonly SYNC_DEBOUNCE_DELAY_MS = 100;
+
+  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
   public async setSeed(seed: MasterSeed) {
     await this.store.seed.save(seed);
@@ -76,12 +83,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return { numDownloads, numUploads };
   }
 
-  private async apply(
+  private apply = async (
     head: IMessageHead,
     body: EncodedMessage | undefined,
     upload = true,
     quiet = false,
-  ) {
+  ) => {
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
@@ -100,6 +107,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       for (const host of hosts) {
         await this.store.uploads.enq(host.label, [hash]);
       }
+      // Clear any existing timeout to reset debounce
+      if (this.syncTimeout !== null) {
+        clearTimeout(this.syncTimeout);
+      }
+      // Schedule a new debounced sync call
+      this.syncTimeout = setTimeout(async () => {
+        this.syncTimeout = null;
+        try {
+          await this.sync();
+        } catch (err) {
+          console.error('Debounced sync failed:', err);
+        }
+      }, this.SYNC_DEBOUNCE_DELAY_MS);
     }
 
     await this.store.messages.add(hash, data);
@@ -108,7 +128,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Dequeue upload and remove message?
     const stat = await this.state.apply({ ...head, bod: body }, quiet);
     return stat;
-  }
+  };
 
   public async insertRaw(bod: EncodedMessage) {
     const { clock, crypto } = this;

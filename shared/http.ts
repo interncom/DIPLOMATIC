@@ -12,12 +12,12 @@ import { err, ok, ValStat } from "./valstat.ts";
 
 export const api = {
   user: {
-    path: "/users",
+    path: "/user",
     endpoint: userEnd,
     name: APICallName.User,
   },
   push: {
-    path: "/ops",
+    path: "/push",
     endpoint: pushEnd,
     name: APICallName.Push,
   },

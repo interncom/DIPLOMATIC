@@ -148,6 +148,10 @@ export async function syncPull<Handle extends HostHandle>(
   const dls: Map<number, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
   const items = Array.from(allItems).filter((i) => i.host === host.label);
+  if (items.length < 1) {
+    return Status.NoChange;
+  }
+
   const seqs: number[] = [];
   for (const item of items) {
     dls.set(item.seq, item);

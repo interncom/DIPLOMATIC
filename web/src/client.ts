@@ -287,7 +287,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         crypto,
         this.apply.bind(this),
       );
-      if (pullStat !== Status.Success) {
+      if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
         console.error(`Failed to pull: ${pullStat}`);
         return pullStat;
       }

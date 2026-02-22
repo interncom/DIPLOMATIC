@@ -115,6 +115,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       this.syncTimeout = setTimeout(async () => {
         this.syncTimeout = null;
         try {
+          console.info("Syncing due to upload")
           await this.sync();
         } catch (err) {
           console.error('Debounced sync failed:', err);
@@ -359,6 +360,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     const hosts = await store.hosts.list();
     for (const host of hosts) {
+      if (this.connections.has(host.label)) {
+        continue;
+      }
+      console.info(`Connecting to ${host.handle} (${host.label})`);
       const conn = new DiplomaticClientAPI(
         enclave,
         libsodiumCrypto,
@@ -370,6 +375,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       await conn.register();
       if (listen) {
         const recv = (data: Uint8Array) => {
+          console.info("Received update");
           this.sync().catch((err) => console.error("Sync failed:", err));
         };
         await conn.listen(recv);

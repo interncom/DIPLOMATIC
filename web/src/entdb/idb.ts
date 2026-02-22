@@ -244,11 +244,11 @@ export class EntIDB implements IEntDB {
       return err(Status.DatabaseClosed);
     }
     if (pid !== undefined) {
-      const pidHex = btob64(pid);
+      const pidB64 = btob64(pid);
       const tx = this.db.transaction(entityTableName, "readonly");
       const index = tx.objectStore(entityTableName).index(typeParentIndexName);
       return new Promise((resolve) => {
-        const req = index.getAll(IDBKeyRange.only([type, pidHex]));
+        const req = index.getAll(IDBKeyRange.only([type, pidB64]));
         req.onsuccess = () => {
           const storedEnts = req.result as IStoredEntity<T>[];
           const ents = storedEnts.map(storedToEntity);

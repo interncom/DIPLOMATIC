@@ -8,7 +8,6 @@ import { Enclave } from "./enclave.ts";
 import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import type {
-  Hash,
   HostHandle,
   HostSpecificKeyPair,
   IBag,

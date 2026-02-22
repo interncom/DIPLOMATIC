@@ -204,8 +204,8 @@ export async function syncPull<Handle extends HostHandle>(
     // No. Application should be a separate phase.
     // Messages should be tagged with whether they've been applied or not.
     const stat = await apply(head, body, false);
-    if (stat !== Status.Success) {
-      console.error("ERR applying", stat);
+    if (stat !== Status.Success && stat !== Status.NoChange) {
+      console.error("ERR applying", Status[stat]);
     }
   }
   return Status.Success;

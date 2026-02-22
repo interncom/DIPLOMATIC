@@ -19,15 +19,11 @@ export const pullEnd: IAuthenticatedEndpoint<
     return Status.Success;
   },
   async handleReq(host, reqDec, respEnc) {
-    const { storage } = host;
+    const { clock, crypto, storage } = host;
 
     const [authTS, s] = reqDec.readStruct(authTimestampCodec);
     if (s !== Status.Success) return s;
-    const validStatus = await validateAuthTimestamp(
-      authTS,
-      host.crypto,
-      host.clock,
-    );
+    const validStatus = await validateAuthTimestamp(authTS, crypto, clock);
     if (validStatus !== Status.Success) return validStatus;
     const { pubKey } = authTS;
 

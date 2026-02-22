@@ -9,15 +9,11 @@ export const userEnd: IAuthenticatedEndpoint<never, void> = {
     return status;
   },
   async handleReq(host, reqDec, _respEnc) {
-    const { storage } = host;
+    const { clock, crypto, storage } = host;
 
     const [authTS, status] = reqDec.readStruct(authTimestampCodec);
     if (status !== Status.Success) return status;
-    const validStatus = await validateAuthTimestamp(
-      authTS,
-      host.crypto,
-      host.clock,
-    );
+    const validStatus = await validateAuthTimestamp(authTS, crypto, clock);
     if (validStatus !== Status.Success) {
       return validStatus;
     }

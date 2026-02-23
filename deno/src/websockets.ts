@@ -53,10 +53,7 @@ class DenoWebsocketNotifier implements IPushNotifier {
     };
   }
 
-  async push(
-    pubKey: PublicKey,
-    data: Uint8Array = new TextEncoder().encode("NEW OP"),
-  ): Promise<void> {
+  async push(pubKey: PublicKey, data: Uint8Array): Promise<void> {
     const pubKeyHex = btoh(pubKey);
     const recvs = this.recvs.get(pubKeyHex);
     if (recvs) {

@@ -1,7 +1,10 @@
 import { validateAuthTimestamp } from "../auth.ts";
 import { bagSigValid } from "../bag.ts";
+import { Encoder } from "../codec.ts";
 import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { bagCodec } from "../codecs/bag.ts";
+import { peekItemCodec } from "../codecs/peekItem.ts";
+import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
@@ -49,7 +52,18 @@ export const pushEnd: IAuthenticatedEndpoint<
       if (setStatus !== Status.Success) {
         return setStatus;
       }
-      notifier.push(pubKey, new TextEncoder().encode("NEW OP"));
+
+      const encNotifHeadCph = new Encoder();
+      const statNotifHeadCph = encNotifHeadCph.writeStruct(peekItemHeadCodec, bag);
+      if (statNotifHeadCph !== Status.Success) return statNotifHeadCph;
+      const notifHeadCph = encNotifHeadCph.result();
+      const encNotif = new Encoder();
+      const notif = { seq, headCph: notifHeadCph };
+      const statNotif = encNotif.writeStruct(peekItemCodec, notif);
+      if (statNotif !== Status.Success) return statNotif;
+      const notifEnc = encNotif.result();
+      notifier.push(pubKey, notifEnc);
+
       const item: IBagPushItem = { idx, status: setStatus, seq };
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;

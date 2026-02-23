@@ -36,10 +36,12 @@ export function decodeVarInt(
   let i = offset;
   while (true) {
     if (i >= bytes.length) {
-      console.info("ruh roh")
       return err(Status.InvalidMessage);
     }
     const byte = bytes[i++];
+    if (byte === undefined) {
+      return err(Status.InvalidMessage);
+    }
     result |= BigInt(byte & 0x7f) << BigInt(shift);
     if ((byte & 0x80) === 0) {
       if (i - offset > 8) {

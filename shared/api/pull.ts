@@ -1,9 +1,8 @@
 import { validateAuthTimestamp } from "../auth.ts";
-import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
-import { type IBagPullItem, pullItemCodec } from "../codecs/pullItem.ts";
-import { hashBytes, Status } from "../consts.ts";
+import { authTimestampCodec } from "../codecs/authTimestamp.ts";
+import { pullItemCodec, type IBagPullItem } from "../codecs/pullItem.ts";
+import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
-import { Hash } from "../types.ts";
 
 export const pullEnd: IAuthenticatedEndpoint<
   number,

@@ -136,6 +136,24 @@ export async function syncPush<Handle extends HostHandle>(
     }
     await store.uploads.deq(host.label, [msgHeadEncHash]);
   }
+
+  // Update host lastSeq based on successful push seqs.
+  if (results.length > 0) {
+    let currentMax = host.lastSeq;
+    const successfulSeqs = results
+      .filter((item) => item.status === Status.Success)
+      .map((item) => item.seq)
+      .sort((a, b) => a - b);
+    for (const seq of successfulSeqs) {
+      if (seq === currentMax + 1) {
+        currentMax = seq;
+      }
+    }
+    if (currentMax > host.lastSeq) {
+      await store.hosts.touch(host.label, currentMax);
+    }
+  }
+
   return Status.Success;
 }
 

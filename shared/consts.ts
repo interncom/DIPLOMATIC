@@ -13,6 +13,8 @@ export const bagHeaderSize = sigBytes + kdmBytes + lenBytes + lenBytes;
 export const responseItemSize = 33; // status (1) + hash (32)
 export const clockToleranceMs = 30000;
 
+export const notifInlineBodyBytesThreshold = 512;
+
 export enum Status {
   Success = 0,
   InvalidSignature = 3,

@@ -157,8 +157,8 @@ Deno.test("server", async (t) => {
   const invalidTsAuth = new Uint8Array(tsAuthSize);
   invalidTsAuth.set(timestampBytes, 96);
 
-  await t.step("POST /users requires valid tsAuth", async () => {
-    const response = await fetch(`http://localhost:${port}/users`, {
+  await t.step("POST /user requires valid tsAuth", async () => {
+    const response = await fetch(`http://localhost:${port}/user`, {
       method: "POST",
       body: invalidTsAuth,
       headers: { "Content-Type": "application/octet-stream" },
@@ -168,8 +168,8 @@ Deno.test("server", async (t) => {
     assertEquals(body[0], Status.InvalidSignature);
   });
 
-  await t.step("POST /ops requires valid tsAuth", async () => {
-    const response = await fetch(`http://localhost:${port}/ops`, {
+  await t.step("POST /push requires valid tsAuth", async () => {
+    const response = await fetch(`http://localhost:${port}/push`, {
       method: "POST",
       body: invalidTsAuth,
       headers: { "Content-Type": "application/octet-stream" },

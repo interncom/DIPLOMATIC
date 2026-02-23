@@ -6,8 +6,8 @@ import denoMempack from "../../deno/src/codec.ts";
 import { btoh, htob } from "../../shared/binary.ts";
 import { encodeFile } from "../../shared/exim.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { IMessageHead, MasterSeed } from "../../shared/types.ts";
-import { eidBytes, Status } from "../../shared/consts.ts";
+import { EntityID, IMessageHead, MasterSeed } from "../../shared/types.ts";
+import { Status } from "../../shared/consts.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 
@@ -40,10 +40,11 @@ async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValSt
   console.time("Transforming...");
   const counters = new Map<string, number>();
   const createds = new Map<string, Date>(); // When the eid was first seen
+  const newEIDs = new Map<string, EntityID>(); // The new form of eid from an old one, for updating PIDs.
   const msgs: Array<{ head: IMessageHead, body?: Uint8Array }> = [];
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i];
-    const { eid: id, gid, pid, ts: tsRaw, type, verb, ver, body: opBody } = op;
+    const { eid: id, gid, pid: oldPID, ts: tsRaw, type, verb, ver, body: opBody } = op;
 
     const eidHex = btoh(id);
     const prevCtr = counters.get(eidHex);
@@ -61,6 +62,18 @@ async function importLegacy(filePath: string, encKey: Uint8Array): Promise<ValSt
     if (statEid !== Status.Success) {
       console.warn(`error transforming EID: ${eidHex}\t${ts} (${statEid})`);
       continue;
+    }
+
+    newEIDs.set(eidHex, eid);
+
+    let pid: EntityID | undefined;
+    if (oldPID) {
+      const oldPIDHex = btoh(oldPID);
+      const newPID = newEIDs.get(oldPIDHex);
+      if (newPID) {
+        pid = newPID;
+        console.log("pid", oldPID, newPID);
+      }
     }
 
     try {

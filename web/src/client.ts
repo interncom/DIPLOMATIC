@@ -34,6 +34,7 @@ import { saveAs } from "file-saver";
 import { err, ok, ValStat } from "./shared/valstat";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { peekItemCodec } from "./shared/codecs/peekItem";
+import { btob64 } from "./shared/binary";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -390,7 +391,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           }
           const headEncHash = await crypto.blake3(itemDec.headEnc);
           if (await store.messages.has(headEncHash)) {
-            console.info("Already have message");
+            const headEncHashB64 = btob64(headEncHash);
+            console.info("Already have message", headEncHashB64);
             return;
           }
           this.sync().catch((err) => console.error("Sync failed:", err));

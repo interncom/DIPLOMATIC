@@ -48,7 +48,6 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       return err(statAuthTS);
     }
     const enc = new Encoder();
-    console.info(`API call: ${APICallName[name]}`, items);
     const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
     if (encStatus !== Status.Success) return err(encStatus);
 
@@ -86,7 +85,9 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     }
 
     // Return response.
-    return endpoint.decodeResp(dec);
+    const respVS = endpoint.decodeResp(dec)
+    console.info(`API call: ${APICallName[name]}`, { req: items, resp: respVS });
+    return respVS;
   }
 
   keys = (): Promise<HostSpecificKeyPair> => {

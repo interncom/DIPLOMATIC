@@ -6,7 +6,7 @@ import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
-  constructor(private url: URL) {}
+  constructor(private url: URL) { }
 
   connected(): boolean {
     return this.websocket !== undefined &&
@@ -28,6 +28,9 @@ export class WebsocketListener implements IPushListener {
     url.searchParams.set("t", authTSHex);
     this.websocket = new WebSocket(url);
 
+    // Set data type to ArrayBuffer (otherwise .onmessage receives Blobs).
+    this.websocket.binaryType = "arraybuffer";
+
     this.websocket.onopen = (e) => {
       console.log("CONNECTED");
     };
@@ -38,8 +41,8 @@ export class WebsocketListener implements IPushListener {
     };
 
     this.websocket.onmessage = (e) => {
-      console.log(`RECEIVED: ${e.data}`);
-      recv(e.data);
+      const bytes = new Uint8Array(e.data);
+      recv(bytes);
     };
 
     this.websocket.onerror = (e) => {

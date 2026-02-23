@@ -18,7 +18,7 @@ import {
   IUpsertParams,
   MasterSeed,
 } from "./shared/types";
-import { syncPeek, syncPull, syncPush } from "./sync";
+import { decryptPeekItem, syncPeek, syncPull, syncPush } from "./sync";
 import {
   IClient,
   IDiplomaticClientState,
@@ -33,6 +33,7 @@ import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { saveAs } from "file-saver";
 import { err, ok, ValStat } from "./shared/valstat";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
+import { peekItemCodec } from "./shared/codecs/peekItem";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -353,7 +354,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   // Manage active host connections.
   public async connect(listen = true) {
-    const { clock, store, transport } = this;
+    const { clock, crypto, store, transport } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
@@ -374,8 +375,24 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       );
       await conn.register();
       if (listen) {
-        const recv = (data: Uint8Array) => {
-          console.info("Received update");
+        const recv = async (bytes: Uint8Array) => {
+          const dec = new Decoder(bytes);
+          const [item, s1] = dec.readStruct(peekItemCodec);
+          if (s1 !== Status.Success) {
+            console.error("Failed decoding notif", Status[s1]);
+            return;
+          }
+          const keys = await conn.keys();
+          const [itemDec, s2] = await decryptPeekItem(item, keys, enclave, crypto);
+          if (s2 !== Status.Success) {
+            console.error("Failed decrypting notif", Status[s2]);
+            return;
+          }
+          const headEncHash = await crypto.blake3(itemDec.headEnc);
+          if (await store.messages.has(headEncHash)) {
+            console.info("Already have message");
+            return;
+          }
           this.sync().catch((err) => console.error("Sync failed:", err));
         };
         await conn.listen(recv);

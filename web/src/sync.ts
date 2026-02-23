@@ -12,7 +12,7 @@ import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "
 import { err, ok, ValStat } from "./shared/valstat";
 import { IDownloadMessage, IHostRow, IStore, IStoredMessageData } from "./types";
 
-async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, head: IMessageHead }>> {
+export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, headEnc: Uint8Array }>> {
   const dec = new Decoder(item.headCph);
   const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
   if (readStatus !== Status.Success) {
@@ -35,12 +35,19 @@ async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, 
     // Decryption failed, skip
     return err(Status.DecryptionError);
   }
-  const headDec = new Decoder(headEnc);
+  return ok({ kdm, headEnc });
+}
+
+export async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, head: IMessageHead }>> {
+  const [itemDec, stat] = await decryptPeekItem(item, hostKeys, enclave, crypto);
+  if (stat !== Status.Success) return err(stat);
+
+  const headDec = new Decoder(itemDec.headEnc);
   const [head, headStatus] = headDec.readStruct(messageHeadCodec);
   if (headStatus !== Status.Success) {
     return err(headStatus);
   }
-  return ok({ kdm, head });
+  return ok({ kdm: itemDec.kdm, head });
 }
 
 // Phase 1: Peek for new items and enqueue downloads

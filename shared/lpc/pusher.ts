@@ -49,7 +49,7 @@ export class CallbackNotifier implements IPushNotifier {
 
   push(
     pubKey: PublicKey,
-    data: Uint8Array = new TextEncoder().encode("NEW OP"),
+    data: Uint8Array,
   ): void {
     const pubKeyHex = btoh(pubKey);
     const recvs = this.recvs.get(pubKeyHex);

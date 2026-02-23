@@ -1,9 +1,7 @@
-import { Decoder, Encoder, ICodecStruct } from "../codec.ts";
+import { Encoder, ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { err, ok, ValStat } from "../valstat.ts";
-
-import { EntityID, ICrypto } from "../types.ts";
-import { IClock } from "../clock.ts";
+import { EntityID } from "../types.ts";
 
 // An EID (EntityID) is a composite.
 // It has an ID component, typically random.

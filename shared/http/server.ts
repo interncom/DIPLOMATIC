@@ -28,9 +28,10 @@ export class DiplomaticHTTPServer implements IProtoHost {
       // Handle CORS preflight request
       return cors(new Response(null));
     }
+    const logMsg = `${request.method} ${request.url}`;
+    console.time(logMsg);
     const resp = await this.handler(request);
-
-    console.log(`[${resp.status}] ${request.method} ${request.url}`);
+    console.timeEnd(logMsg);
 
     return cors(resp);
   };

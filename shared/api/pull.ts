@@ -36,6 +36,9 @@ export const pullEnd: IAuthenticatedEndpoint<
       if (s3 !== Status.Success) return s3;
       seqs.push(seq);
     }
+
+    console.info(`PULL: ${seqs.length} bags`);
+
     for (const seq of seqs) {
       const [bodyCph, getStatus] = await storage.getBody(
         pubKey,

@@ -39,6 +39,9 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     const [bags, s3] = reqDec.readStructs(bagCodec);
     if (s3 !== Status.Success) return s3;
+
+    console.info(`PUSH: ${bags.length} bags`);
+
     for (let idx = 0; idx < bags.length; idx++) {
       // Check signature.
       const bag = bags[idx];

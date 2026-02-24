@@ -8,10 +8,12 @@ import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import {
   EntityID,
+  Hash,
   HostHandle,
   ICrypto,
   IHostConnectionInfo,
   IInsertParams,
+  IMessage,
   IMessageHead,
   IMsgEntBody,
   ITransport,
@@ -25,6 +27,7 @@ import {
   IDiplomaticClientState,
   IDiplomaticClientXferState,
   IDownloadMessage,
+  IMsgParts,
   IStateEmitter,
   IStateManager,
   IStore,
@@ -88,28 +91,35 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   private apply = async (
-    head: IMessageHead,
-    body: EncodedMessage | undefined,
+    parts: IMsgParts[],
     upload = true,
-    quiet = false,
   ) => {
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const headEnc = enc.result();
-    const hash = await this.crypto.blake3(headEnc);
-    const data: IStoredMessageData = {
-      eid: head.eid,
-      ...(head.off !== 0 ? { off: head.off } : {}),
-      ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-      body
-    };
+    const hashes: Hash[] = [];
+    const datas: { hash: Hash, data: IStoredMessageData }[] = [];
+    const msgs: IMessage[] = [];
+
+    for (const { head, body } of parts) {
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      const headEnc = enc.result();
+      const hash = await this.crypto.blake3(headEnc);
+      const data: IStoredMessageData = {
+        eid: head.eid,
+        ...(head.off !== 0 ? { off: head.off } : {}),
+        ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+        body
+      };
+      hashes.push(hash);
+      datas.push({ hash, data });
+      msgs.push({ ...head, bod: body });
+    }
 
     // If message is being applied via sync, don't upload.
     if (upload) {
       // NOTE: important to enqueue upload before storing it.
       const hosts = await this.store.hosts.list();
       for (const host of hosts) {
-        await this.store.uploads.enq(host.label, [hash]);
+        await this.store.uploads.enq(host.label, hashes);
       }
       // Clear any existing timeout to reset debounce
       if (this.syncTimeout !== null) {
@@ -127,11 +137,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }, this.SYNC_DEBOUNCE_DELAY_MS);
     }
 
-    await this.store.messages.add(hash, data);
+    for (const { hash, data } of datas) {
+      await this.store.messages.add(hash, data);
+    }
 
     // TODO: decide what should happen if there's an error while applying.
     // Dequeue upload and remove message?
-    const stat = await this.state.apply({ ...head, bod: body }, quiet);
+    const stat = await this.state.apply(msgs);
     return stat;
   };
 
@@ -141,7 +153,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (stat !== Status.Success) {
       return err<IMessageHead>(stat);
     }
-    await this.apply(head, bod);
+    await this.apply([{ head, body: bod }]);
     return ok(head);
   }
 
@@ -177,7 +189,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         const offDel = last.head.off + 1;
         const offCtr = last.head.ctr + 1;
         const delHead = { eid, off: offDel, ctr: offCtr, len: 0 };
-        const statDel = await this.apply(delHead, undefined);
+        const statDel = await this.apply([{ head: delHead, body: undefined }]);
         if (statDel !== Status.Success) {
           return err<IMessageHead>(statDel);
         }
@@ -199,7 +211,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         if (statRepl !== Status.Success) {
           return err<IMessageHead>(statRepl);
         }
-        await this.apply(repl, bod);
+        await this.apply([{ head: repl, body: bod }]);
         return ok(repl);
       }
     }
@@ -208,7 +220,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (statMsg !== Status.Success) {
       return err<IMessageHead>(statMsg);
     }
-    await this.apply(msg, bod);
+    await this.apply([{ head: msg, body: bod }]);
     return ok(msg);
   }
 
@@ -317,16 +329,14 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
 
-    for (let i = 0; i < msgs.length; i++) {
-      const msg = msgs[i];
-      const statApp = await this.apply(msg.head, msg.body, true, true);
-      if (onProgress) queueMicrotask(() => onProgress(i, msgs.length, statApp));
-      if (statApp !== Status.Success && statApp !== Status.NoChange) {
-        if (options?.strict) {
-          return statApp;
-        } else {
-          console.warn(`failed to import msg: ${statApp}`);
-        }
+    const items = msgs.map(msg => ({ head: msg.head, body: msg.body }));
+    const statApp = await this.apply(items, true);
+    if (statApp !== Status.Success && statApp !== Status.NoChange) {
+      return statApp;
+    }
+    if (onProgress) {
+      for (let i = 0; i < msgs.length; i++) {
+        queueMicrotask(() => onProgress(i, msgs.length, statApp));
       }
     }
 
@@ -459,7 +469,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           await store.messages.add(headEncHash, data);
 
           // Apply message.
-          const stat = await this.apply(head, body, false);
+          const stat = await this.apply([{ head, body }], false);
           if (stat !== Status.Success && stat !== Status.NoChange) {
             console.error("ERR applying", Status[stat]);
           }

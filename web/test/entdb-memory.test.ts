@@ -31,7 +31,7 @@ describe("EntDBMemory.apply()", () => {
         body: { data: "new" },
       };
 
-      const result = await db.apply(op);
+      const result = await db.apply([op]);
       expect(result).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
@@ -67,7 +67,7 @@ describe("EntDBMemory.apply()", () => {
         type: "test",
         body: { data: "old" },
       };
-      await db.apply(oldOp);
+      await db.apply([oldOp]);
 
       // Then apply newer op
       const newOp: IOp = {
@@ -79,7 +79,7 @@ describe("EntDBMemory.apply()", () => {
         type: "test2",
         body: { data: "new" },
       };
-      const result = await db.apply(newOp);
+      const result = await db.apply([newOp]);
       expect(result).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
@@ -99,13 +99,13 @@ describe("EntDBMemory.apply()", () => {
         return;
       }
 
-      await db.apply({
+      await db.apply([{
         off: 0,
         ctr: 5,
         eid,
         type: "test",
         body: { data: "higher" },
-      });
+      }]);
 
       const op: IOp = {
         off: 0,
@@ -114,7 +114,7 @@ describe("EntDBMemory.apply()", () => {
         type: "test",
         body: { data: "lower ctr" },
       };
-      await db.apply(op);
+      await db.apply([op]);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
@@ -131,13 +131,13 @@ describe("EntDBMemory.apply()", () => {
         return;
       }
 
-      await db.apply({
+      await db.apply([{
         off: 0,
         ctr: 5,
         eid,
         type: "test",
         body: { data: "higher" },
-      });
+      }]);
 
       // Same ts, lower ctr
       const op: IOp = {
@@ -147,7 +147,7 @@ describe("EntDBMemory.apply()", () => {
         type: "test",
         body: { data: "lower ctr" },
       };
-      await db.apply(op);
+      await db.apply([op]);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
@@ -178,22 +178,22 @@ describe("EntDBMemory.apply()", () => {
       }
 
       // Add two entities with equivalent gids
-      await db.apply({
+      await db.apply([{
         off: 0,
         ctr: 1,
         eid: eid1,
         gid: gid1,
         type: "test",
         body: { id: 1 },
-      });
-      await db.apply({
+      }]);
+      await db.apply([{
         off: 0,
         ctr: 1,
         eid: eid2,
         gid: gid2,
         type: "test",
         body: { id: 2 },
-      });
+      }]);
 
       // Query by gid1 (should return both if comparison is by content)
       const [results, status] = await db.getEntities({

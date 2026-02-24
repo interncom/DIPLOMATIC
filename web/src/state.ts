@@ -52,20 +52,26 @@ export class StateManager implements IStateManager {
     public clear: () => Promise<Status>,
   ) { }
 
-  apply = async (msg: IMessage, quiet = false) => {
-    const [op, statParse] = msgToOp(msg);
-    if (statParse !== Status.Success) {
-      return statParse;
+  apply = async (msgs: IMessage[]) => {
+    const ops: IOp[] = [];
+    const types = new Set<string>();
+    for (const msg of msgs) {
+      const [op, statParse] = msgToOp(msg);
+      if (statParse !== Status.Success) {
+        return statParse;
+      }
+      ops.push(op);
+      types.add(op.type);
     }
 
-    const statApply = await this.applier(op);
+    const statApply = await this.applier(ops);
     if (statApply !== Status.Success) {
       // NOTE: this includes Status.NoChange, which is not an error.
       return statApply;
     }
 
-    if (!quiet) {
-      this.emitter.emit(op.type, null);
+    for (const type of types) {
+      this.emitter.emit(type, null);
     }
     return Status.Success;
   };
@@ -81,7 +87,7 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function(msg) {
+  apply: async function(msgs) {
     return Status.Success;
   },
   on: function(type, listener): void {

@@ -30,16 +30,19 @@ export class EntDBMemory implements IEntDB {
     }
   }
 
-  async apply(op: IOp): Promise<Status> {
-    const key = btob64(op.eid);
-    const curr = this.ents.get(key);
-    const [ent, stat] = updateEnt(curr, op);
-    if (stat !== Status.Success) {
-      return stat;
+  async apply(ops: IOp[]): Promise<Status> {
+    for (const op of ops) {
+      const key = btob64(op.eid);
+      const curr = this.ents.get(key);
+      const [ent, stat] = updateEnt(curr, op);
+      if (stat === Status.NoChange) {
+        continue;
+      }
+      if (stat !== Status.Success) {
+        return stat;
+      }
+      this.ents.set(key, ent);
     }
-
-    const newKey = btob64(ent.eid);
-    this.ents.set(newKey, ent);
     return Status.Success;
   }
 

@@ -10,7 +10,7 @@ import { Enclave } from "./shared/enclave";
 import { EncodedMessage } from "./shared/message";
 import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { IDownloadMessage, IHostRow, IStore, IStoredMessageData } from "./types";
+import { IDownloadMessage, IHostRow, IMsgParts, IStore, IStoredMessageData } from "./types";
 
 export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, headEnc: Uint8Array }>> {
   const dec = new Decoder(item.headCph);
@@ -165,8 +165,7 @@ export async function syncPull<Handle extends HostHandle>(
   host: IHostRow<Handle>,
   crypto: ICrypto,
   apply: (
-    head: IMessageHead,
-    body: EncodedMessage | undefined,
+    parts: IMsgParts[],
     upload: boolean,
   ) => Promise<Status>,
 ): Promise<Status> {
@@ -228,7 +227,7 @@ export async function syncPull<Handle extends HostHandle>(
     // TODO: should apply happen before storing the message and deq-ing the download?
     // No. Application should be a separate phase.
     // Messages should be tagged with whether they've been applied or not.
-    const stat = await apply(head, body, false);
+    const stat = await apply([{ head, body }], false);
     if (stat !== Status.Success && stat !== Status.NoChange) {
       console.error("ERR applying", Status[stat]);
     }

@@ -34,7 +34,7 @@ export type EntitiesQuery = {
 };
 
 export interface IEntDB {
-  apply: (op: IOp) => Promise<Status>;
+  apply: (ops: IOp[]) => Promise<Status>;
   clear: () => Promise<Status>;
   getEnt<T>(
     eid: EntityID,
@@ -115,6 +115,6 @@ export const nullEntDB: IEntDB = {
   getEnt: async () => err(Status.NotImplemented),
   getEntities: async () => err(Status.NotImplemented),
   countEntities: async () => err(Status.NotImplemented),
-  apply: async (op: IOp) => Status.NotImplemented,
+  apply: async (ops: IOp[]) => Status.NotImplemented,
   clear: async () => Status.NotImplemented,
 };

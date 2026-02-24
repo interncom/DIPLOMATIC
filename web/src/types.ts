@@ -18,6 +18,11 @@ import type {
 import { ValStat } from "./shared/valstat";
 import { ICrypto } from "./shared/types";
 
+export interface IMsgParts {
+  head: IMessageHead;
+  body?: EncodedMessage;
+}
+
 export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;
@@ -166,7 +171,7 @@ export interface IClient<Handle extends HostHandle> {
 }
 
 export interface IStateManager {
-  apply: (msg: IMessage, quiet?: boolean) => Promise<Status>;
+  apply: (msgs: IMessage[]) => Promise<Status>;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

@@ -1,9 +1,8 @@
-import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
-import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";
+import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import denoWebsocketNotifer from "../../deno/src/websockets.ts";
 import { Clock } from "../../shared/clock.ts";
-import memStorage from "../../shared/storage/memory.ts";
+import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 
 const port = Number.parseInt(Deno.env.get("DIPLOMATIC_HOST_PORT"));
 if (!port) {

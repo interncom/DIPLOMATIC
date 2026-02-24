@@ -110,29 +110,39 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  apply = async (op: IOp) => {
+  apply = async (ops: IOp[]) => {
     if (!this.db) {
       return Status.DatabaseClosed;
     }
-    const currHex = btob64(op.eid);
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status>((resolve) => {
+      if (ops.length < 1) {
+        resolve(Status.Success);
+        return;
+      }
+
       tx.oncomplete = () => resolve(Status.Success);
       tx.onerror = () => resolve(Status.DatabaseError);
-      const getReq = store.get(currHex);
-      getReq.onsuccess = () => {
-        const currStored = getReq.result;
-        const curr = currStored ? storedToEntity(currStored) : undefined;
-        const [ent, stat] = updateEnt(curr, op);
-        if (stat !== Status.Success) {
-          resolve(stat);
-          return;
-        }
-        const storedEnt = entityToStored(ent);
-        store.put(storedEnt);
-      };
-      getReq.onerror = () => resolve(Status.DatabaseError);
+      for (const op of ops) {
+        const eidB64 = btob64(op.eid);
+        const getReq = store.get(eidB64);
+        getReq.onsuccess = () => {
+          const currStored = getReq.result;
+          const curr = currStored ? storedToEntity(currStored) : undefined;
+          const [ent, stat] = updateEnt(curr, op);
+          if (stat === Status.NoChange) {
+            return;
+          }
+          if (stat !== Status.Success) {
+            resolve(stat);
+            return;
+          }
+          const storedEnt = entityToStored(ent);
+          store.put(storedEnt);
+        };
+        getReq.onerror = () => resolve(Status.DatabaseError);
+      }
     });
   }
 

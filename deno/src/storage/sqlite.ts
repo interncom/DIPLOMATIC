@@ -8,6 +8,8 @@ import { nullSubMeta } from "../../../web/src/shared/types.ts";
 import { err, ok } from "../../../shared/valstat.ts";
 
 const db = new DB("diplomatic.db");
+db.query("PRAGMA journal_mode=WAL;");
+db.query("PRAGMA synchronous=NORMAL;");
 db.query(`
   CREATE TABLE IF NOT EXISTS users (
     pubKey TEXT PRIMARY KEY

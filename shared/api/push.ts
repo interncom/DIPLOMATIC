@@ -79,6 +79,7 @@ export const pushEnd: IAuthenticatedEndpoint<
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;
     }
+
     return Status.Success;
   },
   decodeResp(respDec) {

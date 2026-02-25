@@ -1,3 +1,2 @@
 .DS_Store
-diplomatic.db
-diplomatic.db-journal
+diplomatic.db*

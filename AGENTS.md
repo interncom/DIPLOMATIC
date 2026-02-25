@@ -12,13 +12,13 @@ Prefer terse variable names, even at the expense of immediate readability to an 
 ## Directory Structure
 
 - `shared` holds common code. It's written in TypeScript, targeting deno.
-- `deno` has some deno platform-specific code, plus the tests for the shared deno code. Run those tests with `deno test --allow-net` from the `deno` dir. Use `deno bench` to run the benchmarks.
+- `deno` has some deno platform-specific code, plus the tests for the shared deno code. Run those tests with `deno test --allow-net --allow-ffi --allow-env` from the `deno` dir. Use `deno bench` to run the benchmarks.
 - `web` holds web client code, also written in TypeScript. Run tests from this dir using `npm test`.
 
 ## Checking Work
 
 - Run tests before and after making changes to ensure you haven't broken anything.
-  - `deno test --allow-net` from `deno` dir.
+  - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
   - `npm test` from `web` dir.
   
 - Run the benchmarks before and after as well, to check for meaningful regressions.

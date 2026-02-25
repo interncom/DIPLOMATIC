@@ -134,30 +134,54 @@ export class EntIDB implements IEntDB {
         }
         resolve(results);
       };
+
+      // Group ops by eidB64.
+      // We do this in case multiple ops in this batch mutate the same ent.
+      // If so, we run the updates in-memory then persist the final state.
+      // Without it, IndexedDB was getting mixed-up, due to key collisions.
+      const groups = new Map<string, { op: IOp, index: number }[]>();
       for (let i = 0; i < ops.length; i++) {
         const op = ops[i];
         const eidB64 = btob64(op.eid);
+        const item = { op, index: i };
+        const group = groups.get(eidB64);
+        if (group) {
+          group.push(item);
+        } else {
+          groups.set(eidB64, [item]);
+        }
+      }
+
+      for (const [eidB64, group] of groups) {
         const getReq = store.get(eidB64);
         getReq.onsuccess = () => {
           const currStored = getReq.result;
-          const curr = currStored ? storedToEntity(currStored) : undefined;
-          const [ent, stat] = updateEnt(curr, op);
-          if (stat !== Status.Success) {
-            console.log(`updateEnt stat (${Status[stat]})`)
-            results[i] = stat;
-            return;
+          let curr = currStored ? storedToEntity(currStored) : undefined;
+          // Sequentially apply updateEnt for each op in the group.
+          for (const { op, index } of group) {
+            const [newEnt, stat] = updateEnt(curr, op);
+            if (stat !== Status.Success) {
+              results[index] = stat;
+            } else {
+              curr = newEnt;
+            }
           }
-          const storedEnt = entityToStored(ent);
-          const putReq = store.put(storedEnt);
-          // We skip putReq.onsuccess because we default results to Success.
-          putReq.onerror = (evt) => {
-            // preventDefault allows continuation if a single insert fails.
-            evt.preventDefault();
-            results[i] = Status.DatabaseError;
+          // Persist the final state of the ent.
+          if (curr) {
+            const storedEnt = entityToStored(curr);
+            const putReq = store.put(storedEnt);
+            putReq.onerror = (evt) => {
+              evt.preventDefault();
+              for (const { index } of group) {
+                results[index] = Status.DatabaseError;
+              }
+            };
           }
         };
         getReq.onerror = () => {
-          results[i] = Status.DatabaseError;
+          for (const { index } of group) {
+            results[index] = Status.DatabaseError;
+          }
         };
       }
     });

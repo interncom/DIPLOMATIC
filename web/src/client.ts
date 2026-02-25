@@ -102,6 +102,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // 1. hashes for upload queueing,
     // 2. storables for message archive,
     // 3. msgs for application to state.
+    // console.time("apply: processing parts...")
     for (const { head, body } of parts) {
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
@@ -117,6 +118,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       storables.push({ key: hash, data });
       msgs.push({ ...head, bod: body });
     }
+    // console.timeEnd("apply: processing parts...")
 
     // If message is being applied via sync, don't upload.
     if (upload) {
@@ -141,11 +143,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }, this.SYNC_DEBOUNCE_DELAY_MS);
     }
 
+    // console.time("apply: storing messages...")
     await this.store.messages.add(storables);
+    // console.timeEnd("apply: storing messages...")
 
     // TODO: decide what should happen if there's an error while applying.
     // Dequeue upload and remove message?
+    // console.time("apply: applying state updates...")
     const stats = await this.state.apply(msgs);
+    // console.timeEnd("apply: applying state updates...")
     return stats;
   };
 
@@ -336,21 +342,37 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = await store.seed.load();
     if (!enclave) return Status.MissingSeed;
 
+    // console.time("import: decoding file...");
     const bytes = await file.bytes();
     const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
+    // console.timeEnd("import: decoding file...");
 
-    const statsApp = await this.apply(msgs, true);
-    // TODO: batch the applications and then emit progress between batches.
-    // for (let i = 0; i < statsApp.length; i++) {
-    //   const stat = statsApp[i];
-    //   if (onProgress) {
-    //     queueMicrotask(() => onProgress(i, msgs.length, stat));
-    //   }
-    //   if (stat !== Status.Success && stat !== Status.NoChange) {
-    //     console.warn(`failed to import msg ${i}: ${Status[stat]}`);
-    //   }
-    // }
+    let processed = 0;
+    while (processed < msgs.length) {
+      let totalBytes = 0;
+      let count = 0;
+      let end = processed;
+      for (let i = processed; i < msgs.length && count < 1000 && totalBytes < 500 * 1024; i++) {
+        totalBytes += msgs[i].head.len;
+        count++;
+        end = i + 1;
+      }
+      const batch = msgs.slice(processed, end);
+      // console.time(`import: applying [${processed}, ${end}]`)
+      const statsBatch = await this.apply(batch, false);
+      // console.timeEnd(`import: applying [${processed}, ${end}]`)
+      for (let i = 0; i < batch.length; i++) {
+        const stat = statsBatch[i];
+        if (stat !== Status.Success && stat !== Status.NoChange) {
+          console.warn(`failed to import msg ${processed + i}: ${Status[stat]}`);
+        }
+      }
+      if (onProgress) {
+        queueMicrotask(() => onProgress(end, msgs.length, Status.Success));
+      }
+      processed = end;
+    }
 
     // TODO: return the array of statuses for each import msg.
     return Status.Success;

@@ -34,7 +34,7 @@ export interface IDiplomaticClientXferState {
   numDownloads: number;
 }
 
-export type Applier = (op: IOp) => Promise<Status>;
+export type Applier = (ops: IOp[]) => Promise<Status[]>;
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {
@@ -108,7 +108,7 @@ export async function toStoredMessage(hash: Hash, data: IStoredMessageData, cryp
   return { hash, head, body: data.body };
 }
 export interface IMessageStore {
-  add: (messages: {key: Hash, data: IStoredMessageData}[]) => Promise<Status[]>;
+  add: (messages: { key: Hash, data: IStoredMessageData }[]) => Promise<Status[]>;
   get: (key: Hash) => Promise<IStoredMessage | undefined>;
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;

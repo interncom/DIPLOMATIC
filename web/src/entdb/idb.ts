@@ -117,7 +117,7 @@ export class EntIDB implements IEntDB {
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status[]>((resolve) => {
-      const results: Status[] = new Array(ops.length);
+      const results: Status[] = new Array(ops.length).fill(Status.Success);
       if (ops.length < 1) {
         resolve([]);
         return;
@@ -143,15 +143,16 @@ export class EntIDB implements IEntDB {
           const curr = currStored ? storedToEntity(currStored) : undefined;
           const [ent, stat] = updateEnt(curr, op);
           if (stat !== Status.Success) {
+            console.log(`updateEnt stat (${Status[stat]})`)
             results[i] = stat;
             return;
           }
           const storedEnt = entityToStored(ent);
           const putReq = store.put(storedEnt);
-          putReq.onsuccess = () => {
-            results[i] = Status.Success;
-          }
-          putReq.onerror = () => {
+          // We skip putReq.onsuccess because we default results to Success.
+          putReq.onerror = (evt) => {
+            // preventDefault allows continuation if a single insert fails.
+            evt.preventDefault();
             results[i] = Status.DatabaseError;
           }
         };

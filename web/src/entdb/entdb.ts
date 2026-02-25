@@ -46,11 +46,9 @@ export interface IEntDB {
 }
 
 export function entStateManager(edb: IEntDB): StateManager {
-  const apply = async (op: IOp) => {
-    // TODO: convert edb.apply to batch form.
-    const stats = await edb.apply([op]);
-    const stat = stats[0];
-    return stat;
+  const apply = async (ops: IOp[]) => {
+    const stats = await edb.apply(ops);
+    return stats;
   };
   return new StateManager(apply, edb.clear);
 }

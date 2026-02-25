@@ -20,7 +20,7 @@ export class IDBMessageStore implements IMessageStore {
         resolve([]);
         return;
       }
-      const results: Status[] = new Array(messages.length);
+      const results: Status[] = new Array(messages.length).fill(Status.Success);
       tx.oncomplete = () => resolve(results);
       tx.onerror = () => {
         // TODO: set the function return type to ValStat<Status[]> and return an overall failure here with status list undefined.
@@ -33,10 +33,10 @@ export class IDBMessageStore implements IMessageStore {
         const { key, data } = messages[i];
         const keyB64 = btob64(key);
         const req = store.put(data, keyB64);
-        req.onsuccess = () => {
-          results[i] = Status.Success;
-        };
-        req.onerror = () => {
+        // We skip req.onsuccess because we default results to Success.
+        req.onerror = (evt) => {
+          // preventDefault allows continuation if a single insert fails.
+          evt.preventDefault();
           results[i] = Status.DatabaseError;
         };
       }

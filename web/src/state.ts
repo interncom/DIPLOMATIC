@@ -55,6 +55,7 @@ export class StateManager implements IStateManager {
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
     const parseStats: Status[] = [];
+    // console.time("state apply: parsing msgs...")
     for (const msg of msgs) {
       const [op, statParse] = msgToOp(msg);
       parseStats.push(statParse);
@@ -63,8 +64,13 @@ export class StateManager implements IStateManager {
       }
       ops.push(op);
     }
+    // console.timeEnd("state apply: parsing msgs...")
 
-    const applyStats = await Promise.all(ops.map(this.applier.bind(this)));
+    // console.time("state apply: applying ops...")
+    const applyStats = await this.applier(ops);
+    // console.timeEnd("state apply: applying ops...")
+
+    // console.time("state apply: collecting statuses...")
     const results: Status[] = [];
     const successfulTypes = new Set<string>();
     for (let i = 0; i < msgs.length; i++) {
@@ -72,23 +78,23 @@ export class StateManager implements IStateManager {
       const applyStat = applyStats[i];
       if (parseStat !== Status.Success) {
         results.push(parseStat);
-      } else {
-        if (applyStat !== Status.Success) {
-          results.push(applyStat);
-          continue;
-        }
-        const [op, statOp] = msgToOp(msgs[i]);
-        if (statOp !== Status.Success) {
-          results.push(applyStat);
-          continue;
-        }
-        successfulTypes.add(op.type);
-        results.push(Status.Success);
+        continue;
       }
+      if (applyStat !== Status.Success) {
+        results.push(applyStat);
+        continue;
+      }
+      const op = ops[i];
+      successfulTypes.add(op.type);
+      results.push(Status.Success);
     }
+    // console.timeEnd("state apply: collecting statuses...")
+
+    // console.time("state apply: emitting updates...")
     for (const type of successfulTypes) {
       this.emitter.emit(type, null);
     }
+    // console.timeEnd("state apply: emitting updates...")
     return results;
   };
 

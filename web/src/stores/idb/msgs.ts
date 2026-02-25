@@ -1,4 +1,5 @@
 import { btob64, bytesEqual, b64tob } from "../../shared/binary";
+import { Status } from "../../shared/consts";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";

@@ -34,7 +34,7 @@ export type EntitiesQuery = {
 };
 
 export interface IEntDB {
-  apply: (op: IOp) => Promise<Status>;
+  apply: (ops: IOp[]) => Promise<Status[]>;
   clear: () => Promise<Status>;
   getEnt<T>(
     eid: EntityID,
@@ -46,7 +46,13 @@ export interface IEntDB {
 }
 
 export function entStateManager(edb: IEntDB): StateManager {
-  return new StateManager(edb.apply, edb.clear);
+  const apply = async (op: IOp) => {
+    // TODO: convert edb.apply to batch form.
+    const stats = await edb.apply([op]);
+    const stat = stats[0];
+    return stat;
+  };
+  return new StateManager(apply, edb.clear);
 }
 
 export function updateEnt<T = unknown>(

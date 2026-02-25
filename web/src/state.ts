@@ -54,26 +54,42 @@ export class StateManager implements IStateManager {
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
-    const types = new Set<string>();
+    const parseStats: Status[] = [];
     for (const msg of msgs) {
       const [op, statParse] = msgToOp(msg);
+      parseStats.push(statParse);
       if (statParse !== Status.Success) {
-        return statParse;
+        continue;
       }
       ops.push(op);
-      types.add(op.type);
     }
 
-    const statApply = await this.applier(ops);
-    if (statApply !== Status.Success) {
-      // NOTE: this includes Status.NoChange, which is not an error.
-      return statApply;
+    const applyStats = await Promise.all(ops.map(this.applier.bind(this)));
+    const results: Status[] = [];
+    const successfulTypes = new Set<string>();
+    for (let i = 0; i < msgs.length; i++) {
+      const parseStat = parseStats[i];
+      const applyStat = applyStats[i];
+      if (parseStat !== Status.Success) {
+        results.push(parseStat);
+      } else {
+        if (applyStat !== Status.Success) {
+          results.push(applyStat);
+          continue;
+        }
+        const [op, statOp] = msgToOp(msgs[i]);
+        if (statOp !== Status.Success) {
+          results.push(applyStat);
+          continue;
+        }
+        successfulTypes.add(op.type);
+        results.push(Status.Success);
+      }
     }
-
-    for (const type of types) {
+    for (const type of successfulTypes) {
       this.emitter.emit(type, null);
     }
-    return Status.Success;
+    return results;
   };
 
   on = (opType: string, listener: () => void) => {
@@ -87,8 +103,8 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function(msgs) {
-    return Status.Success;
+  apply: async function(msgs: IMessage[]) {
+    return msgs.map(() => Status.Success);
   },
   on: function(type, listener): void {
   },

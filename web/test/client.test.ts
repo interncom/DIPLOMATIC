@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import type {
@@ -6,23 +6,23 @@ import type {
   IHostConnectionInfo,
   IProtoHost,
   MasterSeed,
+  IMessage,
+  IMessageHead,
 } from "../src/shared/types";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from "../src/shared/storage/memory";
 import libsodiumCrypto from "../src/crypto";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
-import { EncodedMessage, IMessage, IMessageHead } from "../src/shared/message";
-import { btoh, bytesEqual } from "../src/shared/binary";
+import { EncodedMessage } from "../src/shared/message";
+import { bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { hostKeys } from "../src/shared/endpoint";
 import { IDownloadMessage, IStateManager, IStoredMessageData } from "../src/types";
 import { sealBag } from "../src/shared/bag";
-import { fail } from "assert";
 import { Status } from "../src/shared/consts";
-import { LibsodiumCrypto } from "../../shared/crypto/libsodium";
-import { makeEID } from "../../shared/codecs/eid";
+import { makeEID } from "../src/shared/codecs/eid";
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage as any,
@@ -43,8 +43,8 @@ const testHost: IHostConnectionInfo<IProtoHost> = {
 const createClient = async (clock = mockClock) => {
   const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
   const state: IStateManager = {
-    async apply(msg) {
-      return Status.Success;
+    async apply(msgs) {
+      return msgs.map(() => Status.Success);
     },
     on(type, listener) { },
     off(type, listener) { },
@@ -208,7 +208,7 @@ describe("Client", () => {
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined
         };
-        await store.messages.add(hash, data);
+        await store.messages.add([{ key: hash, data }]);
 
         // Now upsert should return ClockOutOfSync
         const result = await client.upsertRaw(eid, body, false);
@@ -250,7 +250,7 @@ describe("Client", () => {
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined
         };
-        await store.messages.add(hash, data);
+        await store.messages.add([{ key: hash, data }]);
 
         // Now upsert with force=true should succeed
         const [newMsg, stat] = await client.upsertRaw(
@@ -277,7 +277,15 @@ describe("Client", () => {
         now: () => new Date(1234567890000),
       });
       await client.link(testHost);
-      const eid = new Uint8Array(16).fill(1);
+
+      const id = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj = { id, ts: new Date(0) };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
+
       await client.upsertRaw(
         eid,
         new Uint8Array([10, 11]),
@@ -299,12 +307,18 @@ describe("Client", () => {
     test("succeeds with clock skew by deleting the skewed entity", async () => {
       const mockClock = new MockClock(new Date(0));
       const { store, client } = await createClient(mockClock);
-      const eid = new Uint8Array(16).fill(5);
+
+      const id = await libsodiumCrypto.genRandomBytes(8);
+      const eidObj = { id, ts: new Date(0) };
+      const [eid, statEid] = makeEID(eidObj);
+      if (statEid !== Status.Success) {
+        expect(statEid).toEqual(Status.Success);
+        return;
+      }
 
       // Create a message with future timestamp manually
       const head: IMessageHead = {
         eid,
-        clk: new Date(0),
         off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
         ctr: 0,
         len: 2,
@@ -322,18 +336,18 @@ describe("Client", () => {
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
       };
-      await store.messages.add(hash, data);
+      await store.messages.add([{ key: hash, data }]);
 
       // Now delete should succeed despite clock skew
-      const result = await client.delete(eid, new Date(0));
-      if (result[1] !== Status.Success) {
-        expect(result[1]).toBe(Status.Success);
+      const [respHead, statDel] = await client.delete(eid);
+      if (statDel !== Status.Success) {
+        expect(statDel).toBe(Status.Success);
         return;
       }
-      expect(result[0]).toBeDefined();
-      expect(result[0].eid).toEqual(eid);
-      expect(result[0].len).toBe(0); // delete message
-      expect(result[0].ctr).toBe(1); // incremented from 0
+      expect(respHead).toBeDefined();
+      expect(respHead.eid).toEqual(eid);
+      expect(respHead.len).toBe(0); // delete message
+      expect(respHead.ctr).toBe(1); // incremented from 0
 
       // Check that two messages are now stored: original upsert and the delete
       const messages = Array.from(await store.messages.list());

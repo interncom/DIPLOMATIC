@@ -32,7 +32,7 @@ describe("EntDBMemory.apply()", () => {
       };
 
       const result = await db.apply([op]);
-      expect(result).toBe(Status.Success);
+      expect(result[0]).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);
@@ -80,7 +80,7 @@ describe("EntDBMemory.apply()", () => {
         body: { data: "new" },
       };
       const result = await db.apply([newOp]);
-      expect(result).toBe(Status.Success);
+      expect(result[0]).toBe(Status.Success);
 
       const [entity, entityStatus] = await db.getEnt(eid);
       expect(entityStatus).toBe(Status.Success);

@@ -2,14 +2,20 @@ import { btob64, bytesEqual, b64tob } from "../../shared/binary";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
+import { Status } from "../../shared/consts";
 
 export class MemoryMessageStore implements IMessageStore {
   messages = new Map<string, IStoredMessageData>();
 
-  constructor(private crypto: ICrypto) {}
+  constructor(private crypto: ICrypto) { }
 
-  async add(key: Hash, data: IStoredMessageData) {
-    this.messages.set(btob64(key), data);
+  async add(messages: { key: Hash, data: IStoredMessageData }[]): Promise<Status[]> {
+    const results: Status[] = [];
+    for (const { key, data } of messages) {
+      this.messages.set(btob64(key), data);
+      results.push(Status.Success);
+    }
+    return results;
   }
 
   async del(keys: Iterable<Hash>) {

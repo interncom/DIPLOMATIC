@@ -93,11 +93,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   private apply = async (
     parts: IMsgParts[],
     upload = true,
-  ) => {
+  ): Promise<Status[]> => {
     const hashes: Hash[] = [];
-    const datas: { hash: Hash, data: IStoredMessageData }[] = [];
+    const storables: { key: Hash, data: IStoredMessageData }[] = [];
     const msgs: IMessage[] = [];
 
+    // Process parts into:
+    // 1. hashes for upload queueing,
+    // 2. storables for message archive,
+    // 3. msgs for application to state.
     for (const { head, body } of parts) {
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
@@ -110,7 +114,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         body
       };
       hashes.push(hash);
-      datas.push({ hash, data });
+      storables.push({ key: hash, data });
       msgs.push({ ...head, bod: body });
     }
 
@@ -137,14 +141,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }, this.SYNC_DEBOUNCE_DELAY_MS);
     }
 
-    for (const { hash, data } of datas) {
-      await this.store.messages.add(hash, data);
-    }
+    await this.store.messages.add(storables);
 
     // TODO: decide what should happen if there's an error while applying.
     // Dequeue upload and remove message?
-    const stat = await this.state.apply(msgs);
-    return stat;
+    const stats = await this.state.apply(msgs);
+    return stats;
   };
 
   public async insertRaw(bod: EncodedMessage) {
@@ -189,7 +191,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         const offDel = last.head.off + 1;
         const offCtr = last.head.ctr + 1;
         const delHead = { eid, off: offDel, ctr: offCtr, len: 0 };
-        const statDel = await this.apply([{ head: delHead, body: undefined }]);
+        const statsDel = await this.apply([{ head: delHead, body: undefined }]);
+        const statDel = statsDel[0];
         if (statDel !== Status.Success) {
           return err<IMessageHead>(statDel);
         }
@@ -211,7 +214,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         if (statRepl !== Status.Success) {
           return err<IMessageHead>(statRepl);
         }
-        await this.apply([{ head: repl, body: bod }]);
+        const statsApply = await this.apply([{ head: repl, body: bod }]);
+        const statApply = statsApply[0];
+        if (statApply !== Status.Success) {
+          return err<IMessageHead>(statApply);
+        }
         return ok(repl);
       }
     }
@@ -220,7 +227,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (statMsg !== Status.Success) {
       return err<IMessageHead>(statMsg);
     }
-    await this.apply([{ head: msg, body: bod }]);
+    const statsApply = await this.apply([{ head: msg, body: bod }]);
+    const statApply = statsApply[0];
+    if (statApply !== Status.Success) {
+      return err<IMessageHead>(statApply);
+    }
     return ok(msg);
   }
 
@@ -319,7 +330,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   }
 
-  public import = async (file: File, options?: { strict?: boolean; onProgress?: (index: number, total: number, status: Status) => void }): Promise<Status> => {
+  public import = async (file: File, options?: { onProgress?: (index: number, total: number, status: Status) => void }): Promise<Status> => {
     const { crypto, store } = this;
     const onProgress = options?.onProgress;
     const enclave = await store.seed.load();
@@ -329,17 +340,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
 
-    const items = msgs.map(msg => ({ head: msg.head, body: msg.body }));
-    const statApp = await this.apply(items, true);
-    if (statApp !== Status.Success && statApp !== Status.NoChange) {
-      return statApp;
-    }
-    if (onProgress) {
-      for (let i = 0; i < msgs.length; i++) {
-        queueMicrotask(() => onProgress(i, msgs.length, statApp));
-      }
-    }
+    const statsApp = await this.apply(msgs, true);
+    // TODO: batch the applications and then emit progress between batches.
+    // for (let i = 0; i < statsApp.length; i++) {
+    //   const stat = statsApp[i];
+    //   if (onProgress) {
+    //     queueMicrotask(() => onProgress(i, msgs.length, stat));
+    //   }
+    //   if (stat !== Status.Success && stat !== Status.NoChange) {
+    //     console.warn(`failed to import msg ${i}: ${Status[stat]}`);
+    //   }
+    // }
 
+    // TODO: return the array of statuses for each import msg.
     return Status.Success;
   }
 
@@ -466,10 +479,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
             ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
             body
           };
-          await store.messages.add(headEncHash, data);
+          await store.messages.add([{ key: headEncHash, data }]);
 
           // Apply message.
-          const stat = await this.apply([{ head, body }], false);
+          const stats = await this.apply([{ head, body }], false);
+          const stat = stats[0];
           if (stat !== Status.Success && stat !== Status.NoChange) {
             console.error("ERR applying", Status[stat]);
           }

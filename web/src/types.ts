@@ -108,7 +108,7 @@ export async function toStoredMessage(hash: Hash, data: IStoredMessageData, cryp
   return { hash, head, body: data.body };
 }
 export interface IMessageStore {
-  add: (key: Hash, data: IStoredMessageData) => Promise<void>;
+  add: (messages: {key: Hash, data: IStoredMessageData}[]) => Promise<Status[]>;
   get: (key: Hash) => Promise<IStoredMessage | undefined>;
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;
@@ -171,7 +171,7 @@ export interface IClient<Handle extends HostHandle> {
 }
 
 export interface IStateManager {
-  apply: (msgs: IMessage[]) => Promise<Status>;
+  apply: (msgs: IMessage[]) => Promise<Status[]>;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

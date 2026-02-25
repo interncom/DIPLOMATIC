@@ -11,14 +11,34 @@ export class IDBMessageStore implements IMessageStore {
     this.db = db;
   }
 
-  async add(key: Hash, data: IStoredMessageData) {
+  async add(messages: { key: Hash, data: IStoredMessageData }[]): Promise<Status[]> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
-    return new Promise<void>((resolve, reject) => {
-      const b64 = btob64(key);
-      const req = store.put(data, b64);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+    return new Promise<Status[]>((resolve) => {
+      if (messages.length === 0) {
+        resolve([]);
+        return;
+      }
+      const results: Status[] = new Array(messages.length);
+      tx.oncomplete = () => resolve(results);
+      tx.onerror = () => {
+        // TODO: set the function return type to ValStat<Status[]> and return an overall failure here with status list undefined.
+        for (let i = 0; i < results.length; i++) {
+          results[i] = Status.DatabaseError;
+        }
+        resolve(results);
+      };
+      for (let i = 0; i < messages.length; i++) {
+        const { key, data } = messages[i];
+        const keyB64 = btob64(key);
+        const req = store.put(data, keyB64);
+        req.onsuccess = () => {
+          results[i] = Status.Success;
+        };
+        req.onerror = () => {
+          results[i] = Status.DatabaseError;
+        };
+      }
     });
   }
 

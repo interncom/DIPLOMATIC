@@ -360,7 +360,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
       const batch = msgs.slice(processed, end);
       // console.time(`import: applying [${processed}, ${end}]`)
-      const statsBatch = await this.apply(batch, false);
+      const statsBatch = await this.apply(batch, true);
       // console.timeEnd(`import: applying [${processed}, ${end}]`)
       for (let i = 0; i < batch.length; i++) {
         const stat = statsBatch[i];

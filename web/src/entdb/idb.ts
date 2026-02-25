@@ -112,36 +112,52 @@ export class EntIDB implements IEntDB {
 
   apply = async (ops: IOp[]) => {
     if (!this.db) {
-      return Status.DatabaseClosed;
+      return ops.map(() => Status.DatabaseClosed);
     }
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
-    return new Promise<Status>((resolve) => {
+    return new Promise<Status[]>((resolve) => {
+      const results: Status[] = new Array(ops.length);
       if (ops.length < 1) {
-        resolve(Status.Success);
+        resolve([]);
         return;
       }
 
-      tx.oncomplete = () => resolve(Status.Success);
-      tx.onerror = () => resolve(Status.DatabaseError);
-      for (const op of ops) {
+      tx.oncomplete = () => {
+        resolve(results);
+      }
+      tx.onerror = () => {
+        for (let i = 0; i < results.length; i++) {
+          if (results[i] === undefined) {
+            results[i] = Status.DatabaseError;
+          }
+        }
+        resolve(results);
+      };
+      for (let i = 0; i < ops.length; i++) {
+        const op = ops[i];
         const eidB64 = btob64(op.eid);
         const getReq = store.get(eidB64);
         getReq.onsuccess = () => {
           const currStored = getReq.result;
           const curr = currStored ? storedToEntity(currStored) : undefined;
           const [ent, stat] = updateEnt(curr, op);
-          if (stat === Status.NoChange) {
-            return;
-          }
           if (stat !== Status.Success) {
-            resolve(stat);
+            results[i] = stat;
             return;
           }
           const storedEnt = entityToStored(ent);
-          store.put(storedEnt);
+          const putReq = store.put(storedEnt);
+          putReq.onsuccess = () => {
+            results[i] = Status.Success;
+          }
+          putReq.onerror = () => {
+            results[i] = Status.DatabaseError;
+          }
         };
-        getReq.onerror = () => resolve(Status.DatabaseError);
+        getReq.onerror = () => {
+          results[i] = Status.DatabaseError;
+        };
       }
     });
   }

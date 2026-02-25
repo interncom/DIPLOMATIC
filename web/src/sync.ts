@@ -7,7 +7,6 @@ import { IBagPeekItem } from "./shared/codecs/peekItem";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import { EncodedMessage } from "./shared/message";
 import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import { IDownloadMessage, IHostRow, IMsgParts, IStore, IStoredMessageData } from "./types";
@@ -167,7 +166,7 @@ export async function syncPull<Handle extends HostHandle>(
   apply: (
     parts: IMsgParts[],
     upload: boolean,
-  ) => Promise<Status>,
+  ) => Promise<Status[]>,
 ): Promise<Status> {
   const dls: Map<number, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
@@ -185,6 +184,9 @@ export async function syncPull<Handle extends HostHandle>(
   if (stat !== Status.Success) {
     return stat;
   }
+  const successfulParts: IMsgParts[] = [];
+  const messagesToStore: { key: Hash, data: IStoredMessageData }[] = [];
+  const seqsToDequeue: number[] = [];
   for (const { seq, bodyCph } of result) {
     const dl = dls.get(seq);
     if (!dl) {
@@ -209,7 +211,7 @@ export async function syncPull<Handle extends HostHandle>(
       continue;
     }
 
-    // Store message.
+    // Collect for batch operations.
     const { bod: body } = contents;
     const data: IStoredMessageData = {
       eid: head.eid,
@@ -217,20 +219,36 @@ export async function syncPull<Handle extends HostHandle>(
       ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
       body
     };
-    await store.messages.add(properHash, data);
+    successfulParts.push({ head, body });
+    messagesToStore.push({ key: properHash, data });
+    seqsToDequeue.push(seq);
+  }
 
-    // Remove download.
-    dls.delete(seq);
-    await store.downloads.deq(host.label, [seq]);
+  // Batch store messages.
+  const statsStore = await store.messages.add(messagesToStore);
 
-    // Apply message to local state.
-    // TODO: should apply happen before storing the message and deq-ing the download?
-    // No. Application should be a separate phase.
-    // Messages should be tagged with whether they've been applied or not.
-    const stat = await apply([{ head, body }], false);
-    if (stat !== Status.Success && stat !== Status.NoChange) {
-      console.error("ERR applying", Status[stat]);
+  // Batch dequeue downloads.
+  // TODO: return batch status codes from this too.
+  await store.downloads.deq(host.label, seqsToDequeue);
+
+  // Batch apply messages to local state.
+  const statsApply = await apply(successfulParts, false);
+  // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
+
+  for (let i = 0; i < statsApply.length; i++) {
+    const statStore = statsStore[i];
+    if (statStore !== Status.Success && statStore !== Status.NoChange) {
+      console.error("ERR storing", Status[statStore], "for message", i);
+    }
+    // const statDequeue = statsDequeue[i];
+    // if (statDequeue !== Status.Success && statDequeue !== Status.NoChange) {
+    //   console.error("ERR applying", Status[statDequeue], "for message", i);
+    // }
+    const statApply = statsApply[i];
+    if (statApply !== Status.Success && statApply !== Status.NoChange) {
+      console.error("ERR applying", Status[statApply], "for message", i);
     }
   }
+
   return Status.Success;
 }

@@ -138,7 +138,7 @@ describe("syncPush", () => {
       ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
       body: message.bod
     };
-    await store.messages.add(hash, storedData);
+    await store.messages.add([{key: hash, data: storedData}]);
     await store.uploads.enq("test", [hash]);
 
     await syncPush(conn, store, enclave, clock, host, libsodiumCrypto);

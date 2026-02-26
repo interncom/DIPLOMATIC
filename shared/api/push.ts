@@ -42,6 +42,8 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     console.info(`PUSH: ${bags.length} bags`);
 
+    const notifs: IBagNotifItem[] = [];
+
     for (let idx = 0; idx < bags.length; idx++) {
       // Check signature.
       const bag = bags[idx];
@@ -59,26 +61,29 @@ export const pushEnd: IAuthenticatedEndpoint<
         return setStatus;
       }
 
-      // Send notification of new bag.
+      // Prepare notification of new bag.
       const encNotifHeadCph = new Encoder();
       const statNotifHeadCph = encNotifHeadCph.writeStruct(peekItemHeadCodec, bag);
       if (statNotifHeadCph !== Status.Success) return statNotifHeadCph;
       const notifHeadCph = encNotifHeadCph.result();
-      const encNotif = new Encoder();
       const notif: IBagNotifItem = { seq, headCph: notifHeadCph };
-      if (bag.bodyCph.length <= notifInlineBodyBytesThreshold) {
+      if (bags.length === 1 && bag.bodyCph.length <= notifInlineBodyBytesThreshold) {
         notif.bodyCph = bag.bodyCph;
       }
-      const statNotif = encNotif.writeStruct(notifItemCodec, notif);
-      if (statNotif !== Status.Success) return statNotif;
-      const notifEnc = encNotif.result();
-      notifier.push(pubKey, notifEnc);
+      notifs.push(notif);
 
       // Write response item.
       const item: IBagPushItem = { idx, status: setStatus, seq };
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;
     }
+
+    // Send notifications.
+    const encBatch = new Encoder();
+    const statBatch = encBatch.writeStructs(notifItemCodec, notifs);
+    if (statBatch !== Status.Success) return statBatch;
+    const batchEnc = encBatch.result();
+    notifier.push(pubKey, batchEnc);
 
     return Status.Success;
   },

@@ -92,8 +92,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   private apply = async (
     parts: IMsgParts[],
-    upload = true,
+    options: { enqueueUpload: boolean, triggerUpload: boolean } = { enqueueUpload: true, triggerUpload: true },
   ): Promise<Status[]> => {
+
     const hashes: Hash[] = [];
     const storables: { key: Hash, data: IStoredMessageData }[] = [];
     const msgs: IMessage[] = [];
@@ -121,7 +122,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // console.timeEnd("apply: processing parts...")
 
     // If message is being applied via sync, don't upload.
-    if (upload) {
+    if (options.enqueueUpload) {
       // NOTE: important to enqueue upload before storing it.
       const hosts = await this.store.hosts.list();
       for (const host of hosts) {
@@ -131,16 +132,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (this.syncTimeout !== null) {
         clearTimeout(this.syncTimeout);
       }
-      // Schedule a new debounced sync call
-      this.syncTimeout = setTimeout(async () => {
-        this.syncTimeout = null;
-        try {
-          console.info("Syncing due to upload")
-          await this.sync();
-        } catch (err) {
-          console.error('Debounced sync failed:', err);
-        }
-      }, this.SYNC_DEBOUNCE_DELAY_MS);
+    }
+    if (options.triggerUpload) {
+      this.scheduleSync();
     }
 
     // console.time("apply: storing messages...")
@@ -360,7 +354,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
       const batch = msgs.slice(processed, end);
       // console.time(`import: applying [${processed}, ${end}]`)
-      const statsBatch = await this.apply(batch, true);
+      const statsBatch = await this.apply(batch, { enqueueUpload: true, triggerUpload: false });
       // console.timeEnd(`import: applying [${processed}, ${end}]`)
       for (let i = 0; i < batch.length; i++) {
         const stat = statsBatch[i];
@@ -374,8 +368,22 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       processed = end;
     }
 
+    this.scheduleSync();
+
     // TODO: return the array of statuses for each import msg.
     return Status.Success;
+  }
+
+  private scheduleSync = async () => {
+    this.syncTimeout = setTimeout(async () => {
+      this.syncTimeout = null;
+      try {
+        console.info("Syncing due to upload")
+        await this.sync();
+      } catch (err) {
+        console.error('Debounced sync failed:', err);
+      }
+    }, this.SYNC_DEBOUNCE_DELAY_MS);
   }
 
   public async export(filename: string, extension = defaultFileExtension) {
@@ -504,7 +512,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           await store.messages.add([{ key: headEncHash, data }]);
 
           // Apply message.
-          const stats = await this.apply([{ head, body }], false);
+          const stats = await this.apply([{ head, body }], { enqueueUpload: false, triggerUpload: false });
           const stat = stats[0];
           if (stat !== Status.Success && stat !== Status.NoChange) {
             console.error("ERR applying", Status[stat]);

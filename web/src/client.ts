@@ -43,6 +43,7 @@ import { btob64 } from "./shared/binary";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
+  private currentSync: Promise<Status> | null = null;
 
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
@@ -271,7 +272,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return makeEID({ id: randId, ts });
   }
 
-  public async sync() {
+  public async sync(): Promise<Status> {
+    if (this.currentSync) {
+      await this.currentSync;
+    }
+    this.currentSync = this.doSync();
+    return await this.currentSync;
+  }
+
+  private async doSync(): Promise<Status> {
     const { clock, connections, crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) {

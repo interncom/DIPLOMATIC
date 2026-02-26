@@ -58,6 +58,7 @@ export async function syncPeek<Handle extends HostHandle>(
   host: IHostRow<Handle>,
   crypto: ICrypto,
 ): Promise<Status> {
+  // console.info("peeking...")
   const hostKeys = await conn.keys();
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(host.lastSeq);
@@ -95,6 +96,7 @@ export async function syncPush<Handle extends HostHandle>(
   host: IHostRow<Handle>,
   crypto: ICrypto,
 ): Promise<Status> {
+  // console.info("pushing...")
   // Form bags.
   const bags: IBag[] = [];
   const hashes: Hash[] = [];
@@ -165,9 +167,10 @@ export async function syncPull<Handle extends HostHandle>(
   crypto: ICrypto,
   apply: (
     parts: IMsgParts[],
-    upload: boolean,
+    options?: { enqueueUpload: boolean; triggerUpload: boolean; },
   ) => Promise<Status[]>,
 ): Promise<Status> {
+  // console.info("pulling...")
   const dls: Map<number, IDownloadMessage> = new Map();
   const allItems = await store.downloads.list();
   const items = Array.from(allItems).filter((i) => i.host === host.label);
@@ -232,7 +235,7 @@ export async function syncPull<Handle extends HostHandle>(
   await store.downloads.deq(host.label, seqsToDequeue);
 
   // Batch apply messages to local state.
-  const statsApply = await apply(successfulParts, false);
+  const statsApply = await apply(successfulParts, { enqueueUpload: false, triggerUpload: false });
   // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
 
   for (let i = 0; i < statsApply.length; i++) {

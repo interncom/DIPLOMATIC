@@ -341,11 +341,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = await store.seed.load();
     if (!enclave) return Status.MissingSeed;
 
-    // console.time("import: decoding file...");
+    console.time("import: decoding file...");
     const bytes = await file.bytes();
     const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
-    // console.timeEnd("import: decoding file...");
+    console.timeEnd("import: decoding file...");
 
     let processed = 0;
     while (processed < msgs.length) {
@@ -358,9 +358,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         end = i + 1;
       }
       const batch = msgs.slice(processed, end);
-      // console.time(`import: applying [${processed}, ${end}]`)
+      console.time(`import: applying [${processed}, ${end}]`)
       const statsBatch = await this.apply(batch, { enqueueUpload: true, triggerUpload: false });
-      // console.timeEnd(`import: applying [${processed}, ${end}]`)
+      console.timeEnd(`import: applying [${processed}, ${end}]`)
       for (let i = 0; i < batch.length; i++) {
         const stat = statsBatch[i];
         if (stat !== Status.Success && stat !== Status.NoChange) {

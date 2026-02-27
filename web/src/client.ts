@@ -1,10 +1,14 @@
 import { encode } from "@msgpack/msgpack";
+import { saveAs } from "file-saver";
 import libsodiumCrypto from "./crypto";
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
+import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { Status } from "./shared/consts";
+import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import {
   EntityID,
@@ -20,26 +24,18 @@ import {
   IUpsertParams,
   MasterSeed,
 } from "./shared/types";
-import { openBagBody } from "./shared/bag";
-import { decryptPeekItem, syncPeek, syncPull, syncPush } from "./sync";
+import { err, ok, ValStat } from "./shared/valstat";
+import { handleNotif, syncPeek, syncPull, syncPush } from "./sync";
 import {
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
-  IDownloadMessage,
   IMsgParts,
   IStateEmitter,
   IStateManager,
   IStore,
-  IStoredMessageData,
+  IStoredMessageData
 } from "./types";
-import { Status } from "./shared/consts";
-import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
-import { saveAs } from "file-saver";
-import { err, ok, ValStat } from "./shared/valstat";
-import { eidCodec, makeEID } from "./shared/codecs/eid";
-import { notifItemCodec } from "./shared/codecs/notifItem";
-import { btob64 } from "./shared/binary";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
@@ -387,7 +383,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.syncTimeout = setTimeout(async () => {
       this.syncTimeout = null;
       try {
-        console.info("Syncing due to upload")
+        console.info("Running scheduled sync")
         await this.sync();
       } catch (err) {
         console.error('Debounced sync failed:', err);
@@ -441,100 +437,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       );
       await conn.register();
       if (listen) {
-        const keys = await conn.keys();
         const recv = async (bytes: Uint8Array) => {
-          const dec = new Decoder(bytes);
-          const [items, statBatch] = dec.readStructs(notifItemCodec);
-          if (statBatch !== Status.Success) {
-            console.error("Failed decoding notif", Status[statBatch]);
-            return;
-          }
-
-          for (const item of items) {
-            const [itemDec, s2] = await decryptPeekItem({ seq: item.seq, headCph: item.headCph }, keys, enclave, crypto);
-            if (s2 !== Status.Success) {
-              console.error("Failed decrypting notif", Status[s2]);
-              continue;
-            }
-            const headEncHash = await crypto.blake3(itemDec.headEnc);
-            if (await store.messages.has(headEncHash)) {
-              // const headEncHashB64 = btob64(headEncHash);
-              // console.info("Already have message", headEncHashB64);
-              console.info("Already have message");
-              continue;
-            }
-
-            // Fall back to full sync if this is not the next bag seq we expect.
-            const currHost = await store.hosts.get(label);
-            if (!currHost || item.seq !== currHost.lastSeq + 1) {
-              this.scheduleSync();
-              return;
-            }
-
-            // Bag is the next in sequence, so we can process it incrementally.
-            // Meaning, we don't need to do a full sync.
-
-            // Parse head.
-            const headDec = new Decoder(itemDec.headEnc);
-            const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-            if (headStatus !== Status.Success) {
-              console.error("Failed to parse head", Status[headStatus]);
-              continue;
-            }
-
-            // Read body (if inline) or fetch it.
-            let bodyCph: Uint8Array;
-            if (item.bodyCph) {
-              // Use inline body.
-              bodyCph = item.bodyCph;
-            } else {
-              // Pull the body.
-              const dlm: IDownloadMessage = { seq: item.seq, host: label, kdm: itemDec.kdm, head };
-              await store.downloads.enq([dlm]);
-              const [result, stat] = await conn.pull([item.seq]);
-              if (stat !== Status.Success) {
-                console.error("Failed to pull", Status[stat]);
-                continue;
-              }
-              const pullResult = result[0];
-              if (!pullResult) {
-                console.error("No pull result");
-                continue;
-              }
-              bodyCph = pullResult.bodyCph;
-              await store.downloads.deq(label, [item.seq]);
-            }
-
-            // Parse body.
-            const key = await enclave.deriveFromKDM(itemDec.kdm);
-            const [contents, status] = await openBagBody(itemDec.headEnc, bodyCph, key, crypto);
-            if (status !== Status.Success) {
-              console.error("Failed to open body", Status[status]);
-              continue;
-            }
-
-            // Store message.
-            const body = contents.bod;
-            const data: IStoredMessageData = {
-              eid: head.eid,
-              ...(head.off !== 0 ? { off: head.off } : {}),
-              ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-              body
-            };
-            await store.messages.add([{ key: headEncHash, data }]);
-
-            // Apply message.
-            const stats = await this.apply([{ head, body }], { enqueueUpload: false, triggerUpload: false });
-            const stat = stats[0];
-            if (stat !== Status.Success && stat !== Status.NoChange) {
-              console.error("ERR applying", Status[stat]);
-            }
-
-            // Bump sequence.
-            await store.hosts.touch(label, item.seq);
-          }
+          handleNotif(bytes, conn, store, enclave, host, crypto, this.apply, this.scheduleSync);
         };
-
         await conn.listen(recv);
       }
       this.connections.set(host.label, conn);

@@ -3,15 +3,20 @@ import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
+import { notifItemCodec } from "./shared/codecs/notifItem";
 import { IBagPeekItem } from "./shared/codecs/peekItem";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
 import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { IDownloadMessage, IHostRow, IMsgParts, IStore, IStoredMessageData } from "./types";
+import { IDownloadMessage, IHostRow, IMsgParts, IStorableMessage, IStore, IStoredMessageData } from "./types";
 
-export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, headEnc: Uint8Array }>> {
+export interface IDecryptedBagPeekItem {
+  kdm: Uint8Array;
+  headEnc: Uint8Array;
+}
+export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<IDecryptedBagPeekItem>> {
   const dec = new Decoder(item.headCph);
   const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
   if (readStatus !== Status.Success) {
@@ -188,7 +193,7 @@ export async function syncPull<Handle extends HostHandle>(
     return stat;
   }
   const successfulParts: IMsgParts[] = [];
-  const messagesToStore: { key: Hash, data: IStoredMessageData }[] = [];
+  const messagesToStore: IStorableMessage[] = [];
   const seqsToDequeue: number[] = [];
   for (const { seq, bodyCph } of result) {
     const dl = dls.get(seq);
@@ -201,12 +206,10 @@ export async function syncPull<Handle extends HostHandle>(
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, head);
     const headEnc = enc.result();
-    const properHash = await crypto.blake3(headEnc);
-
-    // Unseal body.
+    const headEncHash = await crypto.blake3(headEnc);
     const key = await enclave.deriveFromKDM(dl.kdm);
-    const [contents, status] = await openBagBody(headEnc, bodyCph, key, crypto);
-    if (status !== Status.Success) {
+    const [contents, stat] = await openBagBody(headEnc, bodyCph, key, crypto);
+    if (stat !== Status.Success) {
       // Failed to open bag.
       // This is not retry-able.
       dls.delete(seq);
@@ -214,16 +217,11 @@ export async function syncPull<Handle extends HostHandle>(
       continue;
     }
 
-    // Collect for batch operations.
-    const { bod: body } = contents;
-    const data: IStoredMessageData = {
-      eid: head.eid,
-      ...(head.off !== 0 ? { off: head.off } : {}),
-      ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-      body
-    };
-    successfulParts.push({ head, body });
-    messagesToStore.push({ key: properHash, data });
+    const parts: IMsgParts = { head, body: contents.bod };
+    const data = msg2StoredMsgData(parts);
+    const storable: IStorableMessage = { key: headEncHash, data };
+    successfulParts.push(parts);
+    messagesToStore.push(storable);
     seqsToDequeue.push(seq);
   }
 
@@ -254,4 +252,139 @@ export async function syncPull<Handle extends HostHandle>(
   }
 
   return Status.Success;
+}
+
+export function msg2StoredMsgData({ head, body }: IMsgParts): IStoredMessageData {
+  return {
+    eid: head.eid,
+    ...(head.off !== 0 ? { off: head.off } : {}),
+    ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+    body
+  };
+}
+
+export async function handleNotif<Handle extends HostHandle>(
+  bytes: Uint8Array,
+  conn: DiplomaticClientAPI<Handle>,
+  store: IStore<Handle>,
+  enclave: Enclave,
+  host: IHostRow<Handle>,
+  crypto: ICrypto,
+  apply: (
+    parts: IMsgParts[],
+    options?: { enqueueUpload: boolean; triggerUpload: boolean; },
+  ) => Promise<Status[]>,
+  scheduleSync: () => void,
+) {
+  const label = host.label;
+  const keys = await conn.keys();
+
+  const dec = new Decoder(bytes);
+  const [notifItems, statBatch] = dec.readStructs(notifItemCodec);
+  if (statBatch !== Status.Success) {
+    console.error("Failed decoding notif", Status[statBatch]);
+    return;
+  }
+
+  let outOfSeq = false;
+  const currHost = await store.hosts.get(label);
+  const completeBags: Array<{
+    head: IMessageHead;
+    headEnc: Uint8Array;
+    headEncHash: Hash;
+    bodyCph?: Uint8Array;
+    kdm: Uint8Array;
+  }> = [];
+  const seqsToPull: number[] = [];
+
+  for (const item of notifItems) {
+    // Decrypt.
+    const [peekItem, s2] = await decryptPeekItem({ seq: item.seq, headCph: item.headCph }, keys, enclave, crypto);
+    if (s2 !== Status.Success) {
+      console.error("Failed decrypting notif", Status[s2]);
+      continue;
+    }
+
+    // Skip pre-existing messages.
+    const headEncHash = await crypto.blake3(peekItem.headEnc);
+    if (await store.messages.has(headEncHash)) {
+      continue;
+    }
+
+    // Parse head.
+    const headDec = new Decoder(peekItem.headEnc);
+    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+    if (headStatus !== Status.Success) {
+      console.error("Failed to parse head", Status[headStatus]);
+      continue;
+    }
+
+    // Enqueue body download if body exists but is not inlined.
+    if (!item.bodyCph && head.len > 0) {
+      seqsToPull.push(item.seq);
+      const dlm: IDownloadMessage = { seq: item.seq, host: label, kdm: peekItem.kdm, head };
+      await store.downloads.enq([dlm]);
+    } else {
+      // Body is either present or non-existent.
+      completeBags.push({ ...peekItem, head, bodyCph: item.bodyCph, headEncHash });
+    }
+
+    // Handle sequence.
+    const isOutOfSeq = !currHost || item.seq !== currHost.lastSeq + 1;
+    if (isOutOfSeq) {
+      outOfSeq = true;
+    } else {
+      await store.hosts.touch(host.label, item.seq);
+    }
+  }
+
+  // Prepare to batch-process complete messages.
+  const successfulParts: IMsgParts[] = [];
+  const messagesToStore: IStorableMessage[] = [];
+  for (const input of completeBags) {
+    const key = await enclave.deriveFromKDM(input.kdm);
+    const [contents, stat] = await openBagBody(input.headEnc, input.bodyCph, key, crypto);
+    if (stat !== Status.Success) {
+      console.error("Failed to open body", Status[stat]);
+      continue;
+    }
+
+    const parts: IMsgParts = { head: input.head, body: contents.bod };
+    const data = msg2StoredMsgData(parts)
+    const storable: IStorableMessage = { key: input.headEncHash, data };
+    messagesToStore.push(storable);
+    successfulParts.push(parts);
+  }
+
+  // console.info("notif handler", successfulParts.length, messagesToStore.length, notifItems.length)
+
+  // Batch store messages.
+  const statsStore = await store.messages.add(messagesToStore);
+
+  // Batch apply messages to local state.
+  const statsApply = await apply(successfulParts, { enqueueUpload: false, triggerUpload: false });
+  // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
+
+  // Handle errors.
+  for (let i = 0; i < statsApply.length; i++) {
+    const statStore = statsStore[i];
+    if (statStore !== Status.Success && statStore !== Status.NoChange) {
+      console.error("ERR storing", Status[statStore], "for message", i);
+    }
+    // const statDequeue = statsDequeue[i];
+    // if (statDequeue !== Status.Success && statDequeue !== Status.NoChange) {
+    //   console.error("ERR applying", Status[statDequeue], "for message", i);
+    // }
+    const statApply = statsApply[i];
+    if (statApply !== Status.Success && statApply !== Status.NoChange) {
+      console.error("ERR applying", Status[statApply], "for message", i);
+    }
+  }
+
+  // Handle out-of-sequence.
+  if (outOfSeq) {
+    scheduleSync();
+  } else {
+    await syncPull(conn, store, enclave, host, crypto, apply);
+  }
 }

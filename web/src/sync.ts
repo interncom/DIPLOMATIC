@@ -325,6 +325,7 @@ export async function handleNotif<Handle extends HostHandle>(
     if (!item.bodyCph && head.len > 0) {
       seqsToPull.push(item.seq);
       const dlm: IDownloadMessage = { seq: item.seq, host: label, kdm: peekItem.kdm, head };
+      // TODO: batch these (needs careful handling of seq).
       await store.downloads.enq([dlm]);
     } else {
       // Body is either present or non-existent.

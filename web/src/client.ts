@@ -352,7 +352,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       let totalBytes = 0;
       let count = 0;
       let end = processed;
-      for (let i = processed; i < msgs.length && count < 1000 && totalBytes < 500 * 1024; i++) {
+      for (let i = processed; i < msgs.length && count < 100 && totalBytes < 100 * 1024; i++) {
         totalBytes += msgs[i].head.len;
         count++;
         end = i + 1;

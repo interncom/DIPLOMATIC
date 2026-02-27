@@ -22,12 +22,24 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return a.every((byte, i) => byte === b[i]);
 }
 
-export function btob64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes));
+// Use native implementation of btob64 where possible.
+export let btob64: (bytes: Uint8Array) => string;
+// @ts-expect-error
+if (typeof Uint8Array.prototype.toBase64 === 'function') {
+  // @ts-expect-error
+  btob64 = bytes => bytes.toBase64();
+} else {
+  btob64 = bytes => btoa(String.fromCharCode(...bytes));
 }
 
-export function b64tob(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+// Use native implementation of b64tob where possible.
+export let b64tob: (b64: string) => Uint8Array;
+// @ts-expect-error
+if (typeof Uint8Array.fromBase64 === 'function') {
+  // @ts-expect-error
+  b64tob = b64 => Uint8Array.fromBase64(b64);
+} else {
+  b64tob = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {

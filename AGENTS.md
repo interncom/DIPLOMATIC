@@ -7,6 +7,7 @@ Prefer terse variable names, even at the expense of immediate readability to an 
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.
+- Do not use the `any` type in TypeScript.
 - Do not use the TypeScript `!` operator.
 
 ## Directory Structure

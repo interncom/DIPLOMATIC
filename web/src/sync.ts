@@ -288,6 +288,8 @@ export async function handleNotif<Handle extends HostHandle>(
 
   let outOfSeq = false;
   const currHost = await store.hosts.get(label);
+  let lastSeq = currHost?.lastSeq;
+
   const completeBags: Array<{
     head: IMessageHead;
     headEnc: Uint8Array;
@@ -330,12 +332,18 @@ export async function handleNotif<Handle extends HostHandle>(
     }
 
     // Handle sequence.
-    const isOutOfSeq = !currHost || item.seq !== currHost.lastSeq + 1;
+    const isOutOfSeq = lastSeq === undefined || item.seq !== lastSeq + 1;
     if (isOutOfSeq) {
+      console.log("out of seq", item.seq, lastSeq);
       outOfSeq = true;
     } else {
-      await store.hosts.touch(host.label, item.seq);
+      lastSeq = item.seq;
     }
+  }
+
+  // Bump host sequence to last in batch.
+  if (lastSeq !== undefined) {
+    await store.hosts.touch(host.label, lastSeq);
   }
 
   // Prepare to batch-process complete messages.

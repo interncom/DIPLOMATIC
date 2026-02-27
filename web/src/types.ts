@@ -87,6 +87,10 @@ export interface IDownloadQueue {
   wipe(): Promise<void>;
 }
 
+export interface IStorableMessage {
+  key: Hash,
+  data: IStoredMessageData;
+}
 export interface IStoredMessage {
   hash: Hash;
   head: IMessageHead;
@@ -108,7 +112,7 @@ export async function toStoredMessage(hash: Hash, data: IStoredMessageData, cryp
   return { hash, head, body: data.body };
 }
 export interface IMessageStore {
-  add: (messages: { key: Hash, data: IStoredMessageData }[]) => Promise<Status[]>;
+  add: (messages: IStorableMessage[]) => Promise<Status[]>;
   get: (key: Hash) => Promise<IStoredMessage | undefined>;
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;

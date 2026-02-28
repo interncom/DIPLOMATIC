@@ -1,5 +1,8 @@
-import { assertEquals, assertThrows } from "https://deno.land/std/testing/asserts.ts";
-import { btob128, b128tob } from "../../shared/binary.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std/testing/asserts.ts";
+import { b128tob, btob128 } from "../../shared/binary.ts";
 
 Deno.test("btob128 empty array", () => {
   const result = btob128(new Uint8Array());
@@ -81,7 +84,7 @@ Deno.test("btob128 padding - 1 byte (8 bits)", () => {
   // 8 bits -> 2 chars: 7 bits + 1 bit (padded)
   assertEquals(encoded.length, 2);
   assertEquals(encoded.charCodeAt(0), 127); // 0x7f
-  assertEquals(encoded.charCodeAt(1), 1);   // 0x01 (remaining bit)
+  assertEquals(encoded.charCodeAt(1), 1); // 0x01 (remaining bit)
 });
 
 Deno.test("btob128 padding - 2 bytes (16 bits)", () => {
@@ -90,8 +93,8 @@ Deno.test("btob128 padding - 2 bytes (16 bits)", () => {
   // 16 bits -> 3 chars: 7 + 7 + 2 bits
   assertEquals(encoded.length, 3);
   assertEquals(encoded.charCodeAt(0), 127); // 0x7f
-  assertEquals(encoded.charCodeAt(1), 1);   // 0x01
-  assertEquals(encoded.charCodeAt(2), 0);   // 0x00
+  assertEquals(encoded.charCodeAt(1), 1); // 0x01
+  assertEquals(encoded.charCodeAt(2), 0); // 0x00
 });
 
 Deno.test("roundtrip padding case", () => {

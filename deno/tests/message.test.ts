@@ -1,15 +1,15 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { concat } from "../../shared/binary.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
+import { makeEID } from "../../shared/codecs/eid.ts";
 import {
   type IMessageHead,
   messageHeadCodec,
 } from "../../shared/codecs/messageHead.ts";
 import { Status } from "../../shared/consts.ts";
 import { genDelete } from "../../shared/message.ts";
+import { IMessage } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import { EntityID, IMessage } from "../../shared/types.ts";
-import { eidCodec, makeEID } from "../../shared/codecs/eid.ts";
 
 // Constants that remain fixed
 const eidBytes = 16;
@@ -214,7 +214,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       const dec = new Decoder(short);
       messageHeadCodec.decode(dec);
       throw new Error("Should have thrown");
-    } catch (e) {
+    } catch {
       // Expected to fail due to insufficient data
     }
   });

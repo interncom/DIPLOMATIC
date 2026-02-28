@@ -1,18 +1,17 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { openBag, sealBag } from "../../shared/bag.ts";
+import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
+import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
+import { Enclave } from "../../shared/enclave.ts";
 import type {
-  EntityID,
   HostSpecificKeyPair,
   IBag,
   IMessage,
   MasterSeed,
 } from "../../shared/types.ts";
-import { Enclave } from "../../shared/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import { Decoder, Encoder } from "../../shared/codec.ts";
-import { makeEID } from "../../shared/codecs/eid.ts";
 
 Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
@@ -70,7 +69,7 @@ Deno.test("bag", async (t) => {
       const decoder = new Decoder(short);
       decoder.readStruct(bagCodec);
       throw new Error("Should have thrown");
-    } catch (e) {
+    } catch {
       // Expected to fail on incomplete
     }
   });

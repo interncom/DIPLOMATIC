@@ -1,12 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { userEnd } from "../../../shared/api/user.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
+import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../../shared/consts.ts";
-import { HostSpecificKeyPair, PublicKey } from "../../../shared/types.ts";
-import {
-  authTimestampCodec,
-  type IAuthTimestamp,
-} from "../../../shared/codecs/authTimestamp.ts";
+import { HostSpecificKeyPair } from "../../../shared/types.ts";
 import {
   createMockHost,
   createMockHostOutOfSync,
@@ -27,6 +24,7 @@ Deno.test("userEnd.encodeReq", () => {
   const body = [] as Iterable<never>;
   const reqEnc = new Encoder();
 
+  // deno-lint-ignore no-explicit-any
   userEnd.encodeReq(client as any, keys, tsAuth, body, reqEnc);
 
   const encoded = reqEnc.result();

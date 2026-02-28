@@ -3,9 +3,9 @@
 set -e  # Exit on any error
 
 echo "Running deno fmt on shared/, deno/src/, and web/src/..."
-deno fmt shared/ deno/src/ web/src/
+deno fmt shared/ deno/src/ deno/tests/ web/src/
 
 echo "Running deno lint on shared/, deno/src/, and web/src/..."
-deno lint shared/ deno/src/ web/
+deno lint shared/ deno/src/ deno/tests/ web/
 
 echo "All style checks passed!"

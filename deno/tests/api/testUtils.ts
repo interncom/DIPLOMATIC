@@ -1,6 +1,8 @@
+import { Clock } from "../../../shared/clock.ts";
 import type { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../../shared/consts.ts";
 import {
+  ICrypto,
   IProtoHost,
   IPushNotifier,
   IPushOpenResponse,
@@ -17,16 +19,16 @@ export const baseMockStorage: IStorage = {
   addUser: async () => ok(undefined),
   subMeta: async () => ok(nullSubMeta),
   getBody: async () => ok(undefined),
-  listHeads: async (pubKey, minSeq) => ok([]),
+  listHeads: async (_pubKey, _minSeq) => ok([]),
   setBag: async () => ok(1),
 };
 
 // Base mock crypto
 export const baseMockCrypto = {
   checkSigEd25519: (
-    sig: Uint8Array,
-    message: Uint8Array | string,
-    pubKey: PublicKey,
+    _sig: Uint8Array,
+    _message: Uint8Array | string,
+    _pubKey: PublicKey,
   ) => Promise.resolve(true),
   sha256Hash: () => Promise.resolve(new Uint8Array(32)),
   blake3: () => Promise.resolve(new Uint8Array(32)),
@@ -37,8 +39,8 @@ export const baseMockNotifier: IPushNotifier = {
   open: async (
     _authTS: IAuthTimestamp,
     _recv: PushReceiver,
-    _crypto: any,
-    _clock: any,
+    _crypto: ICrypto,
+    _clock: Clock,
   ): Promise<IPushOpenResponse> =>
     Promise.resolve({
       send: () => Status.Success,

@@ -28,7 +28,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     public clock: IClock,
     private transport: ITransport,
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
-  ) { }
+  ) {}
 
   private async call<ReqItem, Resp>(
     apiCall: {
@@ -85,8 +85,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     }
 
     // Return response.
-    const respVS = endpoint.decodeResp(dec)
-    console.info(`API call: ${APICallName[name]}`, { req: items, resp: respVS });
+    const respVS = endpoint.decodeResp(dec);
+    console.info(`API call: ${APICallName[name]}`, {
+      req: items,
+      resp: respVS,
+    });
     return respVS;
   }
 

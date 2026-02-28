@@ -17,7 +17,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IWebSocketPushNotifier,
     public clock: IClock,
-  ) { }
+  ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.headers.get("upgrade") === "websocket") {

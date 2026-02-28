@@ -29,7 +29,10 @@ const sqliteStorage: IStorage = {
   async addUser(pubKey) {
     try {
       const pubKeyHex = btoh(pubKey);
-      db.exec("INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING", pubKeyHex);
+      db.exec(
+        "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
+        pubKeyHex,
+      );
       return ok(undefined);
     } catch {
       return err(Status.StorageError);
@@ -39,7 +42,9 @@ const sqliteStorage: IStorage = {
   async hasUser(pubKey) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare("SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)").value<[boolean]>(pubKeyHex);
+      const row = db.prepare(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)",
+      ).value<[boolean]>(pubKeyHex);
       const has = row ? row[0] : false;
       return ok(has);
     } catch {
@@ -55,7 +60,8 @@ const sqliteStorage: IStorage = {
   async setBag(pubKey, bag) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare("SELECT MAX(seq) FROM bag WHERE userPubKey = ?").value<[number]>(pubKeyHex);
+      const row = db.prepare("SELECT MAX(seq) FROM bag WHERE userPubKey = ?")
+        .value<[number]>(pubKeyHex);
       const maxSeq = row ? row[0] || 0 : 0;
       const seq = maxSeq + 1;
       const enc = new Encoder();
@@ -64,7 +70,10 @@ const sqliteStorage: IStorage = {
       const bodyCph = bag.bodyCph;
       db.exec(
         "INSERT INTO bag (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
-        pubKeyHex, seq, headCph, bodyCph,
+        pubKeyHex,
+        seq,
+        headCph,
+        bodyCph,
       );
       return ok(seq);
     } catch {
@@ -75,7 +84,9 @@ const sqliteStorage: IStorage = {
   async getBody(pubKey, seq) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare("SELECT bodyCph FROM bag WHERE userPubKey = ? AND seq = ?").value<[Uint8Array]>(pubKeyHex, seq);
+      const row = db.prepare(
+        "SELECT bodyCph FROM bag WHERE userPubKey = ? AND seq = ?",
+      ).value<[Uint8Array]>(pubKeyHex, seq);
       if (!row) {
         return ok(undefined);
       }
@@ -88,7 +99,9 @@ const sqliteStorage: IStorage = {
   async listHeads(pubKey, minSeq) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const rows = db.prepare("SELECT seq, headCph FROM bag WHERE userPubKey = ? AND seq > ? ORDER BY seq").values<[number, Uint8Array]>(pubKeyHex, minSeq);
+      const rows = db.prepare(
+        "SELECT seq, headCph FROM bag WHERE userPubKey = ? AND seq > ? ORDER BY seq",
+      ).values<[number, Uint8Array]>(pubKeyHex, minSeq);
       return ok(rows.map(([seq, headCph]: [number, Uint8Array]) => ({
         seq,
         headCph: new Uint8Array(headCph),

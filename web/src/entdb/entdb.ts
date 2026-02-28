@@ -13,11 +13,13 @@ export interface IPossiblyDeletedEntity<T> extends IMsgEntBody<T> {
   ctr: number;
 }
 
-export interface IEntity<T> extends Omit<IPossiblyDeletedEntity<T>, 'body'> {
+export interface IEntity<T> extends Omit<IPossiblyDeletedEntity<T>, "body"> {
   body: T;
 }
 
-export function isLiveEntity<T>(ent: IPossiblyDeletedEntity<T>): ent is IEntity<T> {
+export function isLiveEntity<T>(
+  ent: IPossiblyDeletedEntity<T>,
+): ent is IEntity<T> {
   return ent.body !== undefined;
 }
 

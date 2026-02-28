@@ -7,7 +7,12 @@ import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { EntityID, HostSpecificKeyPair, ICrypto, IMessageHead } from "./types.ts";
+import {
+  EntityID,
+  HostSpecificKeyPair,
+  ICrypto,
+  IMessageHead,
+} from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 /* File format

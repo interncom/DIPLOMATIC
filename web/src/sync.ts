@@ -8,15 +8,34 @@ import { IBagPeekItem } from "./shared/codecs/peekItem";
 import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import { Hash, HostHandle, HostSpecificKeyPair, IBag, ICrypto, IMessage } from "./shared/types";
+import {
+  Hash,
+  HostHandle,
+  HostSpecificKeyPair,
+  IBag,
+  ICrypto,
+  IMessage,
+} from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { IDownloadMessage, IHostRow, IMsgParts, IStorableMessage, IStore, IStoredMessageData } from "./types";
+import {
+  IDownloadMessage,
+  IHostRow,
+  IMsgParts,
+  IStorableMessage,
+  IStore,
+  IStoredMessageData,
+} from "./types";
 
 export interface IDecryptedBagPeekItem {
   kdm: Uint8Array;
   headEnc: Uint8Array;
 }
-export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<IDecryptedBagPeekItem>> {
+export async function decryptPeekItem(
+  item: IBagPeekItem,
+  hostKeys: HostSpecificKeyPair,
+  enclave: Enclave,
+  crypto: ICrypto,
+): Promise<ValStat<IDecryptedBagPeekItem>> {
   const dec = new Decoder(item.headCph);
   const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
   if (readStatus !== Status.Success) {
@@ -42,8 +61,18 @@ export async function decryptPeekItem(item: IBagPeekItem, hostKeys: HostSpecific
   return ok({ kdm, headEnc });
 }
 
-export async function parsePeekItem(item: IBagPeekItem, hostKeys: HostSpecificKeyPair, enclave: Enclave, crypto: ICrypto): Promise<ValStat<{ kdm: Uint8Array, head: IMessageHead }>> {
-  const [itemDec, stat] = await decryptPeekItem(item, hostKeys, enclave, crypto);
+export async function parsePeekItem(
+  item: IBagPeekItem,
+  hostKeys: HostSpecificKeyPair,
+  enclave: Enclave,
+  crypto: ICrypto,
+): Promise<ValStat<{ kdm: Uint8Array; head: IMessageHead }>> {
+  const [itemDec, stat] = await decryptPeekItem(
+    item,
+    hostKeys,
+    enclave,
+    crypto,
+  );
   if (stat !== Status.Success) return err(stat);
 
   const headDec = new Decoder(itemDec.headEnc);
@@ -172,7 +201,7 @@ export async function syncPull<Handle extends HostHandle>(
   crypto: ICrypto,
   apply: (
     parts: IMsgParts[],
-    options?: { enqueueUpload: boolean; triggerUpload: boolean; },
+    options?: { enqueueUpload: boolean; triggerUpload: boolean },
   ) => Promise<Status[]>,
 ): Promise<Status> {
   // console.info("pulling...")
@@ -233,7 +262,10 @@ export async function syncPull<Handle extends HostHandle>(
   await store.downloads.deq(host.label, seqsToDequeue);
 
   // Batch apply messages to local state.
-  const statsApply = await apply(successfulParts, { enqueueUpload: false, triggerUpload: false });
+  const statsApply = await apply(successfulParts, {
+    enqueueUpload: false,
+    triggerUpload: false,
+  });
   // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
 
   for (let i = 0; i < statsApply.length; i++) {
@@ -254,12 +286,14 @@ export async function syncPull<Handle extends HostHandle>(
   return Status.Success;
 }
 
-export function msg2StoredMsgData({ head, body }: IMsgParts): IStoredMessageData {
+export function msg2StoredMsgData(
+  { head, body }: IMsgParts,
+): IStoredMessageData {
   return {
     eid: head.eid,
     ...(head.off !== 0 ? { off: head.off } : {}),
     ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-    body
+    body,
   };
 }
 
@@ -272,7 +306,7 @@ export async function handleNotif<Handle extends HostHandle>(
   crypto: ICrypto,
   apply: (
     parts: IMsgParts[],
-    options?: { enqueueUpload: boolean; triggerUpload: boolean; },
+    options?: { enqueueUpload: boolean; triggerUpload: boolean },
   ) => Promise<Status[]>,
   scheduleSync: () => void,
 ) {
@@ -301,7 +335,12 @@ export async function handleNotif<Handle extends HostHandle>(
 
   for (const item of notifItems) {
     // Decrypt.
-    const [peekItem, s2] = await decryptPeekItem({ seq: item.seq, headCph: item.headCph }, keys, enclave, crypto);
+    const [peekItem, s2] = await decryptPeekItem(
+      { seq: item.seq, headCph: item.headCph },
+      keys,
+      enclave,
+      crypto,
+    );
     if (s2 !== Status.Success) {
       console.error("Failed decrypting notif", Status[s2]);
       continue;
@@ -324,12 +363,22 @@ export async function handleNotif<Handle extends HostHandle>(
     // Enqueue body download if body exists but is not inlined.
     if (!item.bodyCph && head.len > 0) {
       seqsToPull.push(item.seq);
-      const dlm: IDownloadMessage = { seq: item.seq, host: label, kdm: peekItem.kdm, head };
+      const dlm: IDownloadMessage = {
+        seq: item.seq,
+        host: label,
+        kdm: peekItem.kdm,
+        head,
+      };
       // TODO: batch these (needs careful handling of seq).
       await store.downloads.enq([dlm]);
     } else {
       // Body is either present or non-existent.
-      completeBags.push({ ...peekItem, head, bodyCph: item.bodyCph, headEncHash });
+      completeBags.push({
+        ...peekItem,
+        head,
+        bodyCph: item.bodyCph,
+        headEncHash,
+      });
     }
 
     // Handle sequence.
@@ -352,14 +401,19 @@ export async function handleNotif<Handle extends HostHandle>(
   const messagesToStore: IStorableMessage[] = [];
   for (const input of completeBags) {
     const key = await enclave.deriveFromKDM(input.kdm);
-    const [contents, stat] = await openBagBody(input.headEnc, input.bodyCph, key, crypto);
+    const [contents, stat] = await openBagBody(
+      input.headEnc,
+      input.bodyCph,
+      key,
+      crypto,
+    );
     if (stat !== Status.Success) {
       console.error("Failed to open body", Status[stat]);
       continue;
     }
 
     const parts: IMsgParts = { head: input.head, body: contents.bod };
-    const data = msg2StoredMsgData(parts)
+    const data = msg2StoredMsgData(parts);
     const storable: IStorableMessage = { key: input.headEncHash, data };
     messagesToStore.push(storable);
     successfulParts.push(parts);
@@ -371,7 +425,10 @@ export async function handleNotif<Handle extends HostHandle>(
   const statsStore = await store.messages.add(messagesToStore);
 
   // Batch apply messages to local state.
-  const statsApply = await apply(successfulParts, { enqueueUpload: false, triggerUpload: false });
+  const statsApply = await apply(successfulParts, {
+    enqueueUpload: false,
+    triggerUpload: false,
+  });
   // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
 
   // Handle errors.

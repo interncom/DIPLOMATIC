@@ -38,7 +38,9 @@ export function makeEID(eidObj: IEntityID): ValStat<EntityID> {
   return ok(eid);
 }
 
-export async function genSingletonEID(id: Uint8Array): Promise<ValStat<EntityID>> {
+export async function genSingletonEID(
+  id: Uint8Array,
+): Promise<ValStat<EntityID>> {
   const ts = new Date(0);
   return makeEID({ id, ts });
 }

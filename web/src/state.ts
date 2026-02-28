@@ -29,7 +29,7 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
   }
   const bodDec = decode(msg.bod);
   if (isMsgEntBody(bodDec) === false) {
-    console.warn(`msg body invalid`, bodDec)
+    console.warn(`msg body invalid`, bodDec);
     return err(Status.InvalidMessage);
   }
   const op: IOp = {
@@ -50,7 +50,7 @@ export class StateManager implements IStateManager {
   constructor(
     public applier: Applier,
     public clear: () => Promise<Status>,
-  ) { }
+  ) {}
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
@@ -109,11 +109,11 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function(msgs: IMessage[]) {
+  apply: async function (msgs: IMessage[]) {
     return msgs.map(() => Status.Success);
   },
-  on: function(type, listener): void {
+  on: function (type, listener): void {
   },
-  off: function(type, listener): void {
+  off: function (type, listener): void {
   },
 };

@@ -47,7 +47,9 @@ export class IDBUploadQueue implements IUploadQueue {
       const req = store.getAll();
       req.onsuccess = () => {
         const items = req.result as { host: string; hash: string }[];
-        const hexes = items.filter(item => item.host === host).map(item => item.hash);
+        const hexes = items.filter((item) => item.host === host).map((item) =>
+          item.hash
+        );
         resolve(hexes.map((hex) => htob(hex)) as Hash[]);
       };
       req.onerror = () => reject(req.error);

@@ -34,7 +34,7 @@ import {
   IStateEmitter,
   IStateManager,
   IStore,
-  IStoredMessageData
+  IStoredMessageData,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -53,11 +53,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
   ) {
-
     this.clientState = new StateEmitter(() => this.getClientState());
 
     this.xferState = new StateEmitter(() => this.getXferState());
-
   }
 
   private readonly SYNC_DEBOUNCE_DELAY_MS = 100;
@@ -89,11 +87,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   private apply = async (
     parts: IMsgParts[],
-    options: { enqueueUpload: boolean, triggerUpload: boolean } = { enqueueUpload: true, triggerUpload: true },
+    options: { enqueueUpload: boolean; triggerUpload: boolean } = {
+      enqueueUpload: true,
+      triggerUpload: true,
+    },
   ): Promise<Status[]> => {
-
     const hashes: Hash[] = [];
-    const storables: { key: Hash, data: IStoredMessageData }[] = [];
+    const storables: { key: Hash; data: IStoredMessageData }[] = [];
     const msgs: IMessage[] = [];
 
     // Process parts into:
@@ -110,7 +110,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         eid: head.eid,
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-        body
+        body,
       };
       hashes.push(hash);
       storables.push({ key: hash, data });
@@ -335,7 +335,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   }
 
-  public import = async (file: File, options?: { onProgress?: (index: number, total: number, status: Status) => void }): Promise<Status> => {
+  public import = async (
+    file: File,
+    options?: {
+      onProgress?: (index: number, total: number, status: Status) => void;
+    },
+  ): Promise<Status> => {
     const { crypto, store } = this;
     const onProgress = options?.onProgress;
     const enclave = await store.seed.load();
@@ -352,19 +357,28 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       let totalBytes = 0;
       let count = 0;
       let end = processed;
-      for (let i = processed; i < msgs.length && count < 100 && totalBytes < 100 * 1024; i++) {
+      for (
+        let i = processed;
+        i < msgs.length && count < 100 && totalBytes < 100 * 1024;
+        i++
+      ) {
         totalBytes += msgs[i].head.len;
         count++;
         end = i + 1;
       }
       const batch = msgs.slice(processed, end);
-      console.time(`import: applying [${processed}, ${end}]`)
-      const statsBatch = await this.apply(batch, { enqueueUpload: true, triggerUpload: false });
-      console.timeEnd(`import: applying [${processed}, ${end}]`)
+      console.time(`import: applying [${processed}, ${end}]`);
+      const statsBatch = await this.apply(batch, {
+        enqueueUpload: true,
+        triggerUpload: false,
+      });
+      console.timeEnd(`import: applying [${processed}, ${end}]`);
       for (let i = 0; i < batch.length; i++) {
         const stat = statsBatch[i];
         if (stat !== Status.Success && stat !== Status.NoChange) {
-          console.warn(`failed to import msg ${processed + i}: ${Status[stat]}`);
+          console.warn(
+            `failed to import msg ${processed + i}: ${Status[stat]}`,
+          );
         }
       }
       if (onProgress) {
@@ -377,19 +391,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     // TODO: return the array of statuses for each import msg.
     return Status.Success;
-  }
+  };
 
   private scheduleSync = async () => {
     this.syncTimeout = setTimeout(async () => {
       this.syncTimeout = null;
       try {
-        console.info("Running scheduled sync")
+        console.info("Running scheduled sync");
         await this.sync();
       } catch (err) {
-        console.error('Debounced sync failed:', err);
+        console.error("Debounced sync failed:", err);
       }
     }, this.SYNC_DEBOUNCE_DELAY_MS);
-  }
+  };
 
   public async export(filename: string, extension = defaultFileExtension) {
     const { crypto, store } = this;
@@ -438,7 +452,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       await conn.register();
       if (listen) {
         const recv = async (bytes: Uint8Array) => {
-          handleNotif(bytes, conn, store, enclave, host, crypto, this.apply, this.scheduleSync);
+          handleNotif(
+            bytes,
+            conn,
+            store,
+            enclave,
+            host,
+            crypto,
+            this.apply,
+            this.scheduleSync,
+          );
         };
         await conn.listen(recv);
       }

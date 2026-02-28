@@ -1,15 +1,22 @@
-import { btob64, bytesEqual, b64tob } from "../../shared/binary";
+import { b64tob, btob64, bytesEqual } from "../../shared/binary";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
-import { IMessageStore, IStoredMessage, IStoredMessageData, toStoredMessage } from "../../types";
+import {
+  IMessageStore,
+  IStoredMessage,
+  IStoredMessageData,
+  toStoredMessage,
+} from "../../types";
 import { Status } from "../../shared/consts";
 
 export class MemoryMessageStore implements IMessageStore {
   messages = new Map<string, IStoredMessageData>();
 
-  constructor(private crypto: ICrypto) { }
+  constructor(private crypto: ICrypto) {}
 
-  async add(messages: { key: Hash, data: IStoredMessageData }[]): Promise<Status[]> {
+  async add(
+    messages: { key: Hash; data: IStoredMessageData }[],
+  ): Promise<Status[]> {
     const results: Status[] = [];
     for (const { key, data } of messages) {
       this.messages.set(btob64(key), data);
@@ -57,7 +64,8 @@ export class MemoryMessageStore implements IMessageStore {
         latest = { hash, data };
       } else if (
         (data.ctr ?? 0) > (latest.data.ctr ?? 0) ||
-        ((data.ctr ?? 0) === (latest.data.ctr ?? 0) && (data.off ?? 0) > (latest.data.off ?? 0))
+        ((data.ctr ?? 0) === (latest.data.ctr ?? 0) &&
+          (data.off ?? 0) > (latest.data.off ?? 0))
       ) {
         latest = { hash, data };
       }

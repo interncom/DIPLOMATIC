@@ -16,12 +16,13 @@ db.exec(`
   );
 `);
 db.exec(`
-  CREATE TABLE IF NOT EXISTS bag (
+  CREATE TABLE IF NOT EXISTS bags (
       userPubKey TEXT,
       seq INTEGER,
       headCph BLOB,
       bodyCph BLOB,
-      PRIMARY KEY (userPubKey, seq)
+      PRIMARY KEY (userPubKey, seq),
+      UNIQUE (userPubKey, seq)
     );
 `);
 
@@ -60,7 +61,7 @@ const sqliteStorage: IStorage = {
   async setBag(pubKey, bag) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare("SELECT MAX(seq) FROM bag WHERE userPubKey = ?")
+      const row = db.prepare("SELECT MAX(seq) FROM bags WHERE userPubKey = ?")
         .value<[number]>(pubKeyHex);
       const maxSeq = row ? row[0] || 0 : 0;
       const seq = maxSeq + 1;
@@ -69,7 +70,7 @@ const sqliteStorage: IStorage = {
       const headCph = enc.result();
       const bodyCph = bag.bodyCph;
       db.exec(
-        "INSERT INTO bag (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
+        "INSERT INTO bags (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
         pubKeyHex,
         seq,
         headCph,
@@ -85,7 +86,7 @@ const sqliteStorage: IStorage = {
     try {
       const pubKeyHex = btoh(pubKey);
       const row = db.prepare(
-        "SELECT bodyCph FROM bag WHERE userPubKey = ? AND seq = ?",
+        "SELECT bodyCph FROM bags WHERE userPubKey = ? AND seq = ?",
       ).value<[Uint8Array]>(pubKeyHex, seq);
       if (!row) {
         return ok(undefined);
@@ -100,7 +101,7 @@ const sqliteStorage: IStorage = {
     try {
       const pubKeyHex = btoh(pubKey);
       const rows = db.prepare(
-        "SELECT seq, headCph FROM bag WHERE userPubKey = ? AND seq > ? ORDER BY seq",
+        "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND seq > ? ORDER BY seq",
       ).values<[number, Uint8Array]>(pubKeyHex, minSeq);
       return ok(rows.map(([seq, headCph]: [number, Uint8Array]) => ({
         seq,

@@ -17,9 +17,9 @@ import {
   HostHandle,
   HostSpecificKeyPair,
   MasterSeed,
+  IMessage,
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
-import { IMessage } from "../src/shared/message";
 import { IDownloadMessage, IStoredMessageData } from "../src/types";
 
 // Fixed seed for deterministic key derivation
@@ -74,7 +74,7 @@ describe("syncPeek", () => {
   });
 
   test("handles empty peek results", async () => {
-    await syncPeek(conn, store, enclave, clock, host, libsodiumCrypto);
+    await syncPeek({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
 
     const downloads = Array.from(await store.downloads.list());
     expect(downloads.length).toBe(0);
@@ -138,10 +138,10 @@ describe("syncPush", () => {
       ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
       body: message.bod
     };
-    await store.messages.add([{key: hash, data: storedData}]);
+    await store.messages.add([{ key: hash, data: storedData }]);
     await store.uploads.enq("test", [hash]);
 
-    await syncPush(conn, store, enclave, clock, host, libsodiumCrypto);
+    await syncPush({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
 
     expect(await store.uploads.count()).toBe(0);
   });
@@ -215,7 +215,7 @@ describe("syncPull", () => {
     await store.downloads.enq([download]);
 
     const apply = vi.fn().mockResolvedValue(0);
-    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
+    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -225,7 +225,7 @@ describe("syncPull", () => {
 
   test("handles no downloads", async () => {
     const apply = vi.fn().mockResolvedValue(0);
-    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
+    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(0);
@@ -261,7 +261,7 @@ describe("syncPull", () => {
     await store.downloads.enq([download]);
 
     const apply = vi.fn().mockResolvedValue(0);
-    await syncPull(conn, store, enclave, host, libsodiumCrypto, apply);
+    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);

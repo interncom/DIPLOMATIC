@@ -30,7 +30,6 @@ export const baseMockCrypto = {
     _message: Uint8Array | string,
     _pubKey: PublicKey,
   ) => Promise.resolve(true),
-  sha256Hash: () => Promise.resolve(new Uint8Array(32)),
   blake3: () => Promise.resolve(new Uint8Array(32)),
 };
 

@@ -97,10 +97,4 @@ export class LibsodiumCrypto implements ICrypto {
   async blake3(data: Uint8Array): Promise<Hash> {
     return blake3(data) as Hash;
   }
-
-  async sha256Hash(data: Uint8Array): Promise<Uint8Array> {
-    const buf = await crypto.subtle.digest("SHA-256", data.slice(0));
-    const arr = new Uint8Array(buf);
-    return arr;
-  }
 }

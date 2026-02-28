@@ -12,12 +12,7 @@ import {
   IBagPushItem,
   pushItemCodec,
 } from "../../../shared/codecs/pushItem.ts";
-import {
-  hashBytes,
-  kdmBytes,
-  sigBytes,
-  Status,
-} from "../../../shared/consts.ts";
+import { kdmBytes, sigBytes, Status } from "../../../shared/consts.ts";
 import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import {
   baseMockCrypto,
@@ -54,8 +49,6 @@ Deno.test("pushEnd.handleReq - success", async () => {
       _message: Uint8Array | string,
       _pubKey: PublicKey,
     ) => Promise.resolve(true),
-    sha256Hash: (_data: Uint8Array) =>
-      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
   const mockNotifier: IPushNotifier = {
     ...baseMockNotifier,
@@ -121,8 +114,6 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
       message: Uint8Array | string,
       _pubKey: PublicKey,
     ) => Promise.resolve((message as Uint8Array).length === 6), // NOTE: this depends on the varint encoding of the tsAuth Date
-    sha256Hash: (_data: Uint8Array) =>
-      Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
   const mockHost = createMockHost({
     crypto: mockCrypto,

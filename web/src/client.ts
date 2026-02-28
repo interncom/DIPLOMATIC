@@ -8,7 +8,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
-import { decodeFile, defaultFileExtension, encodeFile } from "./shared/exim";
+import { decodeFile, encodeFile } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import {
   EntityID,
@@ -405,7 +405,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }, this.SYNC_DEBOUNCE_DELAY_MS);
   };
 
-  public async export(filename: string, extension = defaultFileExtension) {
+  public async export(filename: string) {
     const { crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) return Status.MissingSeed;

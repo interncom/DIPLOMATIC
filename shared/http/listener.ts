@@ -31,11 +31,11 @@ export class WebsocketListener implements IPushListener {
     // Set data type to ArrayBuffer (otherwise .onmessage receives Blobs).
     this.websocket.binaryType = "arraybuffer";
 
-    this.websocket.onopen = (e) => {
+    this.websocket.onopen = () => {
       console.log("CONNECTED");
     };
 
-    this.websocket.onclose = (e) => {
+    this.websocket.onclose = () => {
       console.log("DISCONNECTED");
       onDisconnect();
     };

@@ -5,8 +5,6 @@ import { IDBHostStore } from "./hosts";
 import { IDBMessageStore } from "./msgs";
 import { IDBSeedStore } from "./seed";
 import { IDBUploadQueue } from "./uplds";
-import type { IHostRow, IStoredMessage } from "../../types";
-import { IDownloadMessage } from "../../types";
 
 export const SEED_META_TABLE = "seedMeta";
 export const HOSTS_TABLE = "hosts";
@@ -43,7 +41,7 @@ export class IDBStore implements IStore<URL> {
 export async function openIDBStore(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("diplomatic-store-db", 2);
-    req.onupgradeneeded = (event) => {
+    req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(SEED_META_TABLE)) {
         db.createObjectStore(SEED_META_TABLE);

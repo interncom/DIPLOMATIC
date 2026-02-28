@@ -1,6 +1,5 @@
 import { ICodecStruct } from "../codec.ts";
-import { hashBytes, Status } from "../consts.ts";
-import { Hash } from "../types.ts";
+import { Status } from "../consts.ts";
 import { err, ok } from "../valstat.ts";
 
 export interface IBagPullItem {

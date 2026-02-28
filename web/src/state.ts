@@ -112,8 +112,8 @@ export const nullStateManager: IStateManager = {
   apply: async function (msgs: IMessage[]) {
     return msgs.map(() => Status.Success);
   },
-  on: function (type, listener): void {
+  on: function (_type, _listener): void {
   },
-  off: function (type, listener): void {
+  off: function (_type, _listener): void {
   },
 };

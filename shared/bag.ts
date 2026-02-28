@@ -105,7 +105,7 @@ export async function openBagBody(
     msgBody = bodyCph && bodyCph.length > 0
       ? await crypto.decryptXSalsa20Poly1305Combined(bodyCph, key)
       : undefined;
-  } catch (e) {
+  } catch {
     return err(Status.DecryptionError);
   }
 

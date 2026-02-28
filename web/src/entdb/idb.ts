@@ -12,7 +12,7 @@ import {
   isLiveEntity,
   updateEnt,
 } from "./entdb";
-import { b64tob, btob64, btoh, htob } from "../shared/binary";
+import { b64tob, btob64 } from "../shared/binary";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -76,7 +76,7 @@ export class EntIDB implements IEntDB {
   async init() {
     this.db = await new Promise((resolve, reject) => {
       const req = indexedDB.open("db", 11);
-      req.onupgradeneeded = (event) => {
+      req.onupgradeneeded = () => {
         const db = req.result;
         const tx = req.transaction;
         if (!tx) {

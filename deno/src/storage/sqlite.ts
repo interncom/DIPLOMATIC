@@ -52,7 +52,7 @@ const sqliteStorage: IStorage = {
     }
   },
 
-  async subMeta(pubKey) {
+  async subMeta(_pubKey) {
     // NOTE: a real host implementation would compute subscription info here.
     return ok(nullSubMeta);
   },

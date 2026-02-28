@@ -31,7 +31,7 @@ const memStorage: IMemoryStorage = {
     return ok(this.users.has(pubKeyHex));
   },
 
-  async subMeta(pubKey) {
+  async subMeta(_pubKey) {
     // TODO: actually compute this.
     const meta = nullSubMeta;
     return ok(meta);

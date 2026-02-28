@@ -1,7 +1,8 @@
 import type { DerivationSeed, Hash, ICrypto, KeyPair } from "../types.ts";
 import { blake3 } from "@noble/hashes/blake3.js";
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+// @ts-ignore let this one go
+// deno-lint-ignore no-explicit-any
 type Libsodium = any;
 export class LibsodiumCrypto implements ICrypto {
   sodium: Libsodium;

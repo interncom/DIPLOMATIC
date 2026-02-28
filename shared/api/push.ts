@@ -17,7 +17,7 @@ export const pushEnd: IAuthenticatedEndpoint<
   IBag,
   IBagPushItem[]
 > = {
-  async encodeReq(client, _keys, authTS, bags, reqEnc) {
+  async encodeReq(_client, _keys, authTS, bags, reqEnc) {
     const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
     if (s1 !== Status.Success) return s1;
     const s2 = reqEnc.writeStructs(bagCodec, bags);

@@ -1,6 +1,6 @@
 import {
   assert,
-  assertEquals
+  assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { concat } from "../../shared/binary.ts";
 import { Decoder, decodeVarInt, encodeVarInt } from "../../shared/codec.ts";

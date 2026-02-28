@@ -1,18 +1,22 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { Decoder, Encoder } from "../../shared/codec.ts";
+import { Decoder } from "../../shared/codec.ts";
+import { makeEID } from "../../shared/codecs/eid.ts";
 import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type {
+  DerivationSeed,
   EntityID,
   Hash,
   ICrypto,
   IMessageHead,
+  KeyPair,
   MasterSeed,
+  PrivateKey,
+  PublicKey,
 } from "../../shared/types.ts";
-import { eidCodec, makeEID } from "../../shared/codecs/eid.ts";
 
 // Mock implementations for deterministic testing
 class MockCrypto implements ICrypto {
@@ -25,7 +29,7 @@ class MockCrypto implements ICrypto {
   }
 
   async deriveXSalsa20Poly1305Key(
-    seed: Uint8Array,
+    _seed: Uint8Array,
     derivationIndex: number,
   ): Promise<Uint8Array> {
     return new Uint8Array(32).fill(derivationIndex);
@@ -50,34 +54,36 @@ class MockCrypto implements ICrypto {
     return headerAndCipher.slice(1, -8);
   }
 
-  async deriveEd25519KeyPair(derivationSeed: any): Promise<any> {
+  async deriveEd25519KeyPair(
+    _derivationSeed: DerivationSeed,
+  ): Promise<KeyPair> {
     return {
       keyType: "private",
       privateKey: new Uint8Array(32).fill(0xCC),
       publicKey: new Uint8Array(32).fill(0xDD),
-    };
+    } as KeyPair;
   }
 
   async signEd25519(
-    message: Uint8Array | string,
-    secKey: any,
+    _message: Uint8Array | string,
+    _secKey: PrivateKey,
   ): Promise<Uint8Array> {
     return new Uint8Array(64).fill(0xEE);
   }
 
-  async blake3(data: Uint8Array): Promise<Hash> {
+  async blake3(_data: Uint8Array): Promise<Hash> {
     return new Uint8Array(32).fill(0x99) as Hash;
   }
 
   async checkSigEd25519(
-    sig: Uint8Array,
-    message: Uint8Array | string,
-    pubKey: any,
+    _sig: Uint8Array,
+    _message: Uint8Array | string,
+    _pubKey: PublicKey,
   ): Promise<boolean> {
     return true;
   }
 
-  async sha256Hash(data: Uint8Array): Promise<Uint8Array> {
+  async sha256Hash(_data: Uint8Array): Promise<Uint8Array> {
     return new Uint8Array(32).fill(0x88);
   }
 }
@@ -87,13 +93,13 @@ class MockEnclave extends Enclave {
     super(new Uint8Array(32).fill(0x11) as MasterSeed, new MockCrypto());
   }
 
-  override async derive(keyPath: string, idx = 0): Promise<any> {
+  override async derive(keyPath: string, idx = 0): Promise<DerivationSeed> {
     const data = new TextEncoder().encode(keyPath + idx.toString());
-    return new Uint8Array(32).fill(data.length % 256);
+    return new Uint8Array(32).fill(data.length % 256) as DerivationSeed;
   }
 
-  override async deriveFromKDM(kdm: Uint8Array): Promise<any> {
-    return new Uint8Array(32).fill(kdm[0] || 0x22);
+  override async deriveFromKDM(kdm: Uint8Array): Promise<DerivationSeed> {
+    return new Uint8Array(32).fill(kdm[0] || 0x22) as DerivationSeed;
   }
 }
 

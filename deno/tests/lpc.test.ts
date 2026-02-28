@@ -8,18 +8,27 @@ import { CallbackListener } from "../../shared/lpc/listener.ts";
 import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
 import { DiplomaticLPCServer, LPCTransport } from "../../shared/lpc/server.ts";
 import memStorage from "../../shared/storage/memory.ts";
-import type { Hash, ICrypto, KeyPair, PublicKey } from "../../shared/types.ts";
+import type {
+  DerivationSeed,
+  Hash,
+  HostSpecificKeyPair,
+  ICrypto,
+  KeyPair,
+  PrivateKey,
+  PublicKey,
+} from "../../shared/types.ts";
 import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
+import { Enclave } from "../../shared/enclave.ts";
 
 const baseCryptoImpl: ICrypto = {
   checkSigEd25519: async (
-    sig: Uint8Array,
-    message: Uint8Array | string,
-    pubKey: PublicKey,
+    _sig: Uint8Array,
+    _message: Uint8Array | string,
+    _pubKey: PublicKey,
   ): Promise<boolean> => true, // mock
   signEd25519: async (
-    message: Uint8Array | string,
-    secKey: any,
+    _message: Uint8Array | string,
+    _secKey: PrivateKey,
   ): Promise<Uint8Array> => {
     return new Uint8Array(64).fill(0x99); // mock signature
   },
@@ -28,23 +37,23 @@ const baseCryptoImpl: ICrypto = {
   gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
     new Uint8Array(32).fill(0x22),
   deriveXSalsa20Poly1305Key: async (
-    seed: Uint8Array,
-    derivationIndex: number,
+    _seed: Uint8Array,
+    _derivationIndex: number,
   ): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
   encryptXSalsa20Poly1305Combined: async (
     plaintext: Uint8Array,
-    key: Uint8Array,
+    _key: Uint8Array,
   ): Promise<Uint8Array> => new Uint8Array(plaintext.length + 16).fill(0x44),
   decryptXSalsa20Poly1305Combined: async (
     headerAndCipher: Uint8Array,
-    key: Uint8Array,
+    _key: Uint8Array,
   ): Promise<Uint8Array> => headerAndCipher.slice(16),
-  deriveEd25519KeyPair: async (derivationSeed: any) => ({
+  deriveEd25519KeyPair: async (_derivationSeed: DerivationSeed) => ({
     keyType: "private" as const,
     publicKey: new Uint8Array(32).fill(0x55) as PublicKey,
-    privateKey: new Uint8Array(64).fill(0x66) as any,
+    privateKey: new Uint8Array(64).fill(0x66) as PrivateKey,
   }),
-  blake3: async (input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
+  blake3: async (_input: Uint8Array) => new Uint8Array(32).fill(0xaa) as Hash,
 };
 
 Deno.test("lpc integration", async (t) => {
@@ -59,14 +68,14 @@ Deno.test("lpc integration", async (t) => {
 
     // Mock keys (for testing, dummy values)
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
-    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const privateKey = new Uint8Array(64).fill(0x42) as PrivateKey;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl = baseCryptoImpl;
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
-      return
+      return;
     }
 
     let receivedData: Uint8Array | undefined;
@@ -78,7 +87,7 @@ Deno.test("lpc integration", async (t) => {
     assertEquals(listener.connected(), false);
 
     // Connect
-    await listener.connect(authTS, receiver, () => { });
+    await listener.connect(authTS, receiver, () => {});
     assertEquals(listener.connected(), true);
 
     // Push data
@@ -107,26 +116,26 @@ Deno.test("lpc integration", async (t) => {
 
     // Mock keys (for testing, dummy values)
     const publicKey = new Uint8Array(32).fill(0xcd) as PublicKey;
-    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const privateKey = new Uint8Array(64).fill(0x42) as PrivateKey;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl = {
       ...baseCryptoImpl,
-      deriveEd25519KeyPair: async (derivationSeed: any) => ({
+      deriveEd25519KeyPair: async (_derivationSeed: DerivationSeed) => ({
         keyType: "private" as const,
         publicKey: new Uint8Array(32).fill(0xcd) as PublicKey,
-        privateKey: new Uint8Array(64).fill(0x42) as any,
+        privateKey: new Uint8Array(64).fill(0x42) as PrivateKey,
       }),
-      blake3: async (input: Uint8Array) =>
+      blake3: async (_input: Uint8Array) =>
         new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
+      sha256Hash: async (_input: Uint8Array) => new Uint8Array(32).fill(0xbb),
       encryptXSalsa20Poly1305Combined: async (
         plaintext: Uint8Array,
-        key: Uint8Array,
+        _key: Uint8Array,
       ): Promise<Uint8Array> =>
         new Uint8Array(16 + plaintext.length + 16).fill(0x44),
       decryptXSalsa20Poly1305Combined: async (
         headerAndCipher: Uint8Array,
-        key: Uint8Array,
+        _key: Uint8Array,
       ): Promise<Uint8Array> =>
         new Uint8Array(headerAndCipher.length - 32).fill(0x55),
     };
@@ -134,7 +143,7 @@ Deno.test("lpc integration", async (t) => {
     const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
-      return
+      return;
     }
 
     let received1: Uint8Array | undefined;
@@ -148,8 +157,8 @@ Deno.test("lpc integration", async (t) => {
     };
 
     // Connect both
-    await listener1.connect(authTS, receiver1, () => { });
-    await listener2.connect(authTS, receiver2, () => { });
+    await listener1.connect(authTS, receiver1, () => {});
+    await listener2.connect(authTS, receiver2, () => {});
 
     // Push data
     const testData = new TextEncoder().encode("MULTI TEST");
@@ -170,43 +179,42 @@ Deno.test("lpc integration", async (t) => {
 
   await t.step("invalid authTS - bad signature", async () => {
     // Custom crypto that checks sig validity
-    const customCrypto: any = {
+    const customCrypto = {
       checkSigEd25519: async (
         sig: Uint8Array,
-        message: Uint8Array | string,
-        pubKey: PublicKey,
+        _message: Uint8Array | string,
+        _pubKey: PublicKey,
       ): Promise<boolean> => sig[0] === 0x99, // mock: valid if sig[0] is 0x99
-      sha256Hash: async (data: Uint8Array) => new Uint8Array(32),
-      blake3: async (data: Uint8Array) => new Uint8Array(32),
+      blake3: async (_data: Uint8Array) => new Uint8Array(32) as Hash,
     };
 
     const listener = new CallbackListener(
       notifier,
-      customCrypto,
+      customCrypto as ICrypto,
       baseMockClock,
     );
 
     // Mock keys
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
-    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const privateKey = new Uint8Array(64).fill(0x42) as PrivateKey;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl = {
       ...baseCryptoImpl,
-      blake3: async (input: Uint8Array) =>
+      blake3: async (_input: Uint8Array) =>
         new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (input: Uint8Array) => new Uint8Array(32).fill(0xbb),
+      sha256Hash: async (_input: Uint8Array) => new Uint8Array(32).fill(0xbb),
     };
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
-      return
+      return;
     }
 
     // Tamper with signature to make it invalid
     authTS.sig[0] ^= 1; // Flip a byte
 
-    const status = await listener.connect(authTS, () => { }, () => { });
+    const status = await listener.connect(authTS, () => {}, () => {});
     assertEquals(status, Status.InvalidSignature);
     assertEquals(listener.connected(), false);
   });
@@ -220,18 +228,22 @@ Deno.test("lpc integration", async (t) => {
 
     // Mock keys
     const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
-    const privateKey = new Uint8Array(64).fill(0x42) as any;
+    const privateKey = new Uint8Array(64).fill(0x42) as PrivateKey;
     const keys: KeyPair = { keyType: "private", publicKey, privateKey };
     const cryptoImpl = baseCryptoImpl;
     // Create authTS with old timestamp
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
-    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, oldTs, cryptoImpl);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(
+      keys,
+      oldTs,
+      cryptoImpl,
+    );
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
-      return
+      return;
     }
 
-    const status = await listener.connect(authTS, () => { }, () => { });
+    const status = await listener.connect(authTS, () => {}, () => {});
     assertEquals(status, Status.ClockOutOfSync);
     assertEquals(listener.connected(), false);
   });
@@ -252,26 +264,34 @@ Deno.test("lpc integration", async (t) => {
 
       // Mock keys
       const publicKey = new Uint8Array(32).fill(0xab) as PublicKey;
-      const privateKey = new Uint8Array(64).fill(0x42) as any;
-      const keys: KeyPair = { keyType: "private", publicKey, privateKey };
+      const privateKey = new Uint8Array(64).fill(0x42) as PrivateKey;
+      const keys = {
+        keyType: "private",
+        publicKey,
+        privateKey,
+      } as HostSpecificKeyPair;
       const now = baseMockClock.now(); // original time
-      const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, baseCryptoImpl);
+      const [authTS, statAuthTS] = await makeAuthTimestamp(
+        keys,
+        now,
+        baseCryptoImpl,
+      );
       if (statAuthTS !== Status.Success) {
         assertEquals(statAuthTS, Status.Success);
-        return
+        return;
       }
 
       // Encode request using peekEnd
       const mockClient = {
         crypto: baseCryptoImpl,
-        enclave: null as any,
+        enclave: null as unknown as Enclave,
         clock: baseMockClock,
       };
       const items = [0]; // for peek, from date
       const reqEnc = new Encoder();
       const encStatus = await peekEnd.encodeReq(
-        mockClient as any,
-        keys as any,
+        mockClient,
+        keys,
         authTS,
         items,
         reqEnc,

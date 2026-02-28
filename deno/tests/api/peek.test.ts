@@ -1,15 +1,12 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
-import { Decoder, Encoder } from "../../../shared/codec.ts";
-import { hashBytes, Status } from "../../../shared/consts.ts";
 import { peekEnd } from "../../../shared/api/peek.ts";
+import { Decoder, Encoder } from "../../../shared/codec.ts";
+import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import {
   IBagPeekItem,
   peekItemCodec,
 } from "../../../shared/codecs/peekItem.ts";
-import {
-  authTimestampCodec,
-  type IAuthTimestamp,
-} from "../../../shared/codecs/authTimestamp.ts";
+import { Status } from "../../../shared/consts.ts";
 import {
   HostSpecificKeyPair,
   IStorage,
@@ -28,8 +25,8 @@ import {
 const mockStorage: IStorage = {
   ...baseMockStorage,
   listHeads: async (
-    pubKey: PublicKey,
-    minSeq: number,
+    _pubKey: PublicKey,
+    _minSeq: number,
   ): Promise<ValStat<IBagPeekItem[]>> => {
     // Mock: return some items
     return ok([
@@ -44,7 +41,8 @@ const mockStorage: IStorage = {
 const mockHost = createMockHost({ storage: mockStorage });
 
 Deno.test("peekEnd.encodeReq", () => {
-  const client = {}; // Mock
+  // deno-lint-ignore no-explicit-any
+  const client = {} as any; // Mock
   const keys = {} as HostSpecificKeyPair; // Mock
   const tsAuth = createTestAuthTimestamp(
     new Uint8Array(32).fill(1) as PublicKey,
@@ -53,7 +51,7 @@ Deno.test("peekEnd.encodeReq", () => {
   const body: number[] = [0];
   const reqEnc = new Encoder();
 
-  peekEnd.encodeReq(client as any, keys, tsAuth, body, reqEnc);
+  peekEnd.encodeReq(client, keys, tsAuth, body, reqEnc);
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();
@@ -80,16 +78,16 @@ Deno.test("peekEnd.handleReq - success", async () => {
   );
   assertEquals(status, Status.Success);
 
-   // Check response
-   const respData = respEnc.result();
-   const respDec = new Decoder(respData);
-   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
-   assertEquals(decodeStatus, Status.Success);
-   assertEquals((results as IBagPeekItem[]).length, 1);
-   assertEquals(
-     (results as IBagPeekItem[])[0].seq,
-     1,
-   );
+  // Check response
+  const respData = respEnc.result();
+  const respDec = new Decoder(respData);
+  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPeekItem[]).length, 1);
+  assertEquals(
+    (results as IBagPeekItem[])[0].seq,
+    1,
+  );
 });
 
 Deno.test("peekEnd.handleReq - extra body content", async () => {
@@ -122,13 +120,13 @@ Deno.test("peekEnd.decodeResp", () => {
   const respData = enc.result();
   const respDec = new Decoder(respData);
 
-   const [results, decodeStatus] = peekEnd.decodeResp(respDec);
-   assertEquals(decodeStatus, Status.Success);
-   assertEquals((results as IBagPeekItem[]).length, 1);
-   assertEquals(
-     (results as IBagPeekItem[])[0].seq,
-     1,
-   );
+  const [results, decodeStatus] = peekEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assertEquals((results as IBagPeekItem[]).length, 1);
+  assertEquals(
+    (results as IBagPeekItem[])[0].seq,
+    1,
+  );
 });
 
 Deno.test("peekEnd.handleReq - clock out of sync", async () => {

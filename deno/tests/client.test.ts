@@ -4,8 +4,9 @@ import { Decoder, Encoder } from "../../shared/codec.ts";
 import { respHeadCodec } from "../../shared/codecs/respHead.ts";
 import { Status } from "../../shared/consts.ts";
 import { IClock } from "../../shared/clock.ts";
-import { IHostMetadata } from "../../shared/types.ts";
+import { ICrypto, IHostMetadata } from "../../shared/types.ts";
 import { ok, ValStat } from "../../shared/valstat.ts";
+import { Enclave } from "../../shared/enclave.ts";
 // import { makeAuthTimestamp } from "../../shared/auth.ts";
 
 const mockClock: IClock = {
@@ -20,22 +21,25 @@ const mockHost = {
 
 const mockEnclave = {
   derive: async () => new Uint8Array(32), // Mock derive
-} as any;
+};
 const mockCrypto = {
   blake3: async () => new Uint8Array(32),
   signEd25519: async () => new Uint8Array(64),
-} as any;
+};
 
 Deno.test("DiplomaticClientAPI updates host metadata on successful call", async () => {
   let capturedMeta: IHostMetadata | undefined;
 
   // Mock makeAuthTimestamp globally
+  // deno-lint-ignore no-explicit-any
   const originalMakeAuthTimestamp = (globalThis as any).makeAuthTimestamp;
+  // deno-lint-ignore no-explicit-any
   (globalThis as any).makeAuthTimestamp =
+    // deno-lint-ignore no-explicit-any
     async () => ({ sig: new Uint8Array(64), ts: new Date() } as any);
 
   const mockTransport = {
-    call: async (_name: any, _enc: Encoder) => {
+    call: async () => {
       // Simulate response with fake head
       const respEnc = new Encoder();
       const fakeHead = {
@@ -52,6 +56,7 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
       respEnc.writeStruct(respHeadCodec, fakeHead);
       return ok(new Decoder(respEnc.result()));
     },
+    // deno-lint-ignore no-explicit-any
     listener: {} as any,
   };
 
@@ -61,8 +66,8 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
   };
 
   const client = new DiplomaticClientAPI(
-    mockEnclave,
-    mockCrypto,
+    mockEnclave as unknown as Enclave,
+    mockCrypto as unknown as ICrypto,
     mockHost,
     mockClock,
     mockTransport,
@@ -70,25 +75,27 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
   );
 
   // Mock the keys method
-  (client as any).keys = async () => ({
+  client.keys = async () => ({
     pubKey: new Uint8Array(32),
     privKey: new Uint8Array(32),
+    // deno-lint-ignore no-explicit-any
   } as any);
 
   // Mock endpoint for register
   const mockEndpoint = {
     encodeReq: async () => Status.Success,
-    decodeResp: (dec: Decoder) =>
+    decodeResp: (_dec: Decoder) =>
       [undefined, Status.Success] as ValStat<undefined>,
   };
 
   // Call a method that triggers call
+  // deno-lint-ignore no-explicit-any
   const result = await (client as any).call({
     endpoint: mockEndpoint,
     name: "register",
   }, []);
 
-  const [val, stat] = result;
+  const [, stat] = result;
   assertEquals(stat, Status.Success);
   assertEquals(capturedMeta, {
     clockOffset: 750, // calculated offset
@@ -101,5 +108,6 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
   });
 
   // Restore
+  // deno-lint-ignore no-explicit-any
   (globalThis as any).makeAuthTimestamp = originalMakeAuthTimestamp;
 });

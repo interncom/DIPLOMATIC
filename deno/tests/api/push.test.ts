@@ -18,7 +18,7 @@ import {
   sigBytes,
   Status,
 } from "../../../shared/consts.ts";
-import { Hash, IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
+import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import {
   baseMockCrypto,
   baseMockNotifier,
@@ -50,16 +50,16 @@ Deno.test("pushEnd.handleReq - success", async () => {
   const mockCrypto = {
     ...baseMockCrypto,
     checkSigEd25519: (
-      sig: Uint8Array,
-      message: Uint8Array | string,
-      pubKey: PublicKey,
+      _sig: Uint8Array,
+      _message: Uint8Array | string,
+      _pubKey: PublicKey,
     ) => Promise.resolve(true),
-    sha256Hash: (data: Uint8Array) =>
+    sha256Hash: (_data: Uint8Array) =>
       Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
   const mockNotifier: IPushNotifier = {
     ...baseMockNotifier,
-    push: (pk: PublicKey, data: Uint8Array) => {
+    push: (pk: PublicKey, _data: Uint8Array) => {
       if (bytesEqual(pk, pubKey)) {
         notified = true;
       }
@@ -117,11 +117,11 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   const mockCrypto = {
     ...baseMockCrypto,
     checkSigEd25519: (
-      sig: Uint8Array,
+      _sig: Uint8Array,
       message: Uint8Array | string,
-      pubKey: PublicKey,
+      _pubKey: PublicKey,
     ) => Promise.resolve((message as Uint8Array).length === 6), // NOTE: this depends on the varint encoding of the tsAuth Date
-    sha256Hash: (data: Uint8Array) =>
+    sha256Hash: (_data: Uint8Array) =>
       Promise.resolve(new Uint8Array(hashBytes).fill(5)), // Mock 32-byte hash
   };
   const mockHost = createMockHost({

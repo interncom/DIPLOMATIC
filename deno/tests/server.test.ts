@@ -7,6 +7,7 @@ import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import { genInsert } from "../../shared/message.ts";
 import memStorage from "../../shared/storage/memory.ts";
 import {
+  ICrypto,
   IProtoHost,
   IPushOpenResponse,
   IWebSocketPushNotifier,
@@ -16,7 +17,7 @@ import {
 import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
-import { MockClock } from "../../shared/clock.ts";
+import { Clock, MockClock } from "../../shared/clock.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Enclave } from "../../shared/enclave.ts";
@@ -39,8 +40,8 @@ class MockPushNotifier implements IWebSocketPushNotifier {
   async open(
     _authTS: IAuthTimestamp,
     _recv: PushReceiver,
-    _crypto: any,
-    _clock: any,
+    _crypto: ICrypto,
+    _clock: Clock,
   ): Promise<IPushOpenResponse> {
     return Promise.resolve({
       send: () => Status.Success,
@@ -146,7 +147,7 @@ Deno.test("server", async (t) => {
     // Should have 2 items
     assertEquals((peekedHeaders as IBagPeekItem[]).length, 2);
     for (const header of peekedHeaders as IBagPeekItem[]) {
-      assert(typeof header.seq === 'number');
+      assert(typeof header.seq === "number");
       assert(header.headCph.length > 0);
     }
   });

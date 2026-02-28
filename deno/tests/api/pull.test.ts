@@ -1,22 +1,18 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
+import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import {
   IBagPullItem,
   pullItemCodec,
 } from "../../../shared/codecs/pullItem.ts";
-import { hashBytes, Status } from "../../../shared/consts.ts";
+import { Status } from "../../../shared/consts.ts";
 import {
-  Hash,
   HostSpecificKeyPair,
   IStorage,
   PublicKey,
 } from "../../../shared/types.ts";
 import { ok, ValStat } from "../../../shared/valstat.ts";
-import {
-  authTimestampCodec,
-  type IAuthTimestamp,
-} from "../../../shared/codecs/authTimestamp.ts";
 import {
   baseMockStorage,
   createMockHost,
@@ -29,7 +25,7 @@ import {
 const mockStorage: IStorage = {
   ...baseMockStorage,
   getBody: (
-    pubKey: Uint8Array,
+    _pubKey: Uint8Array,
     seq: number,
   ): Promise<ValStat<Uint8Array | undefined>> => {
     // Mock: return some data for seq 1, undefined for others
@@ -54,6 +50,7 @@ Deno.test("pullEnd.encodeReq", () => {
   const seqs: number[] = [1, 4];
   const reqEnc = new Encoder();
 
+  // deno-lint-ignore no-explicit-any
   pullEnd.encodeReq(client as any, keys, tsAuth, seqs, reqEnc);
 
   const encoded = reqEnc.result();

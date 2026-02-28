@@ -25,7 +25,7 @@ import {
   MasterSeed,
 } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { handleNotif, syncPeek, syncPull, syncPush } from "./sync";
+import { handleNotif, ISyncParams, syncPeek, syncPull, syncPush } from "./sync";
 import {
   IClient,
   IDiplomaticClientState,
@@ -288,38 +288,27 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) {
         continue;
       }
-      const peekStat = await syncPeek(
+
+      const syncParams: ISyncParams<Handle> = {
         conn,
         store,
         enclave,
         clock,
         host,
         crypto,
-      );
+      };
+
+      const peekStat = await syncPeek(syncParams);
       if (peekStat !== Status.Success) {
         console.error(`Failed to peek: ${peekStat}`);
         return peekStat;
       }
-      const pushStat = await syncPush(
-        conn,
-        store,
-        enclave,
-        clock,
-        host,
-        crypto,
-      );
+      const pushStat = await syncPush(syncParams);
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
         return pushStat;
       }
-      const pullStat = await syncPull(
-        conn,
-        store,
-        enclave,
-        host,
-        crypto,
-        this.apply.bind(this),
-      );
+      const pullStat = await syncPull(syncParams, this.apply.bind(this));
       if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
         console.error(`Failed to pull: ${pullStat}`);
         return pullStat;

@@ -4,8 +4,15 @@
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-import { EntitiesQuery, IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity, updateEnt } from "./entdb";
-import { btoh, btob64, b64tob, htob } from "../shared/binary";
+import {
+  EntitiesQuery,
+  IEntDB,
+  IEntity,
+  IPossiblyDeletedEntity,
+  isLiveEntity,
+  updateEnt,
+} from "./entdb";
+import { b64tob, btob64, btoh, htob } from "../shared/binary";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -48,7 +55,9 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
   return stored;
 }
 
-function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> {
+function storedToEntity<T>(
+  stored: IStoredEntity<T>,
+): IPossiblyDeletedEntity<T> {
   return {
     body: stored.bod,
     createdAt: stored.crd,
@@ -121,7 +130,7 @@ export class EntIDB implements IEntDB {
 
       tx.oncomplete = () => {
         resolve(results);
-      }
+      };
       tx.onerror = () => {
         for (let i = 0; i < results.length; i++) {
           if (results[i] === undefined) {
@@ -135,7 +144,7 @@ export class EntIDB implements IEntDB {
       // We do this in case multiple ops in this batch mutate the same ent.
       // If so, we run the updates in-memory then persist the final state.
       // Without it, IndexedDB was getting mixed-up, due to key collisions.
-      const groups = new Map<string, { op: IOp, index: number }[]>();
+      const groups = new Map<string, { op: IOp; index: number }[]>();
       for (let i = 0; i < ops.length; i++) {
         const op = ops[i];
         const eidB64 = btob64(op.eid);
@@ -181,7 +190,7 @@ export class EntIDB implements IEntDB {
         };
       }
     });
-  }
+  };
 
   async clear() {
     if (!this.db) {
@@ -265,7 +274,9 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getAllOfType<T>(opType: string): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+  async getAllOfType<T>(
+    opType: string,
+  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }

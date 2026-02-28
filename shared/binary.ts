@@ -25,21 +25,21 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 // Use native implementation of btob64 where possible.
 export let btob64: (bytes: Uint8Array) => string;
 // @ts-ignore
-if (typeof Uint8Array.prototype.toBase64 === 'function') {
+if (typeof Uint8Array.prototype.toBase64 === "function") {
   // @ts-ignore
-  btob64 = bytes => bytes.toBase64();
+  btob64 = (bytes) => bytes.toBase64();
 } else {
-  btob64 = bytes => btoa(String.fromCharCode(...bytes));
+  btob64 = (bytes) => btoa(String.fromCharCode(...bytes));
 }
 
 // Use native implementation of b64tob where possible.
 export let b64tob: (b64: string) => Uint8Array;
 // @ts-ignore
-if (typeof Uint8Array.fromBase64 === 'function') {
+if (typeof Uint8Array.fromBase64 === "function") {
   // @ts-ignore
-  b64tob = b64 => Uint8Array.fromBase64(b64);
+  b64tob = (b64) => Uint8Array.fromBase64(b64);
 } else {
-  b64tob = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  b64tob = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -72,7 +72,7 @@ export function btob128(bytes: Uint8Array): string {
 
   // Build string in safe chunks
   const CHUNK = 8192;
-  let str = '';
+  let str = "";
   for (let j = 0; j < codes.length; j += CHUNK) {
     str += String.fromCharCode(...codes.slice(j, j + CHUNK));
   }
@@ -87,7 +87,7 @@ export function b128tob(str: string): Uint8Array {
 
   for (let i = 0; i < str.length; i++) {
     const c = str.charCodeAt(i);
-    if (c > 127) throw new Error('Invalid base128 character');
+    if (c > 127) throw new Error("Invalid base128 character");
 
     bits |= c << bitCount;
     bitCount += 7;

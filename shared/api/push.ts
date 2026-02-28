@@ -5,7 +5,7 @@ import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { bagCodec } from "../codecs/bag.ts";
 import { IBagNotifItem, notifItemCodec } from "../codecs/notifItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
-import { pushItemCodec, type IBagPushItem } from "../codecs/pushItem.ts";
+import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
 import { notifInlineBodyBytesThreshold, Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IBag } from "../types.ts";
@@ -63,11 +63,16 @@ export const pushEnd: IAuthenticatedEndpoint<
 
       // Prepare notification of new bag.
       const encNotifHeadCph = new Encoder();
-      const statNotifHeadCph = encNotifHeadCph.writeStruct(peekItemHeadCodec, bag);
+      const statNotifHeadCph = encNotifHeadCph.writeStruct(
+        peekItemHeadCodec,
+        bag,
+      );
       if (statNotifHeadCph !== Status.Success) return statNotifHeadCph;
       const notifHeadCph = encNotifHeadCph.result();
       const notif: IBagNotifItem = { seq, headCph: notifHeadCph };
-      if (bags.length === 1 && bag.bodyCph.length <= notifInlineBodyBytesThreshold) {
+      if (
+        bags.length === 1 && bag.bodyCph.length <= notifInlineBodyBytesThreshold
+      ) {
         notif.bodyCph = bag.bodyCph;
       }
       notifs.push(notif);

@@ -88,7 +88,7 @@ export interface IDownloadQueue {
 }
 
 export interface IStorableMessage {
-  key: Hash,
+  key: Hash;
   data: IStoredMessageData;
 }
 export interface IStoredMessage {
@@ -102,13 +102,23 @@ export interface IStoredMessageData {
   ctr?: number;
   body?: EncodedMessage;
 }
-export async function toStoredMessage(hash: Hash, data: IStoredMessageData, crypto: ICrypto): Promise<IStoredMessage> {
+export async function toStoredMessage(
+  hash: Hash,
+  data: IStoredMessageData,
+  crypto: ICrypto,
+): Promise<IStoredMessage> {
   const len = data.body?.length ?? 0;
   let hsh: Uint8Array | undefined;
   if (data.body && len > 0) {
     hsh = await crypto.blake3(data.body);
   }
-  const head: IMessageHead = { eid: data.eid, off: data.off ?? 0, ctr: data.ctr ?? 0, len, hsh };
+  const head: IMessageHead = {
+    eid: data.eid,
+    off: data.off ?? 0,
+    ctr: data.ctr ?? 0,
+    len,
+    hsh,
+  };
   return { hash, head, body: data.body };
 }
 export interface IMessageStore {

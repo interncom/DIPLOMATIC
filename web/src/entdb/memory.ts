@@ -72,7 +72,9 @@ export class EntDBMemory implements IEntDB {
       }
     } else if (gid !== undefined) {
       for (const ent of this.ents.values()) {
-        if (ent.type === type && (typeof ent.gid === "string" && ent.gid === gid)) {
+        if (
+          ent.type === type && (typeof ent.gid === "string" && ent.gid === gid)
+        ) {
           results.push(ent as IPossiblyDeletedEntity<T>);
         }
       }

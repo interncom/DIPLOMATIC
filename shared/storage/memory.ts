@@ -8,10 +8,13 @@ import { err, ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
-  bag: Map<string, Map<number, {
-    headCph: Uint8Array;
-    bodyCph: Uint8Array;
-  }>>;
+  bag: Map<
+    string,
+    Map<number, {
+      headCph: Uint8Array;
+      bodyCph: Uint8Array;
+    }>
+  >;
 }
 const memStorage: IMemoryStorage = {
   users: new Set<string>(), // Set of user pubkeys in hex.

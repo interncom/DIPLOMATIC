@@ -6,7 +6,7 @@ import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
-  constructor(private url: URL) { }
+  constructor(private url: URL) {}
 
   connected(): boolean {
     return this.websocket !== undefined &&

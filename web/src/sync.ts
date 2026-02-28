@@ -83,14 +83,18 @@ export async function parsePeekItem(
   return ok({ kdm: itemDec.kdm, head });
 }
 
+export interface ISyncParams<Handle extends HostHandle> {
+  conn: DiplomaticClientAPI<Handle>;
+  store: IStore<Handle>;
+  enclave: Enclave;
+  clock: IClock;
+  host: IHostRow<Handle>;
+  crypto: ICrypto;
+}
+
 // Phase 1: Peek for new items and enqueue downloads
 export async function syncPeek<Handle extends HostHandle>(
-  conn: DiplomaticClientAPI<Handle>,
-  store: IStore<Handle>,
-  enclave: Enclave,
-  clock: IClock,
-  host: IHostRow<Handle>,
-  crypto: ICrypto,
+  { conn, store, enclave, host, crypto }: ISyncParams<Handle>,
 ): Promise<Status> {
   // console.info("peeking...")
   const hostKeys = await conn.keys();
@@ -123,12 +127,7 @@ export async function syncPeek<Handle extends HostHandle>(
 
 // Phase 2: Push local uploads to the host
 export async function syncPush<Handle extends HostHandle>(
-  conn: DiplomaticClientAPI<Handle>,
-  store: IStore<Handle>,
-  enclave: Enclave,
-  clock: IClock,
-  host: IHostRow<Handle>,
-  crypto: ICrypto,
+  { conn, store, host }: ISyncParams<Handle>,
 ): Promise<Status> {
   // console.info("pushing...")
   // Form bags.
@@ -194,11 +193,7 @@ export async function syncPush<Handle extends HostHandle>(
 
 // Phase 3: Pull and process enqueued downloads
 export async function syncPull<Handle extends HostHandle>(
-  conn: DiplomaticClientAPI<Handle>,
-  store: IStore<Handle>,
-  enclave: Enclave,
-  host: IHostRow<Handle>,
-  crypto: ICrypto,
+  { conn, store, enclave, host, crypto }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
@@ -299,11 +294,7 @@ export function msg2StoredMsgData(
 
 export async function handleNotif<Handle extends HostHandle>(
   bytes: Uint8Array,
-  conn: DiplomaticClientAPI<Handle>,
-  store: IStore<Handle>,
-  enclave: Enclave,
-  host: IHostRow<Handle>,
-  crypto: ICrypto,
+  { conn, store, enclave, host, crypto, clock }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
@@ -451,6 +442,6 @@ export async function handleNotif<Handle extends HostHandle>(
   if (outOfSeq) {
     scheduleSync();
   } else {
-    await syncPull(conn, store, enclave, host, crypto, apply);
+    await syncPull({ conn, store, enclave, host, crypto, clock }, apply);
   }
 }

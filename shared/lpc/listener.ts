@@ -20,7 +20,7 @@ export class CallbackListener implements IPushListener {
   async connect(
     authTS: IAuthTimestamp,
     recv: PushReceiver,
-    onDisconnect: () => void,
+    _onDisconnect: () => void,
   ): Promise<Status> {
     const resp = await this.notifier.open(
       authTS,

@@ -50,9 +50,9 @@ export function useSyncOnResume<Handle extends HostHandle>(
       await client.connect();
       await client.sync();
     }
-    window.addEventListener("online", handleOnline);
+    globalThis.addEventListener("online", handleOnline);
     return () => {
-      window.removeEventListener("online", handleOnline);
+      globalThis.removeEventListener("online", handleOnline);
     };
   }, [client]);
 }

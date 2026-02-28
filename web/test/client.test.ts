@@ -25,9 +25,9 @@ import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
 
 const lpcHost = new DiplomaticLPCServer(
-  memStorage as any,
-  libsodiumCrypto as any,
-  new CallbackNotifier() as any,
+  memStorage,
+  libsodiumCrypto,
+  new CallbackNotifier(),
   new MockClock(new Date(0)),
 );
 
@@ -46,8 +46,8 @@ const createClient = async (clock = mockClock) => {
     async apply(msgs) {
       return msgs.map(() => Status.Success);
     },
-    on(type, listener) { },
-    off(type, listener) { },
+    on(_type, _listener) { },
+    off(_type, _listener) { },
   };
   const client = new SyncClient<IProtoHost>(
     clock,
@@ -97,8 +97,8 @@ describe("Client", () => {
     test("with non-zero counts", async () => {
       const { store, client } = await createClient();
       // Simulate some uploads and downloads
-      const hash1 = new Uint8Array(32).fill(1) as any; // Approximate Hash
-      const hash2 = new Uint8Array(32).fill(2) as any;
+      const hash1 = new Uint8Array(32).fill(1) as Hash; // Approximate Hash
+      const hash2 = new Uint8Array(32).fill(2) as Hash;
       const dl: IDownloadMessage = {
         kdm: new Uint8Array(8).fill(3),
         hash: new Uint8Array(32).fill(3) as Hash,
@@ -121,6 +121,7 @@ describe("Client", () => {
     test("clears connections", async () => {
       const { client } = await createClient();
       // Simulate having connections
+      // deno-lint-ignore no-explicit-any
       client.connections.set("test", {} as any);
       expect(client.connections.size).toBe(1);
       await client.disconnect();
@@ -135,7 +136,7 @@ describe("Client", () => {
       });
       await client.link(testHost);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
-      const [head, statHead] = await client.insertRaw(body);
+      const [_head, statHead] = await client.insertRaw(body);
       if (statHead !== Status.Success) {
         expect(statHead).toEqual(Status.Success);
         return;
@@ -362,7 +363,7 @@ describe("Client", () => {
     test("pushes message to host", async () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
-        .gen256BitSecureRandomSeed() as any;
+        .gen256BitSecureRandomSeed() as MasterSeed;
       await store.seed.save(masterSeed);
       await client.link(testHost);
       await client.connect();
@@ -375,8 +376,8 @@ describe("Client", () => {
       const enclave = (await store.seed.load())!;
       const keys = await hostKeys(
         {
-          enclave: enclave as any,
-          crypto: libsodiumCrypto as any,
+          enclave: enclave,
+          crypto: libsodiumCrypto,
           clock: lpcHost.clock,
         },
         "test",
@@ -393,7 +394,7 @@ describe("Client", () => {
     test("pulls message from host if one is present", async () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
-        .gen256BitSecureRandomSeed() as any;
+        .gen256BitSecureRandomSeed() as MasterSeed;
       await store.seed.save(masterSeed);
       await client.link(testHost);
       await client.connect();
@@ -490,7 +491,7 @@ describe("Client", () => {
 describe("push notifications", () => {
   test("end-to-end: push notification triggers sync", async () => {
     // Generate shared seed for both clients (single-user system)
-    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as any;
+    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as MasterSeed;
 
     // Create clientA (pusher)
     const { store: storeA, client: clientA } = await createClient(

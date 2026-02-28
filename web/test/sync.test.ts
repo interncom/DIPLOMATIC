@@ -6,7 +6,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { EncodedMessage } from "../src/shared/message";
 import memStorage from "../src/shared/storage/memory";
-import type { IHostCrypto, IStorage, MasterSeed } from "../src/shared/types";
+import type { HostHandle, IHostCrypto, IStorage, MasterSeed } from "../src/shared/types";
 import { MemoryStore } from "../src/stores/memory/store";
 import { IStateManager } from "../src/types";
 import { Status } from "../src/shared/consts";
@@ -35,13 +35,13 @@ beforeEach(() => {
 });
 
 const createClient = async (seed: Uint8Array) => {
-  const store = new MemoryStore<any>(libsodiumCrypto);
+  const store = new MemoryStore<HostHandle>(libsodiumCrypto);
   const state: IStateManager = {
-    async apply(msg) {
-      return Status.Success;
+    async apply(msgs) {
+      return msgs.map(() => Status.Success);
     },
-    on(type, listener) {},
-    off(type, listener) {},
+    on(_type, _listener) { },
+    off(_type, _listener) { },
   };
   const client = new SyncClient(
     new MockClock(new Date(0)),
@@ -60,7 +60,7 @@ describe("Sync Integration", () => {
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 
     // Create two clients with the same seed
-    const { store: storeA, client: clientA } = await createClient(masterSeed);
+    const { client: clientA } = await createClient(masterSeed);
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
     // Link both to the same host
@@ -89,7 +89,7 @@ describe("Sync Integration", () => {
 
   test("handles multiple messages and updates", async () => {
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-    const { store: storeA, client: clientA } = await createClient(masterSeed);
+    const { client: clientA } = await createClient(masterSeed);
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
     await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
@@ -119,7 +119,7 @@ describe("Sync Integration", () => {
 
   test("peek filter by recorded at works", async () => {
     const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-    const { store: storeA, client: clientA } = await createClient(masterSeed);
+    const { client: clientA } = await createClient(masterSeed);
     const { store: storeB, client: clientB } = await createClient(masterSeed);
 
     await clientA.link({ handle: lpcHost, label: "test", idx: 1 });

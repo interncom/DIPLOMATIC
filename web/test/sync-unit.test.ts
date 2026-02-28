@@ -41,6 +41,7 @@ describe("syncPeek", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
+  // deno-lint-ignore no-explicit-any
   let host: any;
   let conn: DiplomaticClientAPI<HostHandle>;
   let lpcHost: DiplomaticLPCServer;
@@ -54,9 +55,9 @@ describe("syncPeek", () => {
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
-      storage as any,
-      libsodiumCrypto as any,
-      new CallbackNotifier() as any,
+      storage,
+      libsodiumCrypto,
+      new CallbackNotifier(),
       new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);
@@ -85,6 +86,7 @@ describe("syncPush", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
+  // deno-lint-ignore no-explicit-any
   let host: any;
   let conn: DiplomaticClientAPI<HostHandle>;
   let lpcHost: DiplomaticLPCServer;
@@ -98,9 +100,9 @@ describe("syncPush", () => {
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
-      storage as any,
-      libsodiumCrypto as any,
-      new CallbackNotifier() as any,
+      storage,
+      libsodiumCrypto,
+      new CallbackNotifier(),
       new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);
@@ -151,6 +153,7 @@ describe("syncPull", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
+  // deno-lint-ignore no-explicit-any
   let host: any;
   let conn: DiplomaticClientAPI<HostHandle>;
   let lpcHost: DiplomaticLPCServer;
@@ -164,9 +167,9 @@ describe("syncPull", () => {
     // Create fresh storage and host per test
     const storage = { ...memStorage };
     lpcHost = new DiplomaticLPCServer(
-      storage as any,
-      libsodiumCrypto as any,
-      new CallbackNotifier() as any,
+      storage,
+      libsodiumCrypto,
+      new CallbackNotifier(),
       new MockClock(new Date(0)),
     );
     transport = new LPCTransport(lpcHost);

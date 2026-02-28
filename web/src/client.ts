@@ -443,11 +443,14 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         const recv = async (bytes: Uint8Array) => {
           handleNotif(
             bytes,
-            conn,
-            store,
-            enclave,
-            host,
-            crypto,
+            {
+              conn,
+              store,
+              enclave,
+              host,
+              crypto,
+              clock,
+            },
             this.apply,
             this.scheduleSync,
           );

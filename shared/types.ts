@@ -6,7 +6,7 @@ import { IUsageQuota } from "./codecs/usageQuota.ts";
 import { APICallName, Status } from "./consts.ts";
 import { ValStat } from "./valstat.ts";
 
-export type GroupID = Uint8Array | string;
+export type GroupID = string;
 
 const entityIDSymbol = Symbol("EntityID");
 export type EntityID = Uint8Array & { readonly [entityIDSymbol]: true };

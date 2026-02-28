@@ -30,9 +30,7 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
     crd: ent.createdAt,
     ...(ent.ctr !== 0 ? { ctr: ent.ctr } : {}),
     eid: btob64(ent.eid),
-    gid: ent.gid
-      ? (typeof ent.gid === "string" ? ent.gid : btoh(ent.gid))
-      : undefined,
+    gid: ent.gid,
     pid: ent.pid ? btob64(ent.pid) : undefined,
     typ: ent.type,
     upd: ent.updatedAt,
@@ -58,9 +56,7 @@ function storedToEntity<T>(stored: IStoredEntity<T>): IPossiblyDeletedEntity<T> 
     ctr: stored.ctr ?? 0,
     type: stored.typ,
     eid: b64tob(stored.eid) as EntityID,
-    gid: stored.gid
-      ? (stored.gid.length === 64 ? htob(stored.gid) : stored.gid)
-      : undefined,
+    gid: stored.gid,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
   };
 }
@@ -257,11 +253,10 @@ export class EntIDB implements IEntDB {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
-    const gidHex = typeof gid === "string" ? gid : btoh(gid);
     const tx = this.db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeGroupIndexName);
     return new Promise((resolve) => {
-      const req = index.getAll(IDBKeyRange.only([opType, gidHex]));
+      const req = index.getAll(IDBKeyRange.only([opType, gid]));
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
         resolve(ok(storedEnts.map(storedToEntity)));

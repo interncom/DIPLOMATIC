@@ -82,10 +82,6 @@ class MockCrypto implements ICrypto {
   ): Promise<boolean> {
     return true;
   }
-
-  async sha256Hash(_data: Uint8Array): Promise<Uint8Array> {
-    return new Uint8Array(32).fill(0x88);
-  }
 }
 
 class MockEnclave extends Enclave {

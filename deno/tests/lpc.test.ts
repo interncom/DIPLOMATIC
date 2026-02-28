@@ -127,7 +127,6 @@ Deno.test("lpc integration", async (t) => {
       }),
       blake3: async (_input: Uint8Array) =>
         new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (_input: Uint8Array) => new Uint8Array(32).fill(0xbb),
       encryptXSalsa20Poly1305Combined: async (
         plaintext: Uint8Array,
         _key: Uint8Array,
@@ -202,7 +201,6 @@ Deno.test("lpc integration", async (t) => {
       ...baseCryptoImpl,
       blake3: async (_input: Uint8Array) =>
         new Uint8Array(32).fill(0xaa) as Hash,
-      sha256Hash: async (_input: Uint8Array) => new Uint8Array(32).fill(0xbb),
     };
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, cryptoImpl);

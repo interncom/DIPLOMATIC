@@ -3,6 +3,7 @@ import { IHostConnectionInfo, IHostMetadata } from "../../shared/types";
 import type { IHostRow, IHostStore } from "../../types";
 import { HOSTS_TABLE } from "./store";
 
+// deno-lint-ignore no-explicit-any
 function idbRowToHostRow(row: any): IHostRow<URL> {
   const host: IHostRow<URL> = {
     label: row.label,

@@ -31,7 +31,7 @@ const lpcHost = new DiplomaticLPCServer(
   new MockClock(new Date(0)),
 );
 
-const transport = new LPCTransport(lpcHost);
+const transport = () => new LPCTransport(lpcHost);
 
 const mockClock = { now: () => new Date() };
 const testHost: IHostConnectionInfo<IProtoHost> = {

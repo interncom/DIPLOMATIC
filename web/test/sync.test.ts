@@ -13,7 +13,7 @@ import { Status } from "../src/shared/consts";
 
 const hostClock = new MockClock(new Date(0));
 let lpcHost: DiplomaticLPCServer;
-let transport: LPCTransport;
+let transport: () => LPCTransport;
 
 beforeEach(() => {
   // Create fresh storage per test to avoid interference
@@ -31,7 +31,7 @@ beforeEach(() => {
     new CallbackNotifier(),
     hostClock,
   );
-  transport = new LPCTransport(lpcHost);
+  transport = () => new LPCTransport(lpcHost);
 });
 
 const createClient = async (seed: Uint8Array) => {

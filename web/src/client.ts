@@ -30,6 +30,7 @@ import {
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
+  IHostRow,
   IMsgParts,
   IStateEmitter,
   IStateManager,
@@ -48,7 +49,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private clock: IClock,
     private state: IStateManager,
     private store: IStore<Handle>,
-    private transport: ITransport,
+    private transport: (host: IHostRow<Handle>) => ITransport,
     private crypto: ICrypto = libsodiumCrypto,
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
@@ -410,10 +411,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   // Manage stored host connections.
   public async link(host: IHostConnectionInfo<Handle>) {
-    return this.store.hosts.add(host);
+    this.store.hosts.add(host);
+    this.clientState.emit();
   }
   public async unlink(label: string) {
-    return this.store.hosts.del(label);
+    await this.store.hosts.del(label);
+    this.clientState.emit();
   }
 
   // Manage active host connections.
@@ -430,12 +433,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         continue;
       }
       console.info(`Connecting to ${host.handle} (${label})`);
+      const txport = transport(host);
       const conn = new DiplomaticClientAPI(
         enclave,
         libsodiumCrypto,
         host,
         clock,
-        transport,
+        txport,
         (meta) => this.store.hosts.set(label, meta),
       );
       await conn.register();
@@ -461,7 +465,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
   }
 
-  public async disconnect() {
+  public disconnect = async () => {
     this.connections.clear();
   }
 }

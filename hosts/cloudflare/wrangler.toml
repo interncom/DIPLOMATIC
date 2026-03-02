@@ -1,9 +1,14 @@
 #:schema node_modules/wrangler/config-schema.json
 account_id = "a004777392bb363fac2c1555755acee5"
-name = "diplomatic-cloudflare-host"
+name = "sync-beta"
 main = "src/index.ts"
-compatibility_date = "2024-06-20"
+compatibility_date = "2026-02-28"
 compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "sync-beta.interncom.org"
+zone_name = "interncom.org"
+custom_domain = true
 
 [[durable_objects.bindings]]
 name = "WEBSOCKET_SERVER"
@@ -11,11 +16,14 @@ class_name = "WebSocketServer"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["WebSocketServer"]
+new_classes = [ "WebSocketServer" ]
 
 # Bind a D1 database. D1 is Cloudflare’s native serverless SQL database.
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#d1-databases
 [[d1_databases]]
 binding = "DIP_DB"
-database_name = "diplomatic"
-database_id = "bba55e96-b690-4d86-9807-45bce967cfa6"
+database_name = "diplomatic-beta"
+database_id = "0a5ee394-b912-4347-91c9-3734374c81b4"
+
+[observability]
+enabled = true

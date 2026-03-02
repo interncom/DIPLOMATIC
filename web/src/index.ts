@@ -26,7 +26,11 @@ import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
-import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
+import type { IDiplomaticClientState, IHostRow, IStateManager, IStore } from "./types";
+
+export const hostHTTPTransport = (host: IHostRow<URL>) => {
+  return new HTTPTransport(host.handle);
+}
 
 export async function genWebClient(
   stateMgr: StateManager,
@@ -36,7 +40,7 @@ export async function genWebClient(
 > {
   const idb = await openIDBStore();
   const idbStore = new IDBStore(idb, libsodiumCrypto);
-  const transport = new HTTPTransport(url);
+  const transport = (host: IHostRow<URL>) => new HTTPTransport(host.handle);
   const client = new SyncClient<URL>(
     new Clock(),
     stateMgr,

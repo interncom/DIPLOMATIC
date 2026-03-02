@@ -61,28 +61,6 @@ export async function decryptPeekItem(
   return ok({ kdm, headEnc });
 }
 
-export async function parsePeekItem(
-  item: IBagPeekItem,
-  hostKeys: HostSpecificKeyPair,
-  enclave: Enclave,
-  crypto: ICrypto,
-): Promise<ValStat<{ kdm: Uint8Array; head: IMessageHead }>> {
-  const [itemDec, stat] = await decryptPeekItem(
-    item,
-    hostKeys,
-    enclave,
-    crypto,
-  );
-  if (stat !== Status.Success) return err(stat);
-
-  const headDec = new Decoder(itemDec.headEnc);
-  const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-  if (headStatus !== Status.Success) {
-    return err(headStatus);
-  }
-  return ok({ kdm: itemDec.kdm, head });
-}
-
 export interface ISyncParams<Handle extends HostHandle> {
   conn: DiplomaticClientAPI<Handle>;
   store: IStore<Handle>;
@@ -104,15 +82,35 @@ export async function syncPeek<Handle extends HostHandle>(
     return peekStatus;
   }
   for (const item of items) {
-    const [dlm, stat] = await parsePeekItem(item, hostKeys, enclave, crypto);
+    const [itemDec, stat] = await decryptPeekItem(
+      item,
+      hostKeys,
+      enclave,
+      crypto,
+    );
     if (stat !== Status.Success) {
-      console.error("Parsing peek item", stat);
+      console.error("peek: decrypting item head", stat);
       continue;
       // NOTE: skipping here has the potential to create out-of-sync issues.
       // The resolution will be the CHECK mechanism to ensure client and host
       // have the same set of messages.
     }
-    dls.push({ ...dlm, seq: item.seq, host: host.label });
+
+    const headEncHash = await crypto.blake3(itemDec.headEnc);
+    const msgExists = await store.messages.has(headEncHash);
+    if (msgExists) {
+      console.info("peek: skipping download enqueue")
+      continue;
+    }
+
+    const headDec = new Decoder(itemDec.headEnc);
+    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+    if (headStatus !== Status.Success) {
+      console.error("peek: reading item head", headStatus);
+      continue;
+    }
+
+    dls.push({ kdm: itemDec.kdm, head, seq: item.seq, host: host.label });
   }
   await store.downloads.enq(dls);
 

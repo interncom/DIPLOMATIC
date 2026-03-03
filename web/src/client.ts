@@ -126,6 +126,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       for (const host of hosts) {
         await this.store.uploads.enq(host.label, hashes);
       }
+      this.xferState.emit();
       // Clear any existing timeout to reset debounce
       if (this.syncTimeout !== null) {
         clearTimeout(this.syncTimeout);

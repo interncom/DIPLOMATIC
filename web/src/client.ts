@@ -304,16 +304,21 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         console.error(`Failed to peek: ${peekStat}`);
         return peekStat;
       }
+      this.xferState.emit();
+
       const pushStat = await syncPush(syncParams);
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
         return pushStat;
       }
+      this.xferState.emit();
+
       const pullStat = await syncPull(syncParams, this.apply.bind(this));
       if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
         console.error(`Failed to pull: ${pullStat}`);
         return pullStat;
       }
+      this.xferState.emit();
     }
     return Status.Success;
   }

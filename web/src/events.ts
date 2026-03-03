@@ -63,7 +63,7 @@ export class StateEmitter<T> implements IStateEmitter<T> {
 
   async emit() {
     const state = await this.getter();
-    this.emitter.emit(StateEmitter.eventName, state);
+    queueMicrotask(() => this.emitter.emit(StateEmitter.eventName, state));
   }
 
   listen(func: (state: T) => void) {

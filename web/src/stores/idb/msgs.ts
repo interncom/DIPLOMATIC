@@ -123,6 +123,7 @@ export class IDBMessageStore implements IMessageStore {
         if (cursor) {
           const key = cursor.key as string;
           const data = cursor.value as IStoredMessageData;
+          // TODO: convert eid to b64 and use an indexed lookup.
           if (bytesEqual(eid, data.eid)) {
             if (
               !latest || (data.ctr ?? 0) > (latest.data.ctr ?? 0) ||

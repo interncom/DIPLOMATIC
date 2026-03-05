@@ -4,14 +4,7 @@
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-import {
-  EntitiesQuery,
-  IEntDB,
-  IEntity,
-  IPossiblyDeletedEntity,
-  isLiveEntity,
-  updateEnt,
-} from "./entdb";
+import { applyOp, EntitiesQuery, IEntDB, IEntity } from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
 
 export const entityTableName = "entities";
@@ -21,7 +14,7 @@ export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
 
 interface IStoredEntity<T = unknown> {
-  bod?: T;
+  bod: T;
   crd: Date; // createdAt
   ctr?: number;
   eid: string;
@@ -31,7 +24,7 @@ interface IStoredEntity<T = unknown> {
   upd: Date; // updatedAt
 }
 
-function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
+function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   const stored: IStoredEntity<T> = {
     bod: ent.body,
     crd: ent.createdAt,
@@ -57,7 +50,7 @@ function entityToStored<T>(ent: IPossiblyDeletedEntity<T>): IStoredEntity<T> {
 
 function storedToEntity<T>(
   stored: IStoredEntity<T>,
-): IPossiblyDeletedEntity<T> {
+): IEntity<T> {
   return {
     body: stored.bod,
     createdAt: stored.crd,
@@ -157,21 +150,31 @@ export class EntIDB implements IEntDB {
         }
       }
 
+      // Run the per-group updates in-memory then persist the final state.
       for (const [eidB64, group] of groups) {
+        if (group.length < 1) {
+          continue;
+        }
+
         const getReq = store.get(eidB64);
         getReq.onsuccess = () => {
           const currStored = getReq.result;
-          let curr = currStored ? storedToEntity(currStored) : undefined;
-          // Sequentially apply updateEnt for each op in the group.
+          let curr: IEntity | undefined = currStored
+            ? storedToEntity(currStored)
+            : undefined;
+
+          // Sequentially apply applyOp for each op in the group.
           for (const { op, index } of group) {
-            const [newEnt, stat] = updateEnt(curr, op);
+            const [next, stat] = applyOp(curr, op);
             if (stat !== Status.Success) {
+              // NOTE: this includes Status.NoChange.
               results[index] = stat;
-            } else {
-              curr = newEnt;
+              continue;
             }
+            curr = next;
           }
-          // Persist the final state of the ent.
+
+          // Persist the final state of the ent if it exists, otherwise delete.
           if (curr) {
             const storedEnt = entityToStored(curr);
             const putReq = store.put(storedEnt);
@@ -181,8 +184,17 @@ export class EntIDB implements IEntDB {
                 results[index] = Status.DatabaseError;
               }
             };
+          } else {
+            // Undefined indicates it was deleted.
+            const delReq = store.delete(eidB64);
+            delReq.onerror = () => {
+              for (const { index } of group) {
+                results[index] = Status.DatabaseError;
+              }
+            };
           }
         };
+
         getReq.onerror = () => {
           for (const { index } of group) {
             results[index] = Status.DatabaseError;
@@ -221,12 +233,8 @@ export class EntIDB implements IEntDB {
         if (!stored) {
           resolve(ok(undefined));
         } else {
-          const ent = storedToEntity(stored as IStoredEntity<T>);
-          if (isLiveEntity(ent)) {
-            resolve(ok(ent));
-          } else {
-            resolve(ok(undefined));
-          }
+          const ent = storedToEntity<T>(stored);
+          resolve(ok(ent));
         }
       };
       req.onerror = () => resolve(err(Status.DatabaseError));
@@ -237,7 +245,7 @@ export class EntIDB implements IEntDB {
     opType: string,
     start: Date,
     end: Date,
-  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -258,7 +266,7 @@ export class EntIDB implements IEntDB {
   async getGroupMembers<T>(
     opType: string,
     gid: GroupID,
-  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -276,7 +284,7 @@ export class EntIDB implements IEntDB {
 
   async getAllOfType<T>(
     opType: string,
-  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -296,7 +304,7 @@ export class EntIDB implements IEntDB {
 
   private async getAllEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
-  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
+  ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
@@ -332,8 +340,7 @@ export class EntIDB implements IEntDB {
     if (stat !== Status.Success) {
       return err(stat);
     }
-    const liveEnts = ents.filter(isLiveEntity);
-    return ok(liveEnts);
+    return ok(ents);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {

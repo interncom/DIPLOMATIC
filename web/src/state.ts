@@ -1,7 +1,14 @@
 import { decode } from "@msgpack/msgpack";
 import { TypedEventEmitter } from "./events";
 import { Status } from "./shared/consts";
-import { IMessage, IMsgEntBody, IOp } from "./shared/types";
+import {
+  IDeleteOp,
+  IMessage,
+  IMsgEntBody,
+  IMutateOp,
+  IOp,
+  isMutateOp,
+} from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import type { Applier, IStateManager } from "./types";
 
@@ -24,15 +31,21 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
 export function msgToOp(msg: IMessage): ValStat<IOp> {
   // If an IMessage represents an entity update (i.e. it's used in EntDB),
   // then the bod of the IMessage must be an msgpack-encoded IMsgEntBod.
-  if (!msg.bod) {
-    return err(Status.MissingBody);
+  if (!msg.bod || msg.bod.length === 0) {
+    // Undefined or empty bod indicates a delete operation.
+    const op: IDeleteOp = {
+      off: msg.off,
+      ctr: msg.ctr,
+      eid: msg.eid,
+    };
+    return ok(op);
   }
   const bodDec = decode(msg.bod);
   if (isMsgEntBody(bodDec) === false) {
     console.warn(`msg body invalid`, bodDec);
     return err(Status.InvalidMessage);
   }
-  const op: IOp = {
+  const op: IMutateOp = {
     off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,
@@ -85,7 +98,9 @@ export class StateManager implements IStateManager {
         continue;
       }
       const op = ops[i];
-      successfulTypes.add(op.type);
+      if (isMutateOp(op)) {
+        successfulTypes.add(op.type);
+      }
       results.push(Status.Success);
     }
     // console.timeEnd("state apply: collecting statuses...")

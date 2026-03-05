@@ -63,8 +63,20 @@ export interface IMessageWithHash extends IMessage {
 // entity, with created at timestamp embedded in the eid, and updated at
 // timestamp encoded via the milliseconds offset from created at (off).
 // An IOp additionally has type, gid, and pid fields for indexing the entity.
-export interface IOp<T = unknown>
-  extends Omit<IMessageHead, "len" | "hsh" | "bod">, IMsgEntBody<T> {}
+export interface IDeleteOp extends Omit<IMessageHead, "len" | "hsh" | "bod"> {}
+export interface IMutateOp<T = unknown>
+  extends IDeleteOp, Omit<IMsgEntBody<T>, "body"> {
+  body: T;
+}
+export type IOp = IDeleteOp | IMutateOp;
+
+export function isDeleteOp(op: IOp): op is IDeleteOp {
+  return !("type" in op);
+}
+
+export function isMutateOp(op: IOp): op is IMutateOp {
+  return "type" in op;
+}
 
 export interface IInsertParams<T> extends IMsgEntBody<T> {
   id?: Uint8Array;

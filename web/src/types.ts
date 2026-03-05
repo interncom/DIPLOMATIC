@@ -34,7 +34,9 @@ export interface IDiplomaticClientXferState {
   numDownloads: number;
 }
 
-export type Applier = (ops: IOp[]) => Promise<Status[]>;
+export type Applier = (
+  ops: IOp[],
+) => Promise<{ stats: Status[]; types: Set<string> }>;
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {

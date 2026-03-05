@@ -109,20 +109,23 @@ export class EntIDB implements IEntDB {
   }
 
   apply = async (ops: IOp[]) => {
+    // Set of ent types affected by applying ops.
+    const types = new Set<string>();
+
     if (!this.db) {
-      return ops.map(() => Status.DatabaseClosed);
+      return { stats: ops.map(() => Status.DatabaseClosed), types };
     }
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
-    return new Promise<Status[]>((resolve) => {
+    return new Promise<{ stats: Status[]; types: Set<string> }>((resolve) => {
       const results: Status[] = new Array(ops.length).fill(Status.Success);
       if (ops.length < 1) {
-        resolve([]);
+        resolve({ stats: [], types });
         return;
       }
 
       tx.oncomplete = () => {
-        resolve(results);
+        resolve({ stats: results, types });
       };
       tx.onerror = () => {
         for (let i = 0; i < results.length; i++) {
@@ -130,7 +133,7 @@ export class EntIDB implements IEntDB {
             results[i] = Status.DatabaseError;
           }
         }
-        resolve(results);
+        resolve({ stats: results, types });
       };
 
       // Group ops by eidB64.
@@ -170,6 +173,11 @@ export class EntIDB implements IEntDB {
               // NOTE: this includes Status.NoChange.
               results[index] = stat;
               continue;
+            }
+            if (next) {
+              types.add(next.type);
+            } else if (curr) {
+              types.add(curr.type);
             }
             curr = next;
           }

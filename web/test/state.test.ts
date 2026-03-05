@@ -89,7 +89,7 @@ describe("StateManager.apply", () => {
 
   beforeEach(() => {
     emittedEvents = [];
-    const applier = vi.fn().mockImplementation(ops => ops.map(() => Status.Success));
+    const applier = vi.fn().mockImplementation(ops => ({ stats: ops.map(() => Status.Success), types: new Set(ops.filter(op => op.type).map(op => op.type)) }));
     const clear = vi.fn().mockResolvedValue(Status.Success);
     stateManager = new StateManager(applier, clear);
     // Spy on the private emitter's emit method

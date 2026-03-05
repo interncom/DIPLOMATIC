@@ -7,7 +7,6 @@ import {
   IMsgEntBody,
   IMutateOp,
   IOp,
-  isMutateOp,
 } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import type { Applier, IStateManager } from "./types";
@@ -63,7 +62,7 @@ export class StateManager implements IStateManager {
   constructor(
     public applier: Applier,
     public clear: () => Promise<Status>,
-  ) {}
+  ) { }
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
@@ -80,12 +79,11 @@ export class StateManager implements IStateManager {
     // console.timeEnd("state apply: parsing msgs...")
 
     // console.time("state apply: applying ops...")
-    const applyStats = await this.applier(ops);
+    const { stats: applyStats, types } = await this.applier(ops);
     // console.timeEnd("state apply: applying ops...")
 
     // console.time("state apply: collecting statuses...")
     const results: Status[] = [];
-    const successfulTypes = new Set<string>();
     for (let i = 0; i < msgs.length; i++) {
       const parseStat = parseStats[i];
       const applyStat = applyStats[i];
@@ -97,16 +95,12 @@ export class StateManager implements IStateManager {
         results.push(applyStat);
         continue;
       }
-      const op = ops[i];
-      if (isMutateOp(op)) {
-        successfulTypes.add(op.type);
-      }
       results.push(Status.Success);
     }
     // console.timeEnd("state apply: collecting statuses...")
 
     // console.time("state apply: emitting updates...")
-    for (const type of successfulTypes) {
+    for (const type of types) {
       this.emitter.emit(type, null);
     }
     // console.timeEnd("state apply: emitting updates...")
@@ -124,11 +118,11 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function (msgs: IMessage[]) {
+  apply: async function(msgs: IMessage[]) {
     return msgs.map(() => Status.Success);
   },
-  on: function (_type, _listener): void {
+  on: function(_type, _listener): void {
   },
-  off: function (_type, _listener): void {
+  off: function(_type, _listener): void {
   },
 };

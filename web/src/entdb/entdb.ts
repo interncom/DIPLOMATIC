@@ -32,7 +32,7 @@ export type EntitiesQuery = {
 };
 
 export interface IEntDB {
-  apply: (ops: IOp[]) => Promise<Status[]>;
+  apply: (ops: IOp[]) => Promise<{ stats: Status[]; types: Set<string> }>;
   clear: () => Promise<Status>;
   getEnt<T>(
     eid: EntityID,
@@ -44,11 +44,7 @@ export interface IEntDB {
 }
 
 export function entStateManager(edb: IEntDB): StateManager {
-  const apply = async (ops: IOp[]) => {
-    const stats = await edb.apply(ops);
-    return stats;
-  };
-  return new StateManager(apply, edb.clear);
+  return new StateManager(edb.apply, edb.clear);
 }
 
 export function applyOp(
@@ -90,6 +86,9 @@ export const nullEntDB: IEntDB = {
   getEnt: async () => err(Status.NotImplemented),
   getEntities: async () => err(Status.NotImplemented),
   countEntities: async () => err(Status.NotImplemented),
-  apply: async (ops: IOp[]) => ops.map(() => Status.NotImplemented),
+  apply: async (ops: IOp[]) => ({
+    stats: ops.map(() => Status.NotImplemented),
+    types: new Set(),
+  }),
   clear: async () => Status.NotImplemented,
 };

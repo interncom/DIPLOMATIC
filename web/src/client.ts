@@ -473,5 +473,5 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public disconnect = async () => {
     this.connections.clear();
-  }
+  };
 }

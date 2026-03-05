@@ -99,7 +99,7 @@ export async function syncPeek<Handle extends HostHandle>(
     const headEncHash = await crypto.blake3(itemDec.headEnc);
     const msgExists = await store.messages.has(headEncHash);
     if (msgExists) {
-      console.info("peek: skipping download enqueue")
+      console.info("peek: skipping download enqueue");
       continue;
     }
 

@@ -1,12 +1,11 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { IEntDB, IEntity, IPossiblyDeletedEntity, isLiveEntity } from "./entdb";
+import { applyOp, IEntDB, IEntity } from "./entdb";
 import { btob64, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, GroupID, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-import { updateEnt } from "./entdb";
 
 interface IDateRange {
   start: Date;
@@ -16,14 +15,14 @@ interface IDateRange {
 type EntitiesQuery = {
   type: string;
   gid?: GroupID;
-  pid?: Uint8Array;
+  pid?: EntityID;
   updatedBetween?: IDateRange;
 };
 
 export class EntDBMemory implements IEntDB {
-  ents: Map<string, IPossiblyDeletedEntity<unknown>> = new Map();
+  ents: Map<string, IEntity> = new Map();
 
-  constructor(initEnts: IPossiblyDeletedEntity<unknown>[] = []) {
+  constructor(initEnts: IEntity[] = []) {
     for (const ent of initEnts) {
       const key = btob64(ent.eid);
       this.ents.set(key, ent);
@@ -35,11 +34,17 @@ export class EntDBMemory implements IEntDB {
     for (const op of ops) {
       const key = btob64(op.eid);
       const curr = this.ents.get(key);
-      const [ent, stat] = updateEnt(curr, op);
-      results.push(stat);
-      if (stat === Status.Success) {
-        this.ents.set(key, ent);
+      const [next, stat] = applyOp(curr, op);
+      if (stat !== Status.Success) {
+        results.push(stat);
+        continue;
       }
+      if (next) {
+        this.ents.set(key, next);
+      } else {
+        this.ents.delete(key);
+      }
+      results.push(Status.Success);
     }
     return results;
   }
@@ -54,20 +59,17 @@ export class EntDBMemory implements IEntDB {
   ): Promise<ValStat<IEntity<T> | undefined>> {
     const key = btob64(eid);
     const ent = this.ents.get(key);
-    if (ent && isLiveEntity(ent)) {
-      return ok(ent as IEntity<T>);
-    }
-    return ok(undefined);
+    return ok(ent as IEntity<T>);
   }
 
   private async getAllEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
-  ): Promise<ValStat<IPossiblyDeletedEntity<T>[]>> {
-    const results: IPossiblyDeletedEntity<T>[] = [];
+  ): Promise<ValStat<IEntity<T>[]>> {
+    const results: IEntity<T>[] = [];
     if (pid !== undefined) {
       for (const ent of this.ents.values()) {
         if (ent.type === type && ent.pid && bytesEqual(ent.pid, pid)) {
-          results.push(ent as IPossiblyDeletedEntity<T>);
+          results.push(ent as IEntity<T>);
         }
       }
     } else if (gid !== undefined) {
@@ -75,7 +77,7 @@ export class EntDBMemory implements IEntDB {
         if (
           ent.type === type && (typeof ent.gid === "string" && ent.gid === gid)
         ) {
-          results.push(ent as IPossiblyDeletedEntity<T>);
+          results.push(ent as IEntity<T>);
         }
       }
     } else if (updatedBetween !== undefined) {
@@ -84,13 +86,13 @@ export class EntDBMemory implements IEntDB {
           ent.type === type && ent.updatedAt >= updatedBetween.start &&
           ent.updatedAt <= updatedBetween.end
         ) {
-          results.push(ent as IPossiblyDeletedEntity<T>);
+          results.push(ent as IEntity<T>);
         }
       }
     } else {
       for (const ent of this.ents.values()) {
         if (ent.type === type) {
-          results.push(ent as IPossiblyDeletedEntity<T>);
+          results.push(ent as IEntity<T>);
         }
       }
     }
@@ -104,8 +106,7 @@ export class EntDBMemory implements IEntDB {
     if (stat !== Status.Success) {
       return err(stat);
     }
-    const liveEnts = ents.filter(isLiveEntity);
-    return ok(liveEnts);
+    return ok(ents);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {

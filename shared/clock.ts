@@ -1,3 +1,5 @@
+// Abstraction of a clock.
+
 export interface IClock {
   now(): Date;
 }
@@ -9,7 +11,7 @@ export class Clock implements IClock {
 }
 
 export class MockClock implements IClock {
-  constructor(private _now: Date) {}
+  constructor(private _now: Date) { }
   set(_now: Date) {
     this._now = _now;
   }

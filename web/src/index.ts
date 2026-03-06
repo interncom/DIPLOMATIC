@@ -1,3 +1,5 @@
+// Public exports for module.
+
 import { SyncClient } from "./client";
 import libsodiumCrypto from "./crypto";
 import {

@@ -1,3 +1,5 @@
+// Various protocol constants.
+
 export const sigBytes = 64;
 export const hashBytes = 32;
 export const idxBytes = 8;

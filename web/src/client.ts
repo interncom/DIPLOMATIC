@@ -1,3 +1,5 @@
+// This is the web client for DIPLOMATIC.
+
 import { encode } from "@msgpack/msgpack";
 import { saveAs } from "file-saver";
 import libsodiumCrypto from "./crypto";

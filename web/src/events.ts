@@ -1,3 +1,5 @@
+// Event emitter.
+
 import { IStateEmitter } from "./types";
 
 type TypedListener<T> = (data: T) => void;

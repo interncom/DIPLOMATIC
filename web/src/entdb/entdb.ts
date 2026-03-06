@@ -1,3 +1,17 @@
+// EntDB, short for "Entity Database", is an object database.
+// It's built on top of DIPLOMATIC messages.
+// Each message (msg) in DIPLOMATIC has an eid.
+// That eid uniquely identifies an application object (an "ent").
+// A new message updates the value of the corresponding ent.
+// EntDB indexes these ents so they can be queried and used efficiently.
+
+// EntDB adds concepts on top of the raw DIPLOMATIC protocol:
+// 1. "type" - Mandatory. Groups ents by their application-defined type.
+// 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents.
+// 3. "gid" (group ID) - Optional. Supports non-hierarchical grouping.
+// These are msgpack-encoded within the DIPLOMATIC msg body.
+// The rest of the ent data lives alongside those, encoded the same way.
+
 import { Decoder } from "../shared/codec.ts";
 import { eidCodec } from "../shared/codecs/eid.ts";
 import { Status } from "../shared/consts";

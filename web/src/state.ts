@@ -1,3 +1,10 @@
+// This file implements a "state manager", which updates application state.
+// It does so in response to DIPLOMATIC messages.
+// When a message (msg) comes in which is more recent than the last one
+// for a particular eid, that new message contains the new state of the
+// application object ("ent" in EntDB) associated with that eid.
+// StateManager delegates to a pluggable "applier" to do the updates.
+
 import { decode } from "@msgpack/msgpack";
 import { TypedEventEmitter } from "./events";
 import { Status } from "./shared/consts";

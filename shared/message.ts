@@ -1,3 +1,6 @@
+// A message is the atomic unit of the DIPLOMATIC protocol.
+// Sometimes we abbreviate message as "msg".
+
 import { Decoder, Encoder } from "./codec.ts";
 import { eidCodec } from "./codecs/eid.ts";
 import { Status } from "./consts.ts";
@@ -10,10 +13,12 @@ import type {
 } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
+// Messages are either upserts (update/insert) or deletes.
 interface IUpsertMessage extends IMessage {
   bod: SerializedContent;
 }
 
+// A delete is just a message with no body (and thus len = 0).
 interface IDeleteMessage extends Omit<IMessage, "bod"> {
   len: 0;
 }

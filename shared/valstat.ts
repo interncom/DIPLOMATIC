@@ -1,4 +1,5 @@
 // ValStat is a return value paired with a status code (for Go-style errors).
+
 import { Status } from "./consts.ts";
 
 export type StatusOK = Status.Success;

@@ -1,3 +1,5 @@
+// DIPLOMATIC API client.
+
 import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
 import { IClock, offset } from "./clock.ts";
@@ -28,7 +30,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     public clock: IClock,
     private transport: ITransport,
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
-  ) {}
+  ) { }
 
   private async call<ReqItem, Resp>(
     apiCall: {

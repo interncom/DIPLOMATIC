@@ -1,3 +1,6 @@
+// Enclave is an abstraction for accessing the master seed.
+// The point is to eventually secure the seed with hardware.
+
 import type { DerivationSeed, ICrypto, MasterSeed } from "./types.ts";
 import { concat } from "./binary.ts";
 

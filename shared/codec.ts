@@ -1,3 +1,6 @@
+// Binary encoding infrastructure.
+// NOTE: fields are not tagged.
+
 import { err, ok, ValStat } from "./valstat.ts";
 import { Status } from "./consts.ts";
 

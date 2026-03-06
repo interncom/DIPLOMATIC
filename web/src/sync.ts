@@ -1,3 +1,9 @@
+// This file contains the DIPLOMATIC web client's sync logic.
+// The sync procedure is split into 3 phases:
+// 1. PEEK - fetch new message headers from a host.
+// 2. PUSH - upload new messages to the host.
+// 3. PULL - download messages from the host.
+
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";

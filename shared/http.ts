@@ -1,3 +1,8 @@
+// HTTP transport layer details.
+// DIPLOMATIC runs over HTTP but is only very loosely decoupled to it.
+// For instance, we avoid using HTTP status codes to signal status.
+// We can easily swap in a new transport layer.
+
 import { Decoder, Encoder } from "./codec.ts";
 import { APICallName, Status } from "./consts.ts";
 

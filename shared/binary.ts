@@ -1,3 +1,5 @@
+// Various binary codecs.
+
 export function btoh(bytes: Uint8Array): string {
   const hex = Array.from(bytes)
     .map((byte) => byte.toString(16).padStart(2, "0"))

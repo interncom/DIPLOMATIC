@@ -1,3 +1,6 @@
+// exim is short for Export/Import.
+// This is where we define export file format.
+
 import { kdmFor } from "./bag.ts";
 import { bytesEqual } from "./binary.ts";
 import { Decoder, Encoder } from "./codec.ts";

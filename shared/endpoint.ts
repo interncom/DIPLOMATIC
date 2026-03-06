@@ -1,3 +1,7 @@
+// Endpoint is an abstraction bundling the client and server sides of the API.
+// This keeps the binary encoding and decoding logic together for each request.
+// Endpoint implementations live in the api dir.
+
 import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";

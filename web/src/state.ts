@@ -69,7 +69,7 @@ export class StateManager implements IStateManager {
   constructor(
     public applier: Applier,
     public clear: () => Promise<Status>,
-  ) { }
+  ) {}
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
@@ -125,11 +125,11 @@ export class StateManager implements IStateManager {
 
 // nullStateManager is a helper for initializing
 export const nullStateManager: IStateManager = {
-  apply: async function(msgs: IMessage[]) {
+  apply: async function (msgs: IMessage[]) {
     return msgs.map(() => Status.Success);
   },
-  on: function(_type, _listener): void {
+  on: function (_type, _listener): void {
   },
-  off: function(_type, _listener): void {
+  off: function (_type, _listener): void {
   },
 };

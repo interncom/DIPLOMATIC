@@ -426,7 +426,12 @@ describe("Client", () => {
         len: body.length,
         bod: body,
       };
-      const bag = await sealBag(msg, keys, libsodiumCrypto, enclave);
+      const [bag, statBag] = await sealBag(msg, keys, libsodiumCrypto, enclave);
+      if (statBag !== Status.Success) {
+        expect(statBag).toBe(Status.Success);
+        return;
+      }
+
       const [_, setStatus] = await lpcHost.storage.setBag(
         keys.publicKey,
         bag,

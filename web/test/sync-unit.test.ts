@@ -196,7 +196,11 @@ describe("syncPull", () => {
       bod: new Uint8Array([1, 2, 3, 4]),
       hsh: await libsodiumCrypto.blake3(new Uint8Array([1, 2, 3, 4])),
     };
-    const bag = await createTestBag(message, enclave);
+    const [bag, statBag] = await createTestBag(message, enclave);
+    if (statBag !== Status.Success) {
+      expect(statBag).toBe(Status.Success);
+      return;
+    }
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
@@ -242,7 +246,12 @@ describe("syncPull", () => {
       ctr: 0,
       len: 0,
     };
-    const bag = await createTestBag(message, enclave);
+    const [bag, statBag] = await createTestBag(message, enclave);
+    if (statBag !== Status.Success) {
+      expect(statBag).toBe(Status.Success);
+      return;
+    }
+
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);

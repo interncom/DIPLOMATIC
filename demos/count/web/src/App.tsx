@@ -1,32 +1,54 @@
-import { StateManager, useStateWatcher, Status, IOp, genWebClient } from '@interncom/diplomatic'
+import { useCallback, useEffect, useState } from 'react';
+import { SyncClient, EntIDB, entStateManager, IDBStore, openIDBStore, hostHTTPTransport, Clock, useStateWatcher, MasterSeed, libsodiumCrypto, Status, StateManager, nullStateManager, IStateManager } from '@interncom/diplomatic'
 
-const appState = { count: 0 };
-const stateMgr = new StateManager(async (op: IOp) => {
-  if (op.type === "count" && typeof op.body === "number") {
-    appState.count = op.body;
-  }
-  return Status.Success;
-}, async () => {
-  appState.count = 0;
-  return Status.Success;
-})
+async function initStoreAndEntDB() {
+  const idb = await openIDBStore();
+  const store = new IDBStore(idb, libsodiumCrypto);
+  const entDB = new EntIDB();
+  await entDB.init();
+  return { store, entDB };
+}
 
-
-const url = new URL("http://localhost:3311");
-const { client, setSeed } = await genWebClient(stateMgr, url);
-await setSeed("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")
-
-const eid = new Uint8Array(16).fill(0);
-const clk = new Date(0);
+const seed = new Uint8Array(32).fill(0) as MasterSeed; // dummy seed
 
 export default function App() {
-  const count = useStateWatcher(stateMgr, "count", async () => {
-    console.log("state watch", appState)
-    return appState.count;
-  })
-  const inc = async () => {
+  const [client, setClient] = useState<SyncClient<URL>>();
+  const [entDB, setEntityDB] = useState<EntIDB>();
+  const [stateMgr, setStateMgr] = useState<IStateManager>(nullStateManager);
+
+  useEffect(() => {
+    initStoreAndEntDB().then(async ({ store, entDB }) => {
+      const stateManager = entStateManager(entDB);
+      const clock = new Clock();
+      const client = new SyncClient(clock, stateManager, store, hostHTTPTransport);
+      await client.setSeed(seed);
+      await client.link({ handle: new URL("http://localhost:31337"), label: "host", idx: 0 });
+      await client.connect();
+      await client.sync();
+
+      setClient(client);
+      setEntityDB(entDB);
+      setStateMgr(stateManager);
+    });
+  }, []);
+
+  const getLatestCount = useCallback(async () => {
+    if (!entDB) return 0;
+    const [ents, stat] = await entDB.getAllOfType<number>("count");
+    if (stat !== Status.Success) {
+      return 0;
+    }
+    if (ents.length === 0) return 0;
+    ents.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return ents[0].body;
+  }, [entDB]);
+
+  const count = useStateWatcher(stateMgr, "count", getLatestCount);
+
+  const inc = useCallback(async () => {
+    if (!client) return;
     const prev = count ?? 0;
-    await client.upsert({ type: "count", body: prev + 1, eid, clk, off: prev + 1 });
+    await client.upsert({ type: "count", body: prev + 1 });
     console.log("inserted")
     try {
       await client.sync();
@@ -34,7 +56,7 @@ export default function App() {
       console.error("syncerr", err);
     }
     console.log("synced")
-  }
+  }, [client, count]);
 
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>

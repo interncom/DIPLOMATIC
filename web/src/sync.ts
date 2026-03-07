@@ -143,7 +143,10 @@ export async function syncPush<Handle extends HostHandle>(
       continue;
     }
     const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
-    const bag = await conn.seal(msg);
+    const [bag, statBag] = await conn.seal(msg);
+    if (statBag !== Status.Success) {
+      return statBag;
+    }
     bags.push(bag);
     hashes.push(msgHeadEncHash);
   }

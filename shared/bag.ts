@@ -50,7 +50,7 @@ export async function sealBag(
   keys: HostSpecificKeyPair,
   crypto: ICrypto,
   enclave: Enclave,
-): Promise<IBag> {
+): Promise<ValStat<IBag>> {
   let hsh: Uint8Array | undefined;
   if (msg.bod && msg.len > 0) {
     hsh = await crypto.blake3(msg.bod);
@@ -58,7 +58,10 @@ export async function sealBag(
 
   // Encode message.
   const enc = new Encoder();
-  messageHeadCodec.encode(enc, { ...msg, hsh });
+  const statEnc = messageHeadCodec.encode(enc, { ...msg, hsh });
+  if (statEnc !== Status.Success) {
+    return err(statEnc);
+  }
   const headEnc = enc.result();
 
   // Derive encryption key.
@@ -73,12 +76,12 @@ export async function sealBag(
 
   // Wrap in bag.
   const sig = await crypto.signEd25519(headCph, keys.privateKey);
-  return {
+  return ok({
     sig,
     kdm,
     headCph,
     bodyCph,
-  };
+  });
 }
 
 interface IOpenBag {

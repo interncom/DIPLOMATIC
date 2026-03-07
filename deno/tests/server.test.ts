@@ -106,7 +106,17 @@ Deno.test("server", async (t) => {
     assertEquals(s2, Status.Success);
     return;
   }
-  const bags = [await client.seal(op1), await client.seal(op2)];
+  const [bag1, statBag1] = await client.seal(op1);
+  if (statBag1 !== Status.Success) {
+    assertEquals(statBag1, Status.Success);
+    return;
+  }
+  const [bag2, statBag2] = await client.seal(op2);
+  if (statBag2 !== Status.Success) {
+    assertEquals(statBag2, Status.Success);
+    return;
+  }
+  const bags = [bag1, bag2];
   let result: IBagPushItem[];
   await t.step("POST /ops", async () => {
     const [pushResults, pushStatus] = await client.push(bags);

@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@noble/hashes": "jsr:@noble/hashes@^2.0.1"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"],
+      "exclude": ["require-await"]
+    }
+  }
+}

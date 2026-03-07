@@ -1,6 +1,8 @@
-import type { ICrypto, KeyPair } from "../types.ts";
+import type { DerivationSeed, Hash, ICrypto, KeyPair } from "../types.ts";
+import { blake3 } from "@noble/hashes/blake3.js";
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+// @ts-ignore let this one go
+// deno-lint-ignore no-explicit-any
 type Libsodium = any;
 export class LibsodiumCrypto implements ICrypto {
   sodium: Libsodium;
@@ -8,16 +10,18 @@ export class LibsodiumCrypto implements ICrypto {
     this.sodium = sodium;
   }
 
-  async gen128BitRandomID(): Promise<Uint8Array> {
-    return this.sodium.randombytes_buf(16);
+  async genRandomBytes(bytes: number): Promise<Uint8Array> {
+    return this.sodium.randombytes_buf(bytes);
   }
 
   async gen256BitSecureRandomSeed(): Promise<Uint8Array> {
     return this.sodium.crypto_secretbox_keygen() as Uint8Array;
   }
 
-  async deriveXSalsa20Poly1305Key(seed: Uint8Array): Promise<Uint8Array> {
-    const derivationIndex = 0;
+  async deriveXSalsa20Poly1305Key(
+    seed: Uint8Array,
+    derivationIndex = 0,
+  ): Promise<Uint8Array> {
     const encKey = this.sodium.crypto_kdf_derive_from_key(
       this.sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES,
       derivationIndex,
@@ -27,31 +31,43 @@ export class LibsodiumCrypto implements ICrypto {
     return encKey;
   }
 
-  async encryptXSalsa20Poly1305Combined(data: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
-    const nonce = this.sodium.randombytes_buf(this.sodium.crypto_secretbox_NONCEBYTES) as Uint8Array;
-    const ciphertext = this.sodium.crypto_secretbox_easy(data, nonce, key, "uint8array") as Uint8Array;
+  async encryptXSalsa20Poly1305Combined(
+    data: Uint8Array,
+    key: Uint8Array,
+  ): Promise<Uint8Array> {
+    const nonce = this.sodium.randombytes_buf(
+      this.sodium.crypto_secretbox_NONCEBYTES,
+    ) as Uint8Array;
+    const ciphertext = this.sodium.crypto_secretbox_easy(
+      data,
+      nonce,
+      key,
+      "uint8array",
+    ) as Uint8Array;
     const combined = new Uint8Array(nonce.length + ciphertext.length);
     combined.set(nonce, 0);
     combined.set(ciphertext, nonce.length);
     return combined;
   }
 
-  async decryptXSalsa20Poly1305Combined(data: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
+  async decryptXSalsa20Poly1305Combined(
+    data: Uint8Array,
+    key: Uint8Array,
+  ): Promise<Uint8Array> {
     const nonce = data.slice(0, this.sodium.crypto_secretbox_NONCEBYTES);
     const ciphertext = data.slice(this.sodium.crypto_secretbox_NONCEBYTES);
-    const dec = this.sodium.crypto_secretbox_open_easy(ciphertext, nonce, key, "uint8array") as Uint8Array;
+    const dec = this.sodium.crypto_secretbox_open_easy(
+      ciphertext,
+      nonce,
+      key,
+      "uint8array",
+    ) as Uint8Array;
     return dec;
   }
 
-  async deriveEd25519KeyPair(seed: Uint8Array, hostID: string, derivationIndex = 0): Promise<KeyPair> {
-    const keyPairDerivationSeed = this.sodium.crypto_kdf_derive_from_key(
-      this.sodium.crypto_box_SEEDBYTES,
-      derivationIndex,
-      hostID,
-      seed,
-    );
+  async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
     const keyPair = this.sodium.crypto_sign_seed_keypair(
-      keyPairDerivationSeed,
+      derivationSeed,
     ) as KeyPair;
     return keyPair;
   }
@@ -78,9 +94,7 @@ export class LibsodiumCrypto implements ICrypto {
     return valid;
   }
 
-  async sha256Hash(data: Uint8Array): Promise<Uint8Array> {
-    const buf = await crypto.subtle.digest('SHA-256', data);
-    const arr = new Uint8Array(buf);
-    return arr;
+  async blake3(data: Uint8Array): Promise<Hash> {
+    return blake3(data) as Hash;
   }
 }

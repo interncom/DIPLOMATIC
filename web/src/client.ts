@@ -1,434 +1,479 @@
-import { decode, encode } from "@msgpack/msgpack";
-import type { EntityID, GroupID, IOp, KeyPair } from "./shared/types";
-import { btoh, htob } from "./shared/lib";
-import webClientAPI from "./api";
-import type {
-  IClientStateStore,
+// This is the web client for DIPLOMATIC.
+
+import { encode } from "@msgpack/msgpack";
+import { saveAs } from "file-saver";
+import libsodiumCrypto from "./crypto";
+import { StateEmitter } from "./events";
+import DiplomaticClientAPI from "./shared/client";
+import { IClock } from "./shared/clock";
+import { Decoder, Encoder } from "./shared/codec";
+import { eidCodec, makeEID } from "./shared/codecs/eid";
+import { messageHeadCodec } from "./shared/codecs/messageHead";
+import { Status } from "./shared/consts";
+import { decodeFile, encodeFile } from "./shared/exim";
+import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
+import {
+  EntityID,
+  Hash,
+  HostHandle,
+  ICrypto,
+  IHostConnectionInfo,
+  IInsertParams,
+  IMessage,
+  IMessageHead,
+  IMsgEntBody,
+  ITransport,
+  IUpsertParams,
+  MasterSeed,
+} from "./shared/types";
+import { err, ok, ValStat } from "./shared/valstat";
+import { handleNotif, ISyncParams, syncPeek, syncPull, syncPush } from "./sync";
+import {
+  IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
+  IHostRow,
+  IMsgParts,
+  IStateEmitter,
+  IStateManager,
+  IStore,
+  IStoredMessageData,
 } from "./types";
-import libsodiumCrypto from "./crypto";
-import type { StateManager } from "./state";
-import { genDeleteOp, genUpsertOp } from "./shared/ops";
-import JSZip from "jszip";
-import { saveAs } from "file-saver";
-import TypedEventEmitter from "./typedEventEmitter";
 
-export interface IDiplomaticClientParams {
-  store: IClientStateStore;
-  stateManager: StateManager;
-  seed?: string | Uint8Array;
-  hostURL?: string;
-  hostID?: string;
-}
+export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
+  connections = new Map<string, DiplomaticClientAPI<Handle>>();
+  private currentSync: Promise<Status> | null = null;
 
-export default class DiplomaticClient {
-  store: IClientStateStore;
-  stateManager: StateManager;
+  public clientState: IStateEmitter<IDiplomaticClientState>;
+  public xferState: IStateEmitter<IDiplomaticClientXferState>;
 
-  stateEmitter: TypedEventEmitter<IDiplomaticClientState>;
-  xferStateEmitter: TypedEventEmitter<IDiplomaticClientXferState>;
+  constructor(
+    private clock: IClock,
+    private state: IStateManager,
+    private store: IStore<Handle>,
+    private transport: (host: IHostRow<Handle>) => ITransport,
+    private crypto: ICrypto = libsodiumCrypto,
+    // Client can be set to always force skew handling, to hide the pain.
+    private forceSkewHandlingByDefault = true,
+  ) {
+    this.clientState = new StateEmitter(() => this.getClientState());
 
-  seed?: Uint8Array;
-  encKey?: Uint8Array;
-  hostURL?: URL;
-  hostKeyPair?: KeyPair;
-
-  constructor(params: IDiplomaticClientParams) {
-    this.stateEmitter = new TypedEventEmitter();
-    this.xferStateEmitter = new TypedEventEmitter();
-    this.store = params.store;
-    this.stateManager = params.stateManager;
-    this.init(params);
+    this.xferState = new StateEmitter(() => this.getXferState());
   }
 
-  addEventListener(func: (state: IDiplomaticClientState) => void) {
-    return this.stateEmitter.addEventListener("update", func);
+  private readonly SYNC_DEBOUNCE_DELAY_MS = 100;
+
+  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  public async setSeed(seed: MasterSeed) {
+    await this.store.seed.save(seed);
+    this.clientState.emit();
   }
 
-  addXferEventListener(func: (state: IDiplomaticClientXferState) => void) {
-    return this.xferStateEmitter.addEventListener("update", func);
-  }
-
-  wipe = async () => {
-    this.seed = undefined;
-    this.encKey = undefined;
-    this.hostURL = undefined;
-    this.hostKeyPair = undefined;
-    this.websocket?.close();
-    this.websocket = undefined;
-    await this.stateManager.clear();
-    await this.store.wipe();
-    this.emitUpdate();
-  };
-
-  websocket?: WebSocket;
-  connect = async (hostURL: URL) => {
-    if (!this.hostKeyPair) {
-      return;
-    }
-
-    const url = new URL(hostURL);
-    if (window.location.protocol === "https:") {
-      url.protocol = "wss";
-    } else {
-      url.protocol = "ws";
-    }
-
-    // TODO: sign something (current timestamp).
-    const keyHex = btoh(this.hostKeyPair?.publicKey);
-    url.searchParams.set("key", keyHex);
-    this.websocket = new WebSocket(url);
-
-    this.websocket.onopen = (e) => {
-      console.log("CONNECTED");
-      this.emitUpdate();
+  private async getClientState(): Promise<IDiplomaticClientState> {
+    const { store } = this;
+    const enclave = await store.seed.load();
+    const hosts = await store.hosts.list();
+    return {
+      hasSeed: enclave !== undefined,
+      hasHost: Array.from(hosts).length > 0,
+      connected: false, // TODO
     };
-
-    this.websocket.onclose = (e) => {
-      console.log("DISCONNECTED");
-      if (navigator.onLine) {
-        this.connect(hostURL);
-        this.emitUpdate();
-      }
-    };
-
-    this.websocket.onmessage = (e) => {
-      console.log(`RECEIVED: ${e.data}`);
-      this.processOps();
-    };
-
-    this.websocket.onerror = (e) => {
-      console.log(`ERROR: ${e}`);
-    };
-  };
-
-  async init(params: IDiplomaticClientParams) {
-    await this.store.init?.();
-
-    if (params.seed) {
-      const bytes = typeof params.seed === "string"
-        ? htob(params.seed)
-        : params.seed;
-      await this.store.setSeed(bytes);
-    }
-    await this.loadSeed();
-    this.emitUpdate();
-    if (params.hostID && params.hostURL) {
-      await this.store.setHostID(params.hostID);
-      await this.store.setHostURL(params.hostURL);
-    } else if (params.hostURL) {
-      await this.register(params.hostURL);
-    } else {
-      await this.loadHost();
-    }
-    this.emitUpdate();
-
-    if (this.hostURL) {
-      await this.connect(this.hostURL);
-      this.emitUpdate();
-    }
-
-    await this.sync();
-    this.emitXferUpdate();
   }
 
-  async loadSeed() {
-    const seed = await this.store.getSeed();
-    if (seed) {
-      // TODO: check validity.
-      this.seed = seed;
-      this.encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
-    }
-  }
-
-  async setSeed(seed: Uint8Array) {
-    this.seed = seed;
-    this.encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
-    await this.store.setSeed(seed);
-    this.emitUpdate();
-  }
-
-  async loadHost() {
-    if (!this.seed) {
-      return;
-    }
-    const hostURL = await this.store.getHostURL();
-    const hostID = await this.store.getHostID();
-    if (!hostURL || !hostID) {
-      return;
-    }
-    this.hostURL = new URL(hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
-      this.seed,
-      hostID,
-    );
-  }
-
-  // TODO: dedupe with loadHost.
-  async register(hostURL: string) {
-    if (!this.seed) {
-      return;
-    }
-    this.hostURL = new URL(hostURL);
-    const hostID = await webClientAPI.getHostID(this.hostURL);
-    this.hostKeyPair = await libsodiumCrypto.deriveEd25519KeyPair(
-      this.seed,
-      hostID,
-    );
-    await webClientAPI.register(
-      this.hostURL,
-      this.hostKeyPair.publicKey,
-      "tok123",
-    );
-
-    await this.store.setLastFetchedAt(new Date(0));
-    await this.store.setHostURL(hostURL);
-    await this.store.setHostID(hostID);
-
-    this.emitUpdate();
-  }
-
-  disconnect = () => {
-    this.hostURL = undefined;
-    this.hostKeyPair = undefined;
-    this.websocket?.close();
-    this.websocket = undefined;
-    this.emitUpdate();
-  };
-
-  async registerAndConnect(hostURL: string) {
-    await this.register(hostURL);
-    await this.connect(new URL(hostURL));
-    await this.requeueAllOpsForUpload();
-    await this.sync();
-  }
-
-  async requeueAllOpsForUpload() {
-    for (const op of await this.store.listOps()) {
-      await this.store.enqueueUpload(htob(op.sha256), op.cipherOp);
-    }
-  }
-
-  async emitUpdate() {
-    const state = await this.getState();
-    this.stateEmitter.emit("update", state);
-  }
-
-  async emitXferUpdate() {
-    const state = await this.getXferState();
-    this.xferStateEmitter.emit("update", state);
-  }
-
-  async getState(): Promise<IDiplomaticClientState> {
-    const hasSeed = this.seed !== undefined && this.encKey !== undefined;
-    const hasHost = this.hostURL !== undefined &&
-      this.hostKeyPair !== undefined;
-    const connected = this.websocket === undefined
-      ? false
-      : this.websocket.readyState === this.websocket.OPEN;
-    return { hasSeed, hasHost, connected };
-  }
-
-  async getXferState(): Promise<IDiplomaticClientXferState> {
-    const numUploads = await this.store.numUploads();
-    const numDownloads = await this.store.numDownloads();
+  private async getXferState(): Promise<IDiplomaticClientXferState> {
+    const { uploads, downloads } = this.store;
+    const numUploads = await uploads.count();
+    const numDownloads = await downloads.count();
     return { numDownloads, numUploads };
   }
 
-  async processOps() {
-    await this.pullOpPaths();
-    await this.fetchAndExecQueuedOps();
-  }
+  private apply = async (
+    parts: IMsgParts[],
+    options: { enqueueUpload: boolean; triggerUpload: boolean } = {
+      enqueueUpload: true,
+      triggerUpload: true,
+    },
+  ): Promise<Status[]> => {
+    const hashes: Hash[] = [];
+    const storables: { key: Hash; data: IStoredMessageData }[] = [];
+    const msgs: IMessage[] = [];
 
-  async pullOpPaths() {
-    if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
-      return [];
+    // Process parts into:
+    // 1. hashes for upload queueing,
+    // 2. storables for message archive,
+    // 3. msgs for application to state.
+    // console.time("apply: processing parts...")
+    for (const { head, body } of parts) {
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      const headEnc = enc.result();
+      const hash = await this.crypto.blake3(headEnc);
+      const data: IStoredMessageData = {
+        eid: head.eid,
+        ...(head.off !== 0 ? { off: head.off } : {}),
+        ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
+        body,
+      };
+      hashes.push(hash);
+      storables.push({ key: hash, data });
+      msgs.push({ ...head, bod: body });
     }
-    const lastFetchedAt = await this.store.getLastFetchedAt();
-    const begin = lastFetchedAt ?? new Date(0);
-    // const begin = lastFetchedAt ?? new Date(0);
-    const { hostURL, hostKeyPair } = this;
-    const resp = await webClientAPI.listDeltas(hostURL, begin, hostKeyPair);
-    for (const item of resp.deltas) {
-      await this.store.dequeueUpload(item.sha256); // In case e.g. user did a local file import.
-      if (await this.store.hasOp(item.sha256)) {
-        continue;
+    // console.timeEnd("apply: processing parts...")
+
+    // If message is being applied via sync, don't upload.
+    if (options.enqueueUpload) {
+      // NOTE: important to enqueue upload before storing it.
+      const hosts = await this.store.hosts.list();
+      for (const host of hosts) {
+        await this.store.uploads.enq(host.label, hashes);
       }
-      await this.store.enqueueDownload(item.sha256, item.recordedAt);
-      this.emitXferUpdate();
-    }
-    // NOTE: do not update lastFetchedAt until all paths are safely enqueued for download.
-    // Advancing lastFetchedAt prematurely could cause a path to be missed, causing out-of-sync (OOS).
-    await this.store.setLastFetchedAt(new Date(resp.fetchedAt));
-  }
-
-  async fetchAndExecQueuedOps() {
-    if (!this.hostURL || !this.hostKeyPair || !this.encKey) {
-      return [];
-    }
-    const { hostURL, hostKeyPair, encKey } = this;
-    // TODO: parallelize in web worker.
-    const items = await this.store.listDownloads();
-    // paths.sort((p1, p2) => p2.localeCompare(p1)); // Sort descending.
-    items.sort((i1, i2) => i1.recordedAt.getTime() - i2.recordedAt.getTime()); // Sort ascending.
-    for (const item of items) {
-      if (await this.store.hasOp(item.sha256)) {
-        // Skip.
-        await this.store.dequeueDownload(item.sha256);
-        this.emitXferUpdate();
-        continue;
-      }
-      try {
-        const cipher = await webClientAPI.getDelta(
-          hostURL,
-          item.sha256,
-          hostKeyPair,
-        );
-        const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-          cipher,
-          encKey,
-        );
-        const op = decode(packed) as IOp;
-        const sha256 = await libsodiumCrypto.sha256Hash(cipher);
-        await this.stateManager.apply(op);
-        await this.store.storeOp(sha256, cipher);
-        await this.store.dequeueDownload(sha256);
-        this.emitXferUpdate();
-      } catch (err) {
-        console.error("Processing download", err, item);
-
-        let transient = true;
-        if (
-          err instanceof Error &&
-          err.message === "wrong secret key for the given ciphertext"
-        ) {
-          // No coming back from this one.
-          // Display to user somehow?
-          transient = false;
-        }
-
-        if (!transient) {
-          await this.store.dequeueDownload(item.sha256);
-          this.emitXferUpdate();
-          // Also put it on a "dead" queue to record the permanent failure?
-        }
+      this.xferState.emit();
+      // Clear any existing timeout to reset debounce
+      if (this.syncTimeout !== null) {
+        clearTimeout(this.syncTimeout);
       }
     }
-  }
-
-  private async pushQueuedOp(sha256: Uint8Array) {
-    if (!this.hostURL || !this.hostKeyPair) {
-      return;
-    }
-    const cipherOp = await this.store.peekUpload(sha256);
-    if (cipherOp) {
-      await webClientAPI.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
-    }
-    await this.store.dequeueUpload(sha256);
-    this.emitXferUpdate();
-  }
-
-  async pushQueuedOps() {
-    for (const sha256 of await this.store.listUploads()) {
-      await this.pushQueuedOp(sha256);
-    }
-  }
-
-  async sync() {
-    await this.processOps();
-    await this.pushQueuedOps();
-  }
-
-  async apply(op: IOp) {
-    if (!this.encKey) {
-      throw "No encryption key";
-    }
-    // NOTE: DIPLOMATIC *must* ensure the delta is queued before locally executing it.
-    // This has the potential to cause lag before UI updates, but the greater evil is to update local state first but fail to queue the delta for sync, causing remote state to never match local.
-    const packed = encode(op);
-    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(
-      packed,
-      this.encKey,
-    );
-    const sha256 = await libsodiumCrypto.sha256Hash(cipherOp);
-    await this.store.enqueueUpload(sha256, cipherOp);
-    this.emitXferUpdate();
-
-    try {
-      await this.stateManager.apply(op);
-      // TODO: just combine this with enqueing an upload.
-      await this.store.storeOp(sha256, cipherOp);
-    } catch (err) {
-      // If op can't be applied locally, don't burden anyone else with it.
-      await this.store.dequeueUpload(sha256);
-      this.emitXferUpdate();
+    if (options.triggerUpload) {
+      this.scheduleSync();
     }
 
-    try {
-      await this.pushQueuedOp(sha256);
-    } catch (err) {
-      // If this fails, it will remain in the queue to be retried later.
-      console.info("failed to push");
-    }
-  }
+    // console.time("apply: storing messages...")
+    await this.store.messages.add(storables);
+    // console.timeEnd("apply: storing messages...")
 
-  async export(filename: string, extension = "dip") {
-    const ops = await this.store.listOps();
-
-    const zip = new JSZip();
-    for (const op of ops) {
-      zip.file(`${op.sha256}.op`, op.cipherOp);
-    }
-    const blob = await zip.generateAsync({
-      compression: "STORE",
-      type: "blob",
-    });
-    return saveAs(blob, `${filename}.${extension}`);
-  }
-
-  import = async (file: File) => {
-    if (!this.encKey) {
-      return;
-    }
-    const { encKey } = this;
-    const zip = await JSZip.loadAsync(file);
-    for (const opFileName of Object.keys(zip.files)) {
-      const hex = opFileName.split(".")[0];
-      const zipSha256 = htob(hex);
-      if (await this.store.hasOp(zipSha256)) {
-        continue;
-      }
-      const cipher = await zip.files[opFileName].async("uint8array");
-      const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-        cipher,
-        encKey,
-      );
-      const op = decode(packed) as IOp;
-      const sha256 = await libsodiumCrypto.sha256Hash(cipher);
-      await this.stateManager.apply(op);
-      await this.store.storeOp(sha256, cipher);
-      this.emitXferUpdate();
-    }
+    // TODO: decide what should happen if there's an error while applying.
+    // Dequeue upload and remove message?
+    // console.time("apply: applying state updates...")
+    const stats = await this.state.apply(msgs);
+    // console.timeEnd("apply: applying state updates...")
+    return stats;
   };
 
-  async upsert<T>(
-    { type, body, eid, gid, pid, version = 0 }: {
-      type: string;
-      body: T;
-      eid?: EntityID;
-      gid?: GroupID;
-      pid?: EntityID;
-      version?: number;
-    },
-  ) {
-    const id = eid ?? await libsodiumCrypto.gen128BitRandomID();
-    const op = genUpsertOp<T>(id, type, body, version, gid, pid);
-    return this.apply(op);
+  public async insertRaw(bod: EncodedMessage) {
+    const { clock, crypto } = this;
+    const [head, stat] = await genInsertHead({ now: clock.now(), bod, crypto });
+    if (stat !== Status.Success) {
+      return err<IMessageHead>(stat);
+    }
+    await this.apply([{ head, body: bod }]);
+    return ok(head);
   }
 
-  async delete<T>(type: string, eid: Uint8Array, version = 0) {
-    const op = genDeleteOp<T>(eid, type, version);
-    return this.apply(op);
+  public async upsertRaw(
+    eid: EntityID,
+    bod: EncodedMessage | undefined,
+    force = false,
+  ): Promise<ValStat<IMessageHead>> {
+    const { clock, crypto, store } = this;
+    const now = clock.now();
+    const last = await store.messages.last(eid);
+    if (last) {
+      const decEid = new Decoder(eid);
+      const [eidDec, statEid] = decEid.readStruct(eidCodec);
+      if (statEid !== Status.Success) {
+        return err<IMessageHead>(statEid);
+      }
+
+      const ts = eidDec.ts.getTime() + last.head.off;
+      if (ts > now.getTime()) {
+        // last was created in the future. So either:
+        // a) another client's clock is skewed into the future, or
+        // b) this client's clock is skewed into the past.
+
+        if (force === false) {
+          return err<IMessageHead>(Status.ClockOutOfSync);
+        }
+
+        // We need to recover from skew.
+        // We do so by deleting the invalid entity and replacing it.
+        // To overwrite the skewed entity, the delete must increment off,
+        // even if that places the delete into the future as well.
+        const offDel = last.head.off + 1;
+        const offCtr = last.head.ctr + 1;
+        const delHead = { eid, off: offDel, ctr: offCtr, len: 0 };
+        const statsDel = await this.apply([{ head: delHead, body: undefined }]);
+        const statDel = statsDel[0];
+        if (statDel !== Status.Success) {
+          return err<IMessageHead>(statDel);
+        }
+
+        if (bod === undefined) {
+          // This upsert was a delete.
+          // Therefore, we're done.
+          // There's no replacement left to insert.
+          return ok(delHead);
+        }
+
+        // Replace with a new msg that retains the old eid but clk of now.
+        const [replEID, statReplEID] = makeEID({ id: eidDec.id, ts: now });
+        if (statReplEID !== Status.Success) {
+          return err<IMessageHead>(statReplEID);
+        }
+        const replParams = { now, eid: replEID, ctr: 0, bod, crypto };
+        const [repl, statRepl] = await genUpsertHead(replParams);
+        if (statRepl !== Status.Success) {
+          return err<IMessageHead>(statRepl);
+        }
+        const statsApply = await this.apply([{ head: repl, body: bod }]);
+        const statApply = statsApply[0];
+        if (statApply !== Status.Success) {
+          return err<IMessageHead>(statApply);
+        }
+        return ok(repl);
+      }
+    }
+    const ctr = (last?.head.ctr ?? -1) + 1;
+    const [msg, statMsg] = await genUpsertHead({ now, eid, ctr, bod, crypto });
+    if (statMsg !== Status.Success) {
+      return err<IMessageHead>(statMsg);
+    }
+    const statsApply = await this.apply([{ head: msg, body: bod }]);
+    const statApply = statsApply[0];
+    if (statApply !== Status.Success) {
+      return err<IMessageHead>(statApply);
+    }
+    return ok(msg);
   }
+
+  public async insert<T = unknown>(op: IInsertParams<T>) {
+    const { body, type, gid, pid } = op;
+    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const entBodyEnc = encode(entBody);
+    return this.insertRaw(entBodyEnc);
+  }
+
+  public async upsert<T = unknown>(
+    op: IUpsertParams<T>,
+    force = this.forceSkewHandlingByDefault,
+  ) {
+    const { eid, body, type, gid, pid } = op;
+    if (eid === undefined) {
+      return this.insert(op);
+    }
+    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const entBodyEnc = encode(entBody);
+    return this.upsertRaw(eid, entBodyEnc, force);
+  }
+
+  public async delete(eid: EntityID) {
+    // NOTE: force (clock-skew handling) is set to true here.
+    // When deleting, there's no reason not to force skew handling.
+    return this.upsertRaw(eid, undefined, true);
+  }
+
+  public async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {
+    const { clock, crypto } = this;
+    const ts = clock.now();
+    if (id !== undefined) {
+      return makeEID({ id, ts });
+    }
+    const randId = await crypto.genRandomBytes(8);
+    return makeEID({ id: randId, ts });
+  }
+
+  public async sync(): Promise<Status> {
+    if (this.currentSync) {
+      await this.currentSync;
+    }
+    this.currentSync = this.doSync();
+    return await this.currentSync;
+  }
+
+  private async doSync(): Promise<Status> {
+    const { clock, connections, crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) {
+      return Status.MissingSeed;
+    }
+
+    for (const [label, conn] of connections) {
+      const host = await store.hosts.get(label);
+      if (!host) {
+        continue;
+      }
+
+      const syncParams: ISyncParams<Handle> = {
+        conn,
+        store,
+        enclave,
+        clock,
+        host,
+        crypto,
+      };
+
+      const peekStat = await syncPeek(syncParams);
+      if (peekStat !== Status.Success) {
+        console.error(`Failed to peek: ${peekStat}`);
+        return peekStat;
+      }
+      this.xferState.emit();
+
+      const pushStat = await syncPush(syncParams);
+      if (pushStat !== Status.Success) {
+        console.error(`Failed to push: ${pushStat}`);
+        return pushStat;
+      }
+      this.xferState.emit();
+
+      const pullStat = await syncPull(syncParams, this.apply.bind(this));
+      if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
+        console.error(`Failed to pull: ${pullStat}`);
+        return pullStat;
+      }
+      this.xferState.emit();
+    }
+    return Status.Success;
+  }
+
+  public async wipe() {
+    await this.disconnect();
+    await this.store.wipe();
+    this.clientState.emit();
+    this.xferState.emit();
+  }
+
+  public import = async (
+    file: File,
+    options?: {
+      onProgress?: (index: number, total: number, status: Status) => void;
+    },
+  ): Promise<Status> => {
+    const { crypto, store } = this;
+    const onProgress = options?.onProgress;
+    const enclave = await store.seed.load();
+    if (!enclave) return Status.MissingSeed;
+
+    console.time("import: decoding file...");
+    const bytes = await file.bytes();
+    const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
+    if (statDec !== Status.Success) return statDec;
+    console.timeEnd("import: decoding file...");
+
+    let processed = 0;
+    while (processed < msgs.length) {
+      let totalBytes = 0;
+      let count = 0;
+      let end = processed;
+      for (
+        let i = processed;
+        i < msgs.length && count < 100 && totalBytes < 100 * 1024;
+        i++
+      ) {
+        totalBytes += msgs[i].head.len;
+        count++;
+        end = i + 1;
+      }
+      const batch = msgs.slice(processed, end);
+      console.time(`import: applying [${processed}, ${end}]`);
+      const statsBatch = await this.apply(batch, {
+        enqueueUpload: true,
+        triggerUpload: false,
+      });
+      console.timeEnd(`import: applying [${processed}, ${end}]`);
+      for (let i = 0; i < batch.length; i++) {
+        const stat = statsBatch[i];
+        if (stat !== Status.Success && stat !== Status.NoChange) {
+          console.warn(
+            `failed to import msg ${processed + i}: ${Status[stat]}`,
+          );
+        }
+      }
+      if (onProgress) {
+        queueMicrotask(() => onProgress(end, msgs.length, Status.Success));
+      }
+      processed = end;
+    }
+
+    this.scheduleSync();
+
+    // TODO: return the array of statuses for each import msg.
+    return Status.Success;
+  };
+
+  private scheduleSync = async () => {
+    this.syncTimeout = setTimeout(async () => {
+      this.syncTimeout = null;
+      try {
+        console.info("Running scheduled sync");
+        await this.sync();
+      } catch (err) {
+        console.error("Debounced sync failed:", err);
+      }
+    }, this.SYNC_DEBOUNCE_DELAY_MS);
+  };
+
+  public async export(filename: string) {
+    const { crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) return Status.MissingSeed;
+
+    const msgs = await store.messages.list();
+    const [bytes, stat] = await encodeFile("export", 0, msgs, crypto, enclave);
+    if (stat !== Status.Success) return stat;
+
+    const blob = new Blob([bytes.slice()]);
+    saveAs(blob, filename);
+    return Status.Success;
+  }
+
+  // Manage stored host connections.
+  public async link(host: IHostConnectionInfo<Handle>) {
+    this.store.hosts.add(host);
+    this.clientState.emit();
+  }
+  public async unlink(label: string) {
+    await this.store.hosts.del(label);
+    this.clientState.emit();
+  }
+
+  // Manage active host connections.
+  public async connect(listen = true) {
+    const { clock, crypto, store, transport } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) {
+      return;
+    }
+    const hosts = await store.hosts.list();
+    for (const host of hosts) {
+      const { label } = host;
+      if (this.connections.has(label)) {
+        continue;
+      }
+      console.info(`Connecting to ${host.handle} (${label})`);
+      const txport = transport(host);
+      const conn = new DiplomaticClientAPI(
+        enclave,
+        libsodiumCrypto,
+        host,
+        clock,
+        txport,
+        (meta) => this.store.hosts.set(label, meta),
+      );
+      await conn.register();
+      if (listen) {
+        const recv = async (bytes: Uint8Array) => {
+          handleNotif(
+            bytes,
+            {
+              conn,
+              store,
+              enclave,
+              host,
+              crypto,
+              clock,
+            },
+            this.apply,
+            this.scheduleSync,
+          );
+        };
+        await conn.listen(recv);
+      }
+      this.connections.set(host.label, conn);
+    }
+  }
+
+  public disconnect = async () => {
+    this.connections.clear();
+  };
 }

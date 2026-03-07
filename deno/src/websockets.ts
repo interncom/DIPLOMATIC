@@ -1,49 +1,100 @@
-import type { IWebsocketNotifier } from "../../shared/types.ts";
+import type {
+  IProtoHost,
+  IPushNotifier,
+  IPushOpenResponse,
+  PublicKey,
+  PushReceiver,
+} from "../../shared/types.ts";
+import { notifierTSAuthURLParam, Status } from "../../shared/consts.ts";
+import { btoh, htob } from "../../shared/binary.ts";
+import {
+  authTimestampCodec,
+  IAuthTimestamp,
+} from "../../shared/codecs/authTimestamp.ts";
+import { validateAuthTimestamp } from "../../shared/auth.ts";
+import type { IHostCrypto } from "../../shared/types.ts";
+import type { IClock } from "../../shared/clock.ts";
+import { Decoder } from "../../shared/codec.ts";
 
-class DenoWebsocketNotifier implements IWebsocketNotifier {
-  sockets: Map<string, Set<WebSocket>> = new Map(); // pubKeyHex => sockets.
+class DenoWebsocketNotifier implements IPushNotifier {
+  // recvs maps a user's pubKeyHex => the set of listener functions.
+  private recvs: Map<string, Set<(data: Uint8Array) => void>> = new Map();
 
-  handler = async (request: Request, hasUser: (pubKeyHex: string) => Promise<boolean>): Promise<Response> => {
-    const url = new URL(request.url);
-    const pubKeyHex = url.searchParams.get("key");
-    if (!pubKeyHex) {
-      return new Response("Missing pubkey", { status: 401 });
+  async open(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    crypto: IHostCrypto,
+    clock: IClock,
+  ): Promise<IPushOpenResponse> {
+    // Validate authTS
+    const status = await validateAuthTimestamp(authTS, crypto, clock);
+    if (status !== Status.Success) {
+      return {
+        send: () => status,
+        shut: () => status,
+        status,
+      };
     }
-    if (!await hasUser(pubKeyHex)) {
+    const pubKeyHex = btoh(authTS.pubKey);
+    if (!this.recvs.has(pubKeyHex)) {
+      this.recvs.set(pubKeyHex, new Set());
+    }
+    this.recvs.get(pubKeyHex)?.add(recv);
+    return {
+      send: (data) => {
+        recv(data);
+        return Status.Success;
+      },
+      shut: () => {
+        this.recvs.get(pubKeyHex)?.delete(recv);
+        return Status.Success;
+      },
+      status: Status.Success,
+    };
+  }
+
+  async push(pubKey: PublicKey, data: Uint8Array): Promise<void> {
+    const pubKeyHex = btoh(pubKey);
+    const recvs = this.recvs.get(pubKeyHex);
+    if (recvs) {
+      for (const r of recvs) {
+        r(data);
+      }
+    }
+  }
+
+  handle = async (host: IProtoHost, request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const authTSHex = url.searchParams.get(notifierTSAuthURLParam);
+    if (!authTSHex) {
+      return new Response("Missing authTS", { status: 401 });
+    }
+    const authTSEnc = htob(authTSHex);
+    const dec = new Decoder(authTSEnc);
+    const [authTS, decStatus] = dec.readStruct(authTimestampCodec);
+    if (decStatus !== Status.Success) {
+      return new Response("Invalid authTS", { status: 401 });
+    }
+    const [hasUser, hasStatus] = await host.storage.hasUser(authTS.pubKey);
+    if (hasStatus !== Status.Success || !hasUser) {
       return new Response("Unauthorized", { status: 401 });
     }
 
     console.log("WebSocket connection established");
     const { socket, response } = Deno.upgradeWebSocket(request);
-    if (!this.sockets.has(pubKeyHex)) {
-      this.sockets.set(pubKeyHex, new Set());
-    }
 
-    socket.onopen = () => {
-      console.log("CONNECTED");
-      this.sockets.get(pubKeyHex)?.add(socket);
-    };
-    socket.onmessage = (event) => {
-      console.log(`RECEIVED: ${event.data}`);
-    };
-    socket.onclose = () => {
-      console.log("DISCONNECTED")
-      this.sockets.get(pubKeyHex)?.delete(socket);
-    };
-    socket.onerror = (error) => console.error("ERROR:", error);
+    const chan = await this.open(
+      authTS,
+      (data) => socket.send(data),
+      host.crypto,
+      host.clock,
+    );
+    // TODO: handle non-success.
+    socket.onclose = () => chan.shut();
 
     return response;
-  }
-
-  notify = async (pubKeyHex: string) => {
-    const listeners = this.sockets.get(pubKeyHex);
-    if (listeners) {
-      for (const socket of listeners) {
-        socket.send("NEW OP");
-      }
-    }
   };
 }
 
-const denoWebsocketNotifer = new DenoWebsocketNotifier();
-export default denoWebsocketNotifer;
+const denoWebsocketNotifier = new DenoWebsocketNotifier();
+export default denoWebsocketNotifier;

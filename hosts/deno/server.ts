@@ -1,32 +1,22 @@
-import { DiplomaticServer } from "../../shared/server.ts";
-import sqliteStorage from "../../deno/src/storage/sqlite.ts";
-import denoMsgpack from "../../deno/src/codec.ts";
 import libsodiumCrypto from "../../deno/src/crypto.ts";
+import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import denoWebsocketNotifer from "../../deno/src/websockets.ts";
+import { Clock } from "../../shared/clock.ts";
+import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 
-const hostID = Deno.env.get("DIPLOMATIC_HOST_ID");
 const port = Number.parseInt(Deno.env.get("DIPLOMATIC_HOST_PORT"));
-const regToken = Deno.env.get("DIPLOMATIC_REG_TOKEN");
-if (!hostID) {
-  throw "Missing DIPLOMATIC_HOST_ID env var";
-}
 if (!port) {
   throw "Missing DIPLOMATIC_HOST_PORT env var";
-}
-if (!regToken) {
-  throw "Missing DIPLOMATIC_REG_TOKEN env var";
 }
 
 const args = Deno.args;
 const useHttps = args.includes("--https");
 
-const server = new DiplomaticServer(
-  hostID,
-  regToken,
+const server = new DiplomaticHTTPServer(
   sqliteStorage,
-  denoMsgpack,
   libsodiumCrypto,
   denoWebsocketNotifer,
+  new Clock(),
 );
 
 if (useHttps) {

@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.0.75",
+  "version": "0.1.0",
   "type": "module",
   "description": "Secure sync layer",
   "main": "dist/index.mjs",
@@ -11,7 +11,9 @@
   "scripts": {
     "tsc": "tsc",
     "build": "node esbuild.mjs",
-    "test": "vitest"
+    "test": "vitest",
+    "coverage": "vitest run --coverage",
+    "fmt": "deno fmt"
   },
   "author": "The Internet Committee",
   "license": "ISC",
@@ -22,18 +24,19 @@
     "@types/file-saver": "^2.0.7",
     "@types/node": "^20.14.11",
     "@types/react": "^19.1.0",
+    "@vitest/coverage-v8": "^4.0.17",
     "esbuild": "0.21.5",
     "react": "^19.1.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.2"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "dependencies": {
     "@msgpack/msgpack": "^3.0.0-beta2",
-    "file-saver": "^2.0.5",
-    "idb": "^8.0.0",
-    "jszip": "^3.10.1"
+    "@noble/hashes": "1.8.0",
+    "file-saver": "2.0.5",
+    "libsodium.js": "git+ssh://github.com/interncom/libsodium.js#e4e7647"
   }
 }

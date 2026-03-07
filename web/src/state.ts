@@ -1,68 +1,135 @@
-import { EventEmitter } from "./eventEmitter";
-import type { Applier } from "./types";
-import type { IOp } from "./shared/types";
+// This file implements a "state manager", which updates application state.
+// It does so in response to DIPLOMATIC messages.
+// When a message (msg) comes in which is more recent than the last one
+// for a particular eid, that new message contains the new state of the
+// application object ("ent" in EntDB) associated with that eid.
+// StateManager delegates to a pluggable "applier" to do the updates.
 
-export class StateManager {
-  emitter: EventEmitter = new EventEmitter();
-  applier: Applier;
-  clear: () => Promise<void>;
-  constructor(applier: Applier, clear: () => Promise<void>) {
-    this.applier = applier;
-    this.clear = clear;
-  }
+import { decode } from "@msgpack/msgpack";
+import { TypedEventEmitter } from "./events";
+import { Status } from "./shared/consts";
+import {
+  IDeleteOp,
+  IMessage,
+  IMsgEntBody,
+  IMutateOp,
+  IOp,
+} from "./shared/types";
+import { err, ok, ValStat } from "./shared/valstat";
+import type { Applier, IStateManager } from "./types";
 
-  apply = async (op: IOp) => {
-    await this.applier(op);
-    this.emitter.emit(op.type);
+export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
+  if (!bodDec) {
+    return false;
   }
+  if (typeof bodDec !== "object") {
+    return false;
+  }
+  if ("body" in bodDec === false) {
+    return false;
+  }
+  if ("type" in bodDec === false) {
+    return false;
+  }
+  return true;
+}
+
+export function msgToOp(msg: IMessage): ValStat<IOp> {
+  // If an IMessage represents an entity update (i.e. it's used in EntDB),
+  // then the bod of the IMessage must be an msgpack-encoded IMsgEntBod.
+  if (!msg.bod || msg.bod.length === 0) {
+    // Undefined or empty bod indicates a delete operation.
+    const op: IDeleteOp = {
+      off: msg.off,
+      ctr: msg.ctr,
+      eid: msg.eid,
+    };
+    return ok(op);
+  }
+  const bodDec = decode(msg.bod);
+  if (isMsgEntBody(bodDec) === false) {
+    console.warn(`msg body invalid`, bodDec);
+    return err(Status.InvalidMessage);
+  }
+  const op: IMutateOp = {
+    off: msg.off,
+    ctr: msg.ctr,
+    eid: msg.eid,
+    gid: bodDec.gid,
+    pid: bodDec.pid,
+    type: bodDec.type,
+    body: bodDec.body,
+  };
+  return ok(op);
+}
+
+// StateManager emits events named by the op type which has just been updated.
+export class StateManager implements IStateManager {
+  private emitter = new TypedEventEmitter<null>();
+  constructor(
+    public applier: Applier,
+    public clear: () => Promise<Status>,
+  ) {}
+
+  apply = async (msgs: IMessage[]) => {
+    const ops: IOp[] = [];
+    const parseStats: Status[] = [];
+    // console.time("state apply: parsing msgs...")
+    for (const msg of msgs) {
+      const [op, statParse] = msgToOp(msg);
+      parseStats.push(statParse);
+      if (statParse !== Status.Success) {
+        continue;
+      }
+      ops.push(op);
+    }
+    // console.timeEnd("state apply: parsing msgs...")
+
+    // console.time("state apply: applying ops...")
+    const { stats: applyStats, types } = await this.applier(ops);
+    // console.timeEnd("state apply: applying ops...")
+
+    // console.time("state apply: collecting statuses...")
+    const results: Status[] = [];
+    for (let i = 0; i < msgs.length; i++) {
+      const parseStat = parseStats[i];
+      const applyStat = applyStats[i];
+      if (parseStat !== Status.Success) {
+        results.push(parseStat);
+        continue;
+      }
+      if (applyStat !== Status.Success) {
+        results.push(applyStat);
+        continue;
+      }
+      results.push(Status.Success);
+    }
+    // console.timeEnd("state apply: collecting statuses...")
+
+    // console.time("state apply: emitting updates...")
+    for (const type of types) {
+      this.emitter.emit(type, null);
+    }
+    // console.timeEnd("state apply: emitting updates...")
+    return results;
+  };
 
   on = (opType: string, listener: () => void) => {
-    this.emitter.on(opType, listener);
-  }
+    this.emitter.addEventListener(opType, listener);
+  };
 
   off = (opType: string, listener: () => void) => {
-    this.emitter.off(opType, listener);
-  }
+    this.emitter.removeEventListener(opType, listener);
+  };
 }
 
-interface IApplier<T extends IOp> {
-  check: (op: IOp) => op is T;
-  apply: (op: T) => Promise<void>;
-}
-
-type Appliers<M> = {
-  [K in keyof M]: M[K] extends IOp ? IApplier<M[K]> : never;
-}
-
-// opMapApplier generates an operation applier from a record
-// mapping from op type to op IApplier. This is a convenience
-// function to organize handling of multiple op types.
-//
-// Example usage:
-//
-// export interface IStatusOp extends IOp {
-//   type: "status";
-//   body: string;
-// }
-// const applier = opMapApplier<{ status: IStatusOp }>({
-//   "status": {
-//     check: (op: IOp): op is IStatusOp => {
-//       return op.type === "status" && typeof op.body === "string";
-//     },
-//     apply: async (op: IStatusOp) => {
-//       const curr = statusStore.load();
-//       if (!curr?.updatedAt || op.ts > curr.updatedAt) {
-//         const status = op.body;
-//         statusStore.store({ status, updatedAt: op.ts });
-//       }
-//     }
-//   }
-// });
-export function opMapApplier<M>(appliers: Appliers<M>) {
-  return async (op: IOp) => {
-    const applier = appliers[op.type as keyof M];
-    if (applier?.check(op)) {
-      await applier.apply(op);
-    }
-  }
-}
+// nullStateManager is a helper for initializing
+export const nullStateManager: IStateManager = {
+  apply: async function (msgs: IMessage[]) {
+    return msgs.map(() => Status.Success);
+  },
+  on: function (_type, _listener): void {
+  },
+  off: function (_type, _listener): void {
+  },
+};

@@ -102,7 +102,11 @@ Deno.test("bag", async (t) => {
     };
 
     // Seal the message
-    const bag = await sealBag(msg, keyPair, crypto, enclave);
+    const [bag, statBag] = await sealBag(msg, keyPair, crypto, enclave);
+    if (statBag !== Status.Success) {
+      assertEquals(statBag, Status.Success);
+      return;
+    }
 
     // Open the bag
     const [openedMsg, status] = await openBag(

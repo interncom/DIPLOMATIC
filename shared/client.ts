@@ -100,11 +100,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     return hostKeys(this, host.label, host.idx);
   };
 
-  seal = async (msg: IMessage): Promise<IBag> => {
+  seal = async (msg: IMessage): Promise<ValStat<IBag>> => {
     const { crypto, enclave } = this;
     const keys = await this.keys();
-    const bag = await sealBag(msg, keys, crypto, enclave);
-    return bag;
+    return sealBag(msg, keys, crypto, enclave);
   };
 
   register = () => this.call(api.user, []);

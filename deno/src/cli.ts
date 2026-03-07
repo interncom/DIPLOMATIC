@@ -9,6 +9,7 @@ import {
   ITransport,
   MasterSeed,
 } from "../../shared/types.ts";
+import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import libsodiumCrypto from "./crypto.ts";
 import { Clock } from "../../shared/clock.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
@@ -61,6 +62,14 @@ export class CLIClient<Handle extends HostHandle> {
     }
 
     return ok(items);
+  }
+
+  async peek(lastSeq: number): Promise<ValStat<IBagPeekItem[]>> {
+    if (!this.conn) {
+      return err(Status.ConnectionClosed);
+    }
+
+    return this.conn.peek(lastSeq);
   }
 }
 

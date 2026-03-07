@@ -1,25 +1,21 @@
 import { useEffect, useState } from "react";
-import type { IDiplomaticClientParams } from "../client";
+import type { SyncClient } from "../client";
+import { HostHandle } from "../shared/types";
 import type {
-  IClientStateStore,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
 } from "../types";
-import type DiplomaticClient from "../client";
 
-interface IClientHookParams extends Omit<IDiplomaticClientParams, "store"> {
-  refreshInterval?: number;
-  store?: IClientStateStore;
-}
-
-export function useClientState(client: DiplomaticClient) {
+export function useClientState<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   const [state, setState] = useState<IDiplomaticClientState>();
   useEffect(() => {
     async function updateState() {
-      const state = await client.getState();
+      const state = await client.clientState.get();
       setState(state);
     }
-    const unsubscribe = client.addEventListener(updateState);
+    const unsubscribe = client.clientState.listen(updateState);
     updateState();
     return () => {
       unsubscribe();
@@ -28,14 +24,16 @@ export function useClientState(client: DiplomaticClient) {
   return state;
 }
 
-export function useClientXferState(client: DiplomaticClient) {
+export function useClientXferState<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   const [state, setState] = useState<IDiplomaticClientXferState>();
   useEffect(() => {
     async function updateState() {
-      const state = await client.getXferState();
+      const state = await client.xferState.get();
       setState(state);
     }
-    const unsubscribe = client.addXferEventListener(updateState);
+    const unsubscribe = client.xferState.listen(updateState);
     updateState();
     return () => {
       unsubscribe();
@@ -44,17 +42,17 @@ export function useClientXferState(client: DiplomaticClient) {
   return state;
 }
 
-export function useSyncOnResume(client: DiplomaticClient) {
+export function useSyncOnResume<Handle extends HostHandle>(
+  client: SyncClient<Handle>,
+) {
   useEffect(() => {
     async function handleOnline() {
-      if (client.hostURL) {
-        await client.connect(client.hostURL);
-      }
+      await client.connect();
       await client.sync();
     }
-    window.addEventListener("online", handleOnline);
+    globalThis.addEventListener("online", handleOnline);
     return () => {
-      window.removeEventListener("online", handleOnline);
+      globalThis.removeEventListener("online", handleOnline);
     };
   }, [client]);
 }

@@ -4,12 +4,12 @@ CREATE TABLE IF NOT EXISTS users (
   pubKey TEXT PRIMARY KEY
 );
 
-DROP TABLE IF EXISTS ops;
-CREATE TABLE IF NOT EXISTS ops (
+DROP TABLE IF EXISTS bags;
+CREATE TABLE IF NOT EXISTS bags (
   userPubKey TEXT,
-  recordedAt TEXT,
-  sha256 BLOB,
-  op BLOB,
-  size INT,
-  PRIMARY KEY (userPubKey, sha256)
+  seq INTEGER,
+  headCph BLOB,
+  bodyCph BLOB,
+  PRIMARY KEY (userPubKey, seq),
+  UNIQUE (userPubKey, seq)
 );

@@ -1,96 +1,66 @@
 import './App.css'
-import { useCallback, useState } from 'react';
-import { DiplomaticClient, idbStore, type IOp, opMapApplier, StateManager, useClientXferState } from '@interncom/diplomatic'
-import { ClientStatusBar, InitSeedView, useStateWatcher, useClientState, useSyncOnResume } from '@interncom/diplomatic';
-import { IUpsertOp, Verb } from '@interncom/diplomatic';
+import { useCallback, useEffect, useState } from 'react';
+import { SyncClient, EntIDB, entStateManager, IDBStore, openIDBStore, hostHTTPTransport, Clock, useStateWatcher, MasterSeed, libsodiumCrypto, Status, StateManager, nullStateManager, IStateManager, htob } from '@interncom/diplomatic'
 
-interface IStatus {
-  status: string;
-  updatedAt: string;
+async function initStoreAndEntDB() {
+  const idb = await openIDBStore();
+  const store = new IDBStore(idb, libsodiumCrypto);
+  const entDB = new EntIDB();
+  await entDB.init();
+  return { store, entDB };
 }
 
-const statusStore = {
-  async store(status: IStatus) {
-    localStorage.setItem("status", status.status);
-    localStorage.setItem("updatedAt", status.updatedAt);
-  },
-  async load(): Promise<IStatus | undefined> {
-    const status = localStorage.getItem("status") ?? undefined;
-    const updatedAt = localStorage.getItem("updatedAt") ?? undefined;
-    if (!status || !updatedAt) {
-      return undefined;
-    }
-    return { status, updatedAt };
-  },
-  async clear() {
-    localStorage.removeItem("status");
-  }
-}
-
-export interface IStatusOp extends IUpsertOp {
-  type: "status";
-  body: string;
-}
-
-const applier = opMapApplier<{ status: IStatusOp }>({
-  "status": {
-    check: (op: IOp): op is IStatusOp => {
-      return op.type === "status" && op.verb === Verb.UPSERT && typeof op.body === "string";
-    },
-    apply: async (op: IStatusOp) => {
-      const curr = await statusStore.load();
-      if (!curr?.updatedAt || op.ts > curr.updatedAt) {
-        const status = op.body;
-        statusStore.store({ status, updatedAt: op.ts });
-      }
-    }
-  }
-});
-const stateManager = new StateManager(applier, statusStore.clear)
-const client = new DiplomaticClient({ store: idbStore, stateManager });
-
-// const hostURL = "https://diplomatic-cloudflare-host.root-a00.workers.dev";
-const hostURL = "https://localhost:3311";
+const seed = htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF") as MasterSeed;
 
 export default function App() {
-  useSyncOnResume(client);
-  const state = useClientState(client);
-  const xferState = useClientXferState(client);
-  const link = useCallback(() => { client.registerAndConnect(hostURL) }, []);
+  const [client, setClient] = useState<SyncClient<URL>>();
+  const [entDB, setEntityDB] = useState<EntIDB>();
+  const [stateMgr, setStateMgr] = useState<IStateManager>(nullStateManager);
 
-  const status = useStateWatcher(stateManager, "status", statusStore.load);
+  useEffect(() => {
+    initStoreAndEntDB().then(async ({ store, entDB }) => {
+      const stateManager = entStateManager(entDB);
+      const clock = new Clock();
+      const client = new SyncClient(clock, stateManager, store, hostHTTPTransport);
+      await client.setSeed(seed);
+      await client.link({ handle: new URL("http://localhost:31337"), label: "host", idx: 0 });
+      await client.connect();
+      await client.sync();
+
+      setClient(client);
+      setEntityDB(entDB);
+      setStateMgr(stateManager);
+    });
+  }, []);
+
+  const getLatestStatus = useCallback(async () => {
+    if (!entDB) return "";
+    const [ents, stat] = await entDB.getAllOfType<string>("status");
+    if (stat !== Status.Success) {
+      return "";
+    }
+    if (ents.length === 0) return "";
+    ents.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return ents[0].body;
+  }, [entDB]);
+
+  const status = useStateWatcher(stateMgr, "status", getLatestStatus);
   const [statusField, setStatusField] = useState("");
-  const handleSubmit = useCallback((evt: React.FormEvent) => {
+  const handleSubmit = useCallback(async (evt: React.FormEvent) => {
     evt.preventDefault();
-    client.upsert({ type: "status", body: statusField, eid: new Uint8Array() });
+    if (!client) return;
+    await client.upsert({ type: "status", body: statusField });
     setStatusField("");
-  }, [statusField]);
-
-  if (!client || !state) {
-    return null;
-  }
+  }, [statusField, client]);
 
   return (
-    <>
-      {xferState ? <ClientStatusBar state={state} xferState={xferState} /> : undefined}
-      {state.hasSeed ? (
-        <>
-          <h1>STATUS</h1>
-          <div id="status-message">{status?.status}</div>
-          <div id="status-timestamp">{status?.updatedAt}</div>
-          <form onSubmit={handleSubmit}>
-            <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a message ↵" />
-          </form>
-          {
-            state.hasHost
-              ? <button type="button" onClick={client.disconnect}>UNLINK</button>
-              : <button type="button" onClick={link}>LINK</button>
-          }
-          <button type="button" onClick={client.wipe}>EXIT</button>
-        </>
-      ) : (
-        <InitSeedView client={client} path="/" />
-      )}
-    </>
+    <div style={{ width: "100vw", textAlign: "center" }}>
+      <h1>STATUS</h1>
+      <div id="status-message">{status}</div>
+      <form onSubmit={handleSubmit}>
+        <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a message ↵" />
+      </form>
+      <button type="button" onSubmit={handleSubmit}>Submit</button>
+    </div>
   );
 }

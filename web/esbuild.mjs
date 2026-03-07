@@ -1,12 +1,15 @@
-import * as esbuild from 'esbuild'
+import * as esbuild from "esbuild";
 
-await esbuild.build({
-  entryPoints: ['src/index.ts'],
+const result = await esbuild.build({
+  entryPoints: ["src/index.ts"],
   bundle: true,
-  format: 'esm',
-  outfile: 'dist/index.mjs',
-  platform: 'browser',
-  external: ['react'],
+  format: "esm",
+  outfile: "dist/index.mjs",
+  platform: "browser",
+  external: ["react", "@noble/hashes"],
   // minify: true,
-  tsconfig: './tsconfig.json'
-})
+  tsconfig: "./tsconfig.json",
+  metafile: true,
+});
+
+console.log(await esbuild.analyzeMetafile(result.metafile));

@@ -1,109 +1,129 @@
-import type { ICrypto, IListDeltasResponse, IMsgpackCodec, IOperationRequest, IRegistrationRequest, KeyPair } from "./types.ts";
-import { btoh } from "./lib.ts";
+// DIPLOMATIC API client.
 
-export default class DiplomaticClientAPI {
-  codec: IMsgpackCodec;
-  crypto: ICrypto;
-  constructor(codec: IMsgpackCodec, crypto: ICrypto) {
-    this.codec = codec;
-    this.crypto = crypto;
-  }
+import { makeAuthTimestamp } from "./auth.ts";
+import { sealBag } from "./bag.ts";
+import { IClock, offset } from "./clock.ts";
+import { Encoder } from "./codec.ts";
+import { respHeadCodec } from "./codecs/respHead.ts";
+import { APICallName, Status } from "./consts.ts";
+import { Enclave } from "./enclave.ts";
+import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
+import { api } from "./http.ts";
+import type {
+  HostHandle,
+  HostSpecificKeyPair,
+  IBag,
+  ICrypto,
+  IHostConnectionInfo,
+  IHostMetadata,
+  IMessage,
+  ITransport,
+  PushReceiver,
+} from "./types.ts";
+import { err, ValStat } from "./valstat.ts";
 
-  async getHostID(hostURL: URL): Promise<string> {
-    const url = new URL(hostURL)
-    url.pathname = "/id";
-    const response = await fetch(url, { method: "GET" });
-    if (!response.ok) {
-      throw "Uh oh";
+export default class DiplomaticClientAPI<Handle extends HostHandle> {
+  constructor(
+    public enclave: Enclave,
+    public crypto: ICrypto,
+    private host: IHostConnectionInfo<Handle>,
+    public clock: IClock,
+    private transport: ITransport,
+    private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
+  ) {}
+
+  private async call<ReqItem, Resp>(
+    apiCall: {
+      endpoint: IAuthenticatedEndpoint<ReqItem, Resp>;
+      name: APICallName;
+    },
+    items: Iterable<ReqItem>,
+  ): Promise<ValStat<Resp>> {
+    const { clock, crypto, transport } = this;
+    const { endpoint, name } = apiCall;
+
+    // Form request.
+    const keys = await this.keys();
+    const now = clock.now();
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    if (statAuthTS !== Status.Success) {
+      return err(statAuthTS);
     }
-    const id = await response.text();
-    return id;
-  }
+    const enc = new Encoder();
+    const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
+    if (encStatus !== Status.Success) return err(encStatus);
 
-  async register(hostURL: URL, pubKey: Uint8Array, token: string): Promise<void> {
-    const url = new URL(hostURL)
-    url.pathname = "/users";
-    const req: IRegistrationRequest = {
-      token,
-      pubKey, // TODO: check for valid pubKey length, server-side.
+    // Send request.
+    const timeSent = clock.now();
+    const [dec, statCall] = await transport.call(name, enc);
+    const timeRcvd = clock.now();
+    if (statCall !== Status.Success) {
+      return err(statCall);
+    }
+
+    // Process response.
+    const [head, statHead] = dec.readStruct(respHeadCodec);
+    if (statHead !== Status.Success) {
+      return err(statHead);
+    }
+    if (head.status !== Status.Success) {
+      return err(head.status);
+    }
+
+    // Update host metadata based on response header.
+    const clockOffset = offset(
+      timeSent,
+      head.timeRcvd,
+      head.timeSent,
+      timeRcvd,
+    );
+    const meta: IHostMetadata = {
+      clockOffset,
+      subscription: head.subscription,
     };
-    const reqPack = this.codec.encode(req);
-    const response = await fetch(url, { method: "POST", body: reqPack });
-    await response.body?.cancel()
-  }
+    const statMeta = await this.updateHostMeta(meta);
+    if (statMeta !== Status.Success) {
+      return err(statMeta);
+    }
 
-  async putDelta(hostURL: URL, cipherOp: Uint8Array, keyPair: KeyPair): Promise<string> {
-    const url = new URL(hostURL)
-    url.pathname = "/ops";
-
-    const req: IOperationRequest = {
-      cipher: cipherOp,
-    };
-    const reqPack = this.codec.encode(req);
-
-    const sig = await this.crypto.signEd25519(req.cipher, keyPair.privateKey);
-    const sigHex = btoh(sig);
-    const keyHex = btoh(keyPair.publicKey);
-
-    const response = await fetch(url, {
-      method: "POST", body: reqPack, headers: {
-        "X-DIPLOMATIC-SIG": sigHex,
-        "X-DIPLOMATIC-KEY": keyHex,
-      }
+    // Return response.
+    const respVS = endpoint.decodeResp(dec);
+    console.info(`API call: ${APICallName[name]}`, {
+      req: items,
+      resp: respVS,
     });
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const opPath = await response.text();
-    return opPath;
+    return respVS;
   }
 
-  async getDelta(hostURL: URL, sha256: Uint8Array, keyPair: KeyPair): Promise<Uint8Array> {
-    const url = new URL(hostURL)
-    const opPath = btoh(sha256);
-    url.pathname = `/ops/${opPath}`;
+  keys = (): Promise<HostSpecificKeyPair> => {
+    const { host } = this;
+    return hostKeys(this, host.label, host.idx);
+  };
 
-    const sig = await this.crypto.signEd25519(opPath, keyPair.privateKey);
-    const sigHex = btoh(sig);
-    const keyHex = btoh(keyPair.publicKey);
-    const response = await fetch(url, {
-      method: "GET", headers: {
-        "X-DIPLOMATIC-SIG": sigHex,
-        "X-DIPLOMATIC-KEY": keyHex,
-      }
+  seal = async (msg: IMessage): Promise<ValStat<IBag>> => {
+    const { crypto, enclave } = this;
+    const keys = await this.keys();
+    return sealBag(msg, keys, crypto, enclave);
+  };
+
+  register = () => this.call(api.user, []);
+  peek = (lastSeq: number) => this.call(api.peek, [lastSeq]);
+  push = (bags: IBag[]) => this.call(api.push, bags);
+  pull = (seqs: number[]) => this.call(api.pull, seqs);
+
+  // listen for new bags.
+  listen = async (recv: PushReceiver) => {
+    const { clock, crypto, host, transport } = this;
+    const { listener } = transport;
+    const keys = await hostKeys(this, host.label, host.idx);
+    const now = clock.now();
+    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    if (statAuthTS !== Status.Success) {
+      return statAuthTS;
+    }
+    return await listener.connect(authTS, recv, () => {
+      // TODO: handle disconnection, perhaps reconnect
+      console.log("Disconnected from push listener");
     });
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const respBuf = await response.arrayBuffer();
-    const resp = this.codec.decode(respBuf) as { cipher: Uint8Array };
-    if (resp.cipher === undefined) {
-      throw "Missing cipher";
-    }
-    return resp.cipher;
-  }
-
-  async listDeltas(hostURL: URL, begin: Date, keyPair: KeyPair): Promise<IListDeltasResponse> {
-    const t = begin.toISOString();
-    const path = `/ops?begin=${t}`;
-    const url = new URL(hostURL)
-    url.pathname = path;
-
-    const sigPath = `/ops%3Fbegin=${t}`;
-    const sig = await this.crypto.signEd25519(sigPath, keyPair.privateKey);
-    const sigHex = btoh(sig);
-    const keyHex = btoh(keyPair.publicKey);
-    const response = await fetch(url, {
-      method: "GET", headers: {
-        "X-DIPLOMATIC-SIG": sigHex,
-        "X-DIPLOMATIC-KEY": keyHex,
-      }
-    });
-    if (!response.ok) {
-      throw "Uh oh";
-    }
-    const respBuf = await response.arrayBuffer();
-    const resp = this.codec.decode(respBuf) as IListDeltasResponse;
-    return resp;
-  }
+  };
 }

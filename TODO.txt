@@ -1,0 +1,34 @@
+API
+
+PEEK
+GET /sigs?lo=CHECKED_AT
+- returns list of SIGS as well as NOW (timestamp)
+
+PUSH
+POST /ops sends a batch of ops
+- how to authenticate? signs the payload in header?
+
+FETCH
+POST /fetch to fetch a batch of ops
+- payload is list of SIGs?
+- host returns OPS concatenated together with each other + error records
+
+CHECK
+HEAD /sigs?salt=SALT&to=SYNCED_AT
+- returns checksum of salted SIGs recorded up to SYNCED_AT
+
+AUDIT
+HEAD /ops?salt=SALT&to=SYNCED_AT
+- lik HEAD /sigs, but checksums the salted complete ops
+
+Test plan:
+1. Sign up device A
+2. Sign up device B
+3. A calls GET /sigs. Empty response
+4. A POST /ops send 2 ops
+5. B calls GET /sigs. Gets the sigs of those 2 ops
+6. B calls POST /fetch with those 2 sigs. Gets the two ops
+7. B calls HEAD /sigs and everything checks out.
+8. B audits and it checks too.
+9. B pushes an op.
+10. A runs the PEEK, PULL, CHECK flow.

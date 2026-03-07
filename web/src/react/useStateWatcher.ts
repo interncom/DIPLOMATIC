@@ -1,8 +1,8 @@
 import { use, useEffect, useRef, useState } from "react";
-import type { StateManager } from "../state";
+import { IStateManager } from "../types";
 
 export default function useStateWatcher<T>(
-  mgr: StateManager,
+  mgr: IStateManager,
   opType: string,
   callback: () => Promise<T>,
 ): T | undefined {
@@ -22,7 +22,7 @@ export default function useStateWatcher<T>(
 }
 
 export function useStateWatcherSuspense<T>(
-  mgr: StateManager,
+  mgr: IStateManager,
   opType: string,
   callback: () => Promise<T>,
 ): T {

@@ -1,81 +1,87 @@
-// Client class to facilitate building deno CLI apps.
-
+import { Status } from "../../shared/consts.ts";
+import { Enclave } from "../../shared/enclave.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
+import {
+  HostHandle,
+  IBag,
+  IHostConnectionInfo,
+  IMessage,
+  ITransport,
+  MasterSeed,
+} from "../../shared/types.ts";
+import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import libsodiumCrypto from "./crypto.ts";
-import denoMsgpack from "./codec.ts";
-import { htob } from "../../shared/lib.ts";
-import type { IGetDeltaPathsResponse, IOp, KeyPair } from "../../shared/types.ts";
-import { isOp } from "../../shared/ops.ts";
+import { Clock } from "../../shared/clock.ts";
+import { err, ok, ValStat } from "../../shared/valstat.ts";
+import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 
-export async function initCLI() {
-  const hostURL = Deno.env.get("DIPLOMATIC_HOST_URL");
-  const seedHex = Deno.env.get("DIPLOMATIC_SEED_HEX");
-  if (!hostURL) {
-    throw "Missing DIPLOMATIC_HOST_URL env var"
-  }
-  if (!seedHex) {
-    throw "Missing DIPLOMATIC_SEED_HEX env var"
+// A CLIClient maintains no state.
+export class CLIClient<Handle extends HostHandle> {
+  private enclave: Enclave;
+  private conn?: DiplomaticClientAPI<Handle>;
+
+  constructor(seed: MasterSeed) {
+    this.enclave = new Enclave(seed, libsodiumCrypto);
   }
 
-  const seed = htob(seedHex);
-  const encKey = await libsodiumCrypto.deriveXSalsa20Poly1305Key(seed);
+  async connect(
+    host: IHostConnectionInfo<Handle>,
+    transport: ITransport,
+  ): Promise<Status> {
+    const clock = new Clock();
+    const updateHostMeta = () => Promise.resolve(Status.Success);
+    this.conn = new DiplomaticClientAPI<Handle>(
+      this.enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+      updateHostMeta,
+    );
+    const [, stat] = await this.conn.register();
+    return stat;
+  }
 
-  const api = new DiplomaticClientAPI(denoMsgpack, libsodiumCrypto);
-  const url = new URL(hostURL);
+  async push(msgs: IMessage[]): Promise<ValStat<IBagPushItem[]>> {
+    if (!this.conn) {
+      return err(Status.ConnectionClosed);
+    }
 
-  const client = new DiplomaticClientCLI(api, seed, encKey, url);
-  await client.register();
-  return client;
+    const bags: IBag[] = [];
+    for (const msg of msgs) {
+      const [bag, statBag] = await this.conn.seal(msg);
+      if (statBag !== Status.Success) {
+        return err(statBag);
+      }
+      bags.push(bag);
+    }
+
+    const [items, statPush] = await this.conn.push(bags);
+    if (statPush !== Status.Success) {
+      return err(statPush);
+    }
+
+    return ok(items);
+  }
+
+  async peek(lastSeq: number): Promise<ValStat<IBagPeekItem[]>> {
+    if (!this.conn) {
+      return err(Status.ConnectionClosed);
+    }
+
+    return this.conn.peek(lastSeq);
+  }
 }
 
-export class DiplomaticClientCLI {
-  api: DiplomaticClientAPI;
-  seed: Uint8Array;
-  encKey: Uint8Array;
-  hostURL: URL;
-  hostKeyPair?: KeyPair;
-  constructor(api: DiplomaticClientAPI, seed: Uint8Array, encKey: Uint8Array, hostURL: URL) {
-    this.api = api;
-    this.seed = seed;
-    this.encKey = encKey;
-    this.hostURL = hostURL;
+export async function initCLI<Handle extends HostHandle>(
+  seed: MasterSeed,
+  host: IHostConnectionInfo<Handle>,
+  transport: ITransport,
+): Promise<ValStat<CLIClient<Handle>>> {
+  const cli = new CLIClient<Handle>(seed);
+  const stat = await cli.connect(host, transport);
+  if (stat !== Status.Success) {
+    return err(stat);
   }
-
-  async register() {
-    const regToken = "tok123";
-    const hostID = await this.api.getHostID(this.hostURL);
-    const keyPair = await libsodiumCrypto.deriveEd25519KeyPair(this.seed, hostID);
-    await this.api.register(this.hostURL, keyPair.publicKey, regToken);
-    this.hostKeyPair = keyPair;
-  }
-
-  async push(op: IOp) {
-    if (!this.hostKeyPair) {
-      return;
-    }
-    const packed = denoMsgpack.encode(op);
-    const cipherOp = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(packed, this.encKey);
-    await this.api.putDelta(this.hostURL, cipherOp, this.hostKeyPair);
-  }
-
-  async list(begin: Date): Promise<IGetDeltaPathsResponse | undefined> {
-    if (!this.hostKeyPair) {
-      return;
-    }
-    const resp = await this.api.getDeltaPaths(this.hostURL, begin, this.hostKeyPair);
-    return resp;
-  }
-
-  async pull(path: string): Promise<IOp | undefined> {
-    if (!this.hostKeyPair) {
-      return;
-    }
-    const cipher = await this.api.getDelta(this.hostURL, path, this.hostKeyPair);
-    const packed = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(cipher, this.encKey);
-    const op = denoMsgpack.decode(packed);
-    if (!isOp(op)) {
-      return;
-    }
-    return op;
-  }
+  return ok(cli);
 }

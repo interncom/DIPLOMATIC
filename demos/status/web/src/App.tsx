@@ -1,6 +1,6 @@
 import './App.css'
 import { useCallback, useEffect, useState } from 'react';
-import { SyncClient, EntIDB, entStateManager, IDBStore, openIDBStore, hostHTTPTransport, Clock, useStateWatcher, MasterSeed, libsodiumCrypto, Status, StateManager, nullStateManager, IStateManager } from '@interncom/diplomatic'
+import { SyncClient, EntIDB, entStateManager, IDBStore, openIDBStore, hostHTTPTransport, Clock, useStateWatcher, MasterSeed, libsodiumCrypto, Status, StateManager, nullStateManager, IStateManager, htob } from '@interncom/diplomatic'
 
 async function initStoreAndEntDB() {
   const idb = await openIDBStore();
@@ -10,7 +10,7 @@ async function initStoreAndEntDB() {
   return { store, entDB };
 }
 
-const seed = new Uint8Array(32).fill(0) as MasterSeed; // dummy seed
+const seed = htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF") as MasterSeed;
 
 export default function App() {
   const [client, setClient] = useState<SyncClient<URL>>();

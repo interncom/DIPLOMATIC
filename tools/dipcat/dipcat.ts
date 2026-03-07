@@ -41,17 +41,13 @@ const chunks: Uint8Array[] = [];
 for await (const chunk of Deno.stdin.readable) {
   chunks.push(chunk);
 }
-const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-if (totalLength === 0) {
+if (chunks.length === 0) {
   console.error("No input provided over STDIN");
   Deno.exit(1);
 }
-const content = new Uint8Array(totalLength);
-let offset = 0;
-for (const chunk of chunks) {
-  content.set(chunk, offset);
-  offset += chunk.length;
-}
+const blob = new Blob(chunks as BlobPart[]);
+const arrayBuffer = await blob.arrayBuffer();
+const content = new Uint8Array(arrayBuffer);
 
 const [eid, statEID] = makeEID({
   id: await libsodiumCrypto.genRandomBytes(16),

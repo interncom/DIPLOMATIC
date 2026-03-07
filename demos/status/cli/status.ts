@@ -29,7 +29,7 @@ if (!dipHost) {
 const hostURL = new URL(dipHost);
 const host: IHostConnectionInfo<URL> = {
   handle: hostURL,
-  label: "status",
+  label: "host",
   idx: 0,
 };
 const transport = new HTTPTransport(hostURL);

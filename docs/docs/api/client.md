@@ -20,5 +20,3 @@
   - The contents of the file is the encrypted operation (msgpack encoded prior to encryption).
 - `import(file: File)`
   - Import a set of operations stored in a file of the format described above.
-
-![Screenshot of exported file](./file-format.png)

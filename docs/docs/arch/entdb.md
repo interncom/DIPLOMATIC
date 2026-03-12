@@ -13,10 +13,32 @@ In DIPLOMATIC, we call these application data objects "ents", short for "entitie
 EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 
 1. "type" - Mandatory. Groups ents by their application-defined type.
-2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents.
-3. "gid" (group ID) - Optional. Supports non-hierarchical grouping.
+2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents. One ent's `pid` is another ent's `eid`.
+3. "gid" (group ID) - Optional. Supports non-hierarchical grouping, e.g. by date.
 
 These are [msgpack](https://msgpack.org)-encoded within the DIPLOMATIC msg body. The rest of the ent data lives alongside those, encoded the same way.
+
+DIPLOMATIC comes with an EntDB implementation on IndexedDB for use in web browsers. Within IndexedDB, an ent looks like this:
+
+```
+interface IStoredEntity<T = unknown> {
+  bod: T;
+  crd: Date; // createdAt
+  ctr?: number;
+  eid: string;
+  gid?: string;
+  pid?: string;
+  typ: string;
+  upd: Date; // updatedAt
+}
+```
+
+EntDB provides the following composite indexes for efficient ent lookup:
+
+1. [`typ`, `crd`],
+2. [`typ`, `upd`],
+3. [`typ`, `pid`].
+4. [`typ`, `gid`].
 
 ### Bags
 

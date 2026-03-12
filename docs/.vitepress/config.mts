@@ -40,6 +40,13 @@ export default withMermaid({
         collapsed: false,
       },
       {
+        text: 'Performance',
+        items: [
+          { text: 'Use Cases', link: '/docs/perf/cases' },
+        ],
+        collapsed: false,
+      },
+      {
         text: 'Host',
         items: [
           { text: 'Deno', link: '/docs/host/deno' },

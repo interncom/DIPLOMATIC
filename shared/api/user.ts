@@ -2,6 +2,7 @@ import { validateAuthTimestamp } from "../auth.ts";
 import { authTimestampCodec } from "../codecs/authTimestamp.ts";
 import { Status } from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
+import { ok } from "../valstat.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
   async encodeReq(_client, _keys, authTS, _body, reqEnc) {
@@ -27,6 +28,6 @@ export const userEnd: IAuthenticatedEndpoint<never, void> = {
     return Status.Success;
   },
   decodeResp(_respDec) {
-    return [undefined, Status.Success];
+    return ok(undefined);
   },
 };

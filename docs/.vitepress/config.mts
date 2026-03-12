@@ -33,6 +33,7 @@ export default withMermaid({
         text: 'Architecture',
         items: [
           { text: 'System', link: '/docs/arch/system' },
+          { text: 'EntDB', link: '/docs/arch/entdb' },
           { text: 'Sync', link: '/docs/arch/sync' },
           { text: 'Authentication', link: '/docs/arch/auth' },
         ],

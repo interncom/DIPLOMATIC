@@ -22,16 +22,20 @@ DIPLOMATIC comes with an EntDB implementation on IndexedDB for use in web browse
 
 ```
 interface IStoredEntity<T = unknown> {
-  bod: T;
-  crd: Date; // createdAt
-  ctr?: number;
-  eid: string;
-  gid?: string;
-  pid?: string;
-  typ: string;
-  upd: Date; // updatedAt
+  bod: T; // N bytes
+  crd: Date; // createdAt, 8 bytes
+  ctr?: number; // 8 bytes
+  eid: string; // Typical EID has 8 random bytes + 6 bytes for embedded timestamp = 14 bytes. Base64-encoded in IndexedDB, which expands it to 19 bytes unpadded.
+  gid?: string; // G bytes.
+  pid?: string; // 19 bytes (see eid comment above).
+  typ: string; // T bytes
+  upd: Date; // updatedAt, 8 bytes
 }
 ```
+
+An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no gid, no pid, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
+
+A maximum-size ent will have all attributes defined. That will cost 24 bytes for the 8 attribute names, plus N + 8 + 8 + 19 + G + 19 + T + 8 bytes, for a total of 86 + N + G + T bytes.
 
 EntDB provides the following composite indexes for efficient ent lookup:
 

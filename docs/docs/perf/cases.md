@@ -29,4 +29,4 @@ In DIPLOMATIC, an INSERT msg has [52 bytes of overhead](../api/push#message-head
 
 ## Editor
 
-This is the worst case for DIPLOMATIC: a very high ratio of updates to inserts. Imagine a text editor where each keystroke results in a new msg updating the single document ent. This would yield a series of msgs of monotonically increasing size. Slightly better would be to batch updates. But this is problem that has been solved many times. If you're building a text editor you may want to use a different solution than DIPLOMATIC.
+This is the worst case for DIPLOMATIC: a very high ratio of updates to inserts. Imagine a text editor where each keystroke results in a new msg updating the single document ent. This would yield a series of msgs of monotonically increasing size. Slightly better would be to batch updates. But this is a problem that has been solved many times. If you're building a text editor you may want a different solution than DIPLOMATIC.

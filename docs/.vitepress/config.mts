@@ -43,6 +43,7 @@ export default withMermaid({
         text: 'Performance',
         items: [
           { text: 'Use Cases', link: '/docs/perf/cases' },
+          { text: 'Benchmarks', link: '/docs/perf/benchmarks' },
         ],
         collapsed: false,
       },

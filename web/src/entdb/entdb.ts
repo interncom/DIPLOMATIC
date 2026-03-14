@@ -73,6 +73,7 @@ export function applyOp(
   }
 
   // Handle obsolete op (op outdated by curr).
+  // TODO: use order to tiebreak the comparison (unit test).
   const opUpdatedAt = new Date(opEID.ts.getTime() + op.off);
   if (curr !== undefined && opUpdatedAt <= curr.updatedAt) {
     return err(Status.NoChange);

@@ -8,7 +8,7 @@ The DIPLOMATIC protocol has 4 endpoints, plus the [WebSocket](https://developer.
 - [`PEEK`](./peek) Fetches bag headers uploaded since provided sequence number SEQ.
 - [`PUSH`](./push) Uploads bags.
 - [`PULL`](./pull) Fetches a list of bags with provided sequence numbers.
-- `wss://hostURL?=<authTSHex>` Initiate a [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) connection to receive new bags in real-time.
+- [`NOTF`](./notf) `https://hostURL?t=<authTSHex>` Initiate a [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) connection to receive new bags in real-time.
     
 ### Response Header
 

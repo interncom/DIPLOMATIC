@@ -24,7 +24,6 @@ export default withMermaid({
         text: 'About',
         items: [
           { text: 'Purpose', link: '/docs/about/purpose' },
-          { text: 'Concepts', link: '/docs/about/concepts' },
           { text: 'Threat Model', link: '/docs/about/threat' },
           { text: 'Principles', link: '/docs/about/principles' },
         ],

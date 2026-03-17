@@ -390,6 +390,7 @@ export async function handleNotif<Handle extends HostHandle>(
   }
 
   // Bump host sequence to last in batch.
+  // TODO: test case where outOfSeq = true. Looks like seq could be erroneously bumped then.
   if (lastSeq !== undefined) {
     await store.hosts.touch(host.label, lastSeq);
   }

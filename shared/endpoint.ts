@@ -45,7 +45,7 @@ export interface IAuthData {
 export async function hostKeys(
   host: IProtoClient,
   keyPath: string,
-  idx: number,
+  idx?: number,
 ): Promise<HostSpecificKeyPair> {
   const { crypto, enclave } = host;
   const derivSeed = await enclave.derive(keyPath, idx);

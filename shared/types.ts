@@ -63,7 +63,7 @@ export interface IMessageWithHash extends IMessage {
 // entity, with created at timestamp embedded in the eid, and updated at
 // timestamp encoded via the milliseconds offset from created at (off).
 // An IOp additionally has type, gid, and pid fields for indexing the entity.
-export interface IDeleteOp extends Omit<IMessageHead, "len" | "hsh" | "bod"> {}
+export interface IDeleteOp extends Omit<IMessageHead, "len" | "hsh" | "bod"> { }
 export interface IMutateOp<T = unknown>
   extends IDeleteOp, Omit<IMsgEntBody<T>, "body"> {
   body: T;
@@ -218,7 +218,7 @@ export type HostHandle = URL | IProtoHost;
 export interface IHostConnectionInfo<Handle extends HostHandle> {
   handle: Handle;
   label: string;
-  idx: number;
+  idx?: number;
 }
 
 // About 30 bytes.

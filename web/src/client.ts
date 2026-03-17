@@ -418,17 +418,57 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   // Manage stored host connections.
-  public async link(host: IHostConnectionInfo<Handle>) {
+  public async link(host: IHostConnectionInfo<Handle>, connect = true) {
     this.store.hosts.add(host);
     this.clientState.emit();
+
+    if (connect) {
+      const row = await this.store.hosts.get(host.label);
+      if (row) {
+        this.connectToHost(row);
+      }
+    }
   }
+
   public async unlink(label: string) {
     await this.store.hosts.del(label);
     this.clientState.emit();
   }
 
+  private async connectToHost(host: IHostRow<Handle>, listen = true, sync = true) {
+    const { clock, connections, crypto, store, transport } = this;
+    if (connections.has(host.label)) return;
+
+    const enclave = await store.seed.load();
+    if (!enclave) return;
+
+    console.info(`Connecting to ${host.handle} (${host.label})`);
+    const conn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport(host),
+      (meta) => store.hosts.set(host.label, meta),
+    );
+    await conn.register();
+
+    if (listen) {
+      await conn.listen(async (bytes: Uint8Array) => {
+        const syncParams = { conn, store, enclave, host, crypto, clock };
+        return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
+      });
+    }
+
+    connections.set(host.label, conn);
+
+    if (sync) {
+      this.scheduleSync();
+    }
+  }
+
   // Manage active host connections.
-  public async connect(listen = true) {
+  public async connect(listen = true, sync = true) {
     const { clock, crypto, store, transport } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
@@ -436,40 +476,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     const hosts = await store.hosts.list();
     for (const host of hosts) {
-      const { label } = host;
-      if (this.connections.has(label)) {
-        continue;
-      }
-      console.info(`Connecting to ${host.handle} (${label})`);
-      const txport = transport(host);
-      const conn = new DiplomaticClientAPI(
-        enclave,
-        libsodiumCrypto,
-        host,
-        clock,
-        txport,
-        (meta) => this.store.hosts.set(label, meta),
-      );
-      await conn.register();
-      if (listen) {
-        const recv = async (bytes: Uint8Array) => {
-          handleNotif(
-            bytes,
-            {
-              conn,
-              store,
-              enclave,
-              host,
-              crypto,
-              clock,
-            },
-            this.apply,
-            this.scheduleSync,
-          );
-        };
-        await conn.listen(recv);
-      }
-      this.connections.set(host.label, conn);
+      await this.connectToHost(host, true, false);
+    }
+    if (sync) {
+      this.scheduleSync();
     }
   }
 

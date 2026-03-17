@@ -28,8 +28,8 @@ export default function App() {
       const clock = new Clock();
       const client = new SyncClient(clock, stateManager, store, hostHTTPTransport);
       await client.setSeed(seed);
-      // TODO: default idx to 0 so it can be omitted.
-      await client.link({ handle: new URL("http://localhost:31337"), label: "host", idx: 0 });
+      const url = new URL("http://localhost:31337");
+      await client.link({ handle: url, label: "host" });
 
       // TODO: make these a composite state object and set all at once.
       setClient(client);

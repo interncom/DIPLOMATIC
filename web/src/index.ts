@@ -47,13 +47,13 @@ export async function genWebClient(
 > {
   const idb = await openIDBStore();
   const idbStore = new IDBStore(idb, libsodiumCrypto);
-  const transport = (host: IHostRow<URL>) => new HTTPTransport(host.handle);
   const client = new SyncClient<URL>(
     new Clock(),
     stateMgr,
     idbStore,
-    transport,
+    hostHTTPTransport,
   );
+
   const setSeed = async (seedHex: string) => {
     const seed = htob(seedHex) as MasterSeed;
     await idbStore.seed.save(seed);

@@ -24,10 +24,11 @@ const hostURL = new URL("http://localhost:31337");
 const clock = new Clock();
 
 export default function App() {
-  // TODO: make these a composite state object and set all at once.
-  const [client, setClient] = useState<SyncClient<URL>>();
-  const [entDB, setEntityDB] = useState<EntIDB>();
-  const [stateMgr, setStateMgr] = useState<IStateManager>(nullStateManager);
+  const [{ client, entDB, stateMgr }, setDiplomaticState] = useState<{
+    client?: SyncClient<URL>;
+    entDB?: EntIDB;
+    stateMgr: IStateManager;
+  }>({ stateMgr: nullStateManager });
 
   useEffect(() => {
     Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()]).then(
@@ -36,11 +37,7 @@ export default function App() {
         const client = new SyncClient(clock, entMgr, store, hostHTTPTransport);
         await client.setSeed(seed);
         await client.link({ handle: hostURL, label: "host" });
-
-        // TODO: make these a composite state object and set all at once.
-        setClient(client);
-        setEntityDB(entDB);
-        setStateMgr(entMgr);
+        setDiplomaticState({ client, entDB, stateMgr: entMgr });
       },
     );
   }, []);

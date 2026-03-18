@@ -20,6 +20,8 @@ const seed = htob(
   "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
 ) as MasterSeed;
 const entType = "count";
+const hostURL = new URL("http://localhost:31337");
+const clock = new Clock();
 
 export default function App() {
   // TODO: make these a composite state object and set all at once.
@@ -28,25 +30,19 @@ export default function App() {
   const [stateMgr, setStateMgr] = useState<IStateManager>(nullStateManager);
 
   useEffect(() => {
-    Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()])
-      .then(async ([store, entDB]) => {
-        const stateManager = entStateManager(entDB);
-        const clock = new Clock();
-        const client = new SyncClient(
-          clock,
-          stateManager,
-          store,
-          hostHTTPTransport,
-        );
+    Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()]).then(
+      async ([store, entDB]) => {
+        const entMgr = entStateManager(entDB);
+        const client = new SyncClient(clock, entMgr, store, hostHTTPTransport);
         await client.setSeed(seed);
-        const url = new URL("http://localhost:31337");
-        await client.link({ handle: url, label: "host" });
+        await client.link({ handle: hostURL, label: "host" });
 
         // TODO: make these a composite state object and set all at once.
         setClient(client);
         setEntityDB(entDB);
-        setStateMgr(stateManager);
-      });
+        setStateMgr(entMgr);
+      },
+    );
   }, []);
 
   // TODO: implement sort and limit on EntDB EntitiesQuery so this can be a one-liner.

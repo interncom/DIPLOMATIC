@@ -1,13 +1,24 @@
-import { Clock, EntIDB, IStateManager, MasterSeed, Status, SyncClient, entStateManager, hostHTTPTransport, htob, openEntIDB, libsodiumCrypto, nullStateManager, openIDBStore, useStateWatcher } from '@interncom/diplomatic';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  Clock,
+  EntIDB,
+  entStateManager,
+  hostHTTPTransport,
+  htob,
+  IStateManager,
+  libsodiumCrypto,
+  MasterSeed,
+  nullStateManager,
+  openEntIDB,
+  openIDBStore,
+  Status,
+  SyncClient,
+  useStateWatcher,
+} from "@interncom/diplomatic";
+import { useCallback, useEffect, useState } from "react";
 
-async function initStoreAndEntDB() {
-  const store = await openIDBStore(libsodiumCrypto);
-  const entDB = await openEntIDB();
-  return { store, entDB };
-}
-
-const seed = htob("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF") as MasterSeed;
+const seed = htob(
+  "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+) as MasterSeed;
 const entType = "count";
 
 export default function App() {
@@ -17,19 +28,25 @@ export default function App() {
   const [stateMgr, setStateMgr] = useState<IStateManager>(nullStateManager);
 
   useEffect(() => {
-    initStoreAndEntDB().then(async ({ store, entDB }) => {
-      const stateManager = entStateManager(entDB);
-      const clock = new Clock();
-      const client = new SyncClient(clock, stateManager, store, hostHTTPTransport);
-      await client.setSeed(seed);
-      const url = new URL("http://localhost:31337");
-      await client.link({ handle: url, label: "host" });
+    Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()])
+      .then(async ([store, entDB]) => {
+        const stateManager = entStateManager(entDB);
+        const clock = new Clock();
+        const client = new SyncClient(
+          clock,
+          stateManager,
+          store,
+          hostHTTPTransport,
+        );
+        await client.setSeed(seed);
+        const url = new URL("http://localhost:31337");
+        await client.link({ handle: url, label: "host" });
 
-      // TODO: make these a composite state object and set all at once.
-      setClient(client);
-      setEntityDB(entDB);
-      setStateMgr(stateManager);
-    });
+        // TODO: make these a composite state object and set all at once.
+        setClient(client);
+        setEntityDB(entDB);
+        setStateMgr(stateManager);
+      });
   }, []);
 
   // TODO: implement sort and limit on EntDB EntitiesQuery so this can be a one-liner.
@@ -56,5 +73,5 @@ export default function App() {
       <h2>{count}</h2>
       <button type="button" onClick={inc}>+1</button>
     </div>
-  )
+  );
 }

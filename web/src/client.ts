@@ -473,17 +473,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   // Manage active host connections.
   public async connect(listen = true, sync = true) {
-    const { clock, crypto, store, transport } = this;
+    const { connectToHost, scheduleSync, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
       return;
     }
     const hosts = await store.hosts.list();
     for (const host of hosts) {
-      await this.connectToHost(host, true, false);
+      await connectToHost(host, listen, false);
     }
     if (sync) {
-      this.scheduleSync();
+      scheduleSync();
     }
   }
 

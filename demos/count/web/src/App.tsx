@@ -1,13 +1,9 @@
-import { Clock, EntIDB, IDBStore, IStateManager, MasterSeed, Status, SyncClient, entStateManager, hostHTTPTransport, htob, openEntIDB, libsodiumCrypto, nullStateManager, openIDBStore, useStateWatcher } from '@interncom/diplomatic';
+import { Clock, EntIDB, IStateManager, MasterSeed, Status, SyncClient, entStateManager, hostHTTPTransport, htob, openEntIDB, libsodiumCrypto, nullStateManager, openIDBStore, useStateWatcher } from '@interncom/diplomatic';
 import { useCallback, useEffect, useState } from 'react';
 
 async function initStoreAndEntDB() {
-  // TODO: make async genIDBStore() function to condense to one line.
-  const idb = await openIDBStore();
-  const store = new IDBStore(idb, libsodiumCrypto);
-
+  const store = await openIDBStore(libsodiumCrypto);
   const entDB = await openEntIDB();
-
   return { store, entDB };
 }
 

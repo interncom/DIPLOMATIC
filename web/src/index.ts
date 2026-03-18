@@ -9,7 +9,7 @@ import {
   IEntity,
   nullEntDB,
 } from "./entdb/entdb";
-import { EntIDB } from "./entdb/idb";
+import { EntIDB, openEntIDB } from "./entdb/idb";
 import { EntDBMemory } from "./entdb/memory";
 import {
   useClientState,
@@ -75,6 +75,7 @@ export {
   GroupID,
   htob,
   HTTPTransport,
+  openEntIDB,
   IDBStore,
   IEntDB,
   IEntity,

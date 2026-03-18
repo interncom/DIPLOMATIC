@@ -365,3 +365,9 @@ export class EntIDB implements IEntDB {
     });
   }
 }
+
+export async function openEntIDB() {
+  const entDB = new EntIDB();
+  await entDB.init();
+  return entDB;
+}

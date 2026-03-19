@@ -38,12 +38,11 @@ export interface IDateRange {
   end: Date;
 }
 
-export type EntitiesQuery = {
-  type: string;
-  gid?: GroupID;
-  pid?: EntityID;
-  updatedBetween?: IDateRange;
-};
+export type EntitiesQuery =
+  | { type: string; }
+  | { type: string; gid: GroupID }
+  | { type: string; pid: EntityID }
+  | { type: string; updatedBetween: IDateRange };
 
 export interface IEntDB {
   apply: (ops: IOp[]) => Promise<{ stats: Status[]; types: Set<string> }>;
@@ -52,7 +51,7 @@ export interface IEntDB {
     eid: EntityID,
   ): Promise<ValStat<IEntity<T> | undefined>>;
   getEntities<T>(
-    { type, gid, pid, updatedBetween }: EntitiesQuery,
+    query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
 }
@@ -99,7 +98,7 @@ export function applyOp(
 
 export const nullEntDB: IEntDB = {
   getEnt: async () => err(Status.NotImplemented),
-  getEntities: async () => err(Status.NotImplemented),
+  getEntities: async (_query: EntitiesQuery) => err(Status.NotImplemented),
   countEntities: async () => err(Status.NotImplemented),
   apply: async (ops: IOp[]) => ({
     stats: ops.map(() => Status.NotImplemented),

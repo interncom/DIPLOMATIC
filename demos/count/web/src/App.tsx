@@ -16,9 +16,7 @@ import {
 } from "@interncom/diplomatic";
 import { useCallback, useEffect, useState } from "react";
 
-const seed = htob(
-  "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-) as MasterSeed;
+const seed = htob("0123456789ABCDEF".repeat(4)) as MasterSeed;
 const entType = "count";
 const hostURL = new URL("http://localhost:31337");
 const clock = new Clock();
@@ -42,22 +40,18 @@ export default function App() {
     );
   }, []);
 
-  // TODO: implement sort and limit on EntDB EntitiesQuery so this can be a one-liner.
-  const getLatestCount = useCallback(async () => {
+  const count = useStateWatcher(stateMgr, entType, async () => {
     if (!entDB) return 0;
     const [ents, stat] = await entDB.getAllOfType<number>(entType);
     if (stat !== Status.Success) return 0;
     if (ents.length === 0) return 0;
     ents.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     return ents[0].body;
-  }, [entDB]);
-
-  const count = useStateWatcher(stateMgr, entType, getLatestCount);
+  });
 
   const inc = useCallback(async () => {
-    if (!client) return;
     const prev = count ?? 0;
-    await client.upsert({ type: entType, body: prev + 1 });
+    await client?.upsert({ type: entType, body: prev + 1 });
   }, [client, count]);
 
   return (

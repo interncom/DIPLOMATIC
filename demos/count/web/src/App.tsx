@@ -29,7 +29,7 @@ function useLatestOfType<T>(
 export default function App() {
   const { client, entDB, stateMgr } = useClient({ host, seed });
   const count = useLatestOfType<number>(entType, stateMgr, entDB) ?? 0;
-  const inc = () => client?.upsert({ type: entType, body: count + 1 });
+  const inc = () => client?.upsert<number>({ type: entType, body: count + 1 });
 
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>

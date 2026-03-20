@@ -311,17 +311,17 @@ export class EntIDB implements IEntDB {
   }
 
   private async getAllEntities<T>(
-    { type, gid, pid, updatedBetween }: EntitiesQuery,
+    query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
     if (!this.db) {
       return err(Status.DatabaseClosed);
     }
-    if (pid !== undefined) {
-      const pidB64 = btob64(pid);
+    if ("pid" in query) {
+      const pidB64 = btob64(query.pid);
       const tx = this.db.transaction(entityTableName, "readonly");
       const index = tx.objectStore(entityTableName).index(typeParentIndexName);
       return new Promise((resolve) => {
-        const req = index.getAll(IDBKeyRange.only([type, pidB64]));
+        const req = index.getAll(IDBKeyRange.only([query.type, pidB64]));
         req.onsuccess = () => {
           const storedEnts = req.result as IStoredEntity<T>[];
           const ents = storedEnts.map(storedToEntity);
@@ -329,16 +329,16 @@ export class EntIDB implements IEntDB {
         };
         req.onerror = () => resolve(err(Status.DatabaseError));
       });
-    } else if (gid !== undefined) {
-      return await this.getGroupMembers<T>(type, gid);
-    } else if (updatedBetween !== undefined) {
+    } else if ("gid" in query) {
+      return await this.getGroupMembers<T>(query.type, query.gid);
+    } else if ("updatedBetween" in query) {
       return await this.getAllOfTypeUpdatedBetween<T>(
-        type,
-        updatedBetween.start,
-        updatedBetween.end,
+        query.type,
+        query.updatedBetween.start,
+        query.updatedBetween.end,
       );
     }
-    return await this.getAllOfType<T>(type);
+    return await this.getAllOfType<T>(query.type);
   }
 
   async getEntities<T>(

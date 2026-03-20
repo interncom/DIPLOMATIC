@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
-import type { SyncClient } from "../client";
-import { HostHandle } from "../shared/types";
+import { SyncClient } from "../client";
+import { HostHandle, IHostConnectionInfo, MasterSeed } from "../shared/types";
 import type {
   IDiplomaticClientState,
   IDiplomaticClientXferState,
+  IStateManager,
 } from "../types";
+import libsodiumCrypto from "../crypto";
+import { entStateManager } from "../entdb/entdb";
+import { EntIDB, openEntIDB } from "../entdb/idb";
+import { nullStateManager } from "../state";
+import { openIDBStore } from "../stores/idb/store";
+import { Clock, IClock } from "../shared/clock";
+import { hostHTTPTransport } from "../shared/http";
 
 export function useClientState<Handle extends HostHandle>(
   client: SyncClient<Handle>,
@@ -55,4 +63,35 @@ export function useSyncOnResume<Handle extends HostHandle>(
       globalThis.removeEventListener("online", handleOnline);
     };
   }, [client]);
+}
+
+export function useClient(
+  { clock = new Clock(), seed, host }: {
+    clock?: IClock;
+    seed?: MasterSeed;
+    host?: IHostConnectionInfo<URL>;
+  },
+) {
+  const [diplomaticState, setDiplomaticState] = useState<{
+    client?: SyncClient<URL>;
+    entDB?: EntIDB;
+    stateMgr: IStateManager;
+  }>({ stateMgr: nullStateManager });
+
+  useEffect(() => {
+    Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()]).then(
+      async ([store, entDB]) => {
+        const entMgr = entStateManager(entDB);
+        const client = new SyncClient(clock, entMgr, store, hostHTTPTransport);
+        if (seed) {
+          await client.setSeed(seed);
+        }
+        if (host) {
+          await client.link(host);
+        }
+        setDiplomaticState({ client, entDB, stateMgr: entMgr });
+      },
+    );
+  }, [clock, seed]);
+  return diplomaticState;
 }

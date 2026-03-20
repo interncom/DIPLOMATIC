@@ -7,8 +7,8 @@ import type {
   IStateManager,
 } from "../types";
 import libsodiumCrypto from "../crypto";
-import { entStateManager } from "../entdb/entdb";
-import { EntIDB, openEntIDB } from "../entdb/idb";
+import { entStateManager, IEntDB } from "../entdb/entdb";
+import { openEntIDB } from "../entdb/idb";
 import { nullStateManager } from "../state";
 import { openIDBStore } from "../stores/idb/store";
 import { Clock, IClock } from "../shared/clock";
@@ -74,7 +74,7 @@ export function useClient(
 ) {
   const [diplomaticState, setDiplomaticState] = useState<{
     client?: SyncClient<URL>;
-    entDB?: EntIDB;
+    entDB?: IEntDB;
     stateMgr: IStateManager;
   }>({ stateMgr: nullStateManager });
 

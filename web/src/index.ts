@@ -12,6 +12,7 @@ import {
 import { EntIDB, openEntIDB } from "./entdb/idb";
 import { EntDBMemory } from "./entdb/memory";
 import {
+  useClient,
   useClientState,
   useClientXferState,
   useSyncOnResume,
@@ -23,21 +24,12 @@ import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
-import { HTTPTransport } from "./shared/http";
+import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
-import type {
-  IDiplomaticClientState,
-  IHostRow,
-  IStateManager,
-  IStore,
-} from "./types";
-
-export const hostHTTPTransport = (host: IHostRow<URL>) => {
-  return new HTTPTransport(host.handle);
-};
+import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
 
 export async function genWebClient(
   stateMgr: StateManager,
@@ -89,6 +81,7 @@ export {
   StateManager,
   Status,
   SyncClient,
+  useClient,
   useClientState,
   useClientXferState,
   useStateWatcher,

@@ -39,7 +39,7 @@ export interface IDateRange {
 }
 
 export type EntitiesQuery =
-  | { type: string; }
+  | { type: string }
   | { type: string; gid: GroupID }
   | { type: string; pid: EntityID }
   | { type: string; updatedBetween: IDateRange };

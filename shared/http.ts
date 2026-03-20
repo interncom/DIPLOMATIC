@@ -14,6 +14,7 @@ import { IPushListener, ITransport } from "./types.ts";
 import { WebsocketListener } from "./http/listener.ts";
 import { IRespHead, respHeadCodec } from "./codecs/respHead.ts";
 import { err, ok, ValStat } from "./valstat.ts";
+import { IHostRow } from "../types.ts";
 
 export const api = {
   user: {
@@ -69,6 +70,10 @@ export class HTTPTransport implements ITransport {
     }
   }
 }
+
+export const hostHTTPTransport = (host: IHostRow<URL>) => {
+  return new HTTPTransport(host.handle);
+};
 
 export function errResp(head: IRespHead): Response {
   const enc = new Encoder();

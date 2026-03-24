@@ -51,7 +51,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private clock: IClock,
     private state: IStateManager,
     private store: IStore<Handle>,
-    private transport: (host: IHostRow<Handle>) => ITransport,
+    private transport: (host: IHostConnectionInfo<Handle>) => ITransport,
     private crypto: ICrypto = libsodiumCrypto,
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,

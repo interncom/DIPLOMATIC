@@ -1,0 +1,11 @@
+{
+  "name": "diplomatic-monorepo",
+  "private": true,
+  "workspaces": [
+    "web",
+    "cli"
+  ],
+  "scripts": {
+    "style": "./style.sh"
+  }
+}

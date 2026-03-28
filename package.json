@@ -3,7 +3,9 @@
   "private": true,
   "workspaces": [
     "web",
-    "cli"
+    "cli",
+    "bun",
+    "demos"
   ],
   "scripts": {
     "style": "./style.sh"

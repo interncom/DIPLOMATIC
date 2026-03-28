@@ -6,7 +6,7 @@ const result = await esbuild.build({
   format: "esm",
   outfile: "dist/index.mjs",
   platform: "node",
-  external: ["@noble/hashes", "libsodium.js"],
+  external: ["@noble/hashes", "libsodium-wrappers"],
   // minify: true,
   tsconfig: "./tsconfig.json",
   metafile: true,

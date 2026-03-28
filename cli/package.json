@@ -1,0 +1,27 @@
+{
+  "name": "@interncom/diplomatic-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CLI utilities for DIPLOMATIC",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "tsc": "tsc",
+    "build": "node esbuild.mjs",
+    "test": "deno test --allow-net --allow-ffi --allow-env ../deno/"
+  },
+  "author": "The Internet Committee",
+  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.11",
+    "esbuild": "0.21.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {}
+}

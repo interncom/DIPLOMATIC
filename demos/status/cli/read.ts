@@ -1,7 +1,12 @@
-import { initCLIOrPanic, loadHostOrPanic, loadSeedOrPanic, panic } from "../../../deno/src/cli.ts";
-import denoMsgpack from "../../../deno/src/codec.ts";
-import { Status } from "../../../shared/consts.ts";
-import { hostHTTPTransport } from "../../../shared/http.ts";
+import {
+  initCLIOrPanic,
+  loadHostOrPanic,
+  loadSeedOrPanic,
+  panic,
+  denoMsgpack,
+  Status,
+  hostHTTPTransport,
+} from "../../../cli/src/index.ts";
 
 const seed = loadSeedOrPanic("DIP_SEED");
 const host = loadHostOrPanic("DIP_HOST");

@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "tsc": "tsc",
-    "build": "node esbuild.mjs",
+    "build": "bun run esbuild.mjs",
     "test": "deno test --allow-net --allow-ffi --allow-env ../deno/"
   },
   "author": "The Internet Committee",
@@ -23,5 +23,9 @@
     "esbuild": "0.21.5",
     "typescript": "^5.8.3"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@interncom/diplomatic-bun": "workspace:*",
+    "@noble/hashes": "1.8.0",
+    "libsodium-wrappers": "0.8.2"
+  }
 }

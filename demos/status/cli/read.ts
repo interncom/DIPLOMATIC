@@ -2,11 +2,15 @@ import {
   initCLIOrPanic,
   loadHostOrPanic,
   loadSeedOrPanic,
-  panic,
   denoMsgpack,
   Status,
   hostHTTPTransport,
-} from "../../../cli/src/index.ts";
+} from "@interncom/diplomatic-cli";
+
+function panic(msg: string) {
+  console.error(msg);
+  process.exit(1);
+}
 
 const seed = loadSeedOrPanic("DIP_SEED");
 const host = loadHostOrPanic("DIP_HOST");

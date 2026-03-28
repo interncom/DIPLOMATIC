@@ -18,7 +18,7 @@ import {
   MasterSeed,
 } from "../../shared/types.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
-import libsodiumCrypto from "../../deno/src/crypto.ts";
+import libsodiumCrypto from "../../bun/src/crypto.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {
@@ -133,33 +133,41 @@ export async function initCLIOrPanic<Handle extends HostHandle>(
 ): Promise<CLIClient<Handle>> {
   const cli = new CLIClient<Handle>({ seed });
   const stat = await cli.connect(host, transport(host));
-  if (stat !== Status.Success) panic("Failed to initialize CLI");
+  if (stat !== Status.Success) {
+    console.error("Failed to initialize CLI");
+    process.exit(1);
+  }
   return cli;
 }
 
-export function panic(msg: string) {
-  console.error(msg);
-  Deno.exit(1);
-}
 
 export function loadSeedOrPanic(envVar: string): MasterSeed {
-  const seedHex = Deno.env.get(`${envVar}`);
-  if (!seedHex) panic(`${envVar} env var missing`);
-  const seed = htob(seedHex!);
-  if (seed.length !== 32) panic(`${envVar} must be 64 hex chars (32 bytes)`);
+  const seedHex = process.env[envVar];
+  if (!seedHex) {
+    console.error(`${envVar} env var missing`);
+    process.exit(1);
+  }
+  const seed = htob(seedHex);
+  if (seed.length !== 32) {
+    console.error(`${envVar} must be 64 hex chars (32 bytes)`);
+    process.exit(1);
+  }
   return seed as MasterSeed;
 }
 
 export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
-  const hostURL = Deno.env.get(`${envVar}`);
-  if (!hostURL) panic(`${envVar} env var missing`);
+  const hostURL = process.env[envVar];
+  if (!hostURL) {
+    console.error(`${envVar} env var missing`);
+    process.exit(1);
+  }
   return {
-    handle: new URL(hostURL!),
+    handle: new URL(hostURL),
     label: "host",
   };
 }
 
 // Re-exports for convenience in demos
-export { default as denoMsgpack } from "../../deno/src/codec.ts";
+export { default as denoMsgpack } from "../../bun/src/codec.ts";
 export { Status } from "../../shared/consts.ts";
 export { hostHTTPTransport } from "../../shared/http.ts";

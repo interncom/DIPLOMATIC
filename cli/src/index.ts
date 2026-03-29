@@ -165,6 +165,6 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 }
 
 // Re-exports for convenience in demos
-export { default as denoMsgpack } from "../../bun/src/codec.ts";
+export { default as msgpack } from "../../bun/src/codec.ts";
 export { Status } from "../../shared/consts.ts";
 export { hostHTTPTransport } from "../../shared/http.ts";

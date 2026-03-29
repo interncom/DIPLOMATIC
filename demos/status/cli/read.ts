@@ -1,20 +1,14 @@
-import {
-  initCLIOrPanic,
-  loadHostOrPanic,
-  loadSeedOrPanic,
-  denoMsgpack,
-  Status,
-  hostHTTPTransport,
-} from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic-cli";
+const { Status } = Diplomatic;
 
 function panic(msg: string) {
   console.error(msg);
   process.exit(1);
 }
 
-const seed = loadSeedOrPanic("DIP_SEED");
-const host = loadHostOrPanic("DIP_HOST");
-const client = await initCLIOrPanic(seed, host, hostHTTPTransport);
+const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const host = Diplomatic.loadHostOrPanic("DIP_HOST");
+const client = await Diplomatic.initCLIOrPanic({ seed, host });
 
 const [peekItems, statPeek] = await client.peek(0);
 if (statPeek !== Status.Success) panic(`Failed to peek: ${statPeek}`);
@@ -33,6 +27,6 @@ const [bag, statBag] = await client.open(peekItem, pullItems[0]);
 if (statBag !== Status.Success) panic(`Opening bag: ${statBag}`);
 const body = bag?.bod;
 if (body) {
-  const text = denoMsgpack.decode(body);
+  const text = Diplomatic.denoMsgpack.decode(body);
   console.log(text);
 }

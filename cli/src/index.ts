@@ -119,7 +119,11 @@ export class CLIClient<Handle extends HostHandle> {
 }
 
 export async function initCLI<Handle extends URL>(
-  { seed, host, transport }: { seed: MasterSeed, host: IHostConnectionInfo<Handle>, transport: ITransport },
+  { seed, host, transport }: {
+    seed: MasterSeed;
+    host: IHostConnectionInfo<Handle>;
+    transport: ITransport;
+  },
 ): Promise<[CLIClient<Handle>, Status]> {
   const cli = new CLIClient<Handle>({ seed });
   const stat = await cli.connect(host, transport);
@@ -127,7 +131,11 @@ export async function initCLI<Handle extends URL>(
 }
 
 export async function initCLIOrPanic<Handle extends URL>(
-  { seed, host, transport }: { seed: MasterSeed, host: IHostConnectionInfo<Handle>, transport?: ITransport },
+  { seed, host, transport }: {
+    seed: MasterSeed;
+    host: IHostConnectionInfo<Handle>;
+    transport?: ITransport;
+  },
 ): Promise<CLIClient<Handle>> {
   const trans = transport ?? hostHTTPTransport(host);
   const [cli, stat] = await initCLI({ seed, host, transport: trans });
@@ -137,7 +145,6 @@ export async function initCLIOrPanic<Handle extends URL>(
   }
   return cli;
 }
-
 
 export function loadSeedOrPanic(envVar: string): MasterSeed {
   const seedHex = process.env[envVar];
@@ -182,7 +189,8 @@ class DummyNotifier {
     };
   }
   async push() {}
-  handle = async () => new Response("WebSockets not supported in bun demo", { status: 404 });
+  handle = async () =>
+    new Response("WebSockets not supported in bun demo", { status: 404 });
 }
 
 const dummyNotifier = new DummyNotifier();

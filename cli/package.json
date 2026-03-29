@@ -8,6 +8,9 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "diplomatic-host": "./bin/host.ts"
+  },
   "scripts": {
     "tsc": "tsc",
     "build": "bun run esbuild.mjs",

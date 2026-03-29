@@ -34,7 +34,9 @@ if (stat !== Diplomatic.Status.Success) {
 }
 ```
 
-5. `DIP_HOST=http://localhost:31337 DIP_SEED=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF bun run write.ts "hello world"`
+5. Start the host by running `bunx diplomatic-host`
+
+6. In another terminal, run `DIP_HOST=http://localhost:31337 DIP_SEED=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF bun run write.ts "hello world"`
 
 To read the status, create `read.ts` with the code from the Read Demo walkthrough and run `DIP_HOST=http://localhost:31337 DIP_SEED=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF bun run read.ts`.
 

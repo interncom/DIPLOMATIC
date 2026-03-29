@@ -19,6 +19,7 @@ import {
 } from "../../shared/types.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
 import libsodiumCrypto from "../../bun/src/crypto.ts";
+import { hostHTTPTransport } from "../../shared/http.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {
@@ -116,23 +117,19 @@ export class CLIClient<Handle extends HostHandle> {
   }
 }
 
-export async function initCLI<Handle extends HostHandle>(
-  seed: MasterSeed,
-  host: IHostConnectionInfo<Handle>,
-  transport: ITransport,
+export async function initCLI<Handle extends URL>(
+  { seed, host, transport }: { seed: MasterSeed, host: IHostConnectionInfo<Handle>, transport: ITransport },
 ): Promise<[CLIClient<Handle>, Status]> {
   const cli = new CLIClient<Handle>({ seed });
   const stat = await cli.connect(host, transport);
   return [cli, stat];
 }
 
-export async function initCLIOrPanic<Handle extends HostHandle>(
-  seed: MasterSeed,
-  host: IHostConnectionInfo<Handle>,
-  transport: (host: IHostConnectionInfo<Handle>) => ITransport,
+export async function initCLIOrPanic<Handle extends URL>(
+  { seed, host, transport }: { seed: MasterSeed, host: IHostConnectionInfo<Handle>, transport?: ITransport },
 ): Promise<CLIClient<Handle>> {
-  const cli = new CLIClient<Handle>({ seed });
-  const stat = await cli.connect(host, transport(host));
+  const trans = transport ?? hostHTTPTransport(host);
+  const [cli, stat] = await initCLI({ seed, host, transport: trans });
   if (stat !== Status.Success) {
     console.error("Failed to initialize CLI");
     process.exit(1);

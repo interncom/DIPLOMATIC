@@ -26,7 +26,7 @@ if (!text) {
   process.exit(1);
 }
 
-const body = Diplomatic.denoMsgpack.encode(text);
+const body = Diplomatic.msgpack.encode(text);
 const stat = await client.upsertSingletonSync("status", body);
 if (stat !== Diplomatic.Status.Success) {
   console.error(`upserting message: ${Diplomatic.Status[stat]}`);
@@ -66,7 +66,7 @@ if (!text) {
 Load the message to record.
 
 ```ts
-const body = Diplomatic.denoMsgpack.encode(text);
+const body = Diplomatic.msgpack.encode(text);
 ```
 
 Encode the message as binary, using [msgpack](https://msgpack.org/).
@@ -119,7 +119,7 @@ const [bag, statBag] = await client.open(peekItem, pullItems[0]);
 if (statBag !== Status.Success) panic(`Opening bag: ${statBag}`);
 const body = bag?.bod;
 if (body) {
-  const text = Diplomatic.denoMsgpack.decode(body);
+  const text = Diplomatic.msgpack.decode(body);
   console.log(text);
 }
 ```
@@ -190,7 +190,7 @@ Decrypt and combine the message header and body, forming a "bag".
 ```ts
 const body = bag?.bod;
 if (body) {
-  const text = Diplomatic.denoMsgpack.decode(body);
+  const text = Diplomatic.msgpack.decode(body);
   console.log(text);
 }
 ```

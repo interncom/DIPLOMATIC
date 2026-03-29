@@ -27,6 +27,6 @@ const [bag, statBag] = await client.open(peekItem, pullItems[0]);
 if (statBag !== Status.Success) panic(`Opening bag: ${statBag}`);
 const body = bag?.bod;
 if (body) {
-  const text = Diplomatic.denoMsgpack.decode(body);
+  const text = Diplomatic.msgpack.decode(body);
   console.log(text);
 }

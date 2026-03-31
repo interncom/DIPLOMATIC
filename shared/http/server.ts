@@ -1,29 +1,29 @@
+import { validateAuthTimestamp } from "../auth.ts";
+import { htob } from "../binary.ts";
 import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
+import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
-import { Status } from "../consts.ts";
+import { notifierTSAuthURLParam, Status } from "../consts.ts";
 import { binResp, callPaths, cors, errResp } from "../http.ts";
 import {
+  nullSubMeta,
   type IHostCrypto,
   type IProtoHost,
+  type IPushNotifier,
   type IStorage,
-  type IWebSocketPushNotifier,
-  nullSubMeta,
 } from "../types.ts";
+import { err, ok, ValStat } from "../valstat.ts";
 
 export class DiplomaticHTTPServer implements IProtoHost {
   constructor(
     public storage: IStorage,
     public crypto: IHostCrypto,
-    public notifier: IWebSocketPushNotifier,
+    public notifier: IPushNotifier,
     public clock: IClock,
-  ) {}
+  ) { }
 
   corsHandler = async (request: Request): Promise<Response> => {
-    if (request.headers.get("upgrade") === "websocket") {
-      return this.notifier.handle(this, request);
-    }
-
     if (request.method === "OPTIONS") {
       // Handle CORS preflight request
       return cors(new Response(null));
@@ -126,4 +126,26 @@ export class DiplomaticHTTPServer implements IProtoHost {
       });
     }
   };
+}
+
+export async function validateWebSocketAuth(
+  request: Request,
+  host: IProtoHost,
+): Promise<ValStat<IAuthTimestamp>> {
+  const url = new URL(request.url);
+  const authTSHex = url.searchParams.get(notifierTSAuthURLParam);
+  if (!authTSHex) {
+    return err(Status.InvalidRequest);
+  }
+  const authTSEnc = htob(authTSHex);
+  const dec = new Decoder(authTSEnc);
+  const [authTS, decStatus] = dec.readStruct(authTimestampCodec);
+  if (decStatus !== Status.Success) {
+    return err(Status.InvalidRequest);
+  }
+  const status = await validateAuthTimestamp(authTS, host.crypto, host.clock);
+  if (status !== Status.Success) {
+    return err(status);
+  }
+  return ok(authTS);
 }

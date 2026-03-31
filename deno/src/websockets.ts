@@ -1,20 +1,15 @@
+import { validateAuthTimestamp } from "../../shared/auth.ts";
+import { btoh } from "../../shared/binary.ts";
+import type { IClock } from "../../shared/clock.ts";
+import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
+import { Status } from "../../shared/consts.ts";
 import type {
-  IProtoHost,
+  IHostCrypto,
   IPushNotifier,
   IPushOpenResponse,
   PublicKey,
   PushReceiver,
 } from "../../shared/types.ts";
-import { notifierTSAuthURLParam, Status } from "../../shared/consts.ts";
-import { btoh, htob } from "../../shared/binary.ts";
-import {
-  authTimestampCodec,
-  IAuthTimestamp,
-} from "../../shared/codecs/authTimestamp.ts";
-import { validateAuthTimestamp } from "../../shared/auth.ts";
-import type { IHostCrypto } from "../../shared/types.ts";
-import type { IClock } from "../../shared/clock.ts";
-import { Decoder } from "../../shared/codec.ts";
 
 class DenoWebsocketNotifier implements IPushNotifier {
   // recvs maps a user's pubKeyHex => the set of listener functions.
@@ -62,38 +57,6 @@ class DenoWebsocketNotifier implements IPushNotifier {
       }
     }
   }
-
-  handle = async (host: IProtoHost, request: Request): Promise<Response> => {
-    const url = new URL(request.url);
-    const authTSHex = url.searchParams.get(notifierTSAuthURLParam);
-    if (!authTSHex) {
-      return new Response("Missing authTS", { status: 401 });
-    }
-    const authTSEnc = htob(authTSHex);
-    const dec = new Decoder(authTSEnc);
-    const [authTS, decStatus] = dec.readStruct(authTimestampCodec);
-    if (decStatus !== Status.Success) {
-      return new Response("Invalid authTS", { status: 401 });
-    }
-    const [hasUser, hasStatus] = await host.storage.hasUser(authTS.pubKey);
-    if (hasStatus !== Status.Success || !hasUser) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    console.log("WebSocket connection established");
-    const { socket, response } = Deno.upgradeWebSocket(request);
-
-    const chan = await this.open(
-      authTS,
-      (data) => socket.send(data),
-      host.crypto,
-      host.clock,
-    );
-    // TODO: handle non-success.
-    socket.onclose = () => chan.shut();
-
-    return response;
-  };
 }
 
 const denoWebsocketNotifier = new DenoWebsocketNotifier();

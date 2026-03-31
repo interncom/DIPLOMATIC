@@ -5,12 +5,10 @@ const result = await esbuild.build({
   bundle: true,
   format: "esm",
   outfile: "dist/index.mjs",
-  outdir: "dist",
   platform: "node",
   external: ["@noble/hashes", "libsodium-wrappers"],
   // minify: true,
   tsconfig: "./tsconfig.json",
-  dts: true,
   metafile: true,
 });
 

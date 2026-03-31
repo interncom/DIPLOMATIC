@@ -186,9 +186,6 @@ export interface IPushNotifier {
   ): Promise<IPushOpenResponse>;
   push(pubKey: PublicKey, data: Uint8Array): void;
 }
-export interface IWebSocketPushNotifier extends IPushNotifier {
-  handle(host: IProtoHost, req: Request): Promise<Response>;
-}
 export interface IPushListener {
   connect(
     authTS: IAuthTimestamp,

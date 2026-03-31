@@ -1,3 +1,4 @@
+import libsodiumCrypto from "../../bun/src/crypto.ts";
 import { IOpenBag, openBagBody } from "../../shared/bag.ts";
 import { htob } from "../../shared/binary.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
@@ -7,6 +8,8 @@ import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
+import { hostHTTPTransport } from "../../shared/http.ts";
+import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import { genSingletonUpsert } from "../../shared/message.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
 import {
@@ -18,9 +21,6 @@ import {
   MasterSeed,
 } from "../../shared/types.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
-import libsodiumCrypto from "../../bun/src/crypto.ts";
-import { hostHTTPTransport } from "../../shared/http.ts";
-import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {
@@ -116,6 +116,11 @@ export class CLIClient<Handle extends HostHandle> {
     const [, statPush] = await this.push([msg]);
     return statPush;
   }
+
+  async listen(onNotification: (bytes: Uint8Array) => Promise<Status>): Promise<Status> {
+    if (!this.conn) return Status.ConnectionClosed;
+    return this.conn.listen(onNotification);
+  }
 }
 
 export async function initCLI<Handle extends URL>(
@@ -140,7 +145,7 @@ export async function initCLIOrPanic<Handle extends URL>(
   const trans = transport ?? hostHTTPTransport(host);
   const [cli, stat] = await initCLI({ seed, host, transport: trans });
   if (stat !== Status.Success) {
-    console.error("Failed to initialize CLI");
+    console.error(`Failed to initialize CLI: ${Status[stat]}`);
     process.exit(1);
   }
   return cli;
@@ -188,7 +193,7 @@ class DummyNotifier {
       status: 0,
     };
   }
-  async push() {}
+  async push() { }
   handle = async () =>
     new Response("WebSockets not supported in bun demo", { status: 404 });
 }

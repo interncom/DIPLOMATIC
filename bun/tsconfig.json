@@ -2,12 +2,9 @@
   "compilerOptions": {
     "module": "ES2022",
     "target": "ES2022",
-    "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "bundler",
-    "declaration": true,
-    "emitDeclarationOnly": true,
     "allowImportingTsExtensions": true,
     "types": ["bun", "node"],
     "skipLibCheck": true

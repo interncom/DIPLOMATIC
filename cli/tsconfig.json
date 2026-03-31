@@ -3,6 +3,7 @@
     "module": "ES2022",
     "target": "ES2022",
     "outDir": "./dist",
+    "declarationDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "bundler",
@@ -14,6 +15,6 @@
   },
   "include": [
     "src",
-    "../shared"
+    "shared"
   ]
 }

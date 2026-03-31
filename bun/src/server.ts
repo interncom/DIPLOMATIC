@@ -1,5 +1,3 @@
-import libsodiumCrypto from "../../bun/src/crypto.ts";
-import sqliteStorage from "../../bun/src/storage/sqlite.ts";
 import { validateAuthTimestamp } from "../../shared/auth.ts";
 import { btoh } from "../../shared/binary.ts";
 import type { IClock } from "../../shared/clock.ts";
@@ -8,6 +6,8 @@ import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../shared/consts.ts";
 import { DiplomaticHTTPServer, validateWebSocketAuth } from "../../shared/http/server.ts";
 import type { IHostCrypto, IPushNotifier, IPushOpenResponse, PublicKey, PushReceiver } from "../../shared/types.ts";
+import libsodiumCrypto from "./crypto.ts";
+import sqliteStorage from "./storage/sqlite.ts";
 
 // Bun WebSocket notifier
 class BunWebSocketNotifier implements IPushNotifier {
@@ -43,6 +43,8 @@ class BunWebSocketNotifier implements IPushNotifier {
       }
     }
   }
+
+
 }
 
 const bunNotifier = new BunWebSocketNotifier();
@@ -79,7 +81,6 @@ Bun.serve({
           ws.close();
           return;
         }
-        // TODO: fix this as any.
         (ws as any).channel = channel;
       });
     },

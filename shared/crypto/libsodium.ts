@@ -1,5 +1,6 @@
 import type { DerivationSeed, Hash, ICrypto, KeyPair } from "../types.ts";
-import { blake3 } from "@noble/hashes/blake3.js";
+// @ts-ignore
+import { blake3 } from "../../node_modules/@noble/hashes/blake3.js";
 
 // @ts-ignore let this one go
 // deno-lint-ignore no-explicit-any

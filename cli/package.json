@@ -13,7 +13,7 @@
   },
   "scripts": {
     "tsc": "tsc",
-    "build": "bun run tsc && cp dist/cli/src/index.d.ts dist/index.d.ts && bun build src/index.ts --outdir dist --format esm --target node --external @noble/hashes --external libsodium-wrappers",
+    "build": "bun run tsc && cp dist/cli/src/index.d.ts dist/index.d.ts && bun run esbuild.mjs",
     "test": "deno test --allow-net --allow-ffi --allow-env ../deno/"
   },
   "author": "The Internet Committee",

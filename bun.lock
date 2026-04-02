@@ -33,6 +33,7 @@
         "libsodium-wrappers": "0.8.2",
       },
       "devDependencies": {
+        "@types/bun": "latest",
         "@types/node": "^20.14.11",
         "esbuild": "0.21.5",
         "typescript": "^5.8.3",

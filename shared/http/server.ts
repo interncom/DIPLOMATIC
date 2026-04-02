@@ -7,11 +7,11 @@ import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 import { notifierTSAuthURLParam, Status } from "../consts.ts";
 import { binResp, callPaths, cors, errResp } from "../http.ts";
 import {
-  nullSubMeta,
   type IHostCrypto,
   type IProtoHost,
   type IPushNotifier,
   type IStorage,
+  nullSubMeta,
 } from "../types.ts";
 import { err, ok, ValStat } from "../valstat.ts";
 
@@ -21,7 +21,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
     public crypto: IHostCrypto,
     public notifier: IPushNotifier,
     public clock: IClock,
-  ) { }
+  ) {}
 
   corsHandler = async (request: Request): Promise<Response> => {
     if (request.method === "OPTIONS") {

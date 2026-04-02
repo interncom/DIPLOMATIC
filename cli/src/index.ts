@@ -183,30 +183,4 @@ export { Status } from "../../shared/consts.ts";
 export { hostHTTPTransport } from "../../shared/http.ts";
 
 // For bun host
-import memoryStorage from "../../shared/storage/memory.ts";
-
-class DummyNotifier {
-  async open() {
-    return {
-      send: () => 0,
-      shut: () => 0,
-      status: 0,
-    };
-  }
-  async push() { }
-  handle = async () =>
-    new Response("WebSockets not supported in bun demo", { status: 404 });
-}
-
-const dummyNotifier = new DummyNotifier();
-
-export async function runBunHost(port: number = 31337) {
-  const server = new DiplomaticHTTPServer(
-    memoryStorage,
-    libsodiumCrypto,
-    dummyNotifier,
-    new Clock(),
-  );
-  console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
-  (globalThis as any).Bun.serve({ port, fetch: server.corsHandler });
-}
+export { runBunHost } from '../host/index.ts';

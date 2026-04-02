@@ -32,7 +32,7 @@ const sqliteStorage: IStorage = {
       const pubKeyHex = btoh(pubKey);
       db.exec(
         "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
-        pubKeyHex,
+        [pubKeyHex],
       );
       return ok(undefined);
     } catch {
@@ -71,10 +71,7 @@ const sqliteStorage: IStorage = {
       const bodyCph = bag.bodyCph;
       db.exec(
         "INSERT INTO bags (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
-        pubKeyHex,
-        seq,
-        headCph,
-        bodyCph,
+        [pubKeyHex, seq, headCph, bodyCph],
       );
       return ok(seq);
     } catch {

@@ -47,45 +47,45 @@ class BunWebSocketNotifier implements IPushNotifier {
 
 const bunNotifier = new BunWebSocketNotifier();
 
-const port = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337");
+export async function runBunHost(port: number = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337")) {
+  const server = new DiplomaticHTTPServer(
+    sqliteStorage,
+    libsodiumCrypto,
+    bunNotifier,
+    new Clock(),
+  );
 
-const server = new DiplomaticHTTPServer(
-  sqliteStorage,
-  libsodiumCrypto,
-  bunNotifier,
-  new Clock(),
-);
-
-console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
-Bun.serve({
-  port,
-  fetch: async (req, bunServer) => {
-    if (req.headers.get("upgrade") === "websocket") {
-      const [authTS, authStatus] = await validateWebSocketAuth(req, server);
-      if (authStatus !== Status.Success) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      const success = bunServer.upgrade(req, { data: { authTS } });
-      return success ? undefined : new Response("Upgrade failed", { status: 400 });
-    }
-    return server.corsHandler(req);
-  },
-  websocket: {
-    data: {} as { authTS: IAuthTimestamp },
-    open: (ws) => {
-      const authTS = ws.data.authTS;
-      bunNotifier.open(authTS, (data) => ws.send(data), server.crypto, server.clock).then(channel => {
-        if (channel.status !== Status.Success) {
-          ws.close();
-          return;
+  console.log(`DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:${port}`);
+  Bun.serve({
+    port,
+    fetch: async (req, bunServer) => {
+      if (req.headers.get("upgrade") === "websocket") {
+        const [authTS, authStatus] = await validateWebSocketAuth(req, server);
+        if (authStatus !== Status.Success) {
+          return new Response("Unauthorized", { status: 401 });
         }
-        // TODO: fix this as any.
-        (ws as any).channel = channel;
-      });
+        const success = bunServer.upgrade(req, { data: { authTS } });
+        return success ? undefined : new Response("Upgrade failed", { status: 400 });
+      }
+      return server.corsHandler(req);
     },
-    message: (ws, msg) => { },
-    close: (ws) => {
-      ((ws as any).channel as IPushOpenResponse)?.shut();
+    websocket: {
+      data: {} as { authTS: IAuthTimestamp },
+      open: (ws) => {
+        const authTS = ws.data.authTS;
+        bunNotifier.open(authTS, (data) => ws.send(data), server.crypto, server.clock).then(channel => {
+          if (channel.status !== Status.Success) {
+            ws.close();
+            return;
+          }
+          // TODO: fix this as any.
+          (ws as any).channel = channel;
+        });
+      },
+      message: (ws, msg) => { },
+      close: (ws) => {
+        ((ws as any).channel as IPushOpenResponse)?.shut();
+      },
     },
-  },
-});
+  });
+}

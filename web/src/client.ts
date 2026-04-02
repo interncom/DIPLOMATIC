@@ -435,11 +435,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.clientState.emit();
   }
 
-  private async connectToHost(
+  private connectToHost = async (
     host: IHostRow<Handle>,
     listen = true,
     sync = true,
-  ) {
+  ) => {
     const { clock, connections, crypto, store, transport } = this;
     if (connections.has(host.label)) return;
 

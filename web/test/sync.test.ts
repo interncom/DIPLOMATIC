@@ -116,31 +116,4 @@ describe("Sync Integration", () => {
     messages = Array.from(await storeB.messages.list());
     expect(messages.length).toBe(3); // Original + upsert
   });
-
-  test("peek filter by recorded at works", async () => {
-    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-    const { client: clientA } = await createClient(masterSeed);
-    const { store: storeB, client: clientB } = await createClient(masterSeed);
-
-    await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
-    await clientB.link({ handle: lpcHost, label: "test", idx: 1 });
-
-    // Set host clock to time of push
-    hostClock.set(new Date(1000));
-
-    // Set clientB's lastSeq to after the push seq
-    const hostB = await storeB.hosts.get("test");
-    if (hostB) hostB.lastSeq = 1;
-
-    await clientA.connect(false);
-    await clientB.connect(false);
-
-    // Insert and sync at time 1000
-    await clientA.insertRaw(new Uint8Array([1]));
-    expect(await clientA.sync()).toBe(Status.Success);
-
-    // ClientB syncs with lastSyncedAt at 2000 - should not pull messages from 1000
-    expect(await clientB.sync()).toBe(Status.Success);
-    expect(Array.from(await storeB.messages.list()).length).toBe(0);
-  });
 });

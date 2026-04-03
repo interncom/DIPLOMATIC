@@ -9,9 +9,10 @@ import {
   IEntity,
   nullEntDB,
 } from "./entdb/entdb";
-import { EntIDB } from "./entdb/idb";
+import { EntIDB, openEntIDB } from "./entdb/idb";
 import { EntDBMemory } from "./entdb/memory";
 import {
+  useClient,
   useClientState,
   useClientXferState,
   useSyncOnResume,
@@ -23,21 +24,12 @@ import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
-import { HTTPTransport } from "./shared/http";
+import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
-import type {
-  IDiplomaticClientState,
-  IHostRow,
-  IStateManager,
-  IStore,
-} from "./types";
-
-export const hostHTTPTransport = (host: IHostRow<URL>) => {
-  return new HTTPTransport(host.handle);
-};
+import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
 
 export async function genWebClient(
   stateMgr: StateManager,
@@ -45,15 +37,14 @@ export async function genWebClient(
 ): Promise<
   { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
 > {
-  const idb = await openIDBStore();
-  const idbStore = new IDBStore(idb, libsodiumCrypto);
-  const transport = (host: IHostRow<URL>) => new HTTPTransport(host.handle);
+  const idbStore = await openIDBStore(libsodiumCrypto);
   const client = new SyncClient<URL>(
     new Clock(),
     stateMgr,
     idbStore,
-    transport,
+    hostHTTPTransport,
   );
+
   const setSeed = async (seedHex: string) => {
     const seed = htob(seedHex) as MasterSeed;
     await idbStore.seed.save(seed);
@@ -85,10 +76,12 @@ export {
   MemoryStore,
   nullEntDB,
   nullStateManager,
+  openEntIDB,
   openIDBStore,
   StateManager,
   Status,
   SyncClient,
+  useClient,
   useClientState,
   useClientXferState,
   useStateWatcher,

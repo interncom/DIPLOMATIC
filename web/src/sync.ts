@@ -10,19 +10,9 @@ import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { notifItemCodec } from "./shared/codecs/notifItem";
-import { IBagPeekItem } from "./shared/codecs/peekItem";
-import { peekItemHeadCodec } from "./shared/codecs/peekItemHead";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
-import {
-  Hash,
-  HostHandle,
-  HostSpecificKeyPair,
-  IBag,
-  ICrypto,
-  IMessage,
-} from "./shared/types";
-import { err, ok, ValStat } from "./shared/valstat";
+import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import {
   IDownloadMessage,
   IHostRow,
@@ -31,41 +21,7 @@ import {
   IStore,
   IStoredMessageData,
 } from "./types";
-
-export interface IDecryptedBagPeekItem {
-  kdm: Uint8Array;
-  headEnc: Uint8Array;
-}
-export async function decryptPeekItem(
-  item: IBagPeekItem,
-  hostKeys: HostSpecificKeyPair,
-  enclave: Enclave,
-  crypto: ICrypto,
-): Promise<ValStat<IDecryptedBagPeekItem>> {
-  const dec = new Decoder(item.headCph);
-  const [peekItem, readStatus] = dec.readStruct(peekItemHeadCodec);
-  if (readStatus !== Status.Success) {
-    return err(readStatus);
-  }
-  const { sig, kdm, headCph } = peekItem;
-  const valid = await crypto.checkSigEd25519(
-    sig,
-    headCph,
-    hostKeys.publicKey,
-  );
-  if (!valid) {
-    return err(Status.InvalidSignature);
-  }
-  const key = await enclave.deriveFromKDM(kdm);
-  let headEnc: Uint8Array;
-  try {
-    headEnc = await crypto.decryptXSalsa20Poly1305Combined(headCph, key);
-  } catch {
-    // Decryption failed, skip
-    return err(Status.DecryptionError);
-  }
-  return ok({ kdm, headEnc });
-}
+import { decryptPeekItem } from "./shared/sync";
 
 export interface ISyncParams<Handle extends HostHandle> {
   conn: DiplomaticClientAPI<Handle>;
@@ -390,6 +346,7 @@ export async function handleNotif<Handle extends HostHandle>(
   }
 
   // Bump host sequence to last in batch.
+  // TODO: test case where outOfSeq = true. Looks like seq could be erroneously bumped then.
   if (lastSeq !== undefined) {
     await store.hosts.touch(host.label, lastSeq);
   }

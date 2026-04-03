@@ -38,7 +38,7 @@ export class IDBStore implements IStore<URL> {
   }
 }
 
-export async function openIDBStore(): Promise<IDBDatabase> {
+export async function openIDBStoreDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("diplomatic-store-db", 2);
     req.onupgradeneeded = () => {
@@ -66,4 +66,9 @@ export async function openIDBStore(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+export async function openIDBStore(crypto: ICrypto) {
+  const db = await openIDBStoreDB();
+  return new IDBStore(db, crypto);
 }

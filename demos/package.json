@@ -1,0 +1,7 @@
+{
+  "name": "diplomatic-demos",
+  "private": true,
+  "dependencies": {
+    "@interncom/diplomatic-cli": "workspace:cli"
+  }
+}

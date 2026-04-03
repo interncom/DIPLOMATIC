@@ -1,0 +1,17 @@
+{
+  "name": "diplomatic-monorepo",
+  "private": true,
+  "workspaces": [
+    "web",
+    "cli",
+    "bun",
+    "demos"
+  ],
+  "scripts": {
+    "style": "./style.sh"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "libsodium-wrappers-sumo": "^0.7.16"
+  }
+}

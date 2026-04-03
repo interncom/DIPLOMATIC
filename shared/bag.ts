@@ -84,7 +84,7 @@ export async function sealBag(
   });
 }
 
-interface IOpenBag {
+export interface IOpenBag {
   msgHead: IMessageHead;
   bod?: EncodedMessage;
   headHash: Hash;

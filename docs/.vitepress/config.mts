@@ -24,8 +24,8 @@ export default withMermaid({
         text: 'About',
         items: [
           { text: 'Purpose', link: '/docs/about/purpose' },
-          { text: 'Concepts', link: '/docs/about/concepts' },
           { text: 'Threat Model', link: '/docs/about/threat' },
+          { text: 'Principles', link: '/docs/about/principles' },
         ],
         collapsed: false,
       },
@@ -33,8 +33,17 @@ export default withMermaid({
         text: 'Architecture',
         items: [
           { text: 'System', link: '/docs/arch/system' },
+          { text: 'EntDB', link: '/docs/arch/entdb' },
           { text: 'Sync', link: '/docs/arch/sync' },
           { text: 'Authentication', link: '/docs/arch/auth' },
+        ],
+        collapsed: false,
+      },
+      {
+        text: 'Performance',
+        items: [
+          { text: 'Use Cases', link: '/docs/perf/cases' },
+          { text: 'Benchmarks', link: '/docs/perf/benchmarks' },
         ],
         collapsed: false,
       },
@@ -65,11 +74,7 @@ export default withMermaid({
       {
         text: 'Demos',
         items: [
-          { text: 'COUNT', link: '/docs/demos/count' },
           { text: 'STATUS', link: '/docs/demos/status' },
-          { text: 'TODO', link: '/docs/demos/todo' },
-          { text: 'DIARY', link: '/docs/demos/diary' },
-          { text: 'IONIC', link: '/docs/demos/ionic' },
         ],
         collapsed: true,
       },

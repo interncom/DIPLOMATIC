@@ -14,6 +14,7 @@ export type IBagPushItem = {
 } | {
   idx: number;
   status: Exclude<Status, Status.Success>;
+  // If the status is non-Success, no seq number returned.
 };
 
 export const pushItemCodec: ICodecStruct<IBagPushItem> = {

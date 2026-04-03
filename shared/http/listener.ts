@@ -46,7 +46,7 @@ export class WebsocketListener implements IPushListener {
     };
 
     this.websocket.onerror = (e) => {
-      console.log(`ERROR: ${e}`);
+      console.log(`ERROR: ${JSON.stringify(e)}`);
     };
 
     return Promise.resolve(Status.Success);

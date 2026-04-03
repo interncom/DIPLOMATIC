@@ -27,7 +27,10 @@ function createBod(size: number): Uint8Array {
 }
 
 async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
-  const bag = await sealBag(op, keyPair, crypto, enclave);
+  const [bag, stat] = await sealBag(op, keyPair, crypto, enclave);
+  if (stat !== Status.Success) {
+    throw new Error("sealing bag");
+  }
   const enc = new Encoder();
   enc.writeStruct(bagCodec, bag);
   return enc.result();

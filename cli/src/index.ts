@@ -181,6 +181,10 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 export { default as msgpack } from "../../bun/src/codec.ts";
 export { Status } from "../../shared/consts.ts";
 export { hostHTTPTransport } from "../../shared/http.ts";
+export { Decoder } from "../../shared/codec.ts";
+export type { IBagNotifItem } from "../../shared/codecs/notifItem.ts";
+export { notifItemCodec } from "../../shared/codecs/notifItem.ts";
+export type { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 
 // For bun host
 export { runBunHost } from '../host/index.ts';

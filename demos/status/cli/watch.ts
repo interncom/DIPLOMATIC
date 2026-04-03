@@ -1,7 +1,5 @@
 import * as Diplomatic from "@interncom/diplomatic-cli";
-import { Decoder } from "../../../shared/codec.ts";
-import { IBagNotifItem, notifItemCodec } from "../../../shared/codecs/notifItem.ts";
-import { IBagPullItem } from "../../../shared/codecs/pullItem.ts";
+import { Decoder, IBagNotifItem, notifItemCodec, IBagPullItem } from "@interncom/diplomatic-cli";
 const { Status } = Diplomatic;
 
 function panic(msg: string) {

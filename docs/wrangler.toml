@@ -1,3 +1,4 @@
 name = "diplomatic-site"
-compatibility_date = "2026-03-14"
-pages_build_output_dir = ".vitepress/dist"
+compatibility_date = "2026-04-03"
+
+assets = { directory = "./.vitepress/dist" }

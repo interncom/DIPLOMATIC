@@ -186,9 +186,6 @@ export interface IPushNotifier {
   ): Promise<IPushOpenResponse>;
   push(pubKey: PublicKey, data: Uint8Array): void;
 }
-export interface IWebSocketPushNotifier extends IPushNotifier {
-  handle(host: IProtoHost, req: Request): Promise<Response>;
-}
 export interface IPushListener {
   connect(
     authTS: IAuthTimestamp,
@@ -218,7 +215,7 @@ export type HostHandle = URL | IProtoHost;
 export interface IHostConnectionInfo<Handle extends HostHandle> {
   handle: Handle;
   label: string;
-  idx: number;
+  idx?: number;
 }
 
 // About 30 bytes.

@@ -88,10 +88,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
 
     // Return response.
     const respVS = endpoint.decodeResp(dec);
-    console.info(`API call: ${APICallName[name]}`, {
-      req: items,
-      resp: respVS,
-    });
+    // console.info(`API call: ${APICallName[name]}`, {
+    //   req: items,
+    //   resp: respVS,
+    // });
     return respVS;
   }
 

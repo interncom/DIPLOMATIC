@@ -1,0 +1,35 @@
+{
+  "name": "@interncom/diplomatic-cli",
+  "version": "0.1.1",
+  "type": "module",
+  "description": "CLI utilities for DIPLOMATIC",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "diplomatic-host": "./bin/host.ts"
+  },
+  "scripts": {
+    "tsc": "tsc",
+    "build": "bun run tsc && cp dist/cli/src/index.d.ts dist/index.d.ts && bun run esbuild.mjs",
+    "test": "deno test --allow-net --allow-ffi --allow-env ../deno/"
+  },
+  "author": "The Internet Committee",
+  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.14.11",
+    "esbuild": "0.21.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@interncom/diplomatic-bun": "workspace:*",
+    "@noble/hashes": "1.8.0",
+    "libsodium-wrappers": "0.8.2"
+  }
+}

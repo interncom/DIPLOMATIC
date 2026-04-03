@@ -48,10 +48,10 @@ export enum Status {
 }
 
 export enum APICallName {
-  User,
-  Peek,
-  Push,
-  Pull,
+  User = 0,
+  Peek = 1,
+  Push = 2,
+  Pull = 3,
 }
 
 export const notifierTSAuthURLParam = "t";

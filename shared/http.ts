@@ -10,7 +10,7 @@ import { peekEnd } from "./api/peek.ts";
 import { pullEnd } from "./api/pull.ts";
 import { pushEnd } from "./api/push.ts";
 import { userEnd } from "./api/user.ts";
-import { IPushListener, ITransport } from "./types.ts";
+import { IHostConnectionInfo, IPushListener, ITransport } from "./types.ts";
 import { WebsocketListener } from "./http/listener.ts";
 import { IRespHead, respHeadCodec } from "./codecs/respHead.ts";
 import { err, ok, ValStat } from "./valstat.ts";
@@ -69,6 +69,10 @@ export class HTTPTransport implements ITransport {
     }
   }
 }
+
+export const hostHTTPTransport = (host: IHostConnectionInfo<URL>) => {
+  return new HTTPTransport(host.handle);
+};
 
 export function errResp(head: IRespHead): Response {
   const enc = new Encoder();

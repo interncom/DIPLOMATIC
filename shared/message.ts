@@ -1,28 +1,19 @@
 // A message is the atomic unit of the DIPLOMATIC protocol.
 // Sometimes we abbreviate message as "msg".
 
-import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
-import { eidCodec, IEntityID, makeEID } from "./codecs/eid.ts";
+import { eidCodec } from "./codecs/eid.ts";
 import { Status } from "./consts.ts";
 import type {
   EntityID,
   ICrypto,
+  IDeleteMessage,
   IMessage,
   IMessageHead,
+  IUpsertMessage,
   SerializedContent,
 } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
-
-// Messages are either upserts (update/insert) or deletes.
-interface IUpsertMessage extends IMessage {
-  bod: SerializedContent;
-}
-
-// A delete is just a message with no body (and thus len = 0).
-interface IDeleteMessage extends Omit<IMessage, "bod"> {
-  len: 0;
-}
 
 export type EncodedMessage = Uint8Array;
 
@@ -102,38 +93,4 @@ export async function genDelete(
   }
   const { eid, off, ctr } = head;
   return ok({ eid, off, ctr, len: 0 });
-}
-
-export async function genSingletonUpsert(
-  type: string,
-  clk: IClock,
-  content: Uint8Array,
-  ctr = 0,
-): Promise<ValStat<IUpsertMessage>> {
-  const now = clk.now();
-
-  const encText = new Encoder();
-  const statText = encText.writeVarString(type);
-  if (statText !== Status.Success) {
-    return err(statText);
-  }
-  const textBytes = encText.result();
-
-  const eidObj: IEntityID = {
-    id: textBytes,
-    ts: new Date(0),
-  };
-  const [eid, statEID] = makeEID(eidObj);
-  if (statEID !== Status.Success) {
-    return err(statEID);
-  }
-
-  const off = now.getTime() - eidObj.ts.getTime();
-  return ok({
-    eid,
-    off,
-    ctr,
-    len: content.length,
-    bod: content,
-  });
 }

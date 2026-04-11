@@ -22,6 +22,7 @@ import {
   IMessage,
   IMessageHead,
   IMsgEntBody,
+  IStateManager,
   ITransport,
   IUpsertParams,
   MasterSeed,
@@ -35,7 +36,6 @@ import {
   IHostRow,
   IMsgParts,
   IStateEmitter,
-  IStateManager,
   IStore,
   IStoredMessageData,
 } from "./types";

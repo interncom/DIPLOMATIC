@@ -249,3 +249,19 @@ export interface ITransport {
   call: (name: APICallName, enc: Encoder) => Promise<ValStat<Decoder>>;
   listener: IPushListener;
 }
+
+export interface IStateManager {
+  apply: (msgs: IMessage[]) => Promise<Status[]>;
+  on: (type: string, listener: () => void) => void;
+  off: (type: string, listener: () => void) => void;
+}
+
+// Messages are either upserts (update/insert) or deletes.
+export interface IUpsertMessage extends IMessage {
+  bod: SerializedContent;
+}
+
+// A delete is just a message with no body (and thus len = 0).
+export interface IDeleteMessage extends Omit<IMessage, "bod"> {
+  len: 0;
+}

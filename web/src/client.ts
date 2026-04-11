@@ -469,7 +469,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (sync) {
       this.scheduleSync();
     }
-  }
+  };
 
   // Manage active host connections.
   public async connect(listen = true, sync = true) {

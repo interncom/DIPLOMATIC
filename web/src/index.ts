@@ -22,14 +22,15 @@ import useStateWatcher, {
 } from "./react/useStateWatcher";
 import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
-import { genSingletonEID } from "./shared/codecs/eid";
+import { Decoder } from "./shared/codec";
+import { eidCodec, genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
 import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
-import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
+import type { IDiplomaticClientState, IStateManager, IStore, IStoredMessage, IStoredMessageData } from "./types";
 
 export async function genWebClient(
   stateMgr: StateManager,
@@ -57,6 +58,8 @@ export async function genWebClient(
 export {
   btoh,
   Clock,
+  Decoder,
+  eidCodec,
   EntDBMemory,
   EntIDB,
   EntitiesQuery,
@@ -89,4 +92,4 @@ export {
   useSyncOnResume,
 };
 
-export type { IDiplomaticClientState, IOp };
+export type { IDiplomaticClientState, IOp, IStoredMessage, IStoredMessageData };

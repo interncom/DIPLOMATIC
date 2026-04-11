@@ -6,6 +6,7 @@ const result = await esbuild.build({
   format: "esm",
   outfile: "dist/index.mjs",
   platform: "browser",
+  target: 'esnext',
   external: ["react", "@noble/hashes"],
   // minify: true,
   tsconfig: "./tsconfig.json",

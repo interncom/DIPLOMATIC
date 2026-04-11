@@ -1,15 +1,15 @@
-import { IClock } from "./clock";
-import { Decoder, Encoder } from "./codec";
-import { eidCodec, IEntityID, makeEID } from "./codecs/eid";
-import { Status } from "./consts";
-import { TypedEventEmitter } from "./events";
+import { IClock } from "./clock.ts";
+import { Decoder, Encoder } from "./codec.ts";
+import { eidCodec, IEntityID, makeEID } from "./codecs/eid.ts";
+import { Status } from "./consts.ts";
+import { TypedEventEmitter } from "./events.ts";
 import {
   IMessage,
   IStateManager,
   IUpsertMessage,
   SerializedContent,
-} from "./types";
-import { err, ok, ValStat } from "./valstat";
+} from "./types.ts";
+import { err, ok, ValStat } from "./valstat.ts";
 
 export async function genSingletonUpsert(
   type: string,

@@ -34,6 +34,7 @@ import {
   IMutateOp,
   type IOp,
   MasterSeed,
+  IStateManager,
 } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -48,7 +49,7 @@ import type {
 } from "./types";
 
 export async function genWebClient(
-  stateMgr: StateManager,
+  stateMgr: IStateManager,
   url: URL,
 ): Promise<
   { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }

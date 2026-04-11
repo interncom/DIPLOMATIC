@@ -1,5 +1,5 @@
 import { use, useEffect, useRef, useState } from "react";
-import { IStateManager } from "../types";
+import { IStateManager } from "../shared/types";
 
 export default function useStateWatcher<T>(
   mgr: IStateManager,

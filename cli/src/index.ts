@@ -9,8 +9,7 @@ import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
 import { hostHTTPTransport } from "../../shared/http.ts";
-import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
-import { genSingletonUpsert } from "../../shared/message.ts";
+import { genSingletonUpsert } from "../../shared/singleton.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
 import {
   HostHandle,
@@ -179,12 +178,12 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 
 // Re-exports for convenience in demos
 export { default as msgpack } from "../../bun/src/codec.ts";
+export { Decoder } from "../../shared/codec.ts";
+export { notifItemCodec } from "../../shared/codecs/notifItem.ts";
+export type { IBagNotifItem } from "../../shared/codecs/notifItem.ts";
+export type { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 export { Status } from "../../shared/consts.ts";
 export { hostHTTPTransport } from "../../shared/http.ts";
-export { Decoder } from "../../shared/codec.ts";
-export type { IBagNotifItem } from "../../shared/codecs/notifItem.ts";
-export { notifItemCodec } from "../../shared/codecs/notifItem.ts";
-export type { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 
 // For bun host
 export { runBunHost } from '../host/index.ts';

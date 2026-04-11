@@ -6,9 +6,8 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { EncodedMessage } from "../src/shared/message";
 import memStorage from "../src/shared/storage/memory";
-import type { HostHandle, IHostCrypto, IStorage, MasterSeed } from "../src/shared/types";
+import type { HostHandle, IHostCrypto, IStateManager, IStorage, MasterSeed } from "../src/shared/types";
 import { MemoryStore } from "../src/stores/memory/store";
-import { IStateManager } from "../src/types";
 import { Status } from "../src/shared/consts";
 
 const hostClock = new MockClock(new Date(0));

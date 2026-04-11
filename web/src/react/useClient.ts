@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { SyncClient } from "../client";
-import { HostHandle, IHostConnectionInfo, MasterSeed } from "../shared/types";
+import {
+  HostHandle,
+  IHostConnectionInfo,
+  IStateManager,
+  MasterSeed,
+} from "../shared/types";
 import type {
   IDiplomaticClientState,
   IDiplomaticClientXferState,
-  IStateManager,
 } from "../types";
 import libsodiumCrypto from "../crypto";
 import { entStateManager, IEntDB } from "../entdb/entdb";

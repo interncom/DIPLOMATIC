@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plain Status Demo</title>
+    <style>
+      body { background: black; color: white; font-family: monospace; padding: 20px; }
+      input, button { background: #333; color: white; border: 1px solid white; padding: 8px; margin: 5px 0; font-family: monospace; }
+      input { width: 100%; max-width: 400px; }
+      button { cursor: pointer; }
+      button:hover { background: #555; }
+      #status { padding: 20px; border-top: 1px solid white; margin-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <input type="text" id="host" placeholder="Host URL" value="http://localhost:31337" />
+      <input type="password" id="seed" placeholder="Seed" value="0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" />
+      <button onclick="window.loadLatestStatus(document.getElementById('seed').value, document.getElementById('host').value)">Load Status</button>
+    </div>
+    <div id="status">Enter host and seed, then click Load Status.</div>
+    <script type="module">
+      import { loadLatestStatus } from "./src/main.ts";
+      window.loadLatestStatus = loadLatestStatus;
+    </script>
+  </body>
+</html>

@@ -12,7 +12,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
-    "@interncom/diplomatic": "file:../../../web",
+    "@interncom/diplomatic": "0.1.2",
     "@msgpack/msgpack": "^3.0.0"
   }
 }

@@ -8,6 +8,7 @@ import type {
   MasterSeed,
   IMessage,
   IMessageHead,
+  IStateManager,
 } from "../src/shared/types";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from "../src/shared/storage/memory";
@@ -19,7 +20,7 @@ import { bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { hostKeys } from "../src/shared/endpoint";
-import { IDownloadMessage, IStateManager, IStoredMessageData } from "../src/types";
+import { IDownloadMessage, IStoredMessageData } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";

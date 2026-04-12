@@ -22,17 +22,34 @@ import useStateWatcher, {
 } from "./react/useStateWatcher";
 import { btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
-import { genSingletonEID } from "./shared/codecs/eid";
+import { Decoder, Encoder } from "./shared/codec";
+import { eidCodec, genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
 import { hostHTTPTransport, HTTPTransport } from "./shared/http";
-import { EntityID, GroupID, type IOp, MasterSeed } from "./shared/types";
+import { TypedEventEmitter } from "./shared/events";
+import {
+  EntityID,
+  GroupID,
+  IMessage,
+  IMutateOp,
+  type IOp,
+  IStateManager,
+  MasterSeed,
+} from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
-import type { IDiplomaticClientState, IStateManager, IStore } from "./types";
+import { SingletonStateManager } from "./shared/singleton";
+import type {
+  Applier,
+  IDiplomaticClientState,
+  IStore,
+  IStoredMessage,
+  IStoredMessageData,
+} from "./types";
 
 export async function genWebClient(
-  stateMgr: StateManager,
+  stateMgr: IStateManager,
   url: URL,
 ): Promise<
   { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
@@ -57,6 +74,9 @@ export async function genWebClient(
 export {
   btoh,
   Clock,
+  Decoder,
+  eidCodec,
+  Encoder,
   EntDBMemory,
   EntIDB,
   EntitiesQuery,
@@ -69,7 +89,6 @@ export {
   IDBStore,
   IEntDB,
   IEntity,
-  IStateManager,
   IStore,
   libsodiumCrypto,
   MasterSeed,
@@ -78,9 +97,11 @@ export {
   nullStateManager,
   openEntIDB,
   openIDBStore,
+  SingletonStateManager,
   StateManager,
   Status,
   SyncClient,
+  TypedEventEmitter,
   useClient,
   useClientState,
   useClientXferState,
@@ -89,4 +110,13 @@ export {
   useSyncOnResume,
 };
 
-export type { IDiplomaticClientState, IOp };
+export type {
+  Applier,
+  IDiplomaticClientState,
+  IMessage,
+  IMutateOp,
+  IOp,
+  IStateManager,
+  IStoredMessage,
+  IStoredMessageData,
+};

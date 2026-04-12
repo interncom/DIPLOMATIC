@@ -6,7 +6,7 @@
 // StateManager delegates to a pluggable "applier" to do the updates.
 
 import { decode } from "@msgpack/msgpack";
-import { TypedEventEmitter } from "./events";
+import { TypedEventEmitter } from "./shared/events";
 import { Status } from "./shared/consts";
 import {
   IDeleteOp,
@@ -14,9 +14,10 @@ import {
   IMsgEntBody,
   IMutateOp,
   IOp,
+  IStateManager,
 } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import type { Applier, IStateManager } from "./types";
+import type { Applier } from "./types";
 
 export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   if (!bodDec) {

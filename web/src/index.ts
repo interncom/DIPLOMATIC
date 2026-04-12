@@ -116,6 +116,7 @@ export type {
   IMessage,
   IMutateOp,
   IOp,
+  IStateManager,
   IStoredMessage,
   IStoredMessageData,
 };

@@ -5,17 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plain Status Demo</title>
     <link rel="stylesheet" href="style.css" />
+    <script type="module" src="./src/main.ts"></script>
   </head>
   <body>
     <div>
       <input type="text" id="host" placeholder="Host URL" value="http://localhost:31337" />
       <input type="password" id="seed" placeholder="Seed" value="0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" />
-      <button onclick="window.loadLatestStatus(document.getElementById('seed').value, document.getElementById('host').value)">Load Status</button>
+      <button onclick="window.register(document.getElementById('seed').value, document.getElementById('host').value)">Load Status</button>
     </div>
     <div id="status">Enter host and seed, then click Load Status.</div>
-    <script type="module">
-      import { loadLatestStatus } from "./src/main.ts";
-      window.loadLatestStatus = loadLatestStatus;
-    </script>
   </body>
 </html>

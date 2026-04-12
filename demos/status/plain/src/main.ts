@@ -5,7 +5,10 @@ const msgType = "status";
 
 const statusDiv = document.getElementById('status')!
 
-export async function loadLatestStatus(seedHex: string, hostURL: string): Promise<void> {
+export async function register(seedHex: string, hostURL: string): Promise<void> {
+  const stored = localStorage.getItem('status')
+  if (stored) statusDiv.textContent = stored
+
   try {
     if (!seedHex) throw new Error('Please enter a valid seed')
     if (!hostURL) throw new Error('Please enter a valid host URL')
@@ -14,6 +17,7 @@ export async function loadLatestStatus(seedHex: string, hostURL: string): Promis
     stateMgr.on(msgType, () => {
       if (!stateMgr.latest) return;
       const bodyStr = decode(stateMgr.latest) as string
+      localStorage.setItem('status', bodyStr)
       statusDiv.textContent = bodyStr
     })
 
@@ -23,3 +27,5 @@ export async function loadLatestStatus(seedHex: string, hostURL: string): Promis
     statusDiv.textContent = `Error: ${(e as Error).message}`
   }
 }
+
+(window as any).register = register;

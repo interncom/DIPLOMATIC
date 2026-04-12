@@ -7,9 +7,9 @@
       "dependencies": {
         "@interncom/diplomatic": "file:../../../web",
         "@msgpack/msgpack": "^3.0.0",
-        "typescript": "^6.0.2",
       },
       "devDependencies": {
+        "typescript": "^6.0.2",
         "vite": "^5.2.0",
       },
     },

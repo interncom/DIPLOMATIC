@@ -20,15 +20,9 @@ const result = await prompts([
     name: 'appType',
     message: reset('App type:'),
     choices: [
-      { title: 'React Web App w/ Vite', value: 'react-web' },
-      { title: 'Ionic (React) Web App w/ Vite', value: 'ionic-web' },
+      { title: 'Vanilla TS/HTML (Singleton)', value: 'plain' },
+      { title: 'React/TSX (EntDB)', value: 'web' },
     ],
-  },
-  {
-    type: 'text',
-    name: 'hostURL',
-    message: reset('Host URL:'),
-    initial: 'https://diplomatic-cloudflare-host.root-a00.workers.dev',
   },
 ])
 
@@ -55,8 +49,4 @@ await fs.cp(sourceDir, targetDir, { recursive: true })
 await editJsonFile(path.join(targetDir, 'package.json'), (pkg) => {
   pkg.name = result.appName
   return pkg
-})
-await editJsonFile(path.join(targetDir, 'src', 'consts.json'), (consts) => {
-  consts.hostURL = result.hostURL
-  return consts
 })

@@ -8,7 +8,6 @@ import type {
   IHostConnectionInfo,
   IHostMetadata,
   IInsertParams,
-  IMessage,
   IMessageHead,
   IOp,
   IUpsertParams,
@@ -184,10 +183,4 @@ export interface IClient<Handle extends HostHandle> {
 
   clientState: IStateEmitter<IDiplomaticClientState>;
   xferState: IStateEmitter<IDiplomaticClientXferState>;
-}
-
-export interface IStateManager {
-  apply: (msgs: IMessage[]) => Promise<Status[]>;
-  on: (type: string, listener: () => void) => void;
-  off: (type: string, listener: () => void) => void;
 }

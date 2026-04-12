@@ -1,6 +1,6 @@
 {
   "name": "@interncom/create-diplomatic",
-  "version": "0.0.12",
+  "version": "0.1.3",
   "type": "module",
   "description": "Initializer for DIPLOMATIC-based apps",
   "main": "index.js",
@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "@interncom/create-diplomatic": "./index.js"
+    "create-diplomatic": "index.js"
   },
   "files": [
     "templates",

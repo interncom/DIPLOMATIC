@@ -7,7 +7,7 @@ import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import { genSingletonUpsert } from "../../shared/message.ts";
+import { genSingletonUpsert } from "../../shared/singleton.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
 import {
   HostHandle,

@@ -373,3 +373,158 @@ process.stdin.resume();
 ```
 
 Start listening for notifs via WebSocket, and keep the process alive to continue watching.
+
+## Web
+
+Now we'll create a web app that displays the status message in real-time.
+
+### Steps
+
+1. Create a new plain app: `npm create @interncom/diplomatic@latest status-web-app`
+
+2. When prompted, choose "Vanilla TS/HTML (Singleton)" as the app type.
+
+3. `cd status-web-app`
+
+4. `npm install`
+
+5. Edit `src/main.ts` with the code below (or replace it entirely). We'll explain this line-by-line in the next section.
+
+```ts
+import { decode } from '@msgpack/msgpack'
+import * as Diplomatic from '@interncom/diplomatic'
+
+const msgType = "status";
+
+const statusDiv = document.getElementById('status')!
+
+export async function register(): Promise<void> {
+  const stored = localStorage.getItem('status')
+  if (stored) statusDiv.textContent = stored
+
+  try {
+    const seedHex = (document.getElementById('seed') as HTMLInputElement).value
+    const hostURL = (document.getElementById('host') as HTMLInputElement).value
+
+    if (!seedHex) throw new Error('Enter a valid seed (64 hex chars)')
+    if (!hostURL) throw new Error('Enter a valid host URL')
+
+    const stateMgr = new Diplomatic.SingletonStateManager(msgType)
+    stateMgr.on(msgType, () => {
+      if (!stateMgr.latest) return;
+      const bodyStr = decode(stateMgr.latest) as string
+      localStorage.setItem('status', bodyStr)
+      statusDiv.textContent = bodyStr
+    })
+
+    const { setSeed } = await Diplomatic.genWebClient(stateMgr, new URL(hostURL));
+    await setSeed(seedHex);
+  } catch (e) {
+    statusDiv.textContent = `Error: ${(e as Error).message}`
+  }
+}
+
+(window as any).register = register;
+```
+
+6. Update `index.html` to include inputs for seed and host, and a button to register:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Status Demo</title>
+</head>
+<body>
+  <h1>Status Demo</h1>
+  <div>
+    <label for="seed">Seed (64 hex chars):</label>
+    <input type="text" id="seed" placeholder="0123456789ABCDEF..." />
+  </div>
+  <div>
+    <label for="host">Host URL:</label>
+    <input type="text" id="host" placeholder="http://localhost:31337" />
+  </div>
+  <button onclick="register()">Register</button>
+  <div id="status">Status will appear here...</div>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
+```
+
+7. Start the host: `bunx diplomatic-host`
+
+8. In another terminal, serve the web app: `npm run dev`
+
+9. Open the web app in a browser, enter the seed and host URL, click Register.
+
+10. In another terminal, write a status: `DIP_HOST=http://localhost:31337 DIP_SEED=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF bun run write.ts "hello world"`
+
+11. Observe the web app update with the new status message.
+
+### Code Walkthrough
+
+```ts
+import { decode } from '@msgpack/msgpack'
+import * as Diplomatic from '@interncom/diplomatic'
+```
+
+Import msgpack for decoding and DIPLOMATIC for the web client.
+
+```ts
+const msgType = "status";
+
+const statusDiv = document.getElementById('status')!
+```
+
+Define the message type and get the DOM element to display the status.
+
+```ts
+export async function register(): Promise<void> {
+  const stored = localStorage.getItem('status')
+  if (stored) statusDiv.textContent = stored
+```
+
+The register function sets up the client. First, load any previously stored status from localStorage.
+
+```ts
+  try {
+    const seedHex = (document.getElementById('seed') as HTMLInputElement).value
+    const hostURL = (document.getElementById('host') as HTMLInputElement).value
+
+    if (!seedHex) throw new Error('Enter a valid seed (64 hex chars)')
+    if (!hostURL) throw new Error('Enter a valid host URL')
+```
+
+Get the seed and host URL from the input fields, validating they're provided.
+
+```ts
+    const stateMgr = new Diplomatic.SingletonStateManager(msgType)
+    stateMgr.on(msgType, () => {
+      if (!stateMgr.latest) return;
+      const bodyStr = decode(stateMgr.latest) as string
+      localStorage.setItem('status', bodyStr)
+      statusDiv.textContent = bodyStr
+    })
+```
+
+Create a state manager for the singleton "status" message. Set up an event listener that decodes the latest message, stores it in localStorage, and displays it.
+
+```ts
+    const { setSeed } = await Diplomatic.genWebClient(stateMgr, new URL(hostURL));
+    await setSeed(seedHex);
+  } catch (e) {
+    statusDiv.textContent = `Error: ${(e as Error).message}`
+  }
+}
+```
+
+Generate a web client connected to the host, then set the cryptographic seed. If anything fails, display the error.
+
+```ts
+(window as any).register = register;
+```
+
+Expose the register function globally so it can be called from the HTML onclick handler.

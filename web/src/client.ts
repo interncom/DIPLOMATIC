@@ -22,6 +22,7 @@ import {
   IMessage,
   IMessageHead,
   IMsgEntBody,
+  IStateManager,
   ITransport,
   IUpsertParams,
   MasterSeed,
@@ -35,7 +36,6 @@ import {
   IHostRow,
   IMsgParts,
   IStateEmitter,
-  IStateManager,
   IStore,
   IStoredMessageData,
 } from "./types";
@@ -469,7 +469,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (sync) {
       this.scheduleSync();
     }
-  }
+  };
 
   // Manage active host connections.
   public async connect(listen = true, sync = true) {

@@ -3,13 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun index.html"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "typescript": "^6.0.2"
+    "vite": "^5.2.0"
   },
   "dependencies": {
     "@interncom/diplomatic": "file:../../../web",
-    "@msgpack/msgpack": "^3.0.0"
+    "@msgpack/msgpack": "^3.0.0",
+    "typescript": "^6.0.2"
   }
 }

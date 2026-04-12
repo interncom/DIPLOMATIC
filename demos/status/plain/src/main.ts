@@ -5,13 +5,16 @@ const msgType = "status";
 
 const statusDiv = document.getElementById('status')!
 
-export async function register(seedHex: string, hostURL: string): Promise<void> {
+export async function register(): Promise<void> {
   const stored = localStorage.getItem('status')
   if (stored) statusDiv.textContent = stored
 
   try {
-    if (!seedHex) throw new Error('Please enter a valid seed')
-    if (!hostURL) throw new Error('Please enter a valid host URL')
+    const seedHex = (document.getElementById('seed') as HTMLInputElement).value
+    const hostURL = (document.getElementById('host') as HTMLInputElement).value
+
+    if (!seedHex) throw new Error('Enter a valid seed (64 hex chars)')
+    if (!hostURL) throw new Error('Enter a valid host URL')
 
     const stateMgr = new Diplomatic.SingletonStateManager(msgType)
     stateMgr.on(msgType, () => {

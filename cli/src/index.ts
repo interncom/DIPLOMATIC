@@ -1,16 +1,16 @@
-import libsodiumCrypto from "../../bun/src/crypto.ts";
-import { IOpenBag, openBagBody } from "../../shared/bag.ts";
-import { htob } from "../../shared/binary.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
-import { Clock, IClock } from "../../shared/clock.ts";
-import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
-import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
-import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
-import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/enclave.ts";
-import { hostHTTPTransport } from "../../shared/http.ts";
-import { genSingletonUpsert } from "../../shared/singleton.ts";
-import { decryptPeekItem } from "../../shared/sync.ts";
+import libsodiumCrypto from "../bun/src/crypto.ts";
+import { IOpenBag, openBagBody } from "../shared/bag.ts";
+import { htob } from "../shared/binary.ts";
+import DiplomaticClientAPI from "../shared/client.ts";
+import { Clock, IClock } from "../shared/clock.ts";
+import type { IBagPeekItem } from "../shared/codecs/peekItem.ts";
+import { IBagPullItem } from "../shared/codecs/pullItem.ts";
+import { IBagPushItem } from "../shared/codecs/pushItem.ts";
+import { Status } from "../shared/consts.ts";
+import { Enclave } from "../shared/enclave.ts";
+import { hostHTTPTransport } from "../shared/http.ts";
+import { genSingletonUpsert } from "../shared/singleton.ts";
+import { decryptPeekItem } from "../shared/sync.ts";
 import {
   HostHandle,
   IBag,
@@ -18,8 +18,8 @@ import {
   IMessage,
   ITransport,
   MasterSeed,
-} from "../../shared/types.ts";
-import { err, ok, ValStat } from "../../shared/valstat.ts";
+} from "../shared/types.ts";
+import { err, ok, ValStat } from "../shared/valstat.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {

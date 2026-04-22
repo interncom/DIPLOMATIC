@@ -1,10 +1,10 @@
 import { Database } from "bun:sqlite";
 import { btoh } from "../../../shared/binary.ts";
 import type { IStorage } from "../../../shared/types.ts";
+import { nullSubMeta } from "../../../shared/types.ts";
 import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 import { Status } from "../../../shared/consts.ts";
-import { nullSubMeta } from "../../../web/src/shared/types.ts";
 import { err, ok } from "../../../shared/valstat.ts";
 
 const db = new Database("diplomatic.db");

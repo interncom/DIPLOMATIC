@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "CLI utilities for DIPLOMATIC",
   "main": "dist/index.mjs",
@@ -9,7 +9,7 @@
     "dist"
   ],
   "bin": {
-    "diplomatic-host": "./bin/host.ts"
+    "diplomatic-host": "./bin/host.js"
   },
   "scripts": {
     "tsc": "tsc",

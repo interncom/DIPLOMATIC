@@ -14,10 +14,10 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
+      uses: oven-sh/setup-bun@v2
       with:
         bun-version: latest
 
@@ -29,9 +29,3 @@ jobs:
 
     - name: Run sanity checks
       run: cd pkg && bun run check
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: diplomatic-packages
-        path: pkg/dist/

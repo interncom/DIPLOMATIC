@@ -104,7 +104,7 @@ export interface IStorage {
 }
 
 export interface KeyPair {
-  keyType: "public" | "private" | "secret";
+  keyType: "ed25519";
   privateKey: PrivateKey;
   publicKey: PublicKey;
 }

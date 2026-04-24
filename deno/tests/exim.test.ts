@@ -28,13 +28,6 @@ class MockCrypto implements ICrypto {
     return new Uint8Array(32).fill(0xBB);
   }
 
-  async deriveXSalsa20Poly1305Key(
-    _seed: Uint8Array,
-    derivationIndex: number,
-  ): Promise<Uint8Array> {
-    return new Uint8Array(32).fill(derivationIndex);
-  }
-
   async encryptXSalsa20Poly1305Combined(
     plaintext: Uint8Array,
     key: Uint8Array,

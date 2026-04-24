@@ -1,4 +1,4 @@
-import libsodiumCrypto from "./crypto.ts";
+import crypto from "./crypto.ts";
 import sqliteStorage from "./storage/sqlite.ts";
 import { validateAuthTimestamp } from "../../shared/auth.ts";
 import { btoh } from "../../shared/binary.ts";
@@ -72,7 +72,7 @@ export async function runBunHost(
 ) {
   const server = new DiplomaticHTTPServer(
     sqliteStorage,
-    libsodiumCrypto,
+    crypto,
     bunNotifier,
     new Clock(),
   );

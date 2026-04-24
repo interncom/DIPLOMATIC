@@ -2,7 +2,7 @@
 
 import { encode } from "@msgpack/msgpack";
 import { saveAs } from "file-saver";
-import libsodiumCrypto from "./crypto";
+
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
@@ -52,7 +52,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private state: IStateManager,
     private store: IStore<Handle>,
     private transport: (host: IHostConnectionInfo<Handle>) => ITransport,
-    private crypto: ICrypto = libsodiumCrypto,
+    private crypto: ICrypto,
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
   ) {
@@ -449,7 +449,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     console.info(`Connecting to ${host.handle} (${host.label})`);
     const conn = new DiplomaticClientAPI(
       enclave,
-      libsodiumCrypto,
+      crypto,
       host,
       clock,
       transport(host),

@@ -104,7 +104,7 @@ export interface IStorage {
 }
 
 export interface KeyPair {
-  keyType: "public" | "private" | "secret";
+  keyType: "ed25519";
   privateKey: PrivateKey;
   publicKey: PublicKey;
 }
@@ -138,10 +138,7 @@ export interface IHostCrypto {
 export interface ICrypto extends IHostCrypto {
   genRandomBytes: (bytes: number) => Promise<Uint8Array>;
   gen256BitSecureRandomSeed: () => Promise<Uint8Array>;
-  deriveXSalsa20Poly1305Key: (
-    seed: Uint8Array,
-    derivationIndex: number,
-  ) => Promise<Uint8Array>;
+
   encryptXSalsa20Poly1305Combined: (
     plaintext: Uint8Array,
     key: Uint8Array,

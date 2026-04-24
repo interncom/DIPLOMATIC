@@ -16,7 +16,6 @@ export default withMermaid({
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Docs', link: '/docs/' },
-      { text: 'Demos', link: '/docs/demos/status' },
     ],
 
     sidebar: [
@@ -26,6 +25,7 @@ export default withMermaid({
           { text: 'Purpose', link: '/docs/about/purpose' },
           { text: 'Threat Model', link: '/docs/about/threat' },
           { text: 'Principles', link: '/docs/about/principles' },
+          { text: 'Tutorial', link: '/docs/about/tutorial' },
         ],
         collapsed: false,
       },
@@ -68,13 +68,6 @@ export default withMermaid({
         items: [
           { text: 'diplog', link: '/docs/cli/diplog' },
           { text: 'dipcat', link: '/docs/cli/dipcat' },
-        ],
-        collapsed: true,
-      },
-      {
-        text: 'Demos',
-        items: [
-          { text: 'STATUS', link: '/docs/demos/status' },
         ],
         collapsed: true,
       },

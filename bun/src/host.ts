@@ -1,19 +1,33 @@
-import libsodiumCrypto from "../../bun/src/crypto.ts";
-import sqliteStorage from "../../bun/src/storage/sqlite.ts";
+import crypto from "./crypto.ts";
+import sqliteStorage from "./storage/sqlite.ts";
 import { validateAuthTimestamp } from "../../shared/auth.ts";
 import { btoh } from "../../shared/binary.ts";
 import type { IClock } from "../../shared/clock.ts";
 import { Clock } from "../../shared/clock.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../shared/consts.ts";
-import { DiplomaticHTTPServer, validateWebSocketAuth } from "../../shared/http/server.ts";
-import type { IHostCrypto, IPushNotifier, IPushOpenResponse, PublicKey, PushReceiver } from "../../shared/types.ts";
+import {
+  DiplomaticHTTPServer,
+  validateWebSocketAuth,
+} from "../../shared/http/server.ts";
+import type {
+  IHostCrypto,
+  IPushNotifier,
+  IPushOpenResponse,
+  PublicKey,
+  PushReceiver,
+} from "../../shared/types.ts";
 
 // Bun WebSocket notifier
 class BunWebSocketNotifier implements IPushNotifier {
   private recvs: Map<string, Set<PushReceiver>> = new Map();
 
-  async open(authTS: IAuthTimestamp, recv: PushReceiver, crypto: IHostCrypto, clock: IClock): Promise<IPushOpenResponse> {
+  async open(
+    authTS: IAuthTimestamp,
+    recv: PushReceiver,
+    crypto: IHostCrypto,
+    clock: IClock,
+  ): Promise<IPushOpenResponse> {
     const status = await validateAuthTimestamp(authTS, crypto, clock);
     if (status !== Status.Success) {
       return {
@@ -28,8 +42,14 @@ class BunWebSocketNotifier implements IPushNotifier {
     }
     this.recvs.get(pubKeyHex)?.add(recv);
     return {
-      send: (data) => { recv(data); return Status.Success; },
-      shut: () => { this.recvs.get(pubKeyHex)?.delete(recv); return Status.Success; },
+      send: (data) => {
+        recv(data);
+        return Status.Success;
+      },
+      shut: () => {
+        this.recvs.get(pubKeyHex)?.delete(recv);
+        return Status.Success;
+      },
       status: Status.Success,
     };
   }
@@ -47,10 +67,12 @@ class BunWebSocketNotifier implements IPushNotifier {
 
 const bunNotifier = new BunWebSocketNotifier();
 
-export async function runBunHost(port: number = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337")) {
+export async function runBunHost(
+  port: number = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337"),
+) {
   const server = new DiplomaticHTTPServer(
     sqliteStorage,
-    libsodiumCrypto,
+    crypto,
     bunNotifier,
     new Clock(),
   );
@@ -65,7 +87,9 @@ export async function runBunHost(port: number = Number.parseInt(process.env.DIPL
           return new Response("Unauthorized", { status: 401 });
         }
         const success = bunServer.upgrade(req, { data: { authTS } });
-        return success ? undefined : new Response("Upgrade failed", { status: 400 });
+        return success
+          ? undefined
+          : new Response("Upgrade failed", { status: 400 });
       }
       return server.corsHandler(req);
     },
@@ -73,7 +97,12 @@ export async function runBunHost(port: number = Number.parseInt(process.env.DIPL
       data: {} as { authTS: IAuthTimestamp },
       open: (ws) => {
         const authTS = ws.data.authTS;
-        bunNotifier.open(authTS, (data) => ws.send(data), server.crypto, server.clock).then(channel => {
+        bunNotifier.open(
+          authTS,
+          (data) => ws.send(data),
+          server.crypto,
+          server.clock,
+        ).then((channel) => {
           if (channel.status !== Status.Success) {
             ws.close();
             return;
@@ -82,7 +111,7 @@ export async function runBunHost(port: number = Number.parseInt(process.env.DIPL
           (ws as any).channel = channel;
         });
       },
-      message: (ws, msg) => { },
+      message: (ws, msg) => {},
       close: (ws) => {
         ((ws as any).channel as IPushOpenResponse)?.shut();
       },

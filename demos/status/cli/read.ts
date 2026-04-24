@@ -1,4 +1,4 @@
-import * as Diplomatic from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
 const { Status } = Diplomatic;
 
 function panic(msg: string) {

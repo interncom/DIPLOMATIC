@@ -1,7 +1,7 @@
 // Public exports for module.
 
 import { SyncClient } from "./client";
-import libsodiumCrypto from "./crypto";
+import crypto from "./crypto";
 import {
   EntitiesQuery,
   entStateManager,
@@ -54,12 +54,13 @@ export async function genWebClient(
 ): Promise<
   { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
 > {
-  const idbStore = await openIDBStore(libsodiumCrypto);
+  const idbStore = await openIDBStore(crypto);
   const client = new SyncClient<URL>(
     new Clock(),
     stateMgr,
     idbStore,
     hostHTTPTransport,
+    crypto,
   );
 
   const setSeed = async (seedHex: string) => {
@@ -74,6 +75,7 @@ export async function genWebClient(
 export {
   btoh,
   Clock,
+  crypto,
   Decoder,
   eidCodec,
   Encoder,
@@ -90,7 +92,6 @@ export {
   IEntDB,
   IEntity,
   IStore,
-  libsodiumCrypto,
   MasterSeed,
   MemoryStore,
   nullEntDB,

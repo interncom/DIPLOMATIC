@@ -1,6 +1,4 @@
-import sodium from "libsodium-wrappers";
-import { LibsodiumCrypto } from "../../shared/crypto/libsodium.ts";
+import { NobleCrypto } from "../../shared/crypto/noble.ts";
 
-await sodium.ready;
-const libsodiumCrypto = new LibsodiumCrypto(sodium);
-export default libsodiumCrypto;
+const crypto = new NobleCrypto();
+export default crypto;

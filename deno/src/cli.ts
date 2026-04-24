@@ -18,7 +18,7 @@ import {
   MasterSeed,
 } from "../../shared/types.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
-import libsodiumCrypto from "./crypto.ts";
+import crypto from "./crypto.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {
@@ -29,7 +29,7 @@ export class CLIClient<Handle extends HostHandle> {
   constructor(
     { seed, clock = new Clock() }: { seed: MasterSeed; clock?: IClock },
   ) {
-    this.enclave = new Enclave(seed, libsodiumCrypto);
+    this.enclave = new Enclave(seed, crypto);
     this.clock = clock;
   }
 
@@ -41,7 +41,7 @@ export class CLIClient<Handle extends HostHandle> {
     const updateHostMeta = () => Promise.resolve(Status.Success);
     this.conn = new DiplomaticClientAPI<Handle>(
       this.enclave,
-      libsodiumCrypto,
+      crypto,
       host,
       clock,
       transport,
@@ -100,12 +100,12 @@ export class CLIClient<Handle extends HostHandle> {
       peekItem,
       hostKeys,
       this.enclave,
-      libsodiumCrypto,
+      crypto,
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
     const key = await this.enclave.deriveFromKDM(itemDec.kdm);
-    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, libsodiumCrypto);
+    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, crypto);
   }
 
   async upsertSingletonSync(type: string, body: Uint8Array): Promise<Status> {

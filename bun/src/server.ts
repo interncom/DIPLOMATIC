@@ -6,7 +6,7 @@ import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../shared/consts.ts";
 import { DiplomaticHTTPServer, validateWebSocketAuth } from "../../shared/http/server.ts";
 import type { IHostCrypto, IPushNotifier, IPushOpenResponse, PublicKey, PushReceiver } from "../../shared/types.ts";
-import libsodiumCrypto from "./crypto.ts";
+import crypto from "./crypto.ts";
 import sqliteStorage from "./storage/sqlite.ts";
 
 // Bun WebSocket notifier
@@ -53,7 +53,7 @@ const port = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337");
 
 const server = new DiplomaticHTTPServer(
   sqliteStorage,
-  libsodiumCrypto,
+  crypto,
   bunNotifier,
   new Clock(),
 );

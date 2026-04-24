@@ -1,7 +1,7 @@
-import { randomBytes } from "npm:@noble/ciphers@1.2.0/webcrypto";
-import { xsalsa20poly1305 } from "npm:@noble/ciphers@1.2.0/salsa";
-import { ed25519 } from "npm:@noble/curves@1.8.0/ed25519";
-import { blake3 } from "npm:@noble/hashes@1.8.0/blake3";
+import { randomBytes } from "@noble/ciphers/webcrypto";
+import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
+import { ed25519 } from "@noble/curves/ed25519";
+import { blake3 } from "@noble/hashes/blake3";
 import type {
   DerivationSeed,
   Hash,
@@ -62,7 +62,9 @@ export class NobleCrypto implements ICrypto {
     const msg = typeof message === "string"
       ? new TextEncoder().encode(message)
       : message;
-    return ed25519.sign(msg, secKey);
+    // Extract the seed part (first 32 bytes) from libsodium-format private key
+    const seed = secKey.slice(0, 32);
+    return ed25519.sign(msg, seed);
   }
 
   async checkSigEd25519(

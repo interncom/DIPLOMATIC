@@ -5,10 +5,14 @@
     "web",
     "cli",
     "bun",
+    "pkg",
     "demos"
   ],
   "scripts": {
     "style": "./style.sh"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5"
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",

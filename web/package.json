@@ -1,5 +1,5 @@
 {
-  "name": "@interncom/diplomatic",
+  "name": "@interncom/diplomatic-web-internal",
   "version": "0.1.3",
   "type": "module",
   "description": "Secure sync layer",
@@ -10,7 +10,6 @@
   ],
   "scripts": {
     "tsc": "tsc",
-    "build": "node esbuild.mjs",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "fmt": "deno fmt"
@@ -36,7 +35,6 @@
   "dependencies": {
     "@msgpack/msgpack": "3.1.3",
     "@noble/hashes": "1.8.0",
-    "file-saver": "2.0.5",
-    "libsodium.js": "git+ssh://github.com/interncom/libsodium.js#e4e7647"
+    "file-saver": "2.0.5"
   }
 }

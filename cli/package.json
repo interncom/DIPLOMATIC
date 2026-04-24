@@ -1,6 +1,6 @@
 {
-  "name": "@interncom/diplomatic-cli",
-  "version": "0.1.4",
+  "name": "@interncom/diplomatic-cli-internal",
+  "version": "0.1.5",
   "type": "module",
   "description": "CLI utilities for DIPLOMATIC",
   "main": "dist/index.mjs",

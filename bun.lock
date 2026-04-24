@@ -8,6 +8,9 @@
         "@noble/hashes": "1.8.0",
         "libsodium-wrappers-sumo": "^0.7.16",
       },
+      "devDependencies": {
+        "esbuild": "0.21.5",
+      },
     },
     "bun": {
       "name": "@interncom/diplomatic-bun",
@@ -22,13 +25,12 @@
       },
     },
     "cli": {
-      "name": "@interncom/diplomatic-cli",
-      "version": "0.1.0",
+      "name": "@interncom/diplomatic-cli-internal",
+      "version": "0.1.5",
       "bin": {
-        "diplomatic-host": "./bin/host.ts",
+        "diplomatic-host": "./bin/host.js",
       },
       "dependencies": {
-        "@interncom/diplomatic-bun": "workspace:*",
         "@noble/hashes": "1.8.0",
         "libsodium-wrappers": "0.8.2",
       },
@@ -41,18 +43,41 @@
     },
     "demos": {
       "name": "diplomatic-demos",
-      "dependencies": {
-        "@interncom/diplomatic-cli": "workspace:*",
-      },
     },
-    "web": {
+    "pkg": {
       "name": "@interncom/diplomatic",
-      "version": "0.1.1",
+      "version": "0.1.5",
+      "bin": {
+        "diplomatic-host": "./dist/cli/bin/host.js",
+      },
       "dependencies": {
         "@msgpack/msgpack": "3.1.3",
         "@noble/hashes": "1.8.0",
         "file-saver": "2.0.5",
-        "libsodium.js": "git+ssh://github.com/interncom/libsodium.js#e4e7647",
+        "libsodium-wrappers": "0.8.2",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/file-saver": "^2.0.7",
+        "@types/node": "^20.14.11",
+        "@types/react": "^19.1.0",
+        "@vitest/coverage-v8": "^4.0.17",
+        "esbuild": "0.21.5",
+        "react": "^19.1.0",
+        "typescript": "^5.8.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "web": {
+      "name": "@interncom/diplomatic-web-internal",
+      "version": "0.1.3",
+      "dependencies": {
+        "@msgpack/msgpack": "3.1.3",
+        "@noble/hashes": "1.8.0",
+        "file-saver": "2.0.5",
       },
       "devDependencies": {
         "@types/file-saver": "^2.0.7",
@@ -132,11 +157,13 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
 
-    "@interncom/diplomatic": ["@interncom/diplomatic@workspace:web"],
+    "@interncom/diplomatic": ["@interncom/diplomatic@workspace:pkg"],
 
     "@interncom/diplomatic-bun": ["@interncom/diplomatic-bun@workspace:bun"],
 
-    "@interncom/diplomatic-cli": ["@interncom/diplomatic-cli@workspace:cli"],
+    "@interncom/diplomatic-cli-internal": ["@interncom/diplomatic-cli-internal@workspace:cli"],
+
+    "@interncom/diplomatic-web-internal": ["@interncom/diplomatic-web-internal@workspace:web"],
 
     "@jridgewell/resolve-uri": ["@jridgewell/resolve-uri@3.1.2", "", {}, "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw=="],
 
@@ -188,7 +215,7 @@
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg=="],
 
-    "@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
+    "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
 
@@ -222,7 +249,7 @@
 
     "ast-v8-to-istanbul": ["ast-v8-to-istanbul@1.0.0", "", { "dependencies": { "@jridgewell/trace-mapping": "^0.3.31", "estree-walker": "^3.0.3", "js-tokens": "^10.0.0" } }, "sha512-1fSfIwuDICFA4LKkCzRPO7F0hzFf0B7+Xqrl27ynQaa+Rh0e1Es0v6kWHPott3lU10AyAr7oKHa65OppjLn3Rg=="],
 
-    "bun-types": ["bun-types@1.3.11", "", { "dependencies": { "@types/node": "*" } }, "sha512-1KGPpoxQWl9f6wcZh57LvrPIInQMn2TQ7jsgxqpRzg+l0QPOFvJVH7HmvHo/AiPgwXy+/Thf6Ov3EdVn1vOabg=="],
+    "bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "chai": ["chai@6.2.2", "", {}, "sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg=="],
 
@@ -260,15 +287,13 @@
 
     "js-tokens": ["js-tokens@10.0.0", "", {}, "sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q=="],
 
-    "libsodium": ["libsodium@0.7.16", "", {}, "sha512-3HrzSPuzm6Yt9aTYCDxYEG8x8/6C0+ag655Y7rhhWZM9PT4NpdnbqlzXhGZlDnkgR6MeSTnOt/VIyHLs9aSf+Q=="],
+    "libsodium": ["libsodium@0.8.2", "", {}, "sha512-TsnGYMoZtpweT+kR+lOv5TVsnJ/9U0FZOsLFzFOMWmxqOAYXjX3fsrPAW+i1LthgDKXJnI9A8dWEanT1tnJKIw=="],
 
     "libsodium-sumo": ["libsodium-sumo@0.7.16", "", {}, "sha512-x6atrz2AdXCJg6G709x9W9TTJRI6/0NcL5dD0l5GGVqNE48UJmDsjO4RUWYTeyXXUpg+NXZ2SHECaZnFRYzwGA=="],
 
-    "libsodium-wrappers": ["libsodium-wrappers@0.7.13", "", { "dependencies": { "libsodium": "^0.7.13" } }, "sha512-kasvDsEi/r1fMzKouIDv7B8I6vNmknXwGiYodErGuESoFTohGSKZplFtVxZqHaoQ217AynyIFgnOVRitpHs0Qw=="],
+    "libsodium-wrappers": ["libsodium-wrappers@0.8.2", "", { "dependencies": { "libsodium": "^0.8.0" } }, "sha512-VFLmfxkxo+U9q60tjcnSomQBRx2UzlRjKWJqvB4K1pUqsMQg4cu3QXA2nrcsj9A1qRsnJBbi2Ozx1hsiDoCkhw=="],
 
     "libsodium-wrappers-sumo": ["libsodium-wrappers-sumo@0.7.16", "", { "dependencies": { "libsodium-sumo": "^0.7.16" } }, "sha512-gR0JEFPeN3831lB9+ogooQk0KH4K5LSMIO5Prd5Q5XYR2wHFtZfPg0eP7t1oJIWq+UIzlU4WVeBxZ97mt28tXw=="],
-
-    "libsodium.js": ["libsodium-wrappers@git+ssh://github.com/interncom/libsodium.js#e4e764777860213b5cbea520048847ea0a5cb6be", { "dependencies": { "libsodium": "^0.7.13" } }, "e4e764777860213b5cbea520048847ea0a5cb6be"],
 
     "lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 
@@ -348,8 +373,12 @@
 
     "why-is-node-running": ["why-is-node-running@2.3.0", "", { "dependencies": { "siginfo": "^2.0.0", "stackback": "0.0.2" }, "bin": { "why-is-node-running": "cli.js" } }, "sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w=="],
 
-    "@interncom/diplomatic-cli/libsodium-wrappers": ["libsodium-wrappers@0.8.2", "", { "dependencies": { "libsodium": "^0.8.0" } }, "sha512-VFLmfxkxo+U9q60tjcnSomQBRx2UzlRjKWJqvB4K1pUqsMQg4cu3QXA2nrcsj9A1qRsnJBbi2Ozx1hsiDoCkhw=="],
+    "@interncom/diplomatic-bun/@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
-    "@interncom/diplomatic-cli/libsodium-wrappers/libsodium": ["libsodium@0.8.2", "", {}, "sha512-TsnGYMoZtpweT+kR+lOv5TVsnJ/9U0FZOsLFzFOMWmxqOAYXjX3fsrPAW+i1LthgDKXJnI9A8dWEanT1tnJKIw=="],
+    "@interncom/diplomatic-bun/libsodium-wrappers": ["libsodium-wrappers@0.7.13", "", { "dependencies": { "libsodium": "^0.7.13" } }, "sha512-kasvDsEi/r1fMzKouIDv7B8I6vNmknXwGiYodErGuESoFTohGSKZplFtVxZqHaoQ217AynyIFgnOVRitpHs0Qw=="],
+
+    "@interncom/diplomatic-bun/@types/bun/bun-types": ["bun-types@1.3.11", "", { "dependencies": { "@types/node": "*" } }, "sha512-1KGPpoxQWl9f6wcZh57LvrPIInQMn2TQ7jsgxqpRzg+l0QPOFvJVH7HmvHo/AiPgwXy+/Thf6Ov3EdVn1vOabg=="],
+
+    "@interncom/diplomatic-bun/libsodium-wrappers/libsodium": ["libsodium@0.7.16", "", {}, "sha512-3HrzSPuzm6Yt9aTYCDxYEG8x8/6C0+ag655Y7rhhWZM9PT4NpdnbqlzXhGZlDnkgR6MeSTnOt/VIyHLs9aSf+Q=="],
   }
 }

@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
 import { writeFile, mkdir } from "node:fs/promises";
 
-execSync("esbuild --bundle --format=esm --outfile=pkg/dist/cli/index.mjs --platform=node --external:bun:sqlite --tsconfig=web/tsconfig.json cli/src/index.ts", { cwd: "..", stdio: 'inherit' });
+execSync("bun build --target node --format esm --outfile pkg/dist/cli/index.mjs --external bun:sqlite cli/src/index.ts", { cwd: "..", stdio: 'inherit' });
+execSync("tsc cli/src/index.ts --declaration --emitDeclarationOnly --outDir ../pkg/dist/cli --moduleResolution node --target ES2022 --module ES2022 --strict --esModuleInterop --allowImportingTsExtensions --skipLibCheck || true", { cwd: "..", stdio: 'inherit' });
 
 // Create bin/host.js
 await mkdir("dist/cli/bin", { recursive: true });

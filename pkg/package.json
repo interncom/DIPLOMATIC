@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.1.4-rc1",
+  "version": "0.2.0-rc1",
   "type": "module",
   "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
   "files": [
@@ -12,10 +12,17 @@
   "exports": {
     ".": {
       "browser": "./dist/web/index.mjs",
-      "node": "./dist/cli/index.mjs"
+      "node": "./dist/cli/index.mjs",
+      "types": "./dist/web/index.d.ts"
     },
-    "./web": "./dist/web/index.mjs",
-    "./cli": "./dist/cli/index.mjs"
+    "./web": {
+      "import": "./dist/web/index.mjs",
+      "types": "./dist/web/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.mjs",
+      "types": "./dist/cli/index.d.ts"
+    }
   },
   "scripts": {
     "build": "bun run build-web.mjs && bun run build-cli.mjs",

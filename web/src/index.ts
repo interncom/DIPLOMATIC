@@ -60,6 +60,7 @@ export async function genWebClient(
     stateMgr,
     idbStore,
     hostHTTPTransport,
+    crypto,
   );
 
   const setSeed = async (seedHex: string) => {

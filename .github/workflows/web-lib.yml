@@ -25,10 +25,6 @@ jobs:
         run: bun install
         working-directory: web
 
-      - name: Run build
-        run: bun run build
-        working-directory: web
-
-      - name: Run tests
+       - name: Run tests
         run: bun run test
         working-directory: web

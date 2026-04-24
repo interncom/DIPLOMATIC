@@ -8,6 +8,13 @@ DIPLOMATIC is explicitly *not* a peer-to-peer (P2P) system. It syncs data betwee
 
 We'll use [bun](https://bun.com/). So go install that, if you don't have it yet.
 
+1. Install bun.
+1. Open a terminal.
+1. `bun install --global @interncom/diplomatic`
+1. `bunx diplomatic-host`
+
+You should see `DIPLOMATIC PARCEL SERVICE ACTIVE on http://localhost:31337` printed to your console.
+
 ## Write
 
 First, we write the message to the host.
@@ -16,11 +23,11 @@ First, we write the message to the host.
 
 1. Install [bun](https://bun.com/).
 2. `bun init`
-3. `bun add @interncom/diplomatic-cli`
+3. `bun add @interncom/diplomatic`
 4. Create `write.ts` with the code below. We'll explain this line-by-line in the next section.
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
 
 const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
@@ -49,7 +56,7 @@ To read the status, create `read.ts` with the code from the Read Demo walkthroug
 ### Code Walkthrough
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
 ```
 
 Import DIPLOMATIC.
@@ -98,7 +105,7 @@ Now it's time to read the status message back from the host.
 1. Create `read.ts` with the code below. We'll explain this line-by-line in the next section.
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
 const { Status } = Diplomatic;
 
 function panic(msg: string) {
@@ -139,7 +146,7 @@ You should see the text "hellow world", which we wrote [previously](#steps).
 ### Code Walkthrough
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
 const { Status } = Diplomatic;
 ```
 
@@ -213,14 +220,14 @@ Now we'll create a watch tool that displays real-time status updates using [WebS
 
 1. Install [bun](https://bun.com/).
 2. `bun init`
-3. `bun add @interncom/diplomatic-cli`
+3. `bun add @interncom/diplomatic/cli`
 4. Create `watch.ts` with the code below. We'll explain this line-by-line in the next section.
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
-import { Decoder } from "@interncom/diplomatic-cli";
-import { IBagNotifItem, notifItemCodec } from "@interncom/diplomatic-cli";
-import { IBagPullItem } from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
+import { Decoder } from "@interncom/diplomatic/cli";
+import { IBagNotifItem, notifItemCodec } from "@interncom/diplomatic/cli";
+import { IBagPullItem } from "@interncom/diplomatic/cli";
 const { Status } = Diplomatic;
 
 function panic(msg: string) {
@@ -293,10 +300,10 @@ process.stdin.resume();
 ### Code Walkthrough
 
 ```ts
-import * as Diplomatic from "@interncom/diplomatic-cli";
-import { Decoder } from "@interncom/diplomatic-cli";
-import { IBagNotifItem, notifItemCodec } from "@interncom/diplomatic-cli";
-import { IBagPullItem } from "@interncom/diplomatic-cli";
+import * as Diplomatic from "@interncom/diplomatic/cli";
+import { Decoder } from "@interncom/diplomatic/cli";
+import { IBagNotifItem, notifItemCodec } from "@interncom/diplomatic/cli";
+import { IBagPullItem } from "@interncom/diplomatic/cli";
 const { Status } = Diplomatic;
 ```
 

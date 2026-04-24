@@ -35,6 +35,7 @@
   "dependencies": {
     "@msgpack/msgpack": "3.1.3",
     "@noble/hashes": "1.8.0",
-    "file-saver": "2.0.5"
+    "file-saver": "2.0.5",
+    "libsodium.js": "git+https://github.com/interncom/libsodium.js.git#e4e7647"
   }
 }

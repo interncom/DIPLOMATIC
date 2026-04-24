@@ -46,7 +46,7 @@
     },
     "pkg": {
       "name": "@interncom/diplomatic",
-      "version": "0.1.5",
+      "version": "0.1.4-rc1",
       "bin": {
         "diplomatic-host": "./dist/cli/bin/host.js",
       },
@@ -55,6 +55,7 @@
         "@noble/hashes": "1.8.0",
         "file-saver": "2.0.5",
         "libsodium-wrappers": "0.8.2",
+        "libsodium.js": "git+https://github.com/interncom/libsodium.js.git#e4e7647",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -78,6 +79,7 @@
         "@msgpack/msgpack": "3.1.3",
         "@noble/hashes": "1.8.0",
         "file-saver": "2.0.5",
+        "libsodium.js": "git+https://github.com/interncom/libsodium.js.git#e4e7647",
       },
       "devDependencies": {
         "@types/file-saver": "^2.0.7",
@@ -295,6 +297,8 @@
 
     "libsodium-wrappers-sumo": ["libsodium-wrappers-sumo@0.7.16", "", { "dependencies": { "libsodium-sumo": "^0.7.16" } }, "sha512-gR0JEFPeN3831lB9+ogooQk0KH4K5LSMIO5Prd5Q5XYR2wHFtZfPg0eP7t1oJIWq+UIzlU4WVeBxZ97mt28tXw=="],
 
+    "libsodium.js": ["libsodium-wrappers@github:interncom/libsodium.js#e4e7647", { "dependencies": { "libsodium": "^0.7.13" } }, "interncom-libsodium.js-e4e7647", "sha512-qRYc8+YKNEyMJGh4codAEiawLl9oR/N7VoIQ4/QyBqKYLdWXckbsL/FQ63N0u307NRuOm+ELZPW1QPvealtGBQ=="],
+
     "lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 
     "lightningcss-android-arm64": ["lightningcss-android-arm64@1.32.0", "", { "os": "android", "cpu": "arm64" }, "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg=="],
@@ -376,6 +380,8 @@
     "@interncom/diplomatic-bun/@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
     "@interncom/diplomatic-bun/libsodium-wrappers": ["libsodium-wrappers@0.7.13", "", { "dependencies": { "libsodium": "^0.7.13" } }, "sha512-kasvDsEi/r1fMzKouIDv7B8I6vNmknXwGiYodErGuESoFTohGSKZplFtVxZqHaoQ217AynyIFgnOVRitpHs0Qw=="],
+
+    "libsodium.js/libsodium": ["libsodium@0.7.16", "", {}, "sha512-3HrzSPuzm6Yt9aTYCDxYEG8x8/6C0+ag655Y7rhhWZM9PT4NpdnbqlzXhGZlDnkgR6MeSTnOt/VIyHLs9aSf+Q=="],
 
     "@interncom/diplomatic-bun/@types/bun/bun-types": ["bun-types@1.3.11", "", { "dependencies": { "@types/node": "*" } }, "sha512-1KGPpoxQWl9f6wcZh57LvrPIInQMn2TQ7jsgxqpRzg+l0QPOFvJVH7HmvHo/AiPgwXy+/Thf6Ov3EdVn1vOabg=="],
 

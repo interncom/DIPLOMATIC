@@ -10,7 +10,7 @@ import type {
   IDiplomaticClientState,
   IDiplomaticClientXferState,
 } from "../types";
-import libsodiumCrypto from "../crypto";
+import crypto from "../crypto";
 import { entStateManager, IEntDB } from "../entdb/entdb";
 import { openEntIDB } from "../entdb/idb";
 import { nullStateManager } from "../state";
@@ -83,10 +83,10 @@ export function useClient(
   }>({ stateMgr: nullStateManager });
 
   useEffect(() => {
-    Promise.all([openIDBStore(libsodiumCrypto), openEntIDB()]).then(
+    Promise.all([openIDBStore(crypto), openEntIDB()]).then(
       async ([store, entDB]) => {
         const entMgr = entStateManager(entDB);
-        const client = new SyncClient(clock, entMgr, store, hostHTTPTransport);
+        const client = new SyncClient(clock, entMgr, store, hostHTTPTransport, crypto);
         if (seed) {
           await client.setSeed(seed);
         }

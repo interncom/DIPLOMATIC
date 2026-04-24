@@ -257,8 +257,7 @@
         "npm:@noble/ciphers@1.2.0",
         "npm:@noble/curves@1.8.0",
         "npm:@noble/hashes@1.8.0",
-        "npm:esbuild@0.21.5",
-        "npm:libsodium-wrappers-sumo@0.7.16"
+        "npm:esbuild@0.21.5"
       ]
     },
     "members": {
@@ -296,7 +295,6 @@
             "npm:@vitest/coverage-v8@^4.0.17",
             "npm:esbuild@0.21.5",
             "npm:file-saver@2.0.5",
-            "npm:libsodium-wrappers@0.8.2",
             "npm:react@^19.1.0",
             "npm:typescript@^5.8.3",
             "npm:vitest@^4.0.17"

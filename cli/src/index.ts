@@ -1,4 +1,4 @@
-import libsodiumCrypto from "../bun/src/crypto.ts";
+import crypto from "../bun/src/crypto.ts";
 import { IOpenBag, openBagBody } from "../shared/bag.ts";
 import { htob } from "../shared/binary.ts";
 import DiplomaticClientAPI from "../shared/client.ts";
@@ -30,7 +30,7 @@ export class CLIClient<Handle extends HostHandle> {
   constructor(
     { seed, clock = new Clock() }: { seed: MasterSeed; clock?: IClock },
   ) {
-    this.enclave = new Enclave(seed, libsodiumCrypto);
+    this.enclave = new Enclave(seed, crypto);
     this.clock = clock;
   }
 
@@ -42,7 +42,7 @@ export class CLIClient<Handle extends HostHandle> {
     const updateHostMeta = () => Promise.resolve(Status.Success);
     this.conn = new DiplomaticClientAPI<Handle>(
       this.enclave,
-      libsodiumCrypto,
+      crypto,
       host,
       clock,
       transport,
@@ -101,12 +101,12 @@ export class CLIClient<Handle extends HostHandle> {
       peekItem,
       hostKeys,
       this.enclave,
-      libsodiumCrypto,
+      crypto,
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
     const key = await this.enclave.deriveFromKDM(itemDec.kdm);
-    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, libsodiumCrypto);
+    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, crypto);
   }
 
   async upsertSingletonSync(type: string, body: Uint8Array): Promise<Status> {

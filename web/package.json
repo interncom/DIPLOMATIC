@@ -37,7 +37,6 @@
     "@noble/ciphers": "1.2.0",
     "@noble/curves": "1.8.0",
     "@noble/hashes": "1.8.0",
-    "file-saver": "2.0.5",
-    "libsodium.js": "git+https://github.com/interncom/libsodium.js.git#e4e7647"
+    "file-saver": "2.0.5"
   }
 }

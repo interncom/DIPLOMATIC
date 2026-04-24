@@ -3,7 +3,10 @@
   "specifiers": {
     "jsr:@noble/hashes@^2.0.1": "2.0.1",
     "jsr:@std/assert@0.223.0": "0.223.0",
-    "jsr:@std/fmt@0.223": "0.223.0"
+    "jsr:@std/fmt@0.223": "0.223.0",
+    "npm:@noble/ciphers@1.2.0": "1.2.0",
+    "npm:@noble/curves@1.8.0": "1.8.0",
+    "npm:@noble/hashes@1.8.0": "1.8.0"
   },
   "jsr": {
     "@noble/hashes@2.0.1": {
@@ -17,6 +20,23 @@
     },
     "@std/fmt@0.223.0": {
       "integrity": "6deb37794127dfc7d7bded2586b9fc6f5d50e62a8134846608baf71ffc1a5208"
+    }
+  },
+  "npm": {
+    "@noble/ciphers@1.2.0": {
+      "integrity": "sha512-YGdEUzYEd+82jeaVbSKKVp1jFZb8LwaNMIIzHFkihGvYdd/KKAr7KaJHdEdSYGredE3ssSravXIa0Jxg28Sv5w=="
+    },
+    "@noble/curves@1.8.0": {
+      "integrity": "sha512-j84kjAbzEnQHaSIhRPUmB3/eVXu2k3dKPl2LOrR8fSOIL+89U+7lV117EWHtq/GHM3ReGHM46iRBdZfpc4HRUQ==",
+      "dependencies": [
+        "@noble/hashes@1.7.0"
+      ]
+    },
+    "@noble/hashes@1.7.0": {
+      "integrity": "sha512-HXydb0DgzTpDPwbVeDGCG1gIu7X6+AuU6Zl6av/E/KG8LMsvPntvq+w17CHRpKBmN6Ybdrt1eP3k4cj8DJa78w=="
+    },
+    "@noble/hashes@1.8.0": {
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
     }
   },
   "redirects": {
@@ -142,6 +162,37 @@
     "https://deno.land/x/msgpack@v1.2/utils/stream.ts": "b130db01ccad59f3ae6768f7253b23429ef37b62fe047138922bc32606db27e9",
     "https://deno.land/x/msgpack@v1.2/utils/typedArrays.ts": "bb819c2f28cf7f85ed50b2e57f108462715555cc61ce315e8134cf1eef2ae662",
     "https://deno.land/x/msgpack@v1.2/utils/utf8.ts": "d38c0f3c05072e21e6067402cd196052757cc06a7e3ace0bdeb0511e75e2dd53",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/_poly1305.mjs": "ad221f4c1786af8d4eda4d9d2c27b012be8a53dd70c37539c6f0a6aa95b34a24",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/crypto.mjs": "c3000d3029c3e5b9380c70e660aace5c1ff72adfc6ede1f6eec4f570f29fb130",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/esm/_arx.mjs": "7c2eb07dde1403e796ca9c6efd209f794cb4e7651bb6503133035531ffef02c5",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/esm/_assert.mjs": "ddf6fedbd7ad4284c2fdcf1990e23622390ce4056b2b9902f5b0287c33eababb",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/salsa.mjs": "e7b9af8d45d697b3fafd9e02e4c93fe9469d843808340d5202ab565ba0592078",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/utils.mjs": "a98a2955b8cd690460cb0ff223316db5ba0bd3d5aaa00d3f4b1fa7c8e397f6f9",
+    "https://esm.sh/@noble/ciphers@1.2.0/denonext/webcrypto.mjs": "4265bb51dbb95e85d38f4fc932b9cb3df02a98ad61ecc53e8c1ddb9ba3396203",
+    "https://esm.sh/@noble/ciphers@1.2.0/salsa": "6e964598bc9407ccaffd4dba602489d4ef1b5be5cd2dc5ccf254de7fa0a4da48",
+    "https://esm.sh/@noble/ciphers@1.2.0/utils": "9259e2eaf702878687e6e6c5ac024e7c74f2b1bda261f572e6346d28d92625d3",
+    "https://esm.sh/@noble/ciphers@1.2.0/webcrypto": "2aaa597a10dc461d3feede256e6cda45ac20c4346c480aee43eb7064ba89b684",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/curve.mjs": "fcc8e5f58779c32f3efc08b5f98d4eb3f70b7cb47c55294a0d3bc940b4e7707a",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/edwards.mjs": "7e1dfe43d2317751b2b9510d98748a4c9d2e84a56609784df437f296cdf06c87",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/hash-to-curve.mjs": "a0a13eef59bfa91ec87455a43500b331145e4702548cab19768a7bc1a787c27c",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/modular.mjs": "e848b3fc67d1699c35fc080cb8ef7d886156e8a6c064e580397c6ab910f77f6f",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/montgomery.mjs": "aa59255accfc21890284a5c59b290c6648050d120f0b7009f4024965ed0bca64",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/abstract/utils.mjs": "2cf3273cf0aa1518e35b106df87b305aba31733934c16e7bde5ef6d72afc7a01",
+    "https://esm.sh/@noble/curves@1.8.0/denonext/ed25519.mjs": "f66a24aca689203b34d9365da32a45129f98790ed1168ee9e535e918f7cdaa71",
+    "https://esm.sh/@noble/curves@1.8.0/ed25519": "19e2cce9011d77014120f2000f7cef00a76718cc44956bde5e955f05ac8afaee",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/_assert.mjs": "a70605288344154d510e6355a7c6cc4f13a757c7973d024a60ab82610b24b5ff",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/_md.mjs": "e79d3ebb5754b14d0a46d1c550906c0c2b66abf5994fad25b3971a5d75ef675f",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/crypto.mjs": "372c57396685cabaa33dc034dff6949bfff1d61461649e6b1fa6275769e3db39",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/esm/_u64.mjs": "ccf07a237e6e6db93e54d634185f8fad95a31e481da31fb9290c298e2472d884",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/sha512.mjs": "863a4f606ebdbf905c598e3b1c3b0d97893010ff4b58f3566d26071bad955d18",
+    "https://esm.sh/@noble/hashes@1.7.0/denonext/utils.mjs": "f46c91e32f55ddfdaa5bd2060aa5562cd368e02a2d8034f2cee5e5102135d538",
+    "https://esm.sh/@noble/hashes@1.8.0/blake3": "d39679d6a58afc68e9cee6abe79209b88fe4f9b94c695bff8311731a550308dc",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/_md.mjs": "e30debbd8e964d8bd4ae9c807c75601e3ef7ec73eaed005f703709f64a4b2257",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/blake2.mjs": "e68ba443fba22be02901ea40d1eb5ad4318758cd177cb222a211b5b6d121e4da",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/blake3.mjs": "0501f7b448a9dcad46f372c2af23e2f3e0a2a98dabddace535288a263fbfd516",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/crypto.mjs": "cabc4468470c6f6d15891c4a6037aebed19289e1a12eb9905c5579c26767a721",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/esm/_u64.mjs": "6282b7bcd11b7aad271b5507cca4209ce5cf1de8b5504d21b670e365a0ad04b0",
+    "https://esm.sh/@noble/hashes@1.8.0/denonext/utils.mjs": "18b15a49e98c9e136e4bfcdce69b9461630b7dc3389ba932f535ad4a47221b08",
     "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium-esm-wrappers.js": "266420f8fe917868af1148e8534104b56b0cccbad5e9adcc195b473f80ec38ad",
     "https://raw.githubusercontent.com/interncom/libsodium.js/esm/dist/modules/libsodium.esm.js": "b74f525af89b310b498e433086689bd2b844955a98020455a8f806af31784bb5"
   },

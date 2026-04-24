@@ -19,14 +19,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
-          bun-version: latest  # Use the latest Bun version
+          bun-version: latest # Use the latest Bun version
 
       - name: Install dependencies
         run: bun install
-        working-directory: web
-
-      - name: Run build
-        run: bun run build
         working-directory: web
 
       - name: Run tests

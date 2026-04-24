@@ -1,16 +1,16 @@
-import libsodiumCrypto from "../../bun/src/crypto.ts";
-import { IOpenBag, openBagBody } from "../../shared/bag.ts";
-import { htob } from "../../shared/binary.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
-import { Clock, IClock } from "../../shared/clock.ts";
-import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
-import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
-import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
-import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/enclave.ts";
-import { hostHTTPTransport } from "../../shared/http.ts";
-import { genSingletonUpsert } from "../../shared/singleton.ts";
-import { decryptPeekItem } from "../../shared/sync.ts";
+import crypto from "../bun/src/crypto.ts";
+import { IOpenBag, openBagBody } from "../shared/bag.ts";
+import { htob } from "../shared/binary.ts";
+import DiplomaticClientAPI from "../shared/client.ts";
+import { Clock, IClock } from "../shared/clock.ts";
+import type { IBagPeekItem } from "../shared/codecs/peekItem.ts";
+import { IBagPullItem } from "../shared/codecs/pullItem.ts";
+import { IBagPushItem } from "../shared/codecs/pushItem.ts";
+import { Status } from "../shared/consts.ts";
+import { Enclave } from "../shared/enclave.ts";
+import { hostHTTPTransport } from "../shared/http.ts";
+import { genSingletonUpsert } from "../shared/singleton.ts";
+import { decryptPeekItem } from "../shared/sync.ts";
 import {
   HostHandle,
   IBag,
@@ -18,8 +18,8 @@ import {
   IMessage,
   ITransport,
   MasterSeed,
-} from "../../shared/types.ts";
-import { err, ok, ValStat } from "../../shared/valstat.ts";
+} from "../shared/types.ts";
+import { err, ok, ValStat } from "../shared/valstat.ts";
 
 // A CLIClient maintains no state.
 export class CLIClient<Handle extends HostHandle> {
@@ -30,7 +30,7 @@ export class CLIClient<Handle extends HostHandle> {
   constructor(
     { seed, clock = new Clock() }: { seed: MasterSeed; clock?: IClock },
   ) {
-    this.enclave = new Enclave(seed, libsodiumCrypto);
+    this.enclave = new Enclave(seed, crypto);
     this.clock = clock;
   }
 
@@ -42,7 +42,7 @@ export class CLIClient<Handle extends HostHandle> {
     const updateHostMeta = () => Promise.resolve(Status.Success);
     this.conn = new DiplomaticClientAPI<Handle>(
       this.enclave,
-      libsodiumCrypto,
+      crypto,
       host,
       clock,
       transport,
@@ -101,12 +101,12 @@ export class CLIClient<Handle extends HostHandle> {
       peekItem,
       hostKeys,
       this.enclave,
-      libsodiumCrypto,
+      crypto,
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
     const key = await this.enclave.deriveFromKDM(itemDec.kdm);
-    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, libsodiumCrypto);
+    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, crypto);
   }
 
   async upsertSingletonSync(type: string, body: Uint8Array): Promise<Status> {
@@ -116,7 +116,9 @@ export class CLIClient<Handle extends HostHandle> {
     return statPush;
   }
 
-  async listen(onNotification: (bytes: Uint8Array) => Promise<Status>): Promise<Status> {
+  async listen(
+    onNotification: (bytes: Uint8Array) => Promise<Status>,
+  ): Promise<Status> {
     if (!this.conn) return Status.ConnectionClosed;
     return this.conn.listen(onNotification);
   }
@@ -177,13 +179,13 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 }
 
 // Re-exports for convenience in demos
-export { default as msgpack } from "../../bun/src/codec.ts";
-export { Decoder } from "../../shared/codec.ts";
-export { notifItemCodec } from "../../shared/codecs/notifItem.ts";
-export type { IBagNotifItem } from "../../shared/codecs/notifItem.ts";
-export type { IBagPullItem } from "../../shared/codecs/pullItem.ts";
-export { Status } from "../../shared/consts.ts";
-export { hostHTTPTransport } from "../../shared/http.ts";
+export { default as msgpack } from "../bun/src/codec.ts";
+export { Decoder } from "../shared/codec.ts";
+export { notifItemCodec } from "../shared/codecs/notifItem.ts";
+export type { IBagNotifItem } from "../shared/codecs/notifItem.ts";
+export type { IBagPullItem } from "../shared/codecs/pullItem.ts";
+export { Status } from "../shared/consts.ts";
+export { hostHTTPTransport } from "../shared/http.ts";
 
 // For bun host
-export { runBunHost } from '../host/index.ts';
+export { runBunHost } from "../bun/src/host.ts";

@@ -48,6 +48,6 @@
     "@noble/hashes": "1.8.0",
     "file-saver": "2.0.5",
     "libsodium-wrappers": "0.8.2",
-    "libsodium.js": "git+ssh://github.com/interncom/libsodium.js#e4e7647"
+    "libsodium.js": "git+https://github.com/interncom/libsodium.js.git#e4e7647"
   }
 }

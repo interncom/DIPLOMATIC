@@ -36,10 +36,7 @@ const baseCryptoImpl: ICrypto = {
     new Uint8Array(bytes).fill(0x11),
   gen256BitSecureRandomSeed: async (): Promise<Uint8Array> =>
     new Uint8Array(32).fill(0x22),
-  deriveXSalsa20Poly1305Key: async (
-    _seed: Uint8Array,
-    _derivationIndex: number,
-  ): Promise<Uint8Array> => new Uint8Array(32).fill(0x33),
+
   encryptXSalsa20Poly1305Combined: async (
     plaintext: Uint8Array,
     _key: Uint8Array,

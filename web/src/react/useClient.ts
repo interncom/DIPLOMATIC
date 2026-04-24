@@ -86,7 +86,13 @@ export function useClient(
     Promise.all([openIDBStore(crypto), openEntIDB()]).then(
       async ([store, entDB]) => {
         const entMgr = entStateManager(entDB);
-        const client = new SyncClient(clock, entMgr, store, hostHTTPTransport, crypto);
+        const client = new SyncClient(
+          clock,
+          entMgr,
+          store,
+          hostHTTPTransport,
+          crypto,
+        );
         if (seed) {
           await client.setSeed(seed);
         }

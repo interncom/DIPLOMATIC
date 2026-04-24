@@ -1,0 +1,51 @@
+{
+  "name": "@interncom/diplomatic",
+  "version": "0.1.4-rc1",
+  "type": "module",
+  "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "diplomatic-host": "./dist/cli/bin/host.js"
+  },
+  "exports": {
+    ".": {
+      "browser": "./dist/web/index.mjs",
+      "node": "./dist/cli/index.mjs"
+    },
+    "./web": "./dist/web/index.mjs",
+    "./cli": "./dist/cli/index.mjs"
+  },
+  "scripts": {
+    "build": "bun run build-web.mjs && bun run build-cli.mjs",
+    "clean": "rm -rf dist",
+    "tsc": "tsc --project ../web/tsconfig.json",
+    "test": "npm test --workspace=web && deno test --allow-net --allow-ffi --allow-env ../deno/"
+  },
+  "author": "The Internet Committee",
+  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/file-saver": "^2.0.7",
+    "@types/node": "^20.14.11",
+    "@types/react": "^19.1.0",
+    "@vitest/coverage-v8": "^4.0.17",
+    "esbuild": "0.21.5",
+    "react": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "3.1.3",
+    "@noble/hashes": "1.8.0",
+    "file-saver": "2.0.5",
+    "libsodium-wrappers": "0.8.2"
+  }
+}

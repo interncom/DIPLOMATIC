@@ -116,7 +116,9 @@ export class CLIClient<Handle extends HostHandle> {
     return statPush;
   }
 
-  async listen(onNotification: (bytes: Uint8Array) => Promise<Status>): Promise<Status> {
+  async listen(
+    onNotification: (bytes: Uint8Array) => Promise<Status>,
+  ): Promise<Status> {
     if (!this.conn) return Status.ConnectionClosed;
     return this.conn.listen(onNotification);
   }
@@ -177,13 +179,13 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 }
 
 // Re-exports for convenience in demos
-export { default as msgpack } from "../../bun/src/codec.ts";
-export { Decoder } from "../../shared/codec.ts";
-export { notifItemCodec } from "../../shared/codecs/notifItem.ts";
-export type { IBagNotifItem } from "../../shared/codecs/notifItem.ts";
-export type { IBagPullItem } from "../../shared/codecs/pullItem.ts";
-export { Status } from "../../shared/consts.ts";
-export { hostHTTPTransport } from "../../shared/http.ts";
+export { default as msgpack } from "../bun/src/codec.ts";
+export { Decoder } from "../shared/codec.ts";
+export { notifItemCodec } from "../shared/codecs/notifItem.ts";
+export type { IBagNotifItem } from "../shared/codecs/notifItem.ts";
+export type { IBagPullItem } from "../shared/codecs/pullItem.ts";
+export { Status } from "../shared/consts.ts";
+export { hostHTTPTransport } from "../shared/http.ts";
 
 // For bun host
-export { runBunHost } from '../host/index.ts';
+export { runBunHost } from "../bun/src/host.ts";

@@ -25,14 +25,21 @@ Run `style.sh` in the root of the project to enforce style rules after completin
 - `web/src/entdb` implements EntDB, an application-layer object database built on top of the eventually-consistent ordered message relay implemented by DIPLOMATIC. It has both IndexedDB and in-memory implementations.
 - `web/src/stores` implement data stores on both IndexedDB and in-memory, for data needed to use DIPLOMATIC + EntDB in a web client.
 - `web/src/types.ts` has various TypeScript types specific to the web client.
+- `cli` holds CLI client code and build configuration.
+- `cli/src` contains the CLI client implementation for connecting to DIPLOMATIC hosts.
+- `bun` holds Bun-specific utilities and crypto implementations, including the Bun host server.
+- `pkg` manages the build and packaging of the `@interncom/diplomatic` NPM module, which exposes web and CLI components from the monorepo. It pulls source from `shared/`, `web/`, `cli/`, and `bun/`. Run `bun install` then `bun run build` from this dir to generate distribution bundles.
+- `demos` contains example usage of the DIPLOMATIC protocol, depending on the `pkg` module for imports.
 
 ## Checking Work
 
 - Run tests before and after making changes to ensure you haven't broken anything.
   - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
   - `npm test` from `web` dir.
-  
+
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. Type errors and warnings are never acceptable.
-  
+
+- Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully.
+
 - Run the benchmarks before and after as well, to check for meaningful regressions.
   - `deno bench` from `deno` dir.

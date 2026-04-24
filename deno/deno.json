@@ -2,6 +2,10 @@
   "nodeModulesDir": "auto",
   "vendor": false,
   "imports": {
-    "@noble/hashes": "jsr:@noble/hashes@^2.0.1"
+    "@noble/hashes": "jsr:@noble/hashes@^2.0.1",
+    "@noble/ciphers/webcrypto": "npm:@noble/ciphers@1.2.0/webcrypto",
+    "@noble/ciphers/salsa": "npm:@noble/ciphers@1.2.0/salsa",
+    "@noble/curves/ed25519": "npm:@noble/curves@1.8.0/ed25519",
+    "@noble/hashes/blake3": "npm:@noble/hashes@1.8.0/blake3"
   }
 }

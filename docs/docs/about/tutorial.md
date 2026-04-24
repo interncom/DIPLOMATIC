@@ -1,6 +1,12 @@
-# STATUS CLI
+# Tutorial
 
-We'll make an app that syncs a text status message using DIPLOMATIC.
+We'll make an app that syncs a text status message, using DIPLOMATIC.
+
+## Host
+
+DIPLOMATIC is explicitly *not* a peer-to-peer (P2P) system. It syncs data between clients via one or more hosts. So to begin, we must run a host.
+
+We'll use [bun](https://bun.com/). So go install that, if you don't have it yet.
 
 ## Write
 

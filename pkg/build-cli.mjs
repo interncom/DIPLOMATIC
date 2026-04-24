@@ -6,7 +6,7 @@ execSync("tsc --project pkg/tsconfig-cli.json || true", { cwd: "..", stdio: 'inh
 
 // Create bin/host.js
 await mkdir("dist/cli/bin", { recursive: true });
-await writeFile("dist/cli/bin/host.js", `#!/usr/bin/env node
+await writeFile("dist/cli/bin/host.js", `#!/usr/bin/env bun
 
 import { runBunHost } from '../index.mjs';
 

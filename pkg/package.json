@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "bun run build-web.mjs && bun run build-cli.mjs",
+    "check": "node check.mjs",
     "clean": "rm -rf dist",
     "tsc": "tsc --project ../web/tsconfig.json",
     "test": "npm test --workspace=web && deno test --allow-net --allow-ffi --allow-env ../deno/"

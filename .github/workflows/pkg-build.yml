@@ -1,0 +1,37 @@
+name: Package Build Check
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build-and-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+
+    - name: Install dependencies
+      run: cd pkg && bun install
+
+    - name: Build packages
+      run: cd pkg && bun run build
+
+    - name: Run sanity checks
+      run: cd pkg && bun run check
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: diplomatic-packages
+        path: pkg/dist/

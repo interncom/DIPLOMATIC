@@ -481,18 +481,22 @@ export async function register(): Promise<void> {
 
 ```ts
 import { decode } from '@msgpack/msgpack'
-import * as Diplomatic from '@interncom/diplomatic'
+import * as Diplomatic from '@interncom/diplomatic/web'
 ```
 
-Import msgpack for decoding and DIPLOMATIC for the web client.
+Import msgpack for decoding. Import DIPLOMATIC web client.
 
 ```ts
 const msgType = "status";
+```
 
+Define the message type.
+
+```ts
 const statusDiv = document.getElementById('status')!
 ```
 
-Define the message type and get the DOM element to display the status.
+Get the DOM element to display the status.
 
 ```ts
 export async function register(): Promise<void> {
@@ -500,7 +504,7 @@ export async function register(): Promise<void> {
   if (stored) statusDiv.textContent = stored
 ```
 
-The register function sets up the client. First, load any previously stored status from localStorage.
+The register function sets up the client. First, update the display with any previously stored status message from localStorage.
 
 ```ts
   try {

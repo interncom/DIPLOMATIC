@@ -30,11 +30,15 @@ import { TypedEventEmitter } from "./shared/events";
 import {
   EntityID,
   GroupID,
+  HostHandle,
+  IHostConnectionInfo,
   IMessage,
   IMutateOp,
   type IOp,
   IStateManager,
+  ITransport,
   MasterSeed,
+  ICrypto,
 } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -86,6 +90,7 @@ export {
   entStateManager,
   genSingletonEID,
   GroupID,
+  hostHTTPTransport,
   htob,
   HTTPTransport,
   IDBStore,
@@ -113,11 +118,15 @@ export {
 
 export type {
   Applier,
+  HostHandle,
+  ICrypto,
   IDiplomaticClientState,
+  IHostConnectionInfo,
   IMessage,
   IMutateOp,
   IOp,
   IStateManager,
   IStoredMessage,
   IStoredMessageData,
+  ITransport,
 };

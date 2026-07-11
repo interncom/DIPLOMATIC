@@ -71,13 +71,24 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {
-    const { store } = this;
+    const { store, connections } = this;
     const enclave = await store.seed.load();
     const hosts = await store.hosts.list();
+
+    // Use the per-connection isConnected() which respects listener state
+    // (updated immediately via onConnect/onDisconnect callbacks).
+    let connected = false;
+    for (const conn of connections.values()) {
+      if (conn.isConnected()) {
+        connected = true;
+        break;
+      }
+    }
+
     return {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
-      connected: false, // TODO
+      connected,
     };
   }
 
@@ -458,13 +469,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await conn.register();
 
     if (listen) {
-      await conn.listen(async (bytes: Uint8Array) => {
-        const syncParams = { conn, store, enclave, host, crypto, clock };
-        return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
-      });
+      await conn.listen(
+        async (bytes: Uint8Array) => {
+          const syncParams = { conn, store, enclave, host, crypto, clock };
+          return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
+        },
+        () => this.clientState.emit(), // onDisconnect
+        () => this.clientState.emit(), // onConnect
+      );
     }
 
     connections.set(host.label, conn);
+    this.clientState.emit();
 
     if (sync) {
       this.scheduleSync();
@@ -489,5 +505,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public disconnect = async () => {
     this.connections.clear();
+    this.clientState.emit();
   };
 }

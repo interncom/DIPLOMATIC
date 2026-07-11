@@ -16,7 +16,8 @@ export class WebsocketListener implements IPushListener {
   async connect(
     authTS: IAuthTimestamp,
     recv: PushReceiver,
-    onDisconnect: () => void,
+    onDisconnect: () => void = () => {},
+    onConnect: () => void = () => {},
   ): Promise<Status> {
     const { url } = this;
 
@@ -33,6 +34,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onopen = () => {
       console.log("CONNECTED");
+      onConnect();
     };
 
     this.websocket.onclose = () => {
@@ -47,6 +49,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onerror = (e) => {
       console.log(`ERROR: ${JSON.stringify(e)}`);
+      onDisconnect();
     };
 
     return Promise.resolve(Status.Success);

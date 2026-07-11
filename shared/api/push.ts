@@ -88,7 +88,7 @@ export const pushEnd: IAuthenticatedEndpoint<
     const statBatch = encBatch.writeStructs(notifItemCodec, notifs);
     if (statBatch !== Status.Success) return statBatch;
     const batchEnc = encBatch.result();
-    notifier.push(pubKey, batchEnc);
+    await Promise.resolve(notifier.push(pubKey, batchEnc));
 
     return Status.Success;
   },

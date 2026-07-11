@@ -11,22 +11,31 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+/// <reference types="./env.d.ts" />
+
 import { DurableObject } from "cloudflare:workers";
 import { validateAuthTimestamp } from "../../../shared/auth.ts";
-import { btoh, htob } from "../../../shared/binary.ts";
+import { btoh } from "../../../shared/binary.ts";
 import { Clock } from "../../../shared/clock.ts";
-import { Decoder, Encoder } from "../../../shared/codec.ts";
-import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
+import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
-import { notifierTSAuthURLParam, Status } from "../../../shared/consts.ts";
-import { DiplomaticHTTPServer } from "../../../shared/http/server";
+import { Status } from "../../../shared/consts.ts";
+import {
+  DiplomaticHTTPServer,
+  validateWebSocketAuth,
+} from "../../../shared/http/server";
 import type {
   IHostCrypto,
+  IPushNotifier,
   IStorage,
-  IWebSocketPushNotifier,
 } from "../../../shared/types";
 import { nullSubMeta } from "../../../shared/types.ts";
 import { err, ok } from "../../../shared/valstat.ts";
+
+interface Env {
+  DIP_DB: D1Database;
+  WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServerV2>;
+}
 
 const cloudflareCrypto: IHostCrypto = {
   async checkSigEd25519(sig, message, pubKey) {
@@ -46,7 +55,11 @@ const cloudflareCrypto: IHostCrypto = {
   },
 };
 
-export class WebSocketServer extends DurableObject {
+export class WebSocketServerV2 extends DurableObject {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+  }
+
   async fetch(request: Request): Promise<Response> {
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader === "websocket") {
@@ -54,6 +67,7 @@ export class WebSocketServer extends DurableObject {
       const [client, server] = Object.values(webSocketPair);
 
       this.ctx.acceptWebSocket(server);
+      console.log("[DO] WS upgrade accepted");
 
       return new Response(null, {
         status: 101,
@@ -65,8 +79,9 @@ export class WebSocketServer extends DurableObject {
       const body = await request.arrayBuffer();
       const data = new Uint8Array(body);
       const sockets = this.ctx.getWebSockets();
+      console.log(`[DO] /notify received, sockets: ${sockets.length}`);
       for (const socket of sockets) {
-        socket.send(data);
+        socket.send(data.buffer as ArrayBuffer);
       }
       return new Response(null, { status: 200 });
     }
@@ -83,7 +98,7 @@ export class WebSocketServer extends DurableObject {
 
 const createCloudflareWebsocketNotifier = (
   env: Env,
-): IWebSocketPushNotifier => ({
+): IPushNotifier => ({
   open: async (authTS, _recv, crypto, clock) => {
     const status = await validateAuthTimestamp(authTS, crypto, clock);
     if (status !== Status.Success) {
@@ -106,35 +121,8 @@ const createCloudflareWebsocketNotifier = (
     });
     await stub.fetch(request);
   },
-
-  handle: async (host, request) => {
-    const url = new URL(request.url);
-    const authTSHex = url.searchParams.get(notifierTSAuthURLParam);
-    if (!authTSHex) {
-      return new Response("Missing authTS", { status: 401 });
-    }
-    const authTSEnc = htob(authTSHex);
-    const dec = new Decoder(authTSEnc);
-    const [authTS, decStatus] = dec.readStruct(authTimestampCodec);
-    if (decStatus !== Status.Success) {
-      return new Response("Invalid authTS", { status: 401 });
-    }
-    const [hasUser, hasStatus] = await host.storage.hasUser(authTS.pubKey);
-    if (hasStatus !== Status.Success || !hasUser) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-    const pubKeyHex = btoh(authTS.pubKey);
-    const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
-    const stub = env.WEBSOCKET_SERVER.get(id);
-    const resp = await stub.fetch(request);
-    return resp;
-  },
 });
 
-interface Env {
-  DIP_DB: D1Database;
-  WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServer>;
-}
 export default {
   async fetch(request, env, _ctx): Promise<Response> {
     const d1Storage: IStorage = {
@@ -227,7 +215,7 @@ export default {
       },
     };
 
-    const notifier = createCloudflareWebsocketNotifier(env);
+    const notifier: IPushNotifier = createCloudflareWebsocketNotifier(env);
 
     const server = new DiplomaticHTTPServer(
       d1Storage,
@@ -235,6 +223,21 @@ export default {
       notifier,
       new Clock(),
     );
+
+    if (request.headers.get("Upgrade") === "websocket") {
+      const [authTS, authStatus] = await validateWebSocketAuth(request, server);
+      if (authStatus !== Status.Success) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const [hasUser, hasStatus] = await server.storage.hasUser(authTS.pubKey);
+      if (hasStatus !== Status.Success || !hasUser) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const pubKeyHex = btoh(authTS.pubKey);
+      const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
+      const stub = env.WEBSOCKET_SERVER.get(id);
+      return await stub.fetch(request);
+    }
 
     return server.corsHandler(request);
   },

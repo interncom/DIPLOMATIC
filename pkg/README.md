@@ -70,4 +70,6 @@ To publish the package:
 npm publish
 ```
 
+NOTE: that must be `npm publish` not `bun publish`.
+
 The package is configured for public access with scoped name `@interncom/diplomatic`.

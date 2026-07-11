@@ -12,11 +12,16 @@ custom_domain = true
 
 [[durable_objects.bindings]]
 name = "WEBSOCKET_SERVER"
-class_name = "WebSocketServer"
+class_name = "WebSocketServerV2"
 
 [[migrations]]
 tag = "v1"
 new_classes = [ "WebSocketServer" ]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "WebSocketServerV2" ]
+deleted_classes = [ "WebSocketServer" ]
 
 # Bind a D1 database. D1 is Cloudflare’s native serverless SQL database.
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#d1-databases

@@ -3,11 +3,6 @@
   "version": "0.1.3",
   "type": "module",
   "description": "Secure sync layer",
-  "main": "dist/index.mjs",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "tsc": "tsc",
     "test": "vitest",
@@ -16,9 +11,6 @@
   },
   "author": "The Internet Committee",
   "license": "ISC",
-  "publishConfig": {
-    "access": "public"
-  },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
     "@types/node": "^20.14.11",

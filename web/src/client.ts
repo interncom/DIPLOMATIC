@@ -1,7 +1,6 @@
 // This is the web client for DIPLOMATIC.
 
 import { encode } from "@msgpack/msgpack";
-import { saveAs } from "file-saver";
 
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
@@ -424,7 +423,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (stat !== Status.Success) return stat;
 
     const blob = new Blob([bytes.slice()]);
-    saveAs(blob, filename);
+    saveBlob(blob, filename);
     return Status.Success;
   }
 
@@ -521,4 +520,23 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.connections.clear();
     this.clientState.emit();
   };
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  // Legacy IE/Edge
+  // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
+  if (typeof navigator.msSaveOrOpenBlob === "function") {
+    // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
+    navigator.msSaveOrOpenBlob(blob, filename);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

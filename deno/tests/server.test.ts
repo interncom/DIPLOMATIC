@@ -166,10 +166,10 @@ Deno.test("server", async (t) => {
   // This ensures readStruct succeeds, but validateAuthTimestamp fails with InvalidSignature.
   const enc = new Encoder();
   const badPub = new Uint8Array(32).fill(1);
-  const badSig = new Uint8Array(64).fill(2);  // will not match the signature over the timestamp
+  const badSig = new Uint8Array(64).fill(2); // will not match the signature over the timestamp
   enc.writeBytes(badPub);
   enc.writeBytes(badSig);
-  enc.writeDate(now);  // use the test's fixed 'now' so time check passes
+  enc.writeDate(now); // use the test's fixed 'now' so time check passes
   const invalidTsAuth = enc.result();
 
   await t.step("POST /user requires valid tsAuth", async () => {

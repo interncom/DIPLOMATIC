@@ -105,7 +105,7 @@ export function useSyncOnResume<Handle extends HostHandle>(
   }, [client]);
 }
 
-
+export function useClient(
   { clock = new Clock(), seed, host }: {
     clock?: IClock;
     seed?: MasterSeed;

@@ -21,6 +21,12 @@ export class WebsocketListener implements IPushListener {
   ): Promise<Status> {
     const { url } = this;
 
+    // Close any previous socket before creating a new one.
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = undefined;
+    }
+
     const enc = new Encoder();
     enc.writeStruct(authTimestampCodec, authTS);
     const authTSEnc = enc.result();
@@ -39,6 +45,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onclose = () => {
       console.log("DISCONNECTED");
+      this.websocket = undefined;
       onDisconnect();
     };
 
@@ -49,6 +56,7 @@ export class WebsocketListener implements IPushListener {
 
     this.websocket.onerror = (e) => {
       console.log(`ERROR: ${JSON.stringify(e)}`);
+      this.websocket = undefined;
       onDisconnect();
     };
 

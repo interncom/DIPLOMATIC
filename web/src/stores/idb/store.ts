@@ -70,5 +70,8 @@ export async function openIDBStoreDB(): Promise<IDBDatabase> {
 
 export async function openIDBStore(crypto: ICrypto) {
   const db = await openIDBStoreDB();
+  if (navigator.storage && navigator.storage.persist) {
+    await navigator.storage.persist();
+  }
   return new IDBStore(db, crypto);
 }

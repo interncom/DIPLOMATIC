@@ -31,6 +31,7 @@ import {
   EntityID,
   GroupID,
   HostHandle,
+  ICrypto,
   IHostConnectionInfo,
   IMessage,
   IMutateOp,
@@ -38,7 +39,6 @@ import {
   IStateManager,
   ITransport,
   MasterSeed,
-  ICrypto,
 } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";

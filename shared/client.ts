@@ -139,4 +139,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     }
     return true;
   }
+
+  /** Close the push listener (e.g. websocket) if present. Used for cleanup
+   * of stale connections before reconnecting after backgrounding etc.
+   */
+  closeListener() {
+    this.transport?.listener?.disconnect();
+  }
 }

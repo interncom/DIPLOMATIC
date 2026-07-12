@@ -452,7 +452,21 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     sync = true,
   ) => {
     const { clock, connections, crypto, store, transport } = this;
-    if (connections.has(host.label)) return;
+
+    const existing = connections.get(host.label);
+    if (existing) {
+      if (existing.isConnected()) {
+        return;
+      }
+      // Connection exists but is dead (common after iOS backgrounding).
+      // Clean it up so we can establish a fresh listener.
+      try {
+        existing.closeListener();
+      } catch {
+        // ignore
+      }
+      connections.delete(host.label);
+    }
 
     const enclave = await store.seed.load();
     if (!enclave) return;

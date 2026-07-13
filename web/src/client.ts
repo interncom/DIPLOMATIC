@@ -1,7 +1,6 @@
 // This is the web client for DIPLOMATIC.
 
 import { encode } from "@msgpack/msgpack";
-import { saveAs } from "file-saver";
 
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
@@ -71,13 +70,24 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {
-    const { store } = this;
+    const { store, connections } = this;
     const enclave = await store.seed.load();
     const hosts = await store.hosts.list();
+
+    // Use the per-connection isConnected() which respects listener state
+    // (updated immediately via onConnect/onDisconnect callbacks).
+    let connected = false;
+    for (const conn of connections.values()) {
+      if (conn.isConnected()) {
+        connected = true;
+        break;
+      }
+    }
+
     return {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
-      connected: false, // TODO
+      connected,
     };
   }
 
@@ -413,7 +423,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (stat !== Status.Success) return stat;
 
     const blob = new Blob([bytes.slice()]);
-    saveAs(blob, filename);
+    saveBlob(blob, filename);
     return Status.Success;
   }
 
@@ -441,7 +451,21 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     sync = true,
   ) => {
     const { clock, connections, crypto, store, transport } = this;
-    if (connections.has(host.label)) return;
+
+    const existing = connections.get(host.label);
+    if (existing) {
+      if (existing.isConnected()) {
+        return;
+      }
+      // Connection exists but is dead (common after iOS backgrounding).
+      // Clean it up so we can establish a fresh listener.
+      try {
+        existing.closeListener();
+      } catch {
+        // ignore
+      }
+      connections.delete(host.label);
+    }
 
     const enclave = await store.seed.load();
     if (!enclave) return;
@@ -458,13 +482,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await conn.register();
 
     if (listen) {
-      await conn.listen(async (bytes: Uint8Array) => {
-        const syncParams = { conn, store, enclave, host, crypto, clock };
-        return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
-      });
+      await conn.listen(
+        async (bytes: Uint8Array) => {
+          const syncParams = { conn, store, enclave, host, crypto, clock };
+          return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
+        },
+        () => this.clientState.emit(), // onDisconnect
+        () => this.clientState.emit(), // onConnect
+      );
     }
 
     connections.set(host.label, conn);
+    this.clientState.emit();
 
     if (sync) {
       this.scheduleSync();
@@ -489,5 +518,25 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public disconnect = async () => {
     this.connections.clear();
+    this.clientState.emit();
   };
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  // Legacy IE/Edge
+  // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
+  if (typeof navigator.msSaveOrOpenBlob === "function") {
+    // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
+    navigator.msSaveOrOpenBlob(blob, filename);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

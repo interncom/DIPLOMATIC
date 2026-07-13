@@ -58,13 +58,49 @@ export function useSyncOnResume<Handle extends HostHandle>(
   client: SyncClient<Handle>,
 ) {
   useEffect(() => {
-    async function handleOnline() {
-      await client.connect();
-      await client.sync();
+    async function reconnectAndSync() {
+      try {
+        await client.connect();
+        await client.sync();
+      } catch (err) {
+        console.error("reconnectAndSync failed", err);
+      }
     }
+
+    function handleOnline() {
+      reconnectAndSync();
+    }
+
+    function handleVisibilityChange() {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        reconnectAndSync();
+      }
+    }
+
+    function handleFocus() {
+      reconnectAndSync();
+    }
+
     globalThis.addEventListener("online", handleOnline);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+    globalThis.addEventListener("focus", handleFocus);
+    globalThis.addEventListener("pageshow", handleFocus);
+
     return () => {
       globalThis.removeEventListener("online", handleOnline);
+      if (typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
+      }
+      globalThis.removeEventListener("focus", handleFocus);
+      globalThis.removeEventListener("pageshow", handleFocus);
     };
   }, [client]);
 }

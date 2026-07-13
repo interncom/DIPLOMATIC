@@ -187,7 +187,8 @@ export interface IPushListener {
   connect(
     authTS: IAuthTimestamp,
     recv: PushReceiver,
-    onDisconnect: () => void,
+    onDisconnect?: () => void,
+    onConnect?: () => void,
   ): Promise<Status>;
   connected(): boolean;
   disconnect(): void;

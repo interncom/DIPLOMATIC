@@ -13,3 +13,7 @@ DIPLOMATIC is a secure sync protocol for single-user distributed applications.
 ### Server
 
 `DIPLOMATIC_HOST_PORT=31337 deno run --allow-net --allow-read --allow-write --allow-env hosts/deno/server.ts`
+
+### NPM Module
+
+See pkg dir and README.md therein.

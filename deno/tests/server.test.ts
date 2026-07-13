@@ -2,7 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import DiplomaticClientAPI from "../../shared/client.ts";
 import { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
-import { Status, tsAuthSize } from "../../shared/consts.ts";
+import { Status } from "../../shared/consts.ts";
 import { DiplomaticHTTPServer } from "../../shared/http/server.ts";
 import { genInsert } from "../../shared/message.ts";
 import memStorage from "../../shared/storage/memory.ts";
@@ -162,11 +162,15 @@ Deno.test("server", async (t) => {
     }
   });
 
+  // Construct an auth block of the correct structure but with invalid signature.
+  // This ensures readStruct succeeds, but validateAuthTimestamp fails with InvalidSignature.
   const enc = new Encoder();
-  enc.writeDate(new Date());
-  const timestampBytes = enc.result();
-  const invalidTsAuth = new Uint8Array(tsAuthSize);
-  invalidTsAuth.set(timestampBytes, 96);
+  const badPub = new Uint8Array(32).fill(1);
+  const badSig = new Uint8Array(64).fill(2); // will not match the signature over the timestamp
+  enc.writeBytes(badPub);
+  enc.writeBytes(badSig);
+  enc.writeDate(now); // use the test's fixed 'now' so time check passes
+  const invalidTsAuth = enc.result();
 
   await t.step("POST /user requires valid tsAuth", async () => {
     const response = await fetch(`http://localhost:${port}/user`, {

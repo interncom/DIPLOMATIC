@@ -62,6 +62,7 @@ export async function syncPeek<Handle extends HostHandle>(
     const msgExists = await store.messages.has(headEncHash);
     if (msgExists) {
       console.info("peek: skipping download enqueue");
+      await store.uploads.deq(host.label, [headEncHash]);
       continue;
     }
 

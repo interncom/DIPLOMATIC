@@ -112,7 +112,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   pull = (seqs: number[]) => this.call(api.pull, seqs);
 
   // listen for new bags.
-  listen = async (recv: PushReceiver) => {
+  listen = async (
+    recv: PushReceiver,
+    onDisconnect?: () => void,
+    onConnect?: () => void,
+  ) => {
     const { clock, crypto, host, transport } = this;
     const { listener } = transport;
     const keys = await hostKeys(this, host.label, host.idx);
@@ -121,9 +125,25 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     if (statAuthTS !== Status.Success) {
       return statAuthTS;
     }
-    return await listener.connect(authTS, recv, () => {
-      // TODO: handle disconnection, perhaps reconnect
-      console.log("Disconnected from push listener");
-    });
+    return await listener.connect(authTS, recv, onDisconnect, onConnect);
   };
+
+  /** Returns whether this client has an active connection to its host.
+   * If a push listener is active, reports the listener's connected state.
+   * Otherwise (listen=false), reports true if registered.
+   */
+  isConnected(): boolean {
+    const listener = this.transport?.listener;
+    if (listener && typeof listener.connected === "function") {
+      return listener.connected();
+    }
+    return true;
+  }
+
+  /** Close the push listener (e.g. websocket) if present. Used for cleanup
+   * of stale connections before reconnecting after backgrounding etc.
+   */
+  closeListener() {
+    this.transport?.listener?.disconnect();
+  }
 }

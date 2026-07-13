@@ -39,8 +39,3 @@ export default function App() {
   );
 }
 ```
-
-## Development
-
-To deploy npm package, from the `web` dir, run:
-`npm run build && npm run tsc && npm publish --public`.

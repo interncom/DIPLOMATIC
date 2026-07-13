@@ -80,6 +80,66 @@ describe("syncPeek", () => {
     const downloads = Array.from(await store.downloads.list());
     expect(downloads.length).toBe(0);
   });
+
+  test("dequeues upload for msg that host already has", async () => {
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(1),
+      clk: new Date(1000),
+      off: 0,
+      ctr: 0,
+      len: 4,
+      bod: new Uint8Array([1, 2, 3, 4]),
+    };
+
+    // Seal bag using same host keys that conn will use, and put on host.
+    const keys = await generateTestKeys(enclave);
+    const [bag, statBag] = await sealBag(message, keys, libsodiumCrypto, enclave);
+    if (statBag !== Status.Success || !bag) {
+      expect(statBag).toBe(Status.Success);
+      return;
+    }
+    const [seq, setStatus] = await lpcHost.storage.setBag(keys.publicKey, bag);
+    if (setStatus !== Status.Success) {
+      expect(setStatus).toBe(Status.Success);
+      return;
+    }
+
+    // Compute headEncHash exactly as sealBag + decryptPeekItem will see it (hsh is included when len>0).
+    let hsh: Uint8Array | undefined;
+    if (message.bod && message.len > 0) {
+      hsh = await libsodiumCrypto.blake3(message.bod);
+    }
+    const enc = new Encoder();
+    const encStat = messageHeadCodec.encode(enc, { ...message, hsh });
+    expect(encStat).toBe(Status.Success);
+    const headEnc = enc.result();
+    const headEncHash = await libsodiumCrypto.blake3(headEnc) as Hash;
+
+    // Store locally (simulating we created it here).
+    const storedData: IStoredMessageData = {
+      eid: message.eid,
+      ...(message.off !== 0 ? { off: message.off } : {}),
+      ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
+      body: message.bod,
+    };
+    await store.messages.add([{ key: headEncHash, data: storedData }]);
+
+    // Enqueue for upload to this host.
+    await store.uploads.enq("test", [headEncHash]);
+    expect(await store.uploads.list("test")).toContainEqual(headEncHash);
+
+    // Peek should notice we already have it locally, skip download, and dequeue the upload.
+    const stat = await syncPeek({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
+    expect(stat).toBe(Status.Success);
+
+    // Upload was dequeued because host already has it.
+    const remainingUploads = await store.uploads.list("test");
+    expect(remainingUploads.length).toBe(0);
+
+    // No download was enqueued.
+    const downloads = Array.from(await store.downloads.list());
+    expect(downloads.length).toBe(0);
+  });
 });
 
 describe("syncPush", () => {

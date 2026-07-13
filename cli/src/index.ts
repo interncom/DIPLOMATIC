@@ -118,9 +118,15 @@ export class CLIClient<Handle extends HostHandle> {
 
   async listen(
     onNotification: (bytes: Uint8Array) => Promise<Status>,
+    onDisconnect?: () => void,
+    onConnect?: () => void,
   ): Promise<Status> {
     if (!this.conn) return Status.ConnectionClosed;
-    return this.conn.listen(onNotification);
+    return this.conn.listen(onNotification, onDisconnect, onConnect);
+  }
+
+  isConnected(): boolean {
+    return this.conn?.isConnected() ?? false;
   }
 }
 

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { writeFile, mkdir } from "node:fs/promises";
 
-execSync("bun build --target node --format esm --outfile pkg/dist/cli/index.mjs --external bun:sqlite cli/src/index.ts", { cwd: "..", stdio: 'inherit' });
+execSync("bun build --target node --format esm --outfile pkg/dist/cli/index.mjs --external bun:sqlite --minify cli/src/index.ts", { cwd: "..", stdio: 'inherit' });
 execSync("tsc --project pkg/tsconfig-cli.json || true", { cwd: "..", stdio: 'inherit' });
 
 // Create bin/host.js

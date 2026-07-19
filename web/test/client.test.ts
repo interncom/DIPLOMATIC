@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import type {
@@ -24,6 +25,8 @@ import { IDownloadMessage, IStoredMessageData } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
+import { entStateManager } from "../src/entdb/entdb";
+import { EntDBMemory } from "../src/entdb/memory";
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage,
@@ -46,6 +49,9 @@ const createClient = async (clock = mockClock) => {
   const state: IStateManager = {
     async apply(msgs) {
       return msgs.map(() => Status.Success);
+    },
+    async clear() {
+      return Status.Success;
     },
     on(_type, _listener) { },
     off(_type, _listener) { },
@@ -119,14 +125,146 @@ describe("Client", () => {
   });
 
   describe("disconnect", () => {
-    test("clears connections", async () => {
+    test("closes listeners and clears connections", async () => {
       const { client } = await createClient();
-      // Simulate having connections
-      // deno-lint-ignore no-explicit-any
-      client.connections.set("test", {} as any);
+      const seed = new Uint8Array(32).fill(1) as MasterSeed;
+      await client.setSeed(seed);
+      // Avoid auto-sync side effects; still open the push listener.
+      await client.link(testHost, false);
+      await client.connect(true, false);
       expect(client.connections.size).toBe(1);
+      const conn = client.connections.get("test");
+      expect(conn).toBeDefined();
+      if (!conn) {
+        return;
+      }
+      const closeSpy = vi.spyOn(conn, "closeListener");
       await client.disconnect();
+      expect(closeSpy).toHaveBeenCalledOnce();
       expect(client.connections.size).toBe(0);
+    });
+  });
+
+  describe("wipe", () => {
+    test("clears protocol store and calls state.clear", async () => {
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+      let cleared = false;
+      const state: IStateManager = {
+        async apply(msgs) {
+          return msgs.map(() => Status.Success);
+        },
+        async clear() {
+          cleared = true;
+          return Status.Success;
+        },
+        on(_type, _listener) { },
+        off(_type, _listener) { },
+      };
+      const client = new SyncClient(
+        mockClock,
+        state,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+
+      const seed = new Uint8Array(32).fill(9) as MasterSeed;
+      await client.setSeed(seed);
+      await client.link(testHost, false);
+      const body: EncodedMessage = new Uint8Array([1, 2, 3]);
+      await client.insertRaw(body);
+
+      const hash = new Uint8Array(32).fill(1) as Hash;
+      await store.uploads.enq("test", [hash]);
+      const dl: IDownloadMessage = {
+        kdm: new Uint8Array(8).fill(3),
+        seq: 1,
+        head: {
+          eid: new Uint8Array(16).fill(3),
+          ctr: 0,
+          len: 0,
+          off: 0,
+        },
+        host: "test",
+      };
+      await store.downloads.enq([dl]);
+
+      expect(await store.seed.load()).toBeDefined();
+      expect(Array.from(await store.hosts.list()).length).toBe(1);
+      expect(Array.from(await store.messages.list()).length).toBe(1);
+      expect(await store.uploads.count()).toBeGreaterThan(0);
+      expect(await store.downloads.count()).toBe(1);
+
+      await client.wipe();
+
+      expect(cleared).toBe(true);
+      expect(client.connections.size).toBe(0);
+      expect(await store.seed.load()).toBeUndefined();
+      expect(Array.from(await store.hosts.list()).length).toBe(0);
+      expect(Array.from(await store.messages.list()).length).toBe(0);
+      expect(await store.uploads.count()).toBe(0);
+      expect(await store.downloads.count()).toBe(0);
+    });
+
+    test("clears EntDB and notifies type subscribers", async () => {
+      const entDB = new EntDBMemory();
+      const stateMgr = entStateManager(entDB);
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+      const client = new SyncClient(
+        mockClock,
+        stateMgr,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+
+      const seed = new Uint8Array(32).fill(7) as MasterSeed;
+      await client.setSeed(seed);
+      await client.link(testHost, false);
+
+      const entBod: EncodedMessage = encode({
+        type: "todo",
+        body: { text: "hi" },
+      });
+      await client.insertRaw(entBod);
+
+      const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
+      expect(beforeStat).toBe(Status.Success);
+      expect(before?.length).toBe(1);
+
+      let notified = 0;
+      stateMgr.on("todo", () => {
+        notified += 1;
+      });
+
+      await client.wipe();
+
+      const [after, afterStat] = await entDB.getEntities({ type: "todo" });
+      expect(afterStat).toBe(Status.Success);
+      expect(after?.length).toBe(0);
+      expect(notified).toBe(1);
+      expect(Array.from(await store.messages.list()).length).toBe(0);
+    });
+
+    test("cancels pending scheduled sync", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, client } = await createClient();
+        const seed = new Uint8Array(32).fill(5) as MasterSeed;
+        await client.setSeed(seed);
+        await client.link(testHost, false);
+        // scheduleSync is private; trigger via insert (debounces sync).
+        const body: EncodedMessage = new Uint8Array([1]);
+        await client.insertRaw(body);
+        await client.wipe();
+        const syncSpy = vi.spyOn(client, "sync");
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(syncSpy).not.toHaveBeenCalled();
+        syncSpy.mockRestore();
+        expect(await store.seed.load()).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

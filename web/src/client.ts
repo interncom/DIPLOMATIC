@@ -367,8 +367,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async wipe() {
+    // Stop further scheduled work and tear down push listeners first.
+    if (this.syncTimeout !== null) {
+      clearTimeout(this.syncTimeout);
+      this.syncTimeout = null;
+    }
     await this.disconnect();
+    // Let any in-flight sync finish so it cannot repopulate after clear.
+    await this.syncRuns.flush();
     await this.store.wipe();
+    await this.state.clear();
     this.clientState.emit();
     this.xferState.emit();
   }
@@ -459,13 +467,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   // Manage stored host connections.
   public async link(host: IHostConnectionInfo<Handle>, connect = true) {
-    this.store.hosts.add(host);
+    await this.store.hosts.add(host);
     this.clientState.emit();
 
     if (connect) {
       const row = await this.store.hosts.get(host.label);
       if (row) {
-        this.connectToHost(row);
+        await this.connectToHost(row);
       }
     }
   }
@@ -556,6 +564,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public disconnect = async () => {
+    for (const conn of this.connections.values()) {
+      try {
+        conn.closeListener();
+      } catch {
+        // ignore teardown errors
+      }
+    }
     this.connections.clear();
     this.clientState.emit();
   };

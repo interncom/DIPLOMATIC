@@ -57,7 +57,11 @@ export interface IEntDB {
 }
 
 export function entStateManager(edb: IEntDB): StateManager {
-  return new StateManager(edb.apply, edb.clear);
+  // Wrap so method extract does not lose `this` (Memory uses prototype methods).
+  return new StateManager(
+    (ops) => edb.apply(ops),
+    () => edb.clear(),
+  );
 }
 
 export function applyOp(

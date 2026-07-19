@@ -50,4 +50,12 @@ export class TypedEventEmitter<T> {
       }
     }
   }
+
+  /** Emit to every event type that currently has listeners (e.g. wipe/reset). */
+  public emitAll(data: T): void {
+    const types = Array.from(this.listeners.keys());
+    for (const eventType of types) {
+      this.emit(eventType, data);
+    }
+  }
 }

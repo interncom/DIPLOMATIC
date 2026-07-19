@@ -261,6 +261,8 @@ export interface ITransport {
 
 export interface IStateManager {
   apply: (msgs: IMessage[]) => Promise<Status[]>;
+  /** Drop local application state (e.g. EntDB) and notify subscribers. */
+  clear: () => Promise<Status>;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

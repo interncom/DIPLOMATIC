@@ -63,7 +63,7 @@ Wire endpoints are thin over a host-local storage abstraction (`IStorage`). Impl
 | `addUser` / `hasUser` | Registration |
 | `subMeta` | Subscription / quota metadata for response headers |
 | `setBags(pubKey, bags)` | Persist bags; return host `seq` for each bag **in order** |
-| `getBody(pubKey, seq)` | Ciphertext body for [PULL](./pull) |
+| `getBodies(pubKey, seqs)` | Ciphertext bodies for [PULL](./pull); missing seqs omitted |
 | `listHeads(pubKey, minSeq)` | Heads with `seq > minSeq` for [PEEK](./peek) |
 
 ### `setBags`
@@ -78,3 +78,15 @@ setBags(pubKey: PublicKey, bags: IBag[]): Promise<ValStat<number[]>>
 - A single bag is just `setBags(pubKey, [bag])` — there is no separate one-shot store API.
 
 [PUSH](./push) verifies signatures, then stores all valid bags with one `setBags` call (not one write per bag).
+
+### `getBodies`
+
+```ts
+getBodies(pubKey: PublicKey, seqs: number[]): Promise<ValStat<{ seq: number; bodyCph: Uint8Array }[]>>
+```
+
+- **Empty `seqs`** succeeds and returns `[]`.
+- **Missing seqs** are omitted from the result (not an error); only found bags are returned.
+- Implementations should use a single query (or few chunked `IN (...)` queries), not one round-trip per seq.
+
+[PULL](./pull) calls `getBodies` once per request with the full seq list.

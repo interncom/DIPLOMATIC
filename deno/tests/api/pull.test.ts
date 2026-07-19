@@ -21,18 +21,20 @@ import {
   testPubKey,
 } from "./testUtils.ts";
 
-// Mock storage with getBody override for pull tests
+// Mock storage with getBodies override for pull tests
 const mockStorage: IStorage = {
   ...baseMockStorage,
-  getBody: (
+  getBodies: (
     _pubKey: Uint8Array,
-    seq: number,
-  ): Promise<ValStat<Uint8Array | undefined>> => {
-    // Mock: return some data for seq 1, undefined for others
-    if (seq === 1) {
-      return Promise.resolve(ok(new Uint8Array([10, 20, 30])));
+    seqs: number[],
+  ): Promise<ValStat<{ seq: number; bodyCph: Uint8Array }[]>> => {
+    const out: { seq: number; bodyCph: Uint8Array }[] = [];
+    for (const seq of seqs) {
+      if (seq === 1) {
+        out.push({ seq, bodyCph: new Uint8Array([10, 20, 30]) });
+      }
     }
-    return Promise.resolve(ok(undefined));
+    return Promise.resolve(ok(out));
   },
 };
 

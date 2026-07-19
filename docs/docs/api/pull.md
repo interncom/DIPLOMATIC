@@ -15,9 +15,16 @@ The PULL endpoint fetches bag bodies. It takes a list of bag sequence numbers to
 
 A 3 byte var-int can encode a number over 1 million, so the typical request weight is 104 bytes plus 3 bytes per bag. A few kilobytes for a request of 1000 bags.
 
+## Host processing
+
+1. Validate `authTS` and that the user is registered.
+2. Decode the list of sequence numbers.
+3. Fetch bodies with one host storage call, [`getBodies`](./host#getbodies) (batched query; missing seqs omitted).
+4. Encode a pull item for each found body.
+
 ## Response
 
-The host queries its database for each of the user's bags with the specified sequence number. It returns a list of bag pull items corresponding to the results of that query.
+The host returns a list of bag pull items for bags that exist. Seq order need not match the request (clients key results by `seq`).
 
 ### Bag Pull Item Data Structure
 

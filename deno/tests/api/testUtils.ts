@@ -18,7 +18,7 @@ export const baseMockStorage: IStorage = {
   hasUser: async () => ok(true),
   addUser: async () => ok(undefined),
   subMeta: async () => ok(nullSubMeta),
-  getBody: async () => ok(undefined),
+  getBodies: async () => ok([]),
   listHeads: async (_pubKey, _minSeq) => ok([]),
   setBags: async (_pubKey, bags) => ok(bags.map((_, i) => i + 1)),
 };

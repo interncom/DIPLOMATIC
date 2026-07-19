@@ -53,3 +53,28 @@ export interface IUsageQuota {
 ```
 
 Total size of the response header is about 43 bytes.
+
+## Host storage interface
+
+Wire endpoints are thin over a host-local storage abstraction (`IStorage`). Implementations (SQLite, D1, in-memory) provide:
+
+| Method | Role |
+|--------|------|
+| `addUser` / `hasUser` | Registration |
+| `subMeta` | Subscription / quota metadata for response headers |
+| `setBags(pubKey, bags)` | Persist bags; return host `seq` for each bag **in order** |
+| `getBody(pubKey, seq)` | Ciphertext body for [PULL](./pull) |
+| `listHeads(pubKey, minSeq)` | Heads with `seq > minSeq` for [PEEK](./peek) |
+
+### `setBags`
+
+```ts
+setBags(pubKey: PublicKey, bags: IBag[]): Promise<ValStat<number[]>>
+```
+
+- **Empty list** succeeds and returns `[]`.
+- **Return value** is one host sequence number per input bag, same order as `bags`.
+- **Atomic seq assignment:** a single call must allocate contiguous seqs without racing another concurrent `setBags` for the same user (e.g. one SQL transaction, or D1 `batch` with `MAX(seq)+1` inside each `INSERT … RETURNING seq`).
+- A single bag is just `setBags(pubKey, [bag])` — there is no separate one-shot store API.
+
+[PUSH](./push) verifies signatures, then stores all valid bags with one `setBags` call (not one write per bag).

@@ -96,11 +96,14 @@ describe("syncPeek", () => {
       expect(statBag).toBe(Status.Success);
       return;
     }
-    const [seq, setStatus] = await lpcHost.storage.setBag(keys.publicKey, bag);
-    if (setStatus !== Status.Success) {
+    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+      bag,
+    ]);
+    if (setStatus !== Status.Success || !seqs?.[0]) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
+    const seq = seqs[0];
 
     // Compute headEncHash exactly as sealBag + decryptPeekItem will see it (hsh is included when len>0).
     let hsh: Uint8Array | undefined;
@@ -291,14 +294,14 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    const [seq, setStatus] = await lpcHost.storage.setBag(
-      keys.publicKey,
+    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
-    );
-    if (setStatus !== Status.Success) {
+    ]);
+    if (setStatus !== Status.Success || !seqs?.[0]) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
+    const seq = seqs[0];
 
     const download: IDownloadMessage = {
       kdm: bag.kdm,
@@ -357,14 +360,14 @@ describe("syncPull", () => {
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
-    const [seq, setStatus] = await lpcHost.storage.setBag(
-      keys.publicKey,
+    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
-    );
-    if (setStatus !== Status.Success) {
+    ]);
+    if (setStatus !== Status.Success || !seqs?.[0]) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
+    const seq = seqs[0];
 
     const download: IDownloadMessage = {
       kdm: bag.kdm,
@@ -407,16 +410,16 @@ describe("syncPull", () => {
       const [bag, statBag] = await createTestBag(message, enclave);
       expect(statBag).toBe(Status.Success);
       if (statBag !== Status.Success) return;
-      const [seq, setStatus] = await lpcHost.storage.setBag(
-        keys.publicKey,
+      const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
         bag,
-      );
+      ]);
       expect(setStatus).toBe(Status.Success);
+      expect(seqs?.[0]).toBeDefined();
       downloads.push({
         kdm: bag.kdm,
         head: message,
         host: "test",
-        seq,
+        seq: seqs[0],
       });
     }
     await store.downloads.enq(downloads);

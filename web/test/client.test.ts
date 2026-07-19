@@ -433,10 +433,9 @@ describe("Client", () => {
         return;
       }
 
-      const [_, setStatus] = await lpcHost.storage.setBag(
-        keys.publicKey,
+      const [, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
         bag,
-      );
+      ]);
       expect(setStatus).toBe(Status.Success);
 
       expect(await store.downloads.count()).toBe(0);

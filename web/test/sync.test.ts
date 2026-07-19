@@ -19,7 +19,7 @@ beforeEach(() => {
   const storage: IStorage = {
     addUser: memStorage.addUser.bind(memStorage),
     hasUser: memStorage.hasUser.bind(memStorage),
-    setBag: memStorage.setBag.bind(memStorage),
+    setBags: memStorage.setBags.bind(memStorage),
     getBody: memStorage.getBody.bind(memStorage),
     listHeads: memStorage.listHeads.bind(memStorage),
   };

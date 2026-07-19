@@ -42,10 +42,10 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     console.info(`PUSH: ${bags.length} bags`);
 
-    const notifs: IBagNotifItem[] = [];
-
+    // Verify sigs first; store valid bags in one storage batch.
+    const validIdx: number[] = [];
+    const validBags: IBag[] = [];
     for (let idx = 0; idx < bags.length; idx++) {
-      // Check signature.
       const bag = bags[idx];
       const sigValid = await bagSigValid(bag, pubKey, crypto);
       if (!sigValid) {
@@ -54,14 +54,24 @@ export const pushEnd: IAuthenticatedEndpoint<
         if (itemStatus !== Status.Success) return itemStatus;
         continue;
       }
+      validIdx.push(idx);
+      validBags.push(bag);
+    }
 
-      // Store bag.
-      const [seq, setStatus] = await storage.setBag(pubKey, bag);
-      if (setStatus !== Status.Success) {
-        return setStatus;
-      }
+    const [seqs, setStatus] = await storage.setBags(pubKey, validBags);
+    if (setStatus !== Status.Success) {
+      return setStatus;
+    }
+    if (!seqs || seqs.length !== validBags.length) {
+      return Status.StorageError;
+    }
 
-      // Prepare notification of new bag.
+    const notifs: IBagNotifItem[] = [];
+    for (let i = 0; i < validBags.length; i++) {
+      const bag = validBags[i];
+      const idx = validIdx[i];
+      const seq = seqs[i];
+
       const encNotifHeadCph = new Encoder();
       const statNotifHeadCph = encNotifHeadCph.writeStruct(
         peekItemHeadCodec,
@@ -77,18 +87,19 @@ export const pushEnd: IAuthenticatedEndpoint<
       }
       notifs.push(notif);
 
-      // Write response item.
-      const item: IBagPushItem = { idx, status: setStatus, seq };
+      const item: IBagPushItem = { idx, status: Status.Success, seq };
       const itemStatus2 = respEnc.writeStruct(pushItemCodec, item);
       if (itemStatus2 !== Status.Success) return itemStatus2;
     }
 
     // Send notifications.
-    const encBatch = new Encoder();
-    const statBatch = encBatch.writeStructs(notifItemCodec, notifs);
-    if (statBatch !== Status.Success) return statBatch;
-    const batchEnc = encBatch.result();
-    await Promise.resolve(notifier.push(pubKey, batchEnc));
+    if (notifs.length > 0) {
+      const encBatch = new Encoder();
+      const statBatch = encBatch.writeStructs(notifItemCodec, notifs);
+      if (statBatch !== Status.Success) return statBatch;
+      const batchEnc = encBatch.result();
+      await Promise.resolve(notifier.push(pubKey, batchEnc));
+    }
 
     return Status.Success;
   },

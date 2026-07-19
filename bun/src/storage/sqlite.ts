@@ -58,22 +58,38 @@ const sqliteStorage: IStorage = {
     return ok(nullSubMeta);
   },
 
-  async setBag(pubKey, bag) {
+  async setBags(pubKey, bags) {
+    if (bags.length < 1) return ok([]);
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare("SELECT MAX(seq) FROM bags WHERE userPubKey = ?")
-        .get(pubKeyHex) as { "MAX(seq)": number | null };
-      const maxSeq = row ? row["MAX(seq)"] || 0 : 0;
-      const seq = maxSeq + 1;
-      const enc = new Encoder();
-      enc.writeStruct(peekItemHeadCodec, bag);
-      const headCph = enc.result();
-      const bodyCph = bag.bodyCph;
-      db.exec(
-        "INSERT INTO bags (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
-        [pubKeyHex, seq, headCph, bodyCph],
-      );
-      return ok(seq);
+      // IMMEDIATE: take write lock before read so concurrent setBags cannot
+      // both observe the same MAX(seq).
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const row = db.prepare("SELECT MAX(seq) FROM bags WHERE userPubKey = ?")
+          .get(pubKeyHex) as { "MAX(seq)": number | null };
+        let maxSeq = row ? row["MAX(seq)"] || 0 : 0;
+        const seqs: number[] = [];
+        const insert = db.prepare(
+          "INSERT INTO bags (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
+        );
+        for (const bag of bags) {
+          maxSeq += 1;
+          const enc = new Encoder();
+          enc.writeStruct(peekItemHeadCodec, bag);
+          insert.run(pubKeyHex, maxSeq, enc.result(), bag.bodyCph);
+          seqs.push(maxSeq);
+        }
+        db.exec("COMMIT");
+        return ok(seqs);
+      } catch (e) {
+        try {
+          db.exec("ROLLBACK");
+        } catch {
+          // ignore
+        }
+        throw e;
+      }
     } catch {
       return err(Status.StorageError);
     }

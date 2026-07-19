@@ -81,9 +81,17 @@ Taking the highest estimate for bag overhead (98 bytes), the estimated weight of
 
 For a TODO list application, a message like `{ "todo": "take out the trash", done: true }` is a 44 byte JSON string, so the bag overhead os over double the size of the message contents. For this reason, DIPLOMATIC is designed to be prunable. Each message is a complete overwrite of the prior state of the ent. At first glance this may seem wasteful, but the consequence is that correct state of the system can be produced with only the final message for each ent. Clients only need to retain older messages if they want access to historical state, e.g. to support undo. A thin client can immediately discard older messages for an ent upon receiving a new valid one. And if the latest message is a DELETE, the client can discard that one too. This bounds the number of required messages at the size of the "working set" of ents. Even if the message and bag overhead is greater than the size of the message contents, the overhead is fixed-size and thus the data storage requirement of DIPLOMATIC is O(N) where N is the number of messages in the working set.
 
+## Host processing
+
+1. Validate `authTS` and that the user is registered.
+2. Decode the bag list. For each bag, verify the signature; invalid signatures get a push item with an error status and are **not** stored.
+3. Persist all valid bags with a single host storage call, [`setBags`](./host#setbags), which returns one host `seq` per bag. Implementations batch writes and assign seqs atomically (see host storage docs).
+4. Build [NOTF](./notf) items for stored bags and push them to the user's websocket listeners.
+5. Return push items for every bag in the request (successes and signature failures).
+
 ## Response
 
-The host attempts to store each bag. It returns a list of "push items" equal in length to the number of uploaded bags, but not necessarily in the same order. Each push item looks like this.
+The host returns a list of "push items" covering every bag in the request, but not necessarily in the same order. Each push item looks like this.
 
 ### Bag Push Item Data Structure
 
@@ -93,7 +101,7 @@ The host attempts to store each bag. It returns a list of "push items" equal in 
 |status|1|var-int|
 |seq|1-8|var-int|
 
-The first field is `idx`. This is the index of the bag in the list of uploaded bags. Push items include this index so that the PUSH endpoint implementation can fan-out processing of the uploaded bags in parallel and stream results back as they are independently generated. PUSH requests should generally be chunked so they aren't too large. A PUSH with 1,000 bags would have `idx` lengths of 1-2 bytes.
+The first field is `idx`. This is the index of the bag in the list of uploaded bags. Push items include this index so clients can correlate results when bags are processed out of order. PUSH requests should be chunked by the client (byte and/or item count) so they are not too large for the transport or host. A PUSH with 1,000 bags would have `idx` lengths of 1-2 bytes.
 
 Next is `status`. DIPLOMATIC has a fixed set of numeric status codes. The current set of status codes is less than 127, so fits in a single-byte var-int, but this set may grow until we freeze the protocol.
 

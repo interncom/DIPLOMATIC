@@ -37,8 +37,11 @@ const memStorage: IMemoryStorage = {
     return ok(meta);
   },
 
-  async setBag(pubKey, bag) {
-    // Get user's bags.
+  async setBags(pubKey, bags) {
+    if (bags.length < 1) return ok([]);
+
+    // No await in the critical section: one turn of the event loop owns
+    // maxSeq assignment + inserts (in-process mutex).
     const pubKeyHex = btoh(pubKey);
     let userBags = this.bag.get(pubKeyHex);
     if (!userBags) {
@@ -46,30 +49,26 @@ const memStorage: IMemoryStorage = {
       this.bag.set(pubKeyHex, userBags);
     }
 
-    // Compute seq for bag.
     let maxSeq = 0;
     for (const seq of userBags.keys()) {
-      if (seq > maxSeq) {
-        maxSeq = seq;
+      if (seq > maxSeq) maxSeq = seq;
+    }
+
+    const seqs: number[] = [];
+    for (const bag of bags) {
+      maxSeq += 1;
+      const enc = new Encoder();
+      const status = enc.writeStruct(peekItemHeadCodec, bag);
+      if (status !== Status.Success) {
+        return err(status);
       }
+      userBags.set(maxSeq, {
+        headCph: enc.result(),
+        bodyCph: bag.bodyCph,
+      });
+      seqs.push(maxSeq);
     }
-    const seq = maxSeq + 1;
-
-    // Encode bag.
-    const enc = new Encoder();
-    const status = enc.writeStruct(peekItemHeadCodec, bag);
-    if (status !== Status.Success) {
-      return err(status);
-    }
-    const headCph = enc.result();
-    const bodyCph = bag.bodyCph;
-
-    // Store bag.
-    userBags.set(seq, {
-      headCph,
-      bodyCph,
-    });
-    return ok(seq);
+    return ok(seqs);
   },
 
   async getBody(pubKey, seq) {

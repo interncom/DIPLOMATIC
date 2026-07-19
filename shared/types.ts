@@ -89,10 +89,16 @@ export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
   hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
   subMeta: (pubKey: PublicKey) => Promise<ValStat<ISubscriptionMetadata>>;
-  setBag: (
+  /**
+   * Store bags for a user. Returns host seq for each bag in order.
+   * Empty list succeeds with []. Implementations must assign contiguous
+   * seqs atomically (transaction / single batch) so concurrent writers
+   * cannot claim the same seq.
+   */
+  setBags: (
     pubKey: PublicKey,
-    bag: IBag,
-  ) => Promise<ValStat<number>>;
+    bags: IBag[],
+  ) => Promise<ValStat<number[]>>;
   getBody: (
     pubKey: PublicKey,
     seq: number,

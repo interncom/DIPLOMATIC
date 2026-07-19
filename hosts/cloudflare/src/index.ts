@@ -37,6 +37,16 @@ interface Env {
   WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServerV2>;
 }
 
+function logStorageError(
+  op: string,
+  e: unknown,
+  extra?: Record<string, unknown>,
+) {
+  const msg = e instanceof Error ? e.message : String(e);
+  const stack = e instanceof Error ? e.stack : undefined;
+  console.error(`[D1] ${op} failed:`, msg, extra ?? {}, stack ?? "");
+}
+
 const cloudflareCrypto: IHostCrypto = {
   async checkSigEd25519(sig, message, pubKey) {
     const cryptoKey = await crypto.subtle.importKey(
@@ -119,7 +129,19 @@ const createCloudflareWebsocketNotifier = (
       method: "POST",
       body: data,
     });
-    await stub.fetch(request);
+    try {
+      const t0 = Date.now();
+      const resp = await stub.fetch(request);
+      console.info(
+        `[DO] notify done status=${resp.status} bytes=${data.length} ms=${
+          Date.now() - t0
+        }`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[DO] notify failed:`, msg, { bytes: data.length });
+      throw e;
+    }
   },
 });
 
@@ -133,7 +155,8 @@ export default {
             "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
           ).bind(pubKeyHex).run();
           return ok(undefined);
-        } catch {
+        } catch (e) {
+          logStorageError("addUser", e);
           return err(Status.StorageError);
         }
       },
@@ -145,7 +168,8 @@ export default {
             "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)",
           ).bind(pubKeyHex).first<boolean>();
           return ok(has ?? false);
-        } catch {
+        } catch (e) {
+          logStorageError("hasUser", e);
           return err(Status.StorageError);
         }
       },
@@ -154,26 +178,67 @@ export default {
         return ok(nullSubMeta);
       },
 
-      async setBag(pubKey, bag) {
+      // Assign seq via MAX+1 subquery inside the INSERT so concurrent writers
+      // cannot both claim the same seq. D1 batch() = one SQL transaction per
+      // chunk (statements run sequentially; each sees prior inserts in the txn).
+      async setBags(pubKey, bags) {
+        if (bags.length < 1) return ok([]);
+        const t0 = Date.now();
         try {
           const pubKeyHex = btoh(pubKey);
-          const row = await env.DIP_DB.prepare(
-            "SELECT MAX(seq) FROM bags WHERE userPubKey = ?",
-          )
-            .bind(pubKeyHex).first<{ "MAX(seq)": number }>();
-          const maxSeq = row ? row["MAX(seq)"] || 0 : 0;
-          const seq = maxSeq + 1;
-          const enc = new Encoder();
-          enc.writeStruct(peekItemHeadCodec, bag);
-          const headCph = enc.result();
-          const bodyCph = bag.bodyCph;
-          await env.DIP_DB.prepare(
-            "INSERT INTO bags (userPubKey, seq, headCph, bodyCph) VALUES (?, ?, ?, ?)",
-          )
-            .bind(pubKeyHex, seq, headCph, bodyCph)
-            .run();
-          return ok(seq);
-        } catch {
+          // seq is allocated atomically relative to current rows (and prior
+          // inserts in the same batch transaction).
+          const insertSql = `
+            INSERT INTO bags (userPubKey, seq, headCph, bodyCph)
+            VALUES (
+              ?,
+              (SELECT COALESCE(MAX(seq), 0) + 1 FROM bags WHERE userPubKey = ?),
+              ?,
+              ?
+            )
+            RETURNING seq`;
+
+          const stmts: D1PreparedStatement[] = [];
+          let totalBody = 0;
+          for (const bag of bags) {
+            totalBody += bag.bodyCph.length;
+            const enc = new Encoder();
+            enc.writeStruct(peekItemHeadCodec, bag);
+            stmts.push(
+              env.DIP_DB.prepare(insertSql).bind(
+                pubKeyHex,
+                pubKeyHex,
+                enc.result(),
+                bag.bodyCph,
+              ),
+            );
+          }
+
+          // D1 max ~1000 statements per batch; each batch is one transaction.
+          const chunk = 500;
+          const seqs: number[] = [];
+          for (let i = 0; i < stmts.length; i += chunk) {
+            const results = await env.DIP_DB.batch(stmts.slice(i, i + chunk));
+            for (const r of results) {
+              const row = r.results?.[0] as { seq: number } | undefined;
+              if (!row || typeof row.seq !== "number") {
+                throw new Error("setBags: missing RETURNING seq");
+              }
+              seqs.push(row.seq);
+            }
+          }
+
+          console.info(
+            `[D1] setBags n=${bags.length} bodyBytes=${totalBody} ms=${
+              Date.now() - t0
+            }`,
+          );
+          return ok(seqs);
+        } catch (e) {
+          logStorageError("setBags", e, {
+            n: bags.length,
+            ms: Date.now() - t0,
+          });
           return err(Status.StorageError);
         }
       },
@@ -190,7 +255,8 @@ export default {
             return ok(undefined);
           }
           return ok(new Uint8Array(row.bodyCph));
-        } catch {
+        } catch (e) {
+          logStorageError("getBody", e, { seq });
           return err(Status.StorageError);
         }
       },
@@ -209,7 +275,8 @@ export default {
               headCph: new Uint8Array(row.headCph),
             })) || [],
           );
-        } catch {
+        } catch (e) {
+          logStorageError("listHeads", e, { minSeq });
           return err(Status.StorageError);
         }
       },

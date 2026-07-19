@@ -57,6 +57,7 @@ export interface IHostStore<Handle extends HostHandle> {
   set: (label: string, meta: IHostMetadata) => Promise<Status>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
+  // Advance host lastSeq if seq is greater; never rewind.
   touch: (label: string, seq: number) => Promise<void>;
 }
 

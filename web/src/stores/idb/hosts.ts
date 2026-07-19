@@ -44,6 +44,8 @@ export class IDBHostStore implements IHostStore<URL> {
     });
   }
 
+  // lastSeq only advances. Concurrent peek/push/notif must not regress the cursor.
+  // Check and put run in one transaction so the compare is not stale vs other writers.
   async touch(label: string, seq: number) {
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
@@ -53,13 +55,10 @@ export class IDBHostStore implements IHostStore<URL> {
       const getReq = store.get(label);
       getReq.onsuccess = () => {
         const row = getReq.result;
-        if (row) {
-          const next = {
-            ...row,
-            lastSeq: seq,
-          };
-          store.put(next);
-        }
+        if (!row) return;
+        const prev = row.lastSeq || 0;
+        if (seq <= prev) return;
+        store.put({ ...row, lastSeq: seq });
       };
     });
   }

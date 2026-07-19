@@ -18,16 +18,13 @@ export class MemoryHostStore<Handle extends HostHandle>
     this.hosts.set(info.label, host);
   }
 
+  // lastSeq only advances. Concurrent peek/push/notif must not regress the cursor.
   async touch(label: string, seq: number) {
-    const host = await this.get(label);
-    if (!host) {
+    const host = this.hosts.get(label);
+    if (!host || seq <= host.lastSeq) {
       return;
     }
-    const next: IHostRow<Handle> = {
-      ...host,
-      lastSeq: seq,
-    };
-    this.hosts.set(label, next);
+    this.hosts.set(label, { ...host, lastSeq: seq });
   }
 
   async get(label: string) {

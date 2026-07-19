@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "type": "module",
   "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
   "files": [
@@ -18,6 +18,10 @@
     "./web": {
       "import": "./dist/web/index.mjs",
       "types": "./dist/web/index.d.ts"
+    },
+    "./worker": {
+      "import": "./dist/web/worker.mjs",
+      "default": "./dist/web/worker.mjs"
     },
     "./cli": {
       "import": "./dist/cli/index.mjs",

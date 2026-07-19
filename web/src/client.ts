@@ -27,6 +27,7 @@ import {
   MasterSeed,
 } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
+import { CoalesceTail } from "./coalesce";
 import { handleNotif, ISyncParams, syncPeek, syncPull, syncPush } from "./sync";
 import {
   IClient,
@@ -41,7 +42,13 @@ import {
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
-  private currentSync: Promise<Status> | null = null;
+
+  /**
+   * Serializes sync so doSync never overlaps, while coalescing stampedes:
+   * concurrent sync() share one in-flight drain and at most one trailing
+   * pass if more sync was requested mid-flight (see CoalesceTail).
+   */
+  private syncRuns = new CoalesceTail<Status>();
 
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
@@ -282,12 +289,14 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return makeEID({ id: randId, ts });
   }
 
-  public async sync(): Promise<Status> {
-    if (this.currentSync) {
-      await this.currentSync;
-    }
-    this.currentSync = this.doSync();
-    return await this.currentSync;
+  /**
+   * Catch up with hosts (peek → push → pull). Safe under concurrent callers:
+   * overlapping sync() calls coalesce onto one shared run, with a trailing
+   * re-run if anyone requested sync while a run was already in flight.
+   * All waiters resolve with the Status of the final pass of that drain.
+   */
+  public sync(): Promise<Status> {
+    return this.syncRuns.run(() => this.doSync());
   }
 
   private async doSync(): Promise<Status> {

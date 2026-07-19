@@ -12,6 +12,7 @@ import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { notifItemCodec } from "./shared/codecs/notifItem";
 import { Status } from "./shared/consts";
 import { Enclave } from "./shared/enclave";
+import { decryptPeekItem } from "./shared/sync";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import {
   IDownloadMessage,
@@ -21,7 +22,11 @@ import {
   IStore,
   IStoredMessageData,
 } from "./types";
-import { decryptPeekItem } from "./shared/sync";
+
+/** Default soft cap for one push/pull request (~1 MiB). Apps with large
+ * payloads (e.g. media) should raise maxPushBytes / maxPullBytes. */
+export const defaultMaxPushBytes = 1 << 20;
+export const defaultMaxPullBytes = 1 << 20;
 
 export interface ISyncParams<Handle extends HostHandle> {
   conn: DiplomaticClientAPI<Handle>;
@@ -30,6 +35,166 @@ export interface ISyncParams<Handle extends HostHandle> {
   clock: IClock;
   host: IHostRow<Handle>;
   crypto: ICrypto;
+  /** Soft max sealed-bag bytes per push request. Oversized bags go alone. */
+  maxPushBytes?: number;
+  /** Soft max body bytes (head.len) per pull request. Oversized items go alone. */
+  maxPullBytes?: number;
+}
+
+/** Approximate on-wire bag size (sig + kdm + ciphers). Soft limit only. */
+function bagBytes(bag: IBag): number {
+  return bag.sig.length + bag.kdm.length + bag.headCph.length +
+    bag.bodyCph.length;
+}
+
+/** Push one batch of sealed bags; deq successes; advance lastSeq from store. */
+export async function pushBatch<Handle extends HostHandle>(
+  conn: Pick<DiplomaticClientAPI<Handle>, "push">,
+  store: IStore<Handle>,
+  hostLabel: string,
+  bags: IBag[],
+  hashes: Hash[],
+): Promise<Status> {
+  if (bags.length < 1) {
+    return Status.Success;
+  }
+
+  const [results, pushStatus] = await conn.push(bags);
+  if (pushStatus !== Status.Success) {
+    return pushStatus;
+  }
+  if (!results) {
+    return Status.InvalidResponse;
+  }
+
+  for (const item of results) {
+    if (item.status !== Status.Success) {
+      // TODO: distinguish retry-able from non-retry-able errors.
+      console.error("push err", item);
+      continue;
+    }
+    const msgHeadEncHash = hashes[item.idx];
+    if (!msgHeadEncHash) {
+      console.error("no hash", item);
+      continue;
+    }
+    await store.uploads.deq(hostLabel, [msgHeadEncHash]);
+  }
+
+  // Re-fetch host so lastSeq is current (after peek / prior batches).
+  const row = await store.hosts.get(hostLabel);
+  if (row) {
+    let currentMax = row.lastSeq;
+    const start = currentMax;
+    const successfulSeqs: number[] = [];
+    for (const item of results) {
+      if (item.status === Status.Success) {
+        successfulSeqs.push(item.seq);
+      }
+    }
+    successfulSeqs.sort((a, b) => a - b);
+    for (const seq of successfulSeqs) {
+      if (seq === currentMax + 1) {
+        currentMax = seq;
+      }
+    }
+    if (currentMax > start) {
+      await store.hosts.touch(hostLabel, currentMax);
+    }
+  }
+
+  return Status.Success;
+}
+
+/** Pull one batch of download-queue items; store, deq, apply. */
+export async function pullBatch<Handle extends HostHandle>(
+  conn: Pick<DiplomaticClientAPI<Handle>, "pull">,
+  store: IStore<Handle>,
+  enclave: Enclave,
+  hostLabel: string,
+  crypto: ICrypto,
+  items: IDownloadMessage[],
+  apply: (
+    parts: IMsgParts[],
+    options?: { enqueueUpload: boolean; triggerUpload: boolean },
+  ) => Promise<Status[]>,
+): Promise<Status> {
+  if (items.length < 1) {
+    return Status.Success;
+  }
+
+  const dls = new Map<number, IDownloadMessage>();
+  const seqs: number[] = [];
+  for (const item of items) {
+    dls.set(item.seq, item);
+    seqs.push(item.seq);
+  }
+
+  const [result, stat] = await conn.pull(seqs);
+  if (stat !== Status.Success) {
+    return stat;
+  }
+  if (!result) {
+    return Status.InvalidResponse;
+  }
+
+  const successfulParts: IMsgParts[] = [];
+  const messagesToStore: IStorableMessage[] = [];
+  const seqsToDequeue: number[] = [];
+
+  for (const { seq, bodyCph } of result) {
+    const dl = dls.get(seq);
+    if (!dl) {
+      continue;
+    }
+    const { head } = dl;
+
+    const enc = new Encoder();
+    enc.writeStruct(messageHeadCodec, head);
+    const headEnc = enc.result();
+    const headEncHash = await crypto.blake3(headEnc);
+    const key = await enclave.deriveFromKDM(dl.kdm);
+    const [contents, openStat] = await openBagBody(
+      headEnc,
+      bodyCph,
+      key,
+      crypto,
+    );
+    if (openStat !== Status.Success) {
+      // Failed to open bag. Not retry-able.
+      await store.downloads.deq(hostLabel, [seq]);
+      continue;
+    }
+
+    const parts: IMsgParts = { head, body: contents.bod };
+    const data = msg2StoredMsgData(parts);
+    messagesToStore.push({ key: headEncHash, data });
+    successfulParts.push(parts);
+    seqsToDequeue.push(seq);
+  }
+
+  const statsStore = await store.messages.add(messagesToStore);
+  // TODO: return batch status codes from deq too.
+  await store.downloads.deq(hostLabel, seqsToDequeue);
+
+  const statsApply = await apply(successfulParts, {
+    enqueueUpload: false,
+    triggerUpload: false,
+  });
+  // TODO: mark applied messages for retry on apply failure.
+
+  for (let i = 0; i < statsApply.length; i++) {
+    const statStore = statsStore[i];
+    if (statStore !== Status.Success && statStore !== Status.NoChange) {
+      console.error("ERR storing", Status[statStore], "for message", i);
+    }
+    const statApply = statsApply[i];
+    if (statApply !== Status.Success && statApply !== Status.NoChange) {
+      console.error("ERR applying", Status[statApply], "for message", i);
+    }
+  }
+
+  return Status.Success;
 }
 
 // Phase 1: Peek for new items and enqueue downloads
@@ -86,15 +251,31 @@ export async function syncPeek<Handle extends HostHandle>(
   return Status.Success;
 }
 
-// Phase 2: Push local uploads to the host
+// Phase 2: Push local uploads to the host.
+// Snapshot once, seal, pack by soft byte budget, pushBatch each pack.
 export async function syncPush<Handle extends HostHandle>(
-  { conn, store, host }: ISyncParams<Handle>,
+  { conn, store, host, maxPushBytes }: ISyncParams<Handle>,
 ): Promise<Status> {
-  // console.info("pushing...")
-  // Form bags.
-  const bags: IBag[] = [];
-  const hashes: Hash[] = [];
-  for (const msgHeadEncHash of await store.uploads.list(host.label)) {
+  const limit = maxPushBytes ?? defaultMaxPushBytes;
+  // Snapshot: do not re-list between batches.
+  const pending = await store.uploads.list(host.label);
+
+  let bags: IBag[] = [];
+  let hashes: Hash[] = [];
+  let batchBytes = 0;
+
+  const flush = async (): Promise<Status> => {
+    if (bags.length < 1) {
+      return Status.Success;
+    }
+    const st = await pushBatch(conn, store, host.label, bags, hashes);
+    bags = [];
+    hashes = [];
+    batchBytes = 0;
+    return st;
+  };
+
+  for (const msgHeadEncHash of pending) {
     const storedMsg = await store.messages.get(msgHeadEncHash);
     if (!storedMsg) {
       continue;
@@ -104,145 +285,93 @@ export async function syncPush<Handle extends HostHandle>(
     if (statBag !== Status.Success) {
       return statBag;
     }
-    bags.push(bag);
-    hashes.push(msgHeadEncHash);
-  }
-
-  // Push bags.
-  if (bags.length < 1) {
-    return Status.Success;
-  }
-  const [results, pushStatus] = await conn.push(bags);
-  if (pushStatus !== Status.Success) {
-    return pushStatus;
-  }
-
-  // Remove successful uploads from queue.
-  for (const item of results) {
-    if (item.status !== Status.Success) {
-      // TODO: distinguish retry-able from non-retry-able errors.
-      // Non-retry-able errors should be also removed from the upload queue,
-      // but will require user feedback to indicate that the local state is
-      // not *ever* going to be persisted to at least this particular host.
-      console.error("push err", item);
-      continue;
+    if (!bag) {
+      return Status.InternalError;
     }
-    const msgHeadEncHash = hashes[item.idx];
-    if (!msgHeadEncHash) {
-      console.error("no hash", item);
-      continue;
-    }
-    await store.uploads.deq(host.label, [msgHeadEncHash]);
-  }
+    const size = bagBytes(bag);
 
-  // Update host lastSeq based on successful push seqs.
-  if (results.length > 0) {
-    let currentMax = host.lastSeq;
-    const successfulSeqs = results
-      .filter((item) => item.status === Status.Success)
-      .map((item) => item.seq)
-      .sort((a, b) => a - b);
-    for (const seq of successfulSeqs) {
-      if (seq === currentMax + 1) {
-        currentMax = seq;
+    if (bags.length > 0 && batchBytes + size > limit) {
+      const st = await flush();
+      if (st !== Status.Success) {
+        return st;
       }
     }
-    if (currentMax > host.lastSeq) {
-      await store.hosts.touch(host.label, currentMax);
+
+    bags.push(bag);
+    hashes.push(msgHeadEncHash);
+    batchBytes += size;
+
+    if (batchBytes >= limit) {
+      const st = await flush();
+      if (st !== Status.Success) {
+        return st;
+      }
     }
   }
 
-  return Status.Success;
+  return flush();
 }
 
-// Phase 3: Pull and process enqueued downloads
+// Phase 3: Pull and process enqueued downloads.
+// Snapshot once, pack by head.len, pullBatch each pack.
 export async function syncPull<Handle extends HostHandle>(
-  { conn, store, enclave, host, crypto }: ISyncParams<Handle>,
+  { conn, store, enclave, host, crypto, maxPullBytes }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
   ) => Promise<Status[]>,
 ): Promise<Status> {
-  // console.info("pulling...")
-  const dls: Map<number, IDownloadMessage> = new Map();
+  const limit = maxPullBytes ?? defaultMaxPullBytes;
   const allItems = await store.downloads.list();
+  // Snapshot: do not re-list between batches.
   const items = Array.from(allItems).filter((i) => i.host === host.label);
   if (items.length < 1) {
     return Status.NoChange;
   }
 
-  const seqs: number[] = [];
+  let batch: IDownloadMessage[] = [];
+  let batchBytes = 0;
+
+  const flush = async (): Promise<Status> => {
+    if (batch.length < 1) {
+      return Status.Success;
+    }
+    const st = await pullBatch(
+      conn,
+      store,
+      enclave,
+      host.label,
+      crypto,
+      batch,
+      apply,
+    );
+    batch = [];
+    batchBytes = 0;
+    return st;
+  };
+
   for (const item of items) {
-    dls.set(item.seq, item);
-    seqs.push(item.seq);
-  }
-  const [result, stat] = await conn.pull(seqs);
-  if (stat !== Status.Success) {
-    return stat;
-  }
-  const successfulParts: IMsgParts[] = [];
-  const messagesToStore: IStorableMessage[] = [];
-  const seqsToDequeue: number[] = [];
-  for (const { seq, bodyCph } of result) {
-    const dl = dls.get(seq);
-    if (!dl) {
-      continue;
-    }
-    const { head } = dl;
+    const size = item.head.len;
 
-    // Decode message head.
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const headEnc = enc.result();
-    const headEncHash = await crypto.blake3(headEnc);
-    const key = await enclave.deriveFromKDM(dl.kdm);
-    const [contents, stat] = await openBagBody(headEnc, bodyCph, key, crypto);
-    if (stat !== Status.Success) {
-      // Failed to open bag.
-      // This is not retry-able.
-      dls.delete(seq);
-      await store.downloads.deq(host.label, [seq]);
-      continue;
+    if (batch.length > 0 && batchBytes + size > limit) {
+      const st = await flush();
+      if (st !== Status.Success) {
+        return st;
+      }
     }
 
-    const parts: IMsgParts = { head, body: contents.bod };
-    const data = msg2StoredMsgData(parts);
-    const storable: IStorableMessage = { key: headEncHash, data };
-    successfulParts.push(parts);
-    messagesToStore.push(storable);
-    seqsToDequeue.push(seq);
-  }
+    batch.push(item);
+    batchBytes += size;
 
-  // Batch store messages.
-  const statsStore = await store.messages.add(messagesToStore);
-
-  // Batch dequeue downloads.
-  // TODO: return batch status codes from this too.
-  await store.downloads.deq(host.label, seqsToDequeue);
-
-  // Batch apply messages to local state.
-  const statsApply = await apply(successfulParts, {
-    enqueueUpload: false,
-    triggerUpload: false,
-  });
-  // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
-
-  for (let i = 0; i < statsApply.length; i++) {
-    const statStore = statsStore[i];
-    if (statStore !== Status.Success && statStore !== Status.NoChange) {
-      console.error("ERR storing", Status[statStore], "for message", i);
-    }
-    // const statDequeue = statsDequeue[i];
-    // if (statDequeue !== Status.Success && statDequeue !== Status.NoChange) {
-    //   console.error("ERR applying", Status[statDequeue], "for message", i);
-    // }
-    const statApply = statsApply[i];
-    if (statApply !== Status.Success && statApply !== Status.NoChange) {
-      console.error("ERR applying", Status[statApply], "for message", i);
+    if (batchBytes >= limit) {
+      const st = await flush();
+      if (st !== Status.Success) {
+        return st;
+      }
     }
   }
 
-  return Status.Success;
+  return flush();
 }
 
 export function msg2StoredMsgData(
@@ -258,7 +387,16 @@ export function msg2StoredMsgData(
 
 export async function handleNotif<Handle extends HostHandle>(
   bytes: Uint8Array,
-  { conn, store, enclave, host, crypto, clock }: ISyncParams<Handle>,
+  {
+    conn,
+    store,
+    enclave,
+    host,
+    crypto,
+    clock,
+    maxPullBytes,
+    maxPushBytes,
+  }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
@@ -407,6 +545,9 @@ export async function handleNotif<Handle extends HostHandle>(
   if (outOfSeq) {
     scheduleSync();
   } else {
-    await syncPull({ conn, store, enclave, host, crypto, clock }, apply);
+    await syncPull(
+      { conn, store, enclave, host, crypto, clock, maxPullBytes, maxPushBytes },
+      apply,
+    );
   }
 }

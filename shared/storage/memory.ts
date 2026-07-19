@@ -71,14 +71,19 @@ const memStorage: IMemoryStorage = {
     return ok(seqs);
   },
 
-  async getBody(pubKey, seq) {
+  async getBodies(pubKey, seqs) {
+    if (seqs.length < 1) return ok([]);
     const pubKeyHex = btoh(pubKey);
     const userBags = this.bag.get(pubKeyHex);
-    if (!userBags) {
-      return ok(undefined);
+    if (!userBags) return ok([]);
+    const out: { seq: number; bodyCph: Uint8Array }[] = [];
+    for (const seq of seqs) {
+      const item = userBags.get(seq);
+      if (item?.bodyCph) {
+        out.push({ seq, bodyCph: item.bodyCph });
+      }
     }
-    const item = userBags.get(seq);
-    return ok(item?.bodyCph);
+    return ok(out);
   },
 
   async listHeads(pubKey, minSeq) {

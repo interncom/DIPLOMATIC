@@ -39,17 +39,14 @@ export const pullEnd: IAuthenticatedEndpoint<
 
     console.info(`PULL: ${seqs.length} bags`);
 
-    for (const seq of seqs) {
-      const [bodyCph, getStatus] = await storage.getBody(
-        pubKey,
-        seq,
-      );
-      if (getStatus !== Status.Success) return getStatus;
-      if (bodyCph) {
-        const item: IBagPullItem = { seq, bodyCph };
-        const itemStatus = respEnc.writeStruct(pullItemCodec, item);
-        if (itemStatus !== Status.Success) return itemStatus;
-      }
+    const [bodies, getStatus] = await storage.getBodies(pubKey, seqs);
+    if (getStatus !== Status.Success) return getStatus;
+    if (!bodies) return Status.StorageError;
+
+    for (const { seq, bodyCph } of bodies) {
+      const item: IBagPullItem = { seq, bodyCph };
+      const itemStatus = respEnc.writeStruct(pullItemCodec, item);
+      if (itemStatus !== Status.Success) return itemStatus;
     }
     return Status.Success;
   },

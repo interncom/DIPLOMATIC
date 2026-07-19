@@ -98,16 +98,29 @@ const sqliteStorage: IStorage = {
     }
   },
 
-  async getBody(pubKey, seq) {
+  async getBodies(pubKey, seqs) {
+    if (seqs.length < 1) return ok([]);
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare(
-        "SELECT bodyCph FROM bags WHERE userPubKey = ? AND seq = ?",
-      ).value<[Uint8Array]>(pubKeyHex, seq);
-      if (!row) {
-        return ok(undefined);
+      const out: { seq: number; bodyCph: Uint8Array }[] = [];
+      // SQLite rejects queries with too many bound parameters
+      // ("too many SQL variables"). Match D1's ~100 bind budget; leave one
+      // slot for userPubKey so each IN (...) stays at maxBinds-1 seqs.
+      const maxBinds = 100;
+      const chunk = maxBinds - 1;
+      for (let i = 0; i < seqs.length; i += chunk) {
+        const part = seqs.slice(i, i + chunk);
+        const placeholders = part.map(() => "?").join(",");
+        const rows = db.prepare(
+          `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND seq IN (${placeholders})`,
+        ).values<[number, Uint8Array]>(pubKeyHex, ...part);
+        for (const [seq, bodyCph] of rows) {
+          if (bodyCph) {
+            out.push({ seq, bodyCph: new Uint8Array(bodyCph) });
+          }
+        }
       }
-      return ok(new Uint8Array(row[0]));
+      return ok(out);
     } catch {
       return err(Status.StorageError);
     }

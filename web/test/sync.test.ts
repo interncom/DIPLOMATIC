@@ -20,7 +20,7 @@ beforeEach(() => {
     addUser: memStorage.addUser.bind(memStorage),
     hasUser: memStorage.hasUser.bind(memStorage),
     setBags: memStorage.setBags.bind(memStorage),
-    getBody: memStorage.getBody.bind(memStorage),
+    getBodies: memStorage.getBodies.bind(memStorage),
     listHeads: memStorage.listHeads.bind(memStorage),
   };
   hostClock.set(new Date(0));

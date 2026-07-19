@@ -243,20 +243,42 @@ export default {
         }
       },
 
-      async getBody(pubKey, seq) {
+      async getBodies(pubKey, seqs) {
+        if (seqs.length < 1) return ok([]);
+        const t0 = Date.now();
         try {
           const pubKeyHex = btoh(pubKey);
-          const row = await env.DIP_DB.prepare(
-            "SELECT bodyCph FROM bags WHERE userPubKey = ? AND seq = ?",
-          )
-            .bind(pubKeyHex, seq)
-            .first<{ bodyCph: Uint8Array }>();
-          if (!row) {
-            return ok(undefined);
+          const out: { seq: number; bodyCph: Uint8Array }[] = [];
+          // SQLite/D1 reject queries with too many bound parameters
+          // ("too many SQL variables"). D1's limit is ~100; leave one slot for
+          // userPubKey so each IN (...) stays at maxBinds-1 seq placeholders.
+          const maxBinds = 100;
+          const chunk = maxBinds - 1;
+          for (let i = 0; i < seqs.length; i += chunk) {
+            const part = seqs.slice(i, i + chunk);
+            const placeholders = part.map(() => "?").join(",");
+            const rows = await env.DIP_DB.prepare(
+              `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND seq IN (${placeholders})`,
+            )
+              .bind(pubKeyHex, ...part)
+              .all<{ seq: number; bodyCph: Uint8Array }>();
+            for (const row of rows.results ?? []) {
+              if (row.bodyCph) {
+                out.push({
+                  seq: row.seq,
+                  bodyCph: new Uint8Array(row.bodyCph),
+                });
+              }
+            }
           }
-          return ok(new Uint8Array(row.bodyCph));
+          console.info(
+            `[D1] getBodies n=${seqs.length} found=${out.length} ms=${
+              Date.now() - t0
+            }`,
+          );
+          return ok(out);
         } catch (e) {
-          logStorageError("getBody", e, { seq });
+          logStorageError("getBodies", e, { n: seqs.length });
           return err(Status.StorageError);
         }
       },

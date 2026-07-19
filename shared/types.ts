@@ -99,10 +99,15 @@ export interface IStorage {
     pubKey: PublicKey,
     bags: IBag[],
   ) => Promise<ValStat<number[]>>;
-  getBody: (
+  /**
+   * Fetch ciphertext bodies for the given host seqs.
+   * Returns only seqs that exist (missing seqs are omitted, not an error).
+   * Empty `seqs` succeeds with [].
+   */
+  getBodies: (
     pubKey: PublicKey,
-    seq: number,
-  ) => Promise<ValStat<Uint8Array | undefined>>;
+    seqs: number[],
+  ) => Promise<ValStat<{ seq: number; bodyCph: Uint8Array }[]>>;
   listHeads: (
     pubKey: PublicKey,
     minSeq: number,

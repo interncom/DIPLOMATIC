@@ -85,22 +85,26 @@ describe("msgToOp", () => {
 
 describe("StateManager.apply", () => {
   let stateManager: StateManager;
-  let emittedEvents: string[];
 
   beforeEach(() => {
-    emittedEvents = [];
-    const applier = vi.fn().mockImplementation(ops => ({ stats: ops.map(() => Status.Success), types: new Set(ops.filter(op => op.type).map(op => op.type)) }));
+    const applier = vi.fn().mockImplementation((ops) => ({
+      stats: ops.map(() => Status.Success),
+      types: new Set(
+        ops.filter((op: { type?: string }) => op.type).map((
+          op: { type: string },
+        ) => op.type),
+      ),
+    }));
     const clear = vi.fn().mockResolvedValue(Status.Success);
     stateManager = new StateManager(applier, clear);
-    // Spy on the private emitter's emit method
-    const originalEmit = stateManager.emitter.emit;
-    stateManager.emitter.emit = vi.fn((event: string, data: null) => {
-      emittedEvents.push(event);
-      return originalEmit.call(stateManager.emitter, event, data);
-    });
   });
 
   test("emits events for successful mutate ops", async () => {
+    const heard: string[] = [];
+    stateManager.on("testEntity", () => {
+      heard.push("testEntity");
+    });
+
     const msgEntBody = {
       type: "testEntity",
       body: { key: "value" },
@@ -118,10 +122,16 @@ describe("StateManager.apply", () => {
     const results = await stateManager.apply([msg]);
 
     expect(results).toEqual([Status.Success]);
-    expect(emittedEvents).toContain("testEntity");
+    expect(heard).toContain("testEntity");
   });
 
   test("does not emit events for successful delete ops", async () => {
+    const heard: string[] = [];
+    // Subscribe to a type; deletes with no type should not fire it.
+    stateManager.on("testEntity", () => {
+      heard.push("testEntity");
+    });
+
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(5),
       off: 500,
@@ -133,11 +143,18 @@ describe("StateManager.apply", () => {
     const results = await stateManager.apply([msg]);
 
     expect(results).toEqual([Status.Success]);
-    expect(emittedEvents).toEqual([]);
+    expect(heard).toEqual([]);
   });
 
   test("handles mixed delete and mutate ops", async () => {
-    // Delete msg
+    const heard: string[] = [];
+    stateManager.on("anotherEntity", () => {
+      heard.push("anotherEntity");
+    });
+    stateManager.on("testEntity", () => {
+      heard.push("testEntity");
+    });
+
     const deleteMsg: IMessage = {
       eid: new Uint8Array(16).fill(6),
       off: 600,
@@ -145,7 +162,6 @@ describe("StateManager.apply", () => {
       len: 0,
     };
 
-    // Mutate msg
     const msgEntBody = {
       type: "anotherEntity",
       body: { data: "test" },
@@ -162,7 +178,49 @@ describe("StateManager.apply", () => {
     const results = await stateManager.apply([deleteMsg, mutateMsg]);
 
     expect(results).toEqual([Status.Success, Status.Success]);
-    expect(emittedEvents).toContain("anotherEntity");
-    expect(emittedEvents).not.toContain("testEntity"); // Only the mutate one
+    expect(heard).toContain("anotherEntity");
+    expect(heard).not.toContain("testEntity");
+  });
+});
+
+describe("StateManager.clear", () => {
+  test("invokes clearer and notifies subscribed types", async () => {
+    const clearer = vi.fn().mockResolvedValue(Status.Success);
+    const applier = vi.fn().mockResolvedValue({
+      stats: [],
+      types: new Set<string>(),
+    });
+    const mgr = new StateManager(applier, clearer);
+    const heard: string[] = [];
+    mgr.on("todo", () => {
+      heard.push("todo");
+    });
+    mgr.on("note", () => {
+      heard.push("note");
+    });
+
+    const stat = await mgr.clear();
+
+    expect(stat).toBe(Status.Success);
+    expect(clearer).toHaveBeenCalledOnce();
+    expect(heard.sort()).toEqual(["note", "todo"]);
+  });
+
+  test("does not notify when clearer fails", async () => {
+    const clearer = vi.fn().mockResolvedValue(Status.DatabaseError);
+    const applier = vi.fn().mockResolvedValue({
+      stats: [],
+      types: new Set<string>(),
+    });
+    const mgr = new StateManager(applier, clearer);
+    let heard = 0;
+    mgr.on("todo", () => {
+      heard += 1;
+    });
+
+    const stat = await mgr.clear();
+
+    expect(stat).toBe(Status.DatabaseError);
+    expect(heard).toBe(0);
   });
 });

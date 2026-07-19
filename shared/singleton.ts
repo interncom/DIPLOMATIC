@@ -76,6 +76,13 @@ export class SingletonStateManager implements IStateManager {
     return messages.map(() => Status.Success);
   }
 
+  clear = async (): Promise<Status> => {
+    this.latest = undefined;
+    this.latestOff = -1;
+    this.emitter.emit(this.singletonType, null);
+    return Status.Success;
+  };
+
   on = (event: string, listener: () => void) => {
     this.emitter.addEventListener(event, listener);
   };

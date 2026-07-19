@@ -39,6 +39,9 @@ const createClient = async (seed: Uint8Array) => {
     async apply(msgs) {
       return msgs.map(() => Status.Success);
     },
+    async clear() {
+      return Status.Success;
+    },
     on(_type, _listener) { },
     off(_type, _listener) { },
   };

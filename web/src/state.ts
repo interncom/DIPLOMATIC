@@ -67,10 +67,14 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
 // StateManager emits events named by the op type which has just been updated.
 export class StateManager implements IStateManager {
   private emitter = new TypedEventEmitter<null>();
+  private clearer: () => Promise<Status>;
+
   constructor(
     public applier: Applier,
-    public clear: () => Promise<Status>,
-  ) {}
+    clearer: () => Promise<Status>,
+  ) {
+    this.clearer = clearer;
+  }
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
@@ -115,6 +119,16 @@ export class StateManager implements IStateManager {
     return results;
   };
 
+  /** Clear underlying store (e.g. EntDB) and notify all type subscribers. */
+  clear = async (): Promise<Status> => {
+    const stat = await this.clearer();
+    if (stat !== Status.Success) {
+      return stat;
+    }
+    this.emitter.emitAll(null);
+    return stat;
+  };
+
   on = (opType: string, listener: () => void) => {
     this.emitter.addEventListener(opType, listener);
   };
@@ -128,6 +142,9 @@ export class StateManager implements IStateManager {
 export const nullStateManager: IStateManager = {
   apply: async function (msgs: IMessage[]) {
     return msgs.map(() => Status.Success);
+  },
+  clear: async function () {
+    return Status.Success;
   },
   on: function (_type, _listener): void {
   },

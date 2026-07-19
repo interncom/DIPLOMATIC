@@ -153,6 +153,9 @@ describe("SyncClient.sync coalesce+trailing", () => {
       async apply(msgs) {
         return msgs.map(() => Status.Success);
       },
+      async clear() {
+        return Status.Success;
+      },
       on() {},
       off() {},
     };

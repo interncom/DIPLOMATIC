@@ -29,6 +29,18 @@ export class CoalesceTail<T> {
     return this.inflight;
   }
 
+  /** Wait for any in-flight drain to finish (does not request a new pass). */
+  async flush(): Promise<void> {
+    if (!this.inflight) {
+      return;
+    }
+    try {
+      await this.inflight;
+    } catch {
+      // Caller only cares that work is no longer running.
+    }
+  }
+
   private async drain(work: () => Promise<T>): Promise<T> {
     try {
       // again is true on entry (set by run). Clear before the first pass so

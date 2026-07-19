@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { vi } from "vitest";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import DiplomaticClientAPI from "../src/shared/client";
@@ -84,7 +83,6 @@ describe("syncPeek", () => {
   test("dequeues upload for msg that host already has", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
-      clk: new Date(1000),
       off: 0,
       ctr: 0,
       len: 4,
@@ -179,32 +177,62 @@ describe("syncPush", () => {
     expect(addStatus).toBe(Status.Success);
   });
 
-  test("pushes uploads successfully", async () => {
+  async function enqueueMsg(body: Uint8Array, eidFill: number): Promise<Hash> {
     const message: IMessage = {
-      eid: new Uint8Array(16).fill(1),
-      clk: new Date(1000),
+      eid: new Uint8Array(16).fill(eidFill),
       off: 0,
       ctr: 0,
-      len: 4,
-      bod: new Uint8Array([1, 2, 3, 4]),
+      len: body.length,
+      bod: body,
     };
-
-    // Add to store
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, message);
     const headEnc = enc.result();
     const hash = await libsodiumCrypto.blake3(headEnc) as Hash;
     const storedData: IStoredMessageData = {
       eid: message.eid,
-      ...(message.off !== 0 ? { off: message.off } : {}),
-      ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
-      body: message.bod
+      body: message.bod,
     };
     await store.messages.add([{ key: hash, data: storedData }]);
     await store.uploads.enq("test", [hash]);
+    return hash;
+  }
 
-    await syncPush({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
+  test("pushes uploads successfully", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    await enqueueMsg(new Uint8Array([1, 2, 3, 4]), 1);
 
+    await syncPush({
+      conn,
+      store,
+      enclave,
+      clock,
+      host,
+      crypto: libsodiumCrypto,
+    });
+
+    expect(await store.uploads.count()).toBe(0);
+  });
+
+  test("drains upload queue under a tight maxPushBytes budget", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    await enqueueMsg(new Uint8Array([1]), 1);
+    await enqueueMsg(new Uint8Array([2]), 2);
+    await enqueueMsg(new Uint8Array([3]), 3);
+
+    // Force one bag per request (any single bag exceeds a 1-byte budget).
+    // Packing multi-batch behavior is unit-tested in sync-batch.test.ts.
+    const stat = await syncPush({
+      conn,
+      store,
+      enclave,
+      clock,
+      host,
+      crypto: libsodiumCrypto,
+      maxPushBytes: 1,
+    });
+
+    expect(stat).toBe(Status.Success);
     expect(await store.uploads.count()).toBe(0);
   });
 });
@@ -249,7 +277,6 @@ describe("syncPull", () => {
   test("pulls and processes downloads", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
-      clk: new Date(1000),
       off: 0,
       ctr: 0,
       len: 4,
@@ -281,8 +308,16 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    const apply = vi.fn().mockResolvedValue(0);
-    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
+    const apply = async (parts: { head: unknown }[]) =>
+      parts.map(() => Status.Success);
+    await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+      clock,
+    }, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -291,9 +326,18 @@ describe("syncPull", () => {
   });
 
   test("handles no downloads", async () => {
-    const apply = vi.fn().mockResolvedValue(0);
-    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
+    const apply = async (parts: { head: unknown }[]) =>
+      parts.map(() => Status.Success);
+    const stat = await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+      clock,
+    }, apply);
 
+    expect(stat).toBe(Status.NoChange);
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(0);
   });
@@ -301,7 +345,6 @@ describe("syncPull", () => {
   test("handles messages without body", async () => {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(1),
-      clk: new Date(1000),
       off: 0,
       ctr: 0,
       len: 0,
@@ -311,7 +354,6 @@ describe("syncPull", () => {
       expect(statBag).toBe(Status.Success);
       return;
     }
-
 
     // Add bag to host storage
     const keys = await generateTestKeys(enclave);
@@ -332,11 +374,68 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    const apply = vi.fn().mockResolvedValue(0);
-    await syncPull({ conn, store, enclave, host, crypto: libsodiumCrypto, clock }, apply);
+    const apply = async (parts: { head: unknown }[]) =>
+      parts.map(() => Status.Success);
+    await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+      clock,
+    }, apply);
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
     expect(messages[0].body).toBeUndefined();
+  });
+
+  test("drains download queue under a tight maxPullBytes budget", async () => {
+    const keys = await generateTestKeys(enclave);
+    const downloads: IDownloadMessage[] = [];
+
+    for (let i = 0; i < 3; i++) {
+      const body = new Uint8Array([10 + i, 20, 30, 40]);
+      const message: IMessage = {
+        eid: new Uint8Array(16).fill(i + 1),
+        off: 0,
+        ctr: 0,
+        len: body.length,
+        bod: body,
+        hsh: await libsodiumCrypto.blake3(body),
+      };
+      const [bag, statBag] = await createTestBag(message, enclave);
+      expect(statBag).toBe(Status.Success);
+      if (statBag !== Status.Success) return;
+      const [seq, setStatus] = await lpcHost.storage.setBag(
+        keys.publicKey,
+        bag,
+      );
+      expect(setStatus).toBe(Status.Success);
+      downloads.push({
+        kdm: bag.kdm,
+        head: message,
+        host: "test",
+        seq,
+      });
+    }
+    await store.downloads.enq(downloads);
+
+    // Multi-batch packing is unit-tested in sync-batch.test.ts.
+    const apply = async (parts: { head: unknown }[]) =>
+      parts.map(() => Status.Success);
+    const stat = await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+      clock,
+      maxPullBytes: 4,
+    }, apply);
+
+    expect(stat).toBe(Status.Success);
+    expect(await store.downloads.count()).toBe(0);
+    expect(Array.from(await store.messages.list()).length).toBe(3);
   });
 });

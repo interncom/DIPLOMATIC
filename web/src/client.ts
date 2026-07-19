@@ -28,7 +28,15 @@ import {
 } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail } from "./coalesce";
-import { handleNotif, ISyncParams, syncPeek, syncPull, syncPush } from "./sync";
+import {
+  defaultMaxPullBytes,
+  defaultMaxPushBytes,
+  handleNotif,
+  ISyncParams,
+  syncPeek,
+  syncPull,
+  syncPush,
+} from "./sync";
 import {
   IClient,
   IDiplomaticClientState,
@@ -53,6 +61,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
 
+  /**
+   * Soft byte budgets for push/pull request batching (see syncPush / syncPull).
+   * Raise for large-payload apps (e.g. media libraries).
+   */
+  public maxPushBytes: number;
+  public maxPullBytes: number;
+
   constructor(
     private clock: IClock,
     private state: IStateManager,
@@ -61,7 +76,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private crypto: ICrypto,
     // Client can be set to always force skew handling, to hide the pain.
     private forceSkewHandlingByDefault = true,
+    maxPushBytes = defaultMaxPushBytes,
+    maxPullBytes = defaultMaxPullBytes,
   ) {
+    this.maxPushBytes = maxPushBytes;
+    this.maxPullBytes = maxPullBytes;
     this.clientState = new StateEmitter(() => this.getClientState());
 
     this.xferState = new StateEmitter(() => this.getXferState());
@@ -319,6 +338,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         clock,
         host,
         crypto,
+        maxPushBytes: this.maxPushBytes,
+        maxPullBytes: this.maxPullBytes,
       };
 
       const peekStat = await syncPeek(syncParams);
@@ -493,7 +514,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (listen) {
       await conn.listen(
         async (bytes: Uint8Array) => {
-          const syncParams = { conn, store, enclave, host, crypto, clock };
+          const syncParams: ISyncParams<Handle> = {
+            conn,
+            store,
+            enclave,
+            host,
+            crypto,
+            clock,
+            maxPushBytes: this.maxPushBytes,
+            maxPullBytes: this.maxPullBytes,
+          };
           return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
         },
         () => this.clientState.emit(), // onDisconnect

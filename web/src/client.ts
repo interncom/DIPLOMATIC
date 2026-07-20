@@ -26,6 +26,7 @@ import {
   IUpsertParams,
   MasterSeed,
 } from "./shared/types";
+import { btob64 } from "./shared/binary";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail } from "./coalesce";
 import {
@@ -45,7 +46,8 @@ import {
   IMsgParts,
   IStateEmitter,
   IStore,
-  IStoredMessageData,
+  IStoredMessage,
+  IStoredMessageWrite,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -57,6 +59,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * pass if more sync was requested mid-flight (see CoalesceTail).
    */
   private syncRuns = new CoalesceTail<Status>();
+
+  /**
+   * Serializes application of archived msgs so concurrent apply /
+   * drainApplyQueue do not interleave markApplied (each job runs fully, in order).
+   */
+  private applyChain: Promise<unknown> = Promise.resolve();
 
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
@@ -124,6 +132,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return { numDownloads, numUploads };
   }
 
+  /**
+   * Persist msgs to the archive as unapplied (apld=false), apply via
+   * IStateManager, mark applied, then optionally enqueue upload.
+   *
+   * Order is intentional for crash safety:
+   * 1) durable archive  2) apply + apld=true  3) upload queue
+   * so we never upload something that never applied, and crash between
+   * 1–2 is recovered by drainApplyQueue.
+   */
   private apply = async (
     parts: IMsgParts[],
     options: { enqueueUpload: boolean; triggerUpload: boolean } = {
@@ -132,59 +149,126 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     },
   ): Promise<Status[]> => {
     const hashes: Hash[] = [];
-    const storables: { key: Hash; data: IStoredMessageData }[] = [];
-    const msgs: IMessage[] = [];
+    const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
-    // Process parts into:
-    // 1. hashes for upload queueing,
-    // 2. storables for message archive,
-    // 3. msgs for application to state.
-    // console.time("apply: processing parts...")
     for (const { head, body } of parts) {
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
       const hash = await this.crypto.blake3(headEnc);
-      const data: IStoredMessageData = {
+      const data: IStoredMessageWrite = {
         eid: head.eid,
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body,
+        apld: false,
       };
       hashes.push(hash);
       storables.push({ key: hash, data });
-      msgs.push({ ...head, bod: body });
     }
-    // console.timeEnd("apply: processing parts...")
 
-    // If message is being applied via sync, don't upload.
+    await this.store.messages.add(storables);
+
+    const stats = await this.applyHashes(hashes);
+
+    // Upload only after successful (or no-op) apply for each hash.
     if (options.enqueueUpload) {
-      // NOTE: important to enqueue upload before storing it.
-      const hosts = await this.store.hosts.list();
-      for (const host of hosts) {
-        await this.store.uploads.enq(host.label, hashes);
+      const toUpload: Hash[] = [];
+      for (let i = 0; i < hashes.length; i++) {
+        const st = stats[i];
+        if (st === Status.Success || st === Status.NoChange) {
+          toUpload.push(hashes[i]);
+        }
       }
-      this.xferState.emit();
-      // Clear any existing timeout to reset debounce
-      if (this.syncTimeout !== null) {
-        clearTimeout(this.syncTimeout);
+      if (toUpload.length > 0) {
+        const hosts = await this.store.hosts.list();
+        for (const host of hosts) {
+          await this.store.uploads.enq(host.label, toUpload);
+        }
+        this.xferState.emit();
+        if (this.syncTimeout !== null) {
+          clearTimeout(this.syncTimeout);
+        }
       }
     }
     if (options.triggerUpload) {
       this.scheduleSync();
     }
 
-    // console.time("apply: storing messages...")
-    await this.store.messages.add(storables);
-    // console.timeEnd("apply: storing messages...")
-
-    // TODO: decide what should happen if there's an error while applying.
-    // Dequeue upload and remove message?
-    // console.time("apply: applying state updates...")
-    const stats = await this.state.apply(msgs);
-    // console.timeEnd("apply: applying state updates...")
     return stats;
   };
+
+  private enqueueApplyJob<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.applyChain.then(fn, fn);
+    this.applyChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /**
+   * Apply archived msgs that are still unapplied (crash recovery).
+   * Call after open / connect so a crash between store and apply is healed.
+   */
+  public drainApplyQueue(): Promise<Status[]> {
+    return this.enqueueApplyJob(() => this.doDrainApplyQueue());
+  }
+
+  private async doDrainApplyQueue(): Promise<Status[]> {
+    const pending = await this.store.messages.listUnapplied();
+    if (pending.length < 1) {
+      return [];
+    }
+    return this.applyStored(pending);
+  }
+
+  /** Apply specific archive keys via IStateManager and mark applied. */
+  private applyHashes = (hashes: Hash[]): Promise<Status[]> => {
+    return this.enqueueApplyJob(async () => {
+      const loaded: IStoredMessage[] = [];
+      for (const h of hashes) {
+        const m = await this.store.messages.get(h);
+        if (m) loaded.push(m);
+      }
+      const applied = await this.applyStored(loaded);
+      const byHash = new Map<string, Status>();
+      for (let i = 0; i < loaded.length; i++) {
+        byHash.set(
+          btob64(loaded[i].hash),
+          applied[i] ?? Status.InternalError,
+        );
+      }
+      return hashes.map((h) => byHash.get(btob64(h)) ?? Status.NotFound);
+    });
+  };
+
+  /**
+   * Apply a batch of archived msgs via IStateManager and mark successes applied.
+   *
+   * TODO: may need to chunk large batches (memory / IDB / UI). Also test edge
+   * cases: state.apply returning stats.length !== msgs.length (short/long
+   * array, holes) — markApplied currently indexes stats[i] against stored[i]
+   * without validating length alignment.
+   */
+  private async applyStored(stored: IStoredMessage[]): Promise<Status[]> {
+    if (stored.length < 1) {
+      return [];
+    }
+    const msgs: IMessage[] = stored.map((m) => ({
+      ...m.head,
+      bod: m.body,
+    }));
+    const stats = await this.state.apply(msgs);
+    const done: Hash[] = [];
+    for (let i = 0; i < stored.length; i++) {
+      const st = stats[i];
+      if (st === Status.Success || st === Status.NoChange) {
+        done.push(stored[i].hash);
+      }
+    }
+    if (done.length > 0) {
+      await this.store.messages.markApplied(done);
+    }
+    return stats;
+  }
 
   public async insertRaw(bod: EncodedMessage) {
     const { clock, crypto } = this;
@@ -324,6 +408,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (!enclave) {
       return Status.MissingSeed;
     }
+
+    // Finish any msgs left unapplied after a crash before talking to hosts.
+    await this.drainApplyQueue();
+
 
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
@@ -554,6 +642,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (!enclave) {
       return;
     }
+    // Heal archive → application state before listeners / network.
+    await this.drainApplyQueue();
     const hosts = await store.hosts.list();
     for (const host of hosts) {
       await connectToHost(host, listen, false);

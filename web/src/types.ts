@@ -89,39 +89,88 @@ export interface IDownloadQueue {
   wipe(): Promise<void>;
 }
 
-export interface IStorableMessage {
-  key: Hash;
-  data: IStoredMessageData;
-}
-export interface IStoredMessage {
-  hash: Hash;
-  head: IMessageHead;
-  body?: EncodedMessage;
-}
-export interface IStoredMessageData {
+/**
+ * Archive fields shared by read and write.
+ * `apld`: true once the msg has been applied by the application state manager;
+ * false while still pending apply.
+ */
+export interface IStoredMessageFields {
   eid: EntityID;
   off?: number;
   ctr?: number;
   body?: EncodedMessage;
 }
+
+/**
+ * What may come back from IDB (pre-apld rows can omit the field).
+ * Prefer {@link normalizeStoredMessageData} before use.
+ */
+export interface IStoredMessageData extends IStoredMessageFields {
+  apld?: boolean;
+}
+
+/**
+ * Required shape for every put into the message archive.
+ * Callers must set `apld` (false until applied, then true).
+ */
+export type IStoredMessageWrite = IStoredMessageFields & {
+  apld: boolean;
+};
+
+export interface IStorableMessage {
+  key: Hash;
+  data: IStoredMessageWrite;
+}
+
+export interface IStoredMessage {
+  hash: Hash;
+  head: IMessageHead;
+  body?: EncodedMessage;
+  applied: boolean; // True once this msg has been applied by the application state manager.
+}
+
+/** Coerce legacy rows missing `apld` to pending (`false`). */
+export function normalizeStoredMessageData(
+  data: IStoredMessageData,
+): IStoredMessageWrite {
+  return {
+    eid: data.eid,
+    ...(data.off !== undefined ? { off: data.off } : {}),
+    ...(data.ctr !== undefined ? { ctr: data.ctr } : {}),
+    ...(data.body !== undefined ? { body: data.body } : {}),
+    apld: data.apld ?? false,
+  };
+}
+
+/** Pending apply when not yet marked applied. */
+export function isPendingApply(data: IStoredMessageData): boolean {
+  return normalizeStoredMessageData(data).apld === false;
+}
+
 export async function toStoredMessage(
   hash: Hash,
   data: IStoredMessageData,
   crypto: ICrypto,
 ): Promise<IStoredMessage> {
-  const len = data.body?.length ?? 0;
+  const norm = normalizeStoredMessageData(data);
+  const len = norm.body?.length ?? 0;
   let hsh: Uint8Array | undefined;
-  if (data.body && len > 0) {
-    hsh = await crypto.blake3(data.body);
+  if (norm.body && len > 0) {
+    hsh = await crypto.blake3(norm.body);
   }
   const head: IMessageHead = {
-    eid: data.eid,
-    off: data.off ?? 0,
-    ctr: data.ctr ?? 0,
+    eid: norm.eid,
+    off: norm.off ?? 0,
+    ctr: norm.ctr ?? 0,
     len,
     hsh,
   };
-  return { hash, head, body: data.body };
+  return {
+    hash,
+    head,
+    body: norm.body,
+    applied: norm.apld,
+  };
 }
 export interface IMessageStore {
   add: (messages: IStorableMessage[]) => Promise<Status[]>;
@@ -130,6 +179,10 @@ export interface IMessageStore {
   del: (keys: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
+  /** Messages stored but not yet applied (apld === false). */
+  listUnapplied: () => Promise<IStoredMessage[]>;
+  /** Mark archive rows as applied (apld = true). */
+  markApplied: (keys: Iterable<Hash>) => Promise<void>;
   wipe(): Promise<void>;
 }
 

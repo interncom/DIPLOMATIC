@@ -4,11 +4,13 @@ import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import {
   IMessageStore,
+  IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
+  normalizeStoredMessageData,
   toStoredMessage,
 } from "../../types";
-import { MESSAGES_TABLE } from "./store";
+import { MESSAGES_APLD_INDEX, MESSAGES_TABLE } from "./store";
 
 export class IDBMessageStore implements IMessageStore {
   db: IDBDatabase;
@@ -17,9 +19,7 @@ export class IDBMessageStore implements IMessageStore {
     this.db = db;
   }
 
-  async add(
-    messages: { key: Hash; data: IStoredMessageData }[],
-  ): Promise<Status[]> {
+  async add(messages: IStorableMessage[]): Promise<Status[]> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<Status[]>((resolve) => {
@@ -144,6 +144,57 @@ export class IDBMessageStore implements IMessageStore {
         }
       };
       req.onerror = () => reject(req.error);
+    });
+  }
+
+  async listUnapplied(): Promise<IStoredMessage[]> {
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
+    const store = tx.objectStore(MESSAGES_TABLE);
+    const index = store.index(MESSAGES_APLD_INDEX);
+    return new Promise<IStoredMessage[]>((resolve, reject) => {
+      const pending: { hash: Hash; data: IStoredMessageData }[] = [];
+      // Unapplied rows are stored with apld: false (indexed).
+      const req = index.openCursor(IDBKeyRange.only(false));
+      req.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result;
+        if (cursor) {
+          // Primary key is the out-of-line b64 hash used at put().
+          const key = cursor.primaryKey as string;
+          const data = cursor.value as IStoredMessageData;
+          pending.push({ hash: b64tob(key) as Hash, data });
+          cursor.continue();
+        } else {
+          Promise.all(
+            pending.map(({ hash, data }) =>
+              toStoredMessage(hash, data, this.crypto)
+            ),
+          ).then(resolve).catch(reject);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async markApplied(keys: Iterable<Hash>): Promise<void> {
+    const hashes = [...keys];
+    if (hashes.length === 0) return;
+    const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const hash of hashes) {
+        const b64 = btob64(hash);
+        const getReq = store.get(b64);
+        getReq.onsuccess = () => {
+          const data = getReq.result as IStoredMessageData | undefined;
+          if (!data) return;
+          store.put({ ...normalizeStoredMessageData(data), apld: true }, b64);
+        };
+        getReq.onerror = (evt) => {
+          evt.preventDefault();
+        };
+      }
     });
   }
 

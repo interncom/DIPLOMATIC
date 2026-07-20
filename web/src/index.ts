@@ -50,7 +50,9 @@ import type {
   IStore,
   IStoredMessage,
   IStoredMessageData,
+  IStoredMessageWrite,
 } from "./types";
+import { isPendingApply, normalizeStoredMessageData } from "./types";
 
 export async function genWebClient(
   stateMgr: IStateManager,
@@ -96,9 +98,11 @@ export {
   IDBStore,
   IEntDB,
   IEntity,
+  isPendingApply,
   IStore,
   MasterSeed,
   MemoryStore,
+  normalizeStoredMessageData,
   nullEntDB,
   nullStateManager,
   openEntIDB,
@@ -128,5 +132,6 @@ export type {
   IStateManager,
   IStoredMessage,
   IStoredMessageData,
+  IStoredMessageWrite,
   ITransport,
 };

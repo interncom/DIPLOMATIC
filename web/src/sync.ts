@@ -20,7 +20,7 @@ import {
   IMsgParts,
   IStorableMessage,
   IStore,
-  IStoredMessageData,
+  type IStoredMessageWrite,
 } from "./types";
 
 /** Default soft cap for one push/pull request (~1 MiB). Apps with large
@@ -376,12 +376,14 @@ export async function syncPull<Handle extends HostHandle>(
 
 export function msg2StoredMsgData(
   { head, body }: IMsgParts,
-): IStoredMessageData {
+): IStoredMessageWrite {
   return {
     eid: head.eid,
     ...(head.off !== 0 ? { off: head.off } : {}),
     ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
     body,
+    // Pending apply until SyncClient.apply / drainApplyQueue.
+    apld: false,
   };
 }
 

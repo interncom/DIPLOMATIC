@@ -122,6 +122,7 @@ describe("syncPeek", () => {
       ...(message.off !== 0 ? { off: message.off } : {}),
       ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
       body: message.bod,
+      apld: true,
     };
     await store.messages.add([{ key: headEncHash, data: storedData }]);
 
@@ -195,6 +196,7 @@ describe("syncPush", () => {
     const storedData: IStoredMessageData = {
       eid: message.eid,
       body: message.bod,
+      apld: true,
     };
     await store.messages.add([{ key: hash, data: storedData }]);
     await store.uploads.enq("test", [hash]);

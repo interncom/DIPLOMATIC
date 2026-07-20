@@ -3,8 +3,11 @@ import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import {
   IMessageStore,
+  isPendingApply,
+  IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
+  normalizeStoredMessageData,
   toStoredMessage,
 } from "../../types";
 import { Status } from "../../shared/consts";
@@ -14,9 +17,7 @@ export class MemoryMessageStore implements IMessageStore {
 
   constructor(private crypto: ICrypto) {}
 
-  async add(
-    messages: { key: Hash; data: IStoredMessageData }[],
-  ): Promise<Status[]> {
+  async add(messages: IStorableMessage[]): Promise<Status[]> {
     const results: Status[] = [];
     for (const { key, data } of messages) {
       this.messages.set(btob64(key), data);
@@ -74,6 +75,28 @@ export class MemoryMessageStore implements IMessageStore {
       return await toStoredMessage(latest.hash, latest.data, this.crypto);
     }
     return undefined;
+  }
+
+  async listUnapplied(): Promise<IStoredMessage[]> {
+    const out: IStoredMessage[] = [];
+    for (const [keyStr, data] of this.messages) {
+      if (!isPendingApply(data)) continue;
+      const hash = b64tob(keyStr) as Hash;
+      out.push(await toStoredMessage(hash, data, this.crypto));
+    }
+    return out;
+  }
+
+  async markApplied(keys: Iterable<Hash>): Promise<void> {
+    for (const key of keys) {
+      const keyStr = btob64(key);
+      const data = this.messages.get(keyStr);
+      if (!data) continue;
+      this.messages.set(keyStr, {
+        ...normalizeStoredMessageData(data),
+        apld: true,
+      });
+    }
   }
 
   async wipe() {

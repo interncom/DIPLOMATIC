@@ -346,7 +346,8 @@ describe("Client", () => {
           eid: head.eid,
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-          body: undefined
+          body: undefined,
+          apld: true,
         };
         await store.messages.add([{ key: hash, data }]);
 
@@ -388,7 +389,8 @@ describe("Client", () => {
           eid: head.eid,
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-          body: undefined
+          body: undefined,
+          apld: true,
         };
         await store.messages.add([{ key: hash, data }]);
 
@@ -475,6 +477,7 @@ describe("Client", () => {
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
+        apld: true,
       };
       await store.messages.add([{ key: hash, data }]);
 

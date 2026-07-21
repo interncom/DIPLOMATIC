@@ -214,6 +214,8 @@ export interface IClient<Handle extends HostHandle> {
 
   link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;
+  /** Linked hosts from the protocol store (handle, label, lastSeq, …). */
+  hosts(): Promise<IHostRow<Handle>[]>;
 
   connect(): Promise<void>;
   disconnect(): Promise<void>;

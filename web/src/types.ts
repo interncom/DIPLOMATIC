@@ -109,16 +109,18 @@ export interface IStoredMessageFields {
 }
 
 /**
- * What may come back from IDB (pre-apld rows can omit the field).
+ * What may come back from storage (pre-apld rows can omit the field).
+ * IDB stores "t"|"f" (booleans are not valid IndexedDB index keys).
  * Prefer {@link normalizeStoredMessageData} before use.
  */
 export interface IStoredMessageData extends IStoredMessageFields {
-  apld?: boolean;
+  apld?: boolean | "t" | "f";
 }
 
 /**
- * Required shape for every put into the message archive.
+ * Required shape for every put into the message archive (app/API layer).
  * Callers must set `apld` (false until applied, then true).
+ * The IDB adapter persists this as "t"|"f" for indexing.
  */
 export type IStoredMessageWrite = IStoredMessageFields & {
   apld: boolean;
@@ -136,7 +138,15 @@ export interface IStoredMessage {
   applied: boolean; // True once this msg has been applied by the application state manager.
 }
 
-/** Coerce legacy rows missing `apld` to pending (`false`). */
+/**
+ * Coerce stored `apld` to boolean.
+ * Applied: true | "t". Pending: false | "f" | missing.
+ */
+export function apldFromStored(v: unknown): boolean {
+  return v === true || v === "t";
+}
+
+/** Coerce storage rows to the write shape with boolean apld. */
 export function normalizeStoredMessageData(
   data: IStoredMessageData,
 ): IStoredMessageWrite {
@@ -145,7 +155,7 @@ export function normalizeStoredMessageData(
     ...(data.off !== undefined ? { off: data.off } : {}),
     ...(data.ctr !== undefined ? { ctr: data.ctr } : {}),
     ...(data.body !== undefined ? { body: data.body } : {}),
-    apld: data.apld ?? false,
+    apld: data.apld === undefined ? false : apldFromStored(data.apld),
   };
 }
 

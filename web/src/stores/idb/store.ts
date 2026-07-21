@@ -11,7 +11,10 @@ export const HOSTS_TABLE = "hosts";
 export const UPLOAD_QUEUE_TABLE = "uploadQueue";
 export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
 export const MESSAGES_TABLE = "messages";
-/** Index on messages.apld — pending apply is apld === false. */
+/**
+ * Index on messages.apld. Values are "f" (pending) / "t" (applied) —
+ * booleans are not valid IndexedDB keys; single-char strings keep keys compact.
+ */
 export const MESSAGES_APLD_INDEX = "apld";
 
 /** Schema version: v3 adds messages.apld index for the apply queue. */
@@ -80,7 +83,6 @@ export async function openIDBStoreDB(): Promise<IDBDatabase> {
         msgStore = tx.objectStore(MESSAGES_TABLE);
       }
       if (!msgStore.indexNames.contains(MESSAGES_APLD_INDEX)) {
-        // Only rows with apld set are indexed; false = not yet applied.
         msgStore.createIndex(MESSAGES_APLD_INDEX, "apld", { unique: false });
       }
     };

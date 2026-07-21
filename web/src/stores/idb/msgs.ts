@@ -7,10 +7,22 @@ import {
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
+  IStoredMessageWrite,
   normalizeStoredMessageData,
   toStoredMessage,
 } from "../../types";
 import { MESSAGES_APLD_INDEX, MESSAGES_TABLE } from "./store";
+
+/** IDB index keys must not be boolean; persist apld as "t"|"f". */
+function toIdbMessageRow(data: IStoredMessageWrite): IStoredMessageData {
+  return {
+    eid: data.eid,
+    ...(data.off !== undefined ? { off: data.off } : {}),
+    ...(data.ctr !== undefined ? { ctr: data.ctr } : {}),
+    ...(data.body !== undefined ? { body: data.body } : {}),
+    apld: data.apld ? "t" : "f",
+  };
+}
 
 export class IDBMessageStore implements IMessageStore {
   db: IDBDatabase;
@@ -39,7 +51,7 @@ export class IDBMessageStore implements IMessageStore {
       for (let i = 0; i < messages.length; i++) {
         const { key, data } = messages[i];
         const keyB64 = btob64(key);
-        const req = store.put(data, keyB64);
+        const req = store.put(toIdbMessageRow(data), keyB64);
         // We skip req.onsuccess because we default results to Success.
         req.onerror = (evt) => {
           // preventDefault allows continuation if a single insert fails.
@@ -153,8 +165,8 @@ export class IDBMessageStore implements IMessageStore {
     const index = store.index(MESSAGES_APLD_INDEX);
     return new Promise<IStoredMessage[]>((resolve, reject) => {
       const pending: { hash: Hash; data: IStoredMessageData }[] = [];
-      // Unapplied rows are stored with apld: false (indexed).
-      const req = index.openCursor(IDBKeyRange.only(false));
+      // Pending rows: apld "f" (boolean is not a valid IDB key).
+      const req = index.openCursor(IDBKeyRange.only("f"));
       req.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest).result;
         if (cursor) {
@@ -189,7 +201,8 @@ export class IDBMessageStore implements IMessageStore {
         getReq.onsuccess = () => {
           const data = getReq.result as IStoredMessageData | undefined;
           if (!data) return;
-          store.put({ ...normalizeStoredMessageData(data), apld: true }, b64);
+          const norm = normalizeStoredMessageData(data);
+          store.put(toIdbMessageRow({ ...norm, apld: true }), b64);
         };
         getReq.onerror = (evt) => {
           evt.preventDefault();

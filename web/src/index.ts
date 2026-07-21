@@ -46,6 +46,7 @@ import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
 import type {
   Applier,
+  IClient,
   IDiplomaticClientState,
   IStore,
   IStoredMessage,
@@ -53,6 +54,21 @@ import type {
   IStoredMessageWrite,
 } from "./types";
 import { isPendingApply, normalizeStoredMessageData } from "./types";
+import type { SyncProgressEvent } from "./progress";
+import {
+  defaultPeekProgressEvery,
+  idleProgress,
+  shouldEmitItemProgress,
+} from "./progress";
+import {
+  openDiplomaticClient,
+  type OpenDiplomaticClientMainOptions,
+  type OpenDiplomaticClientOptions,
+  type OpenDiplomaticClientWorkerOptions,
+  type OpenedDiplomaticClient,
+} from "./openClient";
+import { WorkerClient } from "./worker/client";
+import type { WorkerClientOptions } from "./worker/client";
 
 export async function genWebClient(
   stateMgr: IStateManager,
@@ -83,6 +99,7 @@ export {
   Clock,
   crypto,
   Decoder,
+  defaultPeekProgressEvery,
   eidCodec,
   Encoder,
   EntDBMemory,
@@ -96,6 +113,7 @@ export {
   htob,
   HTTPTransport,
   IDBStore,
+  idleProgress,
   IEntDB,
   IEntity,
   isPendingApply,
@@ -105,8 +123,10 @@ export {
   normalizeStoredMessageData,
   nullEntDB,
   nullStateManager,
+  openDiplomaticClient,
   openEntIDB,
   openIDBStore,
+  shouldEmitItemProgress,
   SingletonStateManager,
   StateManager,
   Status,
@@ -118,11 +138,13 @@ export {
   useStateWatcher,
   useStateWatcherSuspense,
   useSyncOnResume,
+  WorkerClient,
 };
 
 export type {
   Applier,
   HostHandle,
+  IClient,
   ICrypto,
   IDiplomaticClientState,
   IHostConnectionInfo,
@@ -134,4 +156,10 @@ export type {
   IStoredMessageData,
   IStoredMessageWrite,
   ITransport,
+  OpenDiplomaticClientMainOptions,
+  OpenDiplomaticClientOptions,
+  OpenDiplomaticClientWorkerOptions,
+  OpenedDiplomaticClient,
+  SyncProgressEvent,
+  WorkerClientOptions,
 };

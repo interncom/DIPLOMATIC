@@ -1,3 +1,4 @@
+import type { SyncProgressEvent } from "./progress";
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/enclave";
 import type { EncodedMessage } from "./shared/message";
@@ -28,9 +29,15 @@ export interface IDiplomaticClientState {
   connected: boolean;
 }
 
+/**
+ * Transfer / sync activity: queue depths + current phase progress.
+ * Subscribe via `xferState.listen` / `useClientXferState`; snapshot with `get()`.
+ */
 export interface IDiplomaticClientXferState {
   numUploads: number;
   numDownloads: number;
+  /** Latest sync/import phase tick; `{ phase: "idle" }` when not in flight. */
+  progress: SyncProgressEvent;
 }
 
 export type Applier = (

@@ -61,3 +61,67 @@ export class CoalesceTail<T> {
     }
   }
 }
+
+/** Default quiet period before a scheduled sync after local writes. */
+export const defaultSyncDebounceMs = 100;
+
+/**
+ * Debounce async work: each `schedule()` resets a timer; when the quiet period
+ * elapses, `work` runs via {@link CoalesceTail} so stampeding fires do not
+ * overlap (trailing pass if more demand arrives mid-run).
+ *
+ * - `delayMs <= 0`: run on the next microtask path immediately (no timer).
+ * - `flush()`: cancel the timer, start work if a run was pending, await drain.
+ * - `cancel()`: drop the pending timer without running (in-flight continues).
+ */
+export class Debounced<T = void> {
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly delayMs: number;
+  private readonly work: () => Promise<T>;
+  private readonly tail = new CoalesceTail<T>();
+
+  constructor(delayMs: number, work: () => Promise<T>) {
+    this.delayMs = delayMs < 0 ? 0 : delayMs;
+    this.work = work;
+  }
+
+  /** Request a run after the debounce quiet period (resets the timer). */
+  schedule(): void {
+    if (this.delayMs <= 0) {
+      void this.fire();
+      return;
+    }
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+    }
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.fire();
+    }, this.delayMs);
+  }
+
+  /**
+   * Run any pending debounced work now and wait until the drain finishes.
+   * No-op if nothing is pending or in flight.
+   */
+  async flush(): Promise<void> {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+      void this.fire();
+    }
+    await this.tail.flush();
+  }
+
+  /** Drop a pending timer without starting work. In-flight work is untouched. */
+  cancel(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private fire(): Promise<T> {
+    return this.tail.run(this.work);
+  }
+}

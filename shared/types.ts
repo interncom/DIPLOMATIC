@@ -261,8 +261,13 @@ export interface ITransport {
 
 export interface IStateManager {
   apply: (msgs: IMessage[]) => Promise<Status[]>;
-  /** Drop local application state (e.g. EntDB) and notify subscribers. */
+  /** Drop local application state and notify subscribers. */
   clear: () => Promise<Status>;
+  /**
+   * Notify type subscribers without applying msgs (e.g. after a peer thread
+   * updated shared application state in IndexedDB).
+   */
+  notify: (types: Iterable<string>) => void;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

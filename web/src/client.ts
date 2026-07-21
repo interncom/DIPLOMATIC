@@ -28,7 +28,13 @@ import {
 } from "./shared/types";
 import { btob64 } from "./shared/binary";
 import { err, ok, ValStat } from "./shared/valstat";
-import { CoalesceTail } from "./coalesce";
+import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
+import {
+  defaultPeekProgressEvery,
+  idleProgress,
+  SyncProgressEvent,
+} from "./progress";
+import { saveBlob } from "./saveBlob";
 import {
   defaultMaxPullBytes,
   defaultMaxPushBytes,
@@ -76,6 +82,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public maxPushBytes: number;
   public maxPullBytes: number;
 
+  /**
+   * Peek progress stride in heads (see `defaultPeekProgressEvery`).
+   * Emits on head 1, every N heads, and the last head.
+   */
+  public peekProgressEvery = defaultPeekProgressEvery;
+
+  /** Latest progress; part of xferState for snapshot + subscribe. */
+  private lastProgress: SyncProgressEvent = idleProgress;
+
+  /**
+   * Debounced sync after local writes (when not handing off via onScheduleSync).
+   */
+  private scheduledSync: Debounced;
+
   constructor(
     private clock: IClock,
     private state: IStateManager,
@@ -86,17 +106,31 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     private forceSkewHandlingByDefault = true,
     maxPushBytes = defaultMaxPushBytes,
     maxPullBytes = defaultMaxPullBytes,
+    /**
+     * When set (e.g. main-thread local writer next to a sync worker), called
+     * instead of running sync on this client. Use to hand off push to the worker.
+     */
+    private onScheduleSync?: () => void,
   ) {
     this.maxPushBytes = maxPushBytes;
     this.maxPullBytes = maxPullBytes;
     this.clientState = new StateEmitter(() => this.getClientState());
-
     this.xferState = new StateEmitter(() => this.getXferState());
+    this.scheduledSync = new Debounced(defaultSyncDebounceMs, async () => {
+      try {
+        console.info("Running scheduled sync");
+        await this.sync();
+      } catch (err) {
+        console.error("Debounced sync failed:", err);
+      }
+    });
   }
 
-  private readonly SYNC_DEBOUNCE_DELAY_MS = 100;
-
-  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Record phase progress and notify xferState listeners. */
+  private emitProgress = (ev: SyncProgressEvent) => {
+    this.lastProgress = ev;
+    this.xferState.emit();
+  };
 
   public async setSeed(seed: MasterSeed) {
     await this.store.seed.save(seed);
@@ -129,7 +163,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const { uploads, downloads } = this.store;
     const numUploads = await uploads.count();
     const numDownloads = await downloads.count();
-    return { numDownloads, numUploads };
+    return {
+      numDownloads,
+      numUploads,
+      progress: this.lastProgress,
+    };
   }
 
   /**
@@ -186,11 +224,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
           await this.store.uploads.enq(host.label, toUpload);
         }
         this.xferState.emit();
-        if (this.syncTimeout !== null) {
-          clearTimeout(this.syncTimeout);
-        }
       }
     }
+    // Always signal when requested so a peer (worker) can drain the upload queue.
     if (options.triggerUpload) {
       this.scheduleSync();
     }
@@ -412,7 +448,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Finish any msgs left unapplied after a crash before talking to hosts.
     await this.drainApplyQueue();
 
-
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
       if (!host) {
@@ -428,6 +463,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         crypto,
         maxPushBytes: this.maxPushBytes,
         maxPullBytes: this.maxPullBytes,
+        onProgress: this.emitProgress,
+        peekProgressEvery: this.peekProgressEvery,
       };
 
       const peekStat = await syncPeek(syncParams);
@@ -451,20 +488,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
       this.xferState.emit();
     }
+    this.emitProgress({ phase: "idle" });
     return Status.Success;
   }
 
   public async wipe() {
     // Stop further scheduled work and tear down push listeners first.
-    if (this.syncTimeout !== null) {
-      clearTimeout(this.syncTimeout);
-      this.syncTimeout = null;
-    }
+    this.scheduledSync.cancel();
     await this.disconnect();
     // Let any in-flight sync finish so it cannot repopulate after clear.
     await this.syncRuns.flush();
     await this.store.wipe();
     await this.state.clear();
+    this.lastProgress = idleProgress;
     this.clientState.emit();
     this.xferState.emit();
   }
@@ -518,35 +554,48 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (onProgress) {
         queueMicrotask(() => onProgress(end, msgs.length, Status.Success));
       }
+      this.emitProgress({
+        phase: "import",
+        done: end,
+        total: msgs.length,
+      });
       processed = end;
     }
 
     this.scheduleSync();
+    this.emitProgress({ phase: "idle" });
 
     // TODO: return the array of statuses for each import msg.
     return Status.Success;
   };
 
-  private scheduleSync = async () => {
-    this.syncTimeout = setTimeout(async () => {
-      this.syncTimeout = null;
-      try {
-        console.info("Running scheduled sync");
-        await this.sync();
-      } catch (err) {
-        console.error("Debounced sync failed:", err);
-      }
-    }, this.SYNC_DEBOUNCE_DELAY_MS);
+  /**
+   * After local apply + upload enqueue: either hand off to a peer (worker via
+   * onScheduleSync — debounced there) or debounce sync on this client.
+   */
+  private scheduleSync = () => {
+    if (this.onScheduleSync) {
+      // Caller owns debounce (e.g. WorkerClient scheduledSync).
+      this.onScheduleSync();
+      return;
+    }
+    this.scheduledSync.schedule();
   };
 
-  public async export(filename: string) {
+  /** Encode the local message archive; used by worker path (main saves file). */
+  public async exportBytes(): Promise<ValStat<Uint8Array>> {
     const { crypto, store } = this;
     const enclave = await store.seed.load();
-    if (!enclave) return Status.MissingSeed;
+    if (!enclave) return err(Status.MissingSeed);
 
     const msgs = await store.messages.list();
-    const [bytes, stat] = await encodeFile("export", 0, msgs, crypto, enclave);
+    return encodeFile("export", 0, msgs, crypto, enclave);
+  }
+
+  public async export(filename: string) {
+    const [bytes, stat] = await this.exportBytes();
     if (stat !== Status.Success) return stat;
+    if (!bytes) return Status.InternalError;
 
     const blob = new Blob([bytes.slice()]);
     saveBlob(blob, filename);
@@ -619,6 +668,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
             clock,
             maxPushBytes: this.maxPushBytes,
             maxPullBytes: this.maxPullBytes,
+            onProgress: this.emitProgress,
+            peekProgressEvery: this.peekProgressEvery,
           };
           return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
         },
@@ -664,23 +715,4 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.connections.clear();
     this.clientState.emit();
   };
-}
-
-function saveBlob(blob: Blob, filename: string) {
-  // Legacy IE/Edge
-  // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
-  if (typeof navigator.msSaveOrOpenBlob === "function") {
-    // @ts-expect-error: msSaveOrOpenBlob is non-standard IE/Edge API
-    navigator.msSaveOrOpenBlob(blob, filename);
-    return;
-  }
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

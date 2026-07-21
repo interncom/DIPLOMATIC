@@ -9,6 +9,7 @@ import {
   useClient,
   useStateWatcher,
 } from "@interncom/diplomatic";
+import { diplomaticSyncWorker } from "./diplomaticWorker";
 
 const seed = htob("0123456789ABCDEF".repeat(4)) as MasterSeed;
 const entType = "status";
@@ -29,7 +30,11 @@ function useLatestOfType<T>(
 }
 
 export default function App() {
-  const { client, entDB, stateMgr } = useClient({ host, seed });
+  const { client, entDB, stateMgr, error, mode } = useClient({
+    host,
+    seed,
+    worker: diplomaticSyncWorker,
+  });
   const status = useLatestOfType<string>(entType, stateMgr, entDB) ?? "";
 
   const [statusField, setStatusField] = useState("");
@@ -40,10 +45,20 @@ export default function App() {
     setStatusField("");
   }, [statusField, client]);
 
+  if (error) {
+    return (
+      <div style={{ width: "100vw", textAlign: "center", color: "crimson" }}>
+        <h1>STATUS</h1>
+        <p>DIPLOMATIC failed to start (check worker setup): {error.message}</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>
       <h1>STATUS</h1>
       <div id="status-message">{status}</div>
+      {mode ? <div style={{ opacity: 0.5, fontSize: 12 }}>sync: {mode}</div> : null}
       <form onSubmit={handleSubmit}>
         <input id="status-input" type="text" value={statusField} onChange={(evt) => setStatusField(evt.target.value)} placeholder="Type a message ↵" />
       </form>

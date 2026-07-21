@@ -1,0 +1,457 @@
+// Main-thread façade over an app-owned sync worker.
+//
+// - Local msg create/apply (UI): main thread, shared message IDB + IStateManager
+//   (e.g. EntDB) for fast UI. Upload queue is shared; push is handed to worker.
+// - Network sync (peek/push/pull/notif): worker writes EntDB in-place and posts
+//   dirty/wiped signals so main re-reads shared IDB (no bulk msg transfer).
+//
+// The app must construct the Worker (bundler-aware).
+
+import { SyncClient } from "../client";
+import { Debounced, defaultSyncDebounceMs } from "../coalesce";
+import crypto from "../crypto";
+import { StateEmitter } from "../events";
+import { idleProgress } from "../progress";
+import { saveBlob } from "../saveBlob";
+import { Clock, IClock } from "../shared/clock";
+import { Status } from "../shared/consts";
+import type {
+  EntityID,
+  IHostConnectionInfo,
+  IInsertParams,
+  IMessageHead,
+  IStateManager,
+  IUpsertParams,
+  MasterSeed,
+  SerializedContent,
+} from "../shared/types";
+import type { ValStat } from "../shared/valstat";
+import type {
+  IClient,
+  IDiplomaticClientState,
+  IDiplomaticClientXferState,
+  IStateEmitter,
+  IStore,
+} from "../types";
+import {
+  isWorkerEvent,
+  SerializedHost,
+  statusFromUnknown,
+  WorkerCmd,
+  WorkerEvent,
+} from "./protocol";
+
+type Pending = {
+  resolve: (v: unknown) => void;
+  reject: (e: Error) => void;
+};
+
+/**
+ * Options for attaching to an app-owned sync Worker.
+ *
+ * Provide a live `Worker` — the library never constructs one. See
+ * `openDiplomaticClient` for bundler/CDN instantiation recipes.
+ */
+export type WorkerClientOptions = {
+  /** Already-constructed module Worker running `@interncom/diplomatic/worker`. */
+  worker: Worker;
+  /** Max wait for worker `ready` (default 15s). Failures throw; no fallback. */
+  readyTimeoutMs?: number;
+  clock?: IClock;
+  /**
+   * Debounce local write → worker `sync` (default {@link defaultSyncDebounceMs}).
+   * Use `0` in tests for immediate handoff (no timers).
+   */
+  syncDebounceMs?: number;
+};
+
+const logPrefix = "[DIPLOMATIC]";
+
+export class WorkerClient implements IClient<URL> {
+  private worker: Worker;
+  private state: IStateManager;
+  /** Main-thread writer: msg archive + local apply for fast UI. */
+  private local: SyncClient<URL>;
+  private nextId = 1;
+  private pending = new Map<number, Pending>();
+  private ready: Promise<void>;
+  private resolveReady: (() => void) | undefined;
+  private rejectReady: ((e: Error) => void) | undefined;
+  /** Debounced local write → worker upload/sync. */
+  private scheduledSync: Debounced;
+
+  private cachedClientState: IDiplomaticClientState = {
+    hasSeed: false,
+    hasHost: false,
+    connected: false,
+  };
+  private cachedXferState: IDiplomaticClientXferState = {
+    numUploads: 0,
+    numDownloads: 0,
+    progress: idleProgress,
+  };
+
+  public clientState: IStateEmitter<IDiplomaticClientState>;
+  public xferState: IStateEmitter<IDiplomaticClientXferState>;
+
+  private constructor(
+    worker: Worker,
+    state: IStateManager,
+    store: IStore<URL>,
+    clock: IClock,
+    syncDebounceMs: number,
+  ) {
+    this.worker = worker;
+    this.state = state;
+    this.clientState = new StateEmitter(async () => this.cachedClientState);
+    this.xferState = new StateEmitter(async () => this.cachedXferState);
+    this.scheduledSync = new Debounced(syncDebounceMs, async () => {
+      try {
+        await this.request({ id: this.allocId(), op: "sync" });
+      } catch (e) {
+        console.error(`${logPrefix} worker sync after local write failed`, e);
+      }
+    });
+
+    // Local mutates write shared IDB and apply state on main; push/sync goes to worker.
+    this.local = new SyncClient(
+      clock,
+      state,
+      store,
+      () => {
+        throw new Error(
+          `${logPrefix} local writer has no transport (use worker for network)`,
+        );
+      },
+      crypto,
+      true,
+      undefined,
+      undefined,
+      () => {
+        this.scheduledSync.schedule();
+      },
+    );
+
+    this.ready = new Promise<void>((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+
+    this.worker.onmessage = (ev: MessageEvent<unknown>) => {
+      this.onMessage(ev.data);
+    };
+    this.worker.onerror = (ev) => {
+      console.error(`${logPrefix} worker error`, ev);
+      this.failReady(new Error(`${logPrefix} worker failed to load`));
+    };
+    this.worker.onmessageerror = () => {
+      this.failReady(new Error(`${logPrefix} worker message error`));
+    };
+  }
+
+  private failReady(err: Error) {
+    const rej = this.rejectReady;
+    this.rejectReady = undefined;
+    this.resolveReady = undefined;
+    if (rej) {
+      rej(err);
+    }
+  }
+
+  /**
+   * Run any pending debounced worker sync now and await it.
+   * Useful in tests (with real debounce) or after a burst of local writes.
+   */
+  async flushScheduledSync(): Promise<void> {
+    await this.scheduledSync.flush();
+  }
+
+  /**
+   * Attach to an app-provided Worker. `store` is the shared protocol IDB (main
+   * connection) used for local msg writes; worker opens its own connection.
+   * Throws if the worker never becomes ready — does not fall back to main thread.
+   */
+  static async connect(
+    state: IStateManager,
+    store: IStore<URL>,
+    opts: WorkerClientOptions,
+  ): Promise<WorkerClient> {
+    const clock = opts.clock ?? new Clock();
+    const debounce = opts.syncDebounceMs ?? defaultSyncDebounceMs;
+    const client = new WorkerClient(opts.worker, state, store, clock, debounce);
+    const timeoutMs = opts.readyTimeoutMs ?? 15_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        client.ready,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new Error(
+                `${logPrefix} worker ready timeout after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } catch (e) {
+      client.terminate();
+      throw e;
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
+    return client;
+  }
+
+  /** Lightweight RPC check after connect. */
+  async ping(): Promise<void> {
+    await this.ready;
+    const result = await this.request({ id: this.allocId(), op: "ping" });
+    if (result !== "pong") {
+      throw new Error(`${logPrefix} worker ping failed`);
+    }
+  }
+
+  /** Terminate the worker (drops protocol DB connection in that thread). */
+  terminate() {
+    this.scheduledSync.cancel();
+    this.worker.terminate();
+    for (const [, p] of this.pending) {
+      p.reject(new Error(`${logPrefix} worker terminated`));
+    }
+    this.pending.clear();
+  }
+
+  private onMessage(data: unknown) {
+    if (!isWorkerEvent(data)) {
+      return;
+    }
+    const msg: WorkerEvent = data;
+
+    switch (msg.kind) {
+      case "ready": {
+        const done = this.resolveReady;
+        this.resolveReady = undefined;
+        this.rejectReady = undefined;
+        if (done) done();
+        return;
+      }
+      case "clientState": {
+        this.cachedClientState = msg.state;
+        this.clientState.emit();
+        return;
+      }
+      case "xferState": {
+        this.cachedXferState = msg.state;
+        this.xferState.emit();
+        return;
+      }
+      case "dirty": {
+        // Worker wrote application state (shared EntDB IDB); re-notify UI.
+        this.state.notify(msg.types);
+        return;
+      }
+      case "wiped": {
+        // Worker cleared stores; refresh subscribers (clear is idempotent on IDB).
+        void this.state.clear();
+        return;
+      }
+      case "reply": {
+        const p = this.pending.get(msg.id);
+        if (!p) {
+          return;
+        }
+        this.pending.delete(msg.id);
+        if (msg.ok) {
+          p.resolve(msg.result);
+        } else {
+          p.reject(new WorkerReplyError(msg.status));
+        }
+        return;
+      }
+      default: {
+        return;
+      }
+    }
+  }
+
+  private allocId(): number {
+    const id = this.nextId;
+    this.nextId += 1;
+    return id;
+  }
+
+  private request(
+    cmd: WorkerCmd,
+    transfer?: Transferable[],
+  ): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      this.pending.set(cmd.id, { resolve, reject });
+      if (transfer && transfer.length > 0) {
+        this.worker.postMessage(cmd, transfer);
+      } else {
+        this.worker.postMessage(cmd);
+      }
+    });
+  }
+
+  private async requestStatus(
+    cmd: WorkerCmd,
+    transfer?: Transferable[],
+  ): Promise<Status> {
+    try {
+      const result = await this.request(cmd, transfer);
+      const st = statusFromUnknown(result);
+      if (st !== undefined) {
+        return st;
+      }
+      return Status.Success;
+    } catch (e) {
+      if (e instanceof WorkerReplyError) {
+        return e.status;
+      }
+      return Status.InternalError;
+    }
+  }
+
+  private serializeHost(
+    host: IHostConnectionInfo<URL>,
+  ): SerializedHost {
+    return {
+      handle: host.handle.href,
+      label: host.label,
+      idx: host.idx ?? 0,
+    };
+  }
+
+  async setSeed(seed: MasterSeed): Promise<void> {
+    await this.ready;
+    // Shared IDB: main cache + worker enclave both need the seed.
+    await this.local.setSeed(seed);
+    const copy = seed.slice();
+    await this.request(
+      { id: this.allocId(), op: "setSeed", seed: copy },
+      [copy.buffer],
+    );
+  }
+
+  async link(
+    host: IHostConnectionInfo<URL>,
+    connect = true,
+  ): Promise<void> {
+    await this.ready;
+    // Hosts live in shared IDB; worker owns network registration.
+    await this.local.link(host, false);
+    await this.request({
+      id: this.allocId(),
+      op: "link",
+      host: this.serializeHost(host),
+      connect,
+    });
+  }
+
+  async unlink(label: string): Promise<void> {
+    await this.ready;
+    await this.local.unlink(label);
+    await this.request({ id: this.allocId(), op: "unlink", label });
+  }
+
+  async connect(listen = true, sync = true): Promise<void> {
+    await this.ready;
+    await this.request({
+      id: this.allocId(),
+      op: "connect",
+      listen,
+      sync,
+    });
+  }
+
+  async disconnect(): Promise<void> {
+    await this.ready;
+    await this.request({ id: this.allocId(), op: "disconnect" });
+  }
+
+  /** Local UI write: archive + apply on main (fast UI); upload/sync via worker. */
+  async insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>> {
+    await this.ready;
+    return this.local.insertRaw(content);
+  }
+
+  async upsertRaw(
+    eid: EntityID,
+    content: SerializedContent | undefined,
+    force?: boolean,
+  ): Promise<ValStat<IMessageHead>> {
+    await this.ready;
+    return this.local.upsertRaw(eid, content, force);
+  }
+
+  async insert<T = unknown>(
+    op: IInsertParams<T>,
+  ): Promise<ValStat<IMessageHead>> {
+    await this.ready;
+    return this.local.insert(op);
+  }
+
+  async upsert<T = unknown>(
+    op: IUpsertParams<T>,
+    force?: boolean,
+  ): Promise<ValStat<IMessageHead>> {
+    await this.ready;
+    return this.local.upsert(op, force);
+  }
+
+  async delete(eid: EntityID): Promise<ValStat<IMessageHead>> {
+    await this.ready;
+    return this.local.delete(eid);
+  }
+
+  async sync(): Promise<Status> {
+    await this.ready;
+    return this.requestStatus({ id: this.allocId(), op: "sync" });
+  }
+
+  async wipe(): Promise<void> {
+    await this.ready;
+    await this.request({ id: this.allocId(), op: "wipe" });
+  }
+
+  async import(file: File): Promise<Status> {
+    await this.ready;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return this.requestStatus(
+      { id: this.allocId(), op: "import", bytes },
+      [bytes.buffer],
+    );
+  }
+
+  async export(filename: string, _extension?: string): Promise<Status> {
+    await this.ready;
+    try {
+      const result = await this.request({
+        id: this.allocId(),
+        op: "export",
+      });
+      if (!(result instanceof Uint8Array)) {
+        return Status.InternalError;
+      }
+      const blob = new Blob([result.slice()]);
+      saveBlob(blob, filename);
+      return Status.Success;
+    } catch (e) {
+      if (e instanceof WorkerReplyError) {
+        return e.status;
+      }
+      return Status.InternalError;
+    }
+  }
+}
+
+class WorkerReplyError extends Error {
+  constructor(public status: Status) {
+    super(`WorkerReplyError: ${Status[status]}`);
+    this.name = "WorkerReplyError";
+  }
+}

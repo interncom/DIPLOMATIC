@@ -30,6 +30,8 @@
   },
   "scripts": {
     "build": "bun run build-web.mjs && bun run build-cli.mjs",
+    "build:verbose": "bun run build-web.mjs --verbose && bun run build-cli.mjs --verbose",
+
     "check": "node check.mjs",
     "clean": "rm -rf dist",
     "tsc": "tsc --project ../web/tsconfig.json",

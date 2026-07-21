@@ -53,6 +53,7 @@ const createClient = async (clock = mockClock) => {
     async clear() {
       return Status.Success;
     },
+    notify() {},
     on(_type, _listener) { },
     off(_type, _listener) { },
   };
@@ -98,7 +99,11 @@ describe("Client", () => {
     test("with zero counts", async () => {
       const { client } = await createClient();
       const xferState = await client.xferState.get();
-      expect(xferState).toEqual({ numDownloads: 0, numUploads: 0 });
+      expect(xferState).toEqual({
+        numDownloads: 0,
+        numUploads: 0,
+        progress: { phase: "idle" },
+      });
     });
 
     test("with non-zero counts", async () => {
@@ -120,7 +125,17 @@ describe("Client", () => {
       await store.uploads.enq("label", [hash1, hash2]);
       await store.downloads.enq([dl]);
       const xferState = await client.xferState.get();
-      expect(xferState).toEqual({ numDownloads: 1, numUploads: 2 });
+      expect(xferState).toEqual({
+        numDownloads: 1,
+        numUploads: 2,
+        progress: { phase: "idle" },
+      });
+    });
+
+    test("includes idle progress in snapshot by default", async () => {
+      const { client } = await createClient();
+      const xferState = await client.xferState.get();
+      expect(xferState.progress).toEqual({ phase: "idle" });
     });
   });
 
@@ -157,6 +172,7 @@ describe("Client", () => {
           cleared = true;
           return Status.Success;
         },
+        notify() {},
         on(_type, _listener) { },
         off(_type, _listener) { },
       };

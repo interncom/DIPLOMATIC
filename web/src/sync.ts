@@ -15,6 +15,11 @@ import { Enclave } from "./shared/enclave";
 import { decryptPeekItem } from "./shared/sync";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import {
+  defaultPeekProgressEvery,
+  ProgressFn,
+  shouldEmitItemProgress,
+} from "./progress";
+import {
   IDownloadMessage,
   IHostRow,
   IMsgParts,
@@ -39,6 +44,10 @@ export interface ISyncParams<Handle extends HostHandle> {
   maxPushBytes?: number;
   /** Soft max body bytes (head.len) per pull request. Oversized items go alone. */
   maxPullBytes?: number;
+  /** Optional progress sink (phases + item/batch ticks). */
+  onProgress?: ProgressFn;
+  /** Peek progress stride in heads (default `defaultPeekProgressEvery`). */
+  peekProgressEvery?: number;
 }
 
 /** Approximate on-wire bag size (sig + kdm + ciphers). Soft limit only. */
@@ -199,7 +208,15 @@ export async function pullBatch<Handle extends HostHandle>(
 
 // Phase 1: Peek for new items and enqueue downloads
 export async function syncPeek<Handle extends HostHandle>(
-  { conn, store, enclave, host, crypto }: ISyncParams<Handle>,
+  {
+    conn,
+    store,
+    enclave,
+    host,
+    crypto,
+    onProgress,
+    peekProgressEvery,
+  }: ISyncParams<Handle>,
 ): Promise<Status> {
   // console.info("peeking...")
   const hostKeys = await conn.keys();
@@ -208,6 +225,12 @@ export async function syncPeek<Handle extends HostHandle>(
   if (peekStatus !== Status.Success) {
     return peekStatus;
   }
+  const total = items.length;
+  const every = peekProgressEvery ?? defaultPeekProgressEvery;
+  if (onProgress && total > 0) {
+    onProgress({ phase: "peek", host: host.label, done: 0, total });
+  }
+  let processed = 0;
   for (const item of items) {
     const [itemDec, stat] = await decryptPeekItem(
       item,
@@ -217,6 +240,18 @@ export async function syncPeek<Handle extends HostHandle>(
     );
     if (stat !== Status.Success) {
       console.error("peek: decrypting item head", stat);
+      processed += 1;
+      if (
+        onProgress &&
+        shouldEmitItemProgress(processed, total, every)
+      ) {
+        onProgress({
+          phase: "peek",
+          host: host.label,
+          done: processed,
+          total,
+        });
+      }
       continue;
       // NOTE: skipping here has the potential to create out-of-sync issues.
       // The resolution will be the CHECK mechanism to ensure client and host
@@ -228,6 +263,18 @@ export async function syncPeek<Handle extends HostHandle>(
     if (msgExists) {
       console.info("peek: skipping download enqueue");
       await store.uploads.deq(host.label, [headEncHash]);
+      processed += 1;
+      if (
+        onProgress &&
+        shouldEmitItemProgress(processed, total, every)
+      ) {
+        onProgress({
+          phase: "peek",
+          host: host.label,
+          done: processed,
+          total,
+        });
+      }
       continue;
     }
 
@@ -235,10 +282,34 @@ export async function syncPeek<Handle extends HostHandle>(
     const [head, headStatus] = headDec.readStruct(messageHeadCodec);
     if (headStatus !== Status.Success) {
       console.error("peek: reading item head", headStatus);
+      processed += 1;
+      if (
+        onProgress &&
+        shouldEmitItemProgress(processed, total, every)
+      ) {
+        onProgress({
+          phase: "peek",
+          host: host.label,
+          done: processed,
+          total,
+        });
+      }
       continue;
     }
 
     dls.push({ kdm: itemDec.kdm, head, seq: item.seq, host: host.label });
+    processed += 1;
+    if (
+      onProgress &&
+      shouldEmitItemProgress(processed, total, every)
+    ) {
+      onProgress({
+        phase: "peek",
+        host: host.label,
+        done: processed,
+        total,
+      });
+    }
   }
   await store.downloads.enq(dls);
 
@@ -248,17 +319,32 @@ export async function syncPeek<Handle extends HostHandle>(
     await store.hosts.touch(host.label, maxSeq);
   }
 
+  if (onProgress) {
+    onProgress({
+      phase: "peek",
+      host: host.label,
+      done: total,
+      total,
+    });
+  }
+
   return Status.Success;
 }
 
 // Phase 2: Push local uploads to the host.
 // Snapshot once, seal, pack by soft byte budget, pushBatch each pack.
 export async function syncPush<Handle extends HostHandle>(
-  { conn, store, host, maxPushBytes }: ISyncParams<Handle>,
+  { conn, store, host, maxPushBytes, onProgress }: ISyncParams<Handle>,
 ): Promise<Status> {
   const limit = maxPushBytes ?? defaultMaxPushBytes;
   // Snapshot: do not re-list between batches.
   const pending = await store.uploads.list(host.label);
+  const total = pending.length;
+  let done = 0;
+
+  if (onProgress && total > 0) {
+    onProgress({ phase: "push", host: host.label, done: 0, total });
+  }
 
   let bags: IBag[] = [];
   let hashes: Hash[] = [];
@@ -268,16 +354,24 @@ export async function syncPush<Handle extends HostHandle>(
     if (bags.length < 1) {
       return Status.Success;
     }
+    const n = bags.length;
     const st = await pushBatch(conn, store, host.label, bags, hashes);
     bags = [];
     hashes = [];
     batchBytes = 0;
+    if (st === Status.Success) {
+      done += n;
+      if (onProgress) {
+        onProgress({ phase: "push", host: host.label, done, total });
+      }
+    }
     return st;
   };
 
   for (const msgHeadEncHash of pending) {
     const storedMsg = await store.messages.get(msgHeadEncHash);
     if (!storedMsg) {
+      done += 1;
       continue;
     }
     const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
@@ -315,7 +409,15 @@ export async function syncPush<Handle extends HostHandle>(
 // Phase 3: Pull and process enqueued downloads.
 // Snapshot once, pack by head.len, pullBatch each pack.
 export async function syncPull<Handle extends HostHandle>(
-  { conn, store, enclave, host, crypto, maxPullBytes }: ISyncParams<Handle>,
+  {
+    conn,
+    store,
+    enclave,
+    host,
+    crypto,
+    maxPullBytes,
+    onProgress,
+  }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
@@ -329,6 +431,12 @@ export async function syncPull<Handle extends HostHandle>(
     return Status.NoChange;
   }
 
+  const total = items.length;
+  let done = 0;
+  if (onProgress) {
+    onProgress({ phase: "pull", host: host.label, done: 0, total });
+  }
+
   let batch: IDownloadMessage[] = [];
   let batchBytes = 0;
 
@@ -336,6 +444,7 @@ export async function syncPull<Handle extends HostHandle>(
     if (batch.length < 1) {
       return Status.Success;
     }
+    const n = batch.length;
     const st = await pullBatch(
       conn,
       store,
@@ -347,6 +456,18 @@ export async function syncPull<Handle extends HostHandle>(
     );
     batch = [];
     batchBytes = 0;
+    if (st === Status.Success) {
+      done += n;
+      if (onProgress) {
+        onProgress({ phase: "pull", host: host.label, done, total });
+        onProgress({
+          phase: "apply",
+          host: host.label,
+          done,
+          total,
+        });
+      }
+    }
     return st;
   };
 
@@ -398,6 +519,8 @@ export async function handleNotif<Handle extends HostHandle>(
     clock,
     maxPullBytes,
     maxPushBytes,
+    onProgress,
+    peekProgressEvery,
   }: ISyncParams<Handle>,
   apply: (
     parts: IMsgParts[],
@@ -527,6 +650,15 @@ export async function handleNotif<Handle extends HostHandle>(
   });
   // TODO: update stored messages to indicate which have been successfully applied, so they can be retried if not.
 
+  if (onProgress && successfulParts.length > 0) {
+    onProgress({
+      phase: "apply",
+      host: host.label,
+      done: successfulParts.length,
+      total: successfulParts.length,
+    });
+  }
+
   // Handle errors.
   for (let i = 0; i < statsApply.length; i++) {
     const statStore = statsStore[i];
@@ -548,7 +680,18 @@ export async function handleNotif<Handle extends HostHandle>(
     scheduleSync();
   } else {
     await syncPull(
-      { conn, store, enclave, host, crypto, clock, maxPullBytes, maxPushBytes },
+      {
+        conn,
+        store,
+        enclave,
+        host,
+        crypto,
+        clock,
+        maxPullBytes,
+        maxPushBytes,
+        onProgress,
+        peekProgressEvery,
+      },
       apply,
     );
   }

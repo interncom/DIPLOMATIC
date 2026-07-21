@@ -63,6 +63,7 @@ function mockState(
     async clear() {
       return Status.Success;
     },
+    notify() {},
     on() {},
     off() {},
   };

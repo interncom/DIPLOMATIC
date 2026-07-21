@@ -83,6 +83,14 @@ export class SingletonStateManager implements IStateManager {
     return Status.Success;
   };
 
+  notify = (types: Iterable<string>) => {
+    for (const type of types) {
+      if (type === this.singletonType) {
+        this.emitter.emit(this.singletonType, null);
+      }
+    }
+  };
+
   on = (event: string, listener: () => void) => {
     this.emitter.addEventListener(event, listener);
   };

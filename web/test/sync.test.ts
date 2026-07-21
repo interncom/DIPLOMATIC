@@ -42,6 +42,7 @@ const createClient = async (seed: Uint8Array) => {
     async clear() {
       return Status.Success;
     },
+    notify() {},
     on(_type, _listener) { },
     off(_type, _listener) { },
   };

@@ -68,18 +68,21 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
 export class StateManager implements IStateManager {
   private emitter = new TypedEventEmitter<null>();
   private clearer: () => Promise<Status>;
+  private onTypes: ((types: Set<string>) => void) | undefined;
 
   constructor(
     public applier: Applier,
     clearer: () => Promise<Status>,
+    /** Optional hook after a successful apply batch (e.g. worker dirty signal). */
+    onTypes?: (types: Set<string>) => void,
   ) {
     this.clearer = clearer;
+    this.onTypes = onTypes;
   }
 
   apply = async (msgs: IMessage[]) => {
     const ops: IOp[] = [];
     const parseStats: Status[] = [];
-    // console.time("state apply: parsing msgs...")
     for (const msg of msgs) {
       const [op, statParse] = msgToOp(msg);
       parseStats.push(statParse);
@@ -88,13 +91,9 @@ export class StateManager implements IStateManager {
       }
       ops.push(op);
     }
-    // console.timeEnd("state apply: parsing msgs...")
 
-    // console.time("state apply: applying ops...")
     const { stats: applyStats, types } = await this.applier(ops);
-    // console.timeEnd("state apply: applying ops...")
 
-    // console.time("state apply: collecting statuses...")
     const results: Status[] = [];
     for (let i = 0; i < msgs.length; i++) {
       const parseStat = parseStats[i];
@@ -109,17 +108,17 @@ export class StateManager implements IStateManager {
       }
       results.push(Status.Success);
     }
-    // console.timeEnd("state apply: collecting statuses...")
 
-    // console.time("state apply: emitting updates...")
     for (const type of types) {
       this.emitter.emit(type, null);
     }
-    // console.timeEnd("state apply: emitting updates...")
+    if (types.size > 0) {
+      this.onTypes?.(types);
+    }
     return results;
   };
 
-  /** Clear underlying store (e.g. EntDB) and notify all type subscribers. */
+  /** Clear application state and notify all type subscribers. */
   clear = async (): Promise<Status> => {
     const stat = await this.clearer();
     if (stat !== Status.Success) {
@@ -127,6 +126,13 @@ export class StateManager implements IStateManager {
     }
     this.emitter.emitAll(null);
     return stat;
+  };
+
+  /** Notify type subscribers without applying msgs (shared-IDB peer updates). */
+  notify = (types: Iterable<string>) => {
+    for (const type of types) {
+      this.emitter.emit(type, null);
+    }
   };
 
   on = (opType: string, listener: () => void) => {
@@ -145,6 +151,8 @@ export const nullStateManager: IStateManager = {
   },
   clear: async function () {
     return Status.Success;
+  },
+  notify: function (_types): void {
   },
   on: function (_type, _listener): void {
   },

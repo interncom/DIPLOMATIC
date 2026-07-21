@@ -1,25 +1,23 @@
 import { useEffect, useState } from "react";
-import { SyncClient } from "../client";
+import { entStateManager, IEntDB } from "../entdb/entdb";
+import { openEntIDB } from "../entdb/idb";
+import { openDiplomaticClient } from "../openClient";
+import { Clock, IClock } from "../shared/clock";
 import {
-  HostHandle,
   IHostConnectionInfo,
   IStateManager,
   MasterSeed,
 } from "../shared/types";
+import { nullStateManager } from "../state";
 import type {
+  IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
+  IStore,
 } from "../types";
-import crypto from "../crypto";
-import { entStateManager, IEntDB } from "../entdb/entdb";
-import { openEntIDB } from "../entdb/idb";
-import { nullStateManager } from "../state";
-import { openIDBStore } from "../stores/idb/store";
-import { Clock, IClock } from "../shared/clock";
-import { hostHTTPTransport } from "../shared/http";
 
-export function useClientState<Handle extends HostHandle>(
-  client: SyncClient<Handle>,
+export function useClientState(
+  client: Pick<IClient<URL>, "clientState">,
 ) {
   const [state, setState] = useState<IDiplomaticClientState>();
   useEffect(() => {
@@ -36,8 +34,8 @@ export function useClientState<Handle extends HostHandle>(
   return state;
 }
 
-export function useClientXferState<Handle extends HostHandle>(
-  client: SyncClient<Handle>,
+export function useClientXferState(
+  client: Pick<IClient<URL>, "xferState">,
 ) {
   const [state, setState] = useState<IDiplomaticClientXferState>();
   useEffect(() => {
@@ -54,8 +52,8 @@ export function useClientXferState<Handle extends HostHandle>(
   return state;
 }
 
-export function useSyncOnResume<Handle extends HostHandle>(
-  client: SyncClient<Handle>,
+export function useSyncOnResume(
+  client: Pick<IClient<URL>, "connect" | "sync">,
 ) {
   useEffect(() => {
     async function reconnectAndSync() {
@@ -105,39 +103,124 @@ export function useSyncOnResume<Handle extends HostHandle>(
   }, [client]);
 }
 
-export function useClient(
-  { clock = new Clock(), seed, host }: {
-    clock?: IClock;
-    seed?: MasterSeed;
-    host?: IHostConnectionInfo<URL>;
-  },
-) {
+type UseClientBase = {
+  clock?: IClock;
+  seed?: MasterSeed;
+  host?: IHostConnectionInfo<URL>;
+  readyTimeoutMs?: number;
+};
+
+/**
+ * Worker path: always IndexedDB on main + worker. Custom `store` is forbidden
+ * (type + runtime) so durable state cannot diverge.
+ *
+ * Vite:
+ *   import DiplomaticWorker from "@interncom/diplomatic/worker?worker";
+ *   const syncWorker = new DiplomaticWorker();
+ *   useClient({ worker: syncWorker, seed, host });
+ */
+export type UseClientWorkerOptions = UseClientBase & {
+  /**
+   * App-constructed sync Worker. Create once (module scope or useMemo/useRef),
+   * not each render. See `openDiplomaticClient` for instantiation recipes.
+   */
+  worker: Worker;
+  store?: never;
+};
+
+/**
+ * Main-thread path. Optional custom store; default IndexedDB.
+ */
+export type UseClientMainOptions = UseClientBase & {
+  worker?: undefined;
+  /**
+   * Protocol store override. Default: IndexedDB. Pass explicitly for
+   * MemoryStore or other backends. Incompatible with `worker`.
+   */
+  store?: IStore<URL>;
+};
+
+export type UseClientOptions = UseClientWorkerOptions | UseClientMainOptions;
+
+export function useClient(opts: UseClientOptions = {}) {
+  const clock = opts.clock ?? new Clock();
+  const { seed, host, readyTimeoutMs } = opts;
+  const worker = opts.worker;
+  const store = "store" in opts ? opts.store : undefined;
+
   const [diplomaticState, setDiplomaticState] = useState<{
-    client?: SyncClient<URL>;
+    client?: IClient<URL>;
     entDB?: IEntDB;
     stateMgr: IStateManager;
+    mode?: "worker" | "main";
+    /** Set when open/init fails (e.g. misconfigured worker). */
+    error?: Error;
   }>({ stateMgr: nullStateManager });
 
   useEffect(() => {
-    Promise.all([openIDBStore(crypto), openEntIDB()]).then(
-      async ([store, entDB]) => {
-        const entMgr = entStateManager(entDB);
-        const client = new SyncClient(
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+
+    (async () => {
+      const entDB = await openEntIDB();
+      if (cancelled) return;
+      const entMgr = entStateManager(entDB);
+
+      // Narrow so worker+store cannot be passed together (mirrors options union).
+      const opened = worker !== undefined
+        ? await openDiplomaticClient({
+          state: entMgr,
           clock,
-          entMgr,
+          worker,
+          readyTimeoutMs,
+        })
+        : await openDiplomaticClient({
+          state: entMgr,
+          clock,
           store,
-          hostHTTPTransport,
-          crypto,
-        );
-        if (seed) {
-          await client.setSeed(seed);
-        }
-        if (host) {
-          await client.link(host);
-        }
-        setDiplomaticState({ client, entDB, stateMgr: entMgr });
-      },
-    );
-  }, [clock, seed]);
+          readyTimeoutMs,
+        });
+      if (cancelled) {
+        opened.dispose();
+        return;
+      }
+      dispose = opened.dispose;
+      const { client, mode } = opened;
+
+      if (seed) {
+        await client.setSeed(seed);
+      }
+      if (host) {
+        await client.link(host);
+      }
+      if (cancelled) {
+        dispose();
+        return;
+      }
+      setDiplomaticState({
+        client,
+        entDB,
+        stateMgr: entMgr,
+        mode,
+        error: undefined,
+      });
+    })().catch((err) => {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error("[DIPLOMATIC] useClient init failed", error);
+      if (!cancelled) {
+        setDiplomaticState((prev) => ({
+          ...prev,
+          client: undefined,
+          error,
+        }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
+  }, [clock, seed, host, worker, store, readyTimeoutMs]);
+
   return diplomaticState;
 }

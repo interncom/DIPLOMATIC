@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { CoalesceTail } from "../src/coalesce";
+import { describe, expect, test, vi } from "vitest";
+import { CoalesceTail, Debounced } from "../src/coalesce";
 import { Status } from "../src/shared/consts";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
@@ -146,6 +146,73 @@ describe("CoalesceTail", () => {
   });
 });
 
+describe("Debounced", () => {
+  test("delay 0 runs work without waiting", async () => {
+    let n = 0;
+    const d = new Debounced(0, async () => {
+      n++;
+    });
+    d.schedule();
+    d.schedule();
+    await d.flush();
+    // CoalesceTail may run 1–2 passes for two immediate schedules.
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect(n).toBeLessThanOrEqual(2);
+  });
+
+  test("positive delay coalesces rapid schedule() into one fire", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const d = new Debounced(100, async () => {
+        n++;
+      });
+      d.schedule();
+      d.schedule();
+      d.schedule();
+      expect(n).toBe(0);
+      await vi.advanceTimersByTimeAsync(100);
+      await d.flush();
+      expect(n).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("flush runs pending work immediately", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const d = new Debounced(5000, async () => {
+        n++;
+      });
+      d.schedule();
+      expect(n).toBe(0);
+      await d.flush();
+      expect(n).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("cancel drops pending timer without running", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const d = new Debounced(100, async () => {
+        n++;
+      });
+      d.schedule();
+      d.cancel();
+      await vi.advanceTimersByTimeAsync(200);
+      await d.flush();
+      expect(n).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("SyncClient.sync coalesce+trailing", () => {
   test("overlapping sync() calls do not overlap doSync and share final Status", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
@@ -156,6 +223,7 @@ describe("SyncClient.sync coalesce+trailing", () => {
       async clear() {
         return Status.Success;
       },
+      notify() {},
       on() {},
       off() {},
     };

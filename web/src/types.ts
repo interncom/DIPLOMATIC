@@ -237,6 +237,9 @@ export interface IClient<Handle extends HostHandle> {
   ): Promise<ValStat<IMessageHead>>;
   delete(eid: EntityID): Promise<ValStat<IMessageHead>>;
 
+  /** Allocate an entity id (optional 8-byte id material; else random). */
+  genEID(id?: Uint8Array): Promise<ValStat<EntityID>>;
+
   sync(): Promise<Status>;
 
   wipe(): Promise<void>;

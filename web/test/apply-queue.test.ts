@@ -14,7 +14,7 @@ import type {
   IStateManager,
   MasterSeed,
 } from "../src/shared/types";
-import { isPendingApply } from "../src/types";
+import { isPendingApply, normalizeStoredMessageData } from "../src/types";
 import { msg2StoredMsgData } from "../src/sync";
 import { MockClock } from "../src/shared/clock";
 import { makeEID } from "../src/shared/codecs/eid";
@@ -94,11 +94,15 @@ describe("isPendingApply / normalizeStoredMessageData", () => {
     expect(isPendingApply({ eid, apld: true })).toBe(false);
   });
 
-  test("normalize coerces missing apld to false", async () => {
-    const { normalizeStoredMessageData } = await import("../src/types");
-    const n = normalizeStoredMessageData({ eid: eidOf(1), body: new Uint8Array([1]) });
+  test("normalize coerces missing apld and IDB t/f", () => {
+    const eid = eidOf(1);
+    const n = normalizeStoredMessageData({ eid, body: new Uint8Array([1]) });
     expect(n.apld).toBe(false);
-    expect(n.eid).toEqual(eidOf(1));
+    expect(n.eid).toEqual(eid);
+    expect(normalizeStoredMessageData({ eid, apld: "f" }).apld).toBe(false);
+    expect(normalizeStoredMessageData({ eid, apld: "t" }).apld).toBe(true);
+    expect(normalizeStoredMessageData({ eid, apld: false }).apld).toBe(false);
+    expect(normalizeStoredMessageData({ eid, apld: true }).apld).toBe(true);
   });
 });
 

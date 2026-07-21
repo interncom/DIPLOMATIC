@@ -30,6 +30,7 @@ import type {
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
+  IHostRow,
   IStateEmitter,
   IStore,
 } from "../types";
@@ -356,6 +357,12 @@ export class WorkerClient implements IClient<URL> {
     await this.ready;
     await this.local.unlink(label);
     await this.request({ id: this.allocId(), op: "unlink", label });
+  }
+
+  /** Hosts live in shared main IDB (same as local writer). */
+  async hosts(): Promise<IHostRow<URL>[]> {
+    await this.ready;
+    return this.local.hosts();
   }
 
   async connect(listen = true, sync = true): Promise<void> {

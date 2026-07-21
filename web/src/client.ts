@@ -620,6 +620,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.clientState.emit();
   }
 
+  public async hosts(): Promise<IHostRow<Handle>[]> {
+    return Array.from(await this.store.hosts.list());
+  }
+
   private connectToHost = async (
     host: IHostRow<Handle>,
     listen = true,

@@ -95,6 +95,22 @@ describe("Client", () => {
     });
   });
 
+  describe("hosts", () => {
+    test("returns empty when none linked", async () => {
+      const { client } = await createClient();
+      expect(await client.hosts()).toEqual([]);
+    });
+
+    test("returns linked hosts", async () => {
+      const { client } = await createClient();
+      await client.link(testHost, false);
+      const hosts = await client.hosts();
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0].label).toBe(testHost.label);
+      expect(hosts[0].handle).toEqual(testHost.handle);
+    });
+  });
+
   describe("getXferState", () => {
     test("with zero counts", async () => {
       const { client } = await createClient();

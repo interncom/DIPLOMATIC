@@ -18,52 +18,81 @@ export type PostFn = (msg: WorkerEvent, transfer?: Transferable[]) => void;
 export class WorkerRuntime {
   private client: SyncClient<URL> | undefined;
   private post: PostFn;
+  /** Resolves when init finishes (success or failure). Cmds wait on this. */
+  private whenReady: Promise<void>;
+  private resolveReady: (() => void) | undefined;
+  private rejectReady: ((e: Error) => void) | undefined;
 
   constructor(post: PostFn) {
     this.post = post;
+    this.whenReady = new Promise<void>((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
   }
 
   async init(): Promise<void> {
-    const store = await openIDBStore(crypto);
-    const entDB = await openEntIDB();
-    // Real EntDB apply in-worker; signal main to re-read shared IDB.
-    const state = new StateManager(
-      entDB.apply,
-      () => entDB.clear(),
-      (types) => {
-        this.post({ kind: "dirty", types: Array.from(types) });
-      },
-    );
-    // Ensure clear also notifies main (wipe path).
-    const origClear = state.clear;
-    state.clear = async () => {
-      const st = await origClear();
-      if (st === Status.Success) {
-        this.post({ kind: "wiped" });
-      }
-      return st;
-    };
+    try {
+      const store = await openIDBStore(crypto);
+      const entDB = await openEntIDB();
+      // Real EntDB apply in-worker; signal main to re-read shared IDB.
+      const state = new StateManager(
+        entDB.apply,
+        () => entDB.clear(),
+        (types) => {
+          this.post({ kind: "dirty", types: Array.from(types) });
+        },
+      );
+      // Ensure clear also notifies main (wipe path).
+      const origClear = state.clear;
+      state.clear = async () => {
+        const st = await origClear();
+        if (st === Status.Success) {
+          this.post({ kind: "wiped" });
+        }
+        return st;
+      };
 
-    const client = new SyncClient(
-      new Clock(),
-      state,
-      store,
-      hostHTTPTransport,
-      crypto,
-    );
-    this.client = client;
+      const client = new SyncClient(
+        new Clock(),
+        state,
+        store,
+        hostHTTPTransport,
+        crypto,
+      );
+      this.client = client;
 
-    // Progress lives on xferState; one channel for queues + phase ticks.
-    client.clientState.listen(() => {
-      void this.emitClientState();
-    });
-    client.xferState.listen(() => {
-      void this.emitXferState();
-    });
+      // Progress lives on xferState; one channel for queues + phase ticks.
+      client.clientState.listen(() => {
+        void this.emitClientState();
+      });
+      client.xferState.listen(() => {
+        void this.emitXferState();
+      });
 
-    this.post({ kind: "ready" });
-    await this.emitClientState();
-    await this.emitXferState();
+      this.post({ kind: "ready" });
+      this.markReady();
+      await this.emitClientState();
+      await this.emitXferState();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.failReady(err);
+      throw err;
+    }
+  }
+
+  private markReady() {
+    const done = this.resolveReady;
+    this.resolveReady = undefined;
+    this.rejectReady = undefined;
+    if (done) done();
+  }
+
+  private failReady(err: Error) {
+    const rej = this.rejectReady;
+    this.resolveReady = undefined;
+    this.rejectReady = undefined;
+    if (rej) rej(err);
   }
 
   private requireClient(): SyncClient<URL> {
@@ -96,6 +125,10 @@ export class WorkerRuntime {
   }
 
   async handle(cmd: WorkerCmd): Promise<unknown> {
+    // Early cmds (esp. main-thread handshake ping) wait until init finishes.
+    // Unsolicited `ready` can be missed if the app constructed the Worker before
+    // attaching onmessage; request/response still works.
+    await this.whenReady;
     const client = this.requireClient();
 
     switch (cmd.op) {

@@ -52,11 +52,19 @@ type Pending = {
  *
  * Provide a live `Worker` — the library never constructs one. See
  * `openDiplomaticClient` for bundler/CDN instantiation recipes.
+ *
+ * Handshake is race-safe: the worker posts unsolicited `{ kind: "ready" }`, but
+ * connect also probes with `ping`. Early construction (module scope) is fine even
+ * if `ready` fired before `onmessage` was set — the ping still succeeds once the
+ * worker has finished init (cmds are held until then on the worker side).
  */
 export type WorkerClientOptions = {
   /** Already-constructed module Worker running `@interncom/diplomatic/worker`. */
   worker: Worker;
-  /** Max wait for worker `ready` (default 15s). Failures throw; no fallback. */
+  /**
+   * Max wait for handshake (`ready` event or probe ping; default 15s).
+   * Failures throw; no fallback.
+   */
   readyTimeoutMs?: number;
   clock?: IClock;
   /**
@@ -171,6 +179,10 @@ export class WorkerClient implements IClient<URL> {
    * Attach to an app-provided Worker. `store` is the shared protocol IDB (main
    * connection) used for local msg writes; worker opens its own connection.
    * Throws if the worker never becomes ready — does not fall back to main thread.
+   *
+   * Handshake: wait for unsolicited `ready` **or** a successful probe `ping`.
+   * The probe covers the common case where the app started the Worker early and
+   * `ready` was dropped before this thread set `onmessage`.
    */
   static async connect(
     state: IStateManager,
@@ -183,8 +195,12 @@ export class WorkerClient implements IClient<URL> {
     const timeoutMs = opts.readyTimeoutMs ?? 15_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      // Probe immediately after attaching the listener. Worker holds cmds until
+      // init completes, so this also works while the worker is still booting.
+      const probe = client.probeReady();
       await Promise.race([
         client.ready,
+        probe,
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             reject(
@@ -195,6 +211,13 @@ export class WorkerClient implements IClient<URL> {
           }, timeoutMs);
         }),
       ]);
+      // If the unsolicited ready won the race, still surface probe failures
+      // (e.g. broken postMessage) rather than returning a half-dead client.
+      // Probe resolves when pong arrives; if ready already marked us live, the
+      // pending pong is harmless.
+      void probe.catch(() => {
+        // Terminated / timed out paths reject pending; ignore after race.
+      });
     } catch (e) {
       client.terminate();
       throw e;
@@ -204,6 +227,36 @@ export class WorkerClient implements IClient<URL> {
       }
     }
     return client;
+  }
+
+  /** Resolve the ready barrier (idempotent). */
+  private markReady() {
+    const done = this.resolveReady;
+    this.resolveReady = undefined;
+    this.rejectReady = undefined;
+    if (done) done();
+  }
+
+  /**
+   * Active handshake: post ping without waiting for the ready event.
+   * On pong, mark ready so connect can proceed even if `ready` was missed.
+   */
+  private probeReady(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const id = this.allocId();
+      this.pending.set(id, {
+        resolve: (v) => {
+          if (v === "pong") {
+            this.markReady();
+            resolve();
+            return;
+          }
+          reject(new Error(`${logPrefix} worker probe ping failed`));
+        },
+        reject,
+      });
+      this.worker.postMessage({ id, op: "ping" } satisfies WorkerCmd);
+    });
   }
 
   /** Lightweight RPC check after connect. */
@@ -233,10 +286,7 @@ export class WorkerClient implements IClient<URL> {
 
     switch (msg.kind) {
       case "ready": {
-        const done = this.resolveReady;
-        this.resolveReady = undefined;
-        this.rejectReady = undefined;
-        if (done) done();
+        this.markReady();
         return;
       }
       case "clientState": {

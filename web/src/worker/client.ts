@@ -415,6 +415,11 @@ export class WorkerClient implements IClient<URL> {
     return this.local.delete(eid);
   }
 
+  async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {
+    await this.ready;
+    return this.local.genEID(id);
+  }
+
   async sync(): Promise<Status> {
     await this.ready;
     return this.requestStatus({ id: this.allocId(), op: "sync" });

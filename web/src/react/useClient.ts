@@ -118,11 +118,16 @@ type UseClientBase = {
  *   import DiplomaticWorker from "@interncom/diplomatic/worker?worker";
  *   const syncWorker = new DiplomaticWorker();
  *   useClient({ worker: syncWorker, seed, host });
+ *
+ * Handshake is race-safe (ready event and/or probe ping). See
+ * `openDiplomaticClient` for bundler recipes and handshake notes.
  */
 export type UseClientWorkerOptions = UseClientBase & {
   /**
    * App-constructed sync Worker. Create once (module scope or useMemo/useRef),
-   * not each render. See `openDiplomaticClient` for instantiation recipes.
+   * not each render. Early construction before `useClient` opens IDB is OK —
+   * the library does not require catching the unsolicited `ready` event.
+   * See `openDiplomaticClient` for instantiation recipes.
    */
   worker: Worker;
   store?: never;

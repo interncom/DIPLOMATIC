@@ -30,6 +30,16 @@ import { WorkerClient } from "./worker/client";
  * (built as `worker.mjs` in the published package). It must run as a
  * **module** worker (`type: "module"`).
  *
+ * ## Handshake (race-safe)
+ *
+ * The worker posts an unsolicited `{ kind: "ready" }` after init. Apps often
+ * construct the Worker at module load (or before `openDiplomaticClient` finishes
+ * opening IndexedDB), so that event can fire before the library sets
+ * `onmessage`. **That is fine:** connect also probes with a request/response
+ * `ping`. The worker holds commands until init completes, so the probe succeeds
+ * even if `ready` was dropped. Do **not** reimplement message buffering in the
+ * app unless you need it for other reasons.
+ *
  * ## Vite (recommended for SPA templates)
  *
  * ```ts
@@ -40,6 +50,7 @@ import { WorkerClient } from "./worker/client";
  *
  * `?worker` makes Vite emit a real worker asset and a constructor. Create the
  * instance once (module scope or `useMemo`/`useRef`) — not on every render.
+ * Early construction is supported; the handshake recovers if `ready` is missed.
  *
  * ## webpack / Rollup / esbuild / Parcel (`new URL` + import.meta.url)
  *

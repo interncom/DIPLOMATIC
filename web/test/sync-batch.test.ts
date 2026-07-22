@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { pullBatch, pushBatch } from "../src/sync";
+import { openPulled, pullBodies, pushBatch } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
 import { Enclave } from "../src/shared/enclave";
@@ -130,8 +130,8 @@ describe("pushBatch", () => {
   });
 });
 
-describe("pullBatch", () => {
-  test("stores messages, dequeues downloads, and applies", async () => {
+describe("pullBodies + openPulled", () => {
+  test("pull then open archives msg and deqs download", async () => {
     const store = new MemoryStore<HostHandle>(libsodiumCrypto);
     const enclave = new Enclave(testSeed, libsodiumCrypto);
     const keys = await libsodiumCrypto.deriveEd25519KeyPair(
@@ -173,31 +173,28 @@ describe("pullBatch", () => {
       pull: async () => ok([{ seq: 1, bodyCph: bag.bodyCph }]),
     };
 
-    const applied: Uint8Array[] = [];
-    const st = await pullBatch(
-      conn,
+    const [pulled, pullStat] = await pullBodies(conn, [item]);
+    expect(pullStat).toBe(Status.Success);
+    expect(pulled).toHaveLength(1);
+
+    const [opened, openStat] = await openPulled(
       store,
       enclave,
-      "h",
       libsodiumCrypto,
-      [item],
-      async (parts) => {
-        for (const p of parts) {
-          if (p.body) applied.push(p.body);
-        }
-        return parts.map(() => Status.Success);
-      },
+      pulled ?? [],
     );
-
-    expect(st).toBe(Status.Success);
+    expect(openStat).toBe(Status.Success);
+    expect(opened?.parts).toHaveLength(1);
+    expect(opened?.parts[0].body).toEqual(body);
     expect(await store.downloads.count()).toBe(0);
-    expect(Array.from(await store.messages.list())).toHaveLength(1);
-    expect(applied[0]).toEqual(body);
+    const msgs = Array.from(await store.messages.list());
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].applied).toBe(false);
+    expect(msgs[0].body).toEqual(body);
   });
 
   test("propagates pull failure and leaves queue intact", async () => {
     const store = new MemoryStore<HostHandle>(libsodiumCrypto);
-    const enclave = new Enclave(testSeed, libsodiumCrypto);
     const item: IDownloadMessage = {
       seq: 3,
       host: "h",
@@ -215,17 +212,9 @@ describe("pullBatch", () => {
       pull: async () => err(Status.HostError),
     };
 
-    const st = await pullBatch(
-      conn,
-      store,
-      enclave,
-      "h",
-      libsodiumCrypto,
-      [item],
-      async () => [],
-    );
-
+    const [, st] = await pullBodies(conn, [item]);
     expect(st).toBe(Status.HostError);
     expect(await store.downloads.count()).toBe(1);
   });
 });
+

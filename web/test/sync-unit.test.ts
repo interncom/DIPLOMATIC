@@ -74,7 +74,7 @@ describe("syncPeek", () => {
   });
 
   test("handles empty peek results", async () => {
-    await syncPeek({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
+    await syncPeek({ conn, store, enclave, host, crypto: libsodiumCrypto });
 
     const downloads = Array.from(await store.downloads.list());
     expect(downloads.length).toBe(0);
@@ -131,7 +131,7 @@ describe("syncPeek", () => {
     expect(await store.uploads.list("test")).toContainEqual(headEncHash);
 
     // Peek should notice we already have it locally, skip download, and dequeue the upload.
-    const stat = await syncPeek({ conn, store, enclave, clock, host, crypto: libsodiumCrypto });
+    const stat = await syncPeek({ conn, store, enclave, host, crypto: libsodiumCrypto });
     expect(stat).toBe(Status.Success);
 
     // Upload was dequeued because host already has it.
@@ -226,7 +226,7 @@ describe("syncPush", () => {
     await enqueueMsg(new Uint8Array([3]), 3);
 
     // Force one bag per request (any single bag exceeds a 1-byte budget).
-    // Packing multi-batch behavior is unit-tested in sync-batch.test.ts.
+    // Multi-batch byte budgets are unit-tested in sync-batch.test.ts.
     const stat = await syncPush({
       conn,
       store,
@@ -313,16 +313,13 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    const apply = async (parts: { head: unknown }[]) =>
-      parts.map(() => Status.Success);
     await syncPull({
       conn,
       store,
       enclave,
       host,
       crypto: libsodiumCrypto,
-      clock,
-    }, apply);
+    });
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -330,17 +327,76 @@ describe("syncPull", () => {
     expect(await store.downloads.count()).toBe(0);
   });
 
+  test("single pull batch finishes (no wait for a missing next batch)", async () => {
+    const body = new Uint8Array([9, 8, 7, 6]);
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(2),
+      off: 0,
+      ctr: 0,
+      len: body.length,
+      bod: body,
+      hsh: await libsodiumCrypto.blake3(body),
+    };
+    const [bag, statBag] = await createTestBag(message, enclave);
+    expect(statBag).toBe(Status.Success);
+    if (statBag !== Status.Success || !bag) return;
+
+    const keys = await generateTestKeys(enclave);
+    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+      bag,
+    ]);
+    expect(setStatus).toBe(Status.Success);
+    const seq = seqs?.[0];
+    expect(seq).toBeDefined();
+    if (seq === undefined) return;
+
+    await store.downloads.enq([{
+      kdm: bag.kdm,
+      head: message,
+      host: "test",
+      seq,
+    }]);
+
+    let pullCalls = 0;
+    let afterOpenCalls = 0;
+    const origPull = conn.pull.bind(conn);
+    conn.pull = async (seqs) => {
+      pullCalls += 1;
+      return origPull(seqs);
+    };
+
+    const st = await Promise.race([
+      syncPull(
+        {
+          conn,
+          store,
+          enclave,
+          host,
+          crypto: libsodiumCrypto,
+        },
+        async () => {
+          afterOpenCalls += 1;
+        },
+      ),
+      new Promise<Status>((_, reject) =>
+        setTimeout(() => reject(new Error("syncPull hung on single batch")), 5_000)
+      ),
+    ]);
+
+    expect(st).toBe(Status.Success);
+    expect(pullCalls).toBe(1);
+    expect(afterOpenCalls).toBe(1);
+    expect(await store.downloads.count()).toBe(0);
+  });
+
   test("handles no downloads", async () => {
-    const apply = async (parts: { head: unknown }[]) =>
-      parts.map(() => Status.Success);
     const stat = await syncPull({
       conn,
       store,
       enclave,
       host,
       crypto: libsodiumCrypto,
-      clock,
-    }, apply);
+    });
 
     expect(stat).toBe(Status.NoChange);
     const messages = Array.from(await store.messages.list());
@@ -379,16 +435,13 @@ describe("syncPull", () => {
     };
     await store.downloads.enq([download]);
 
-    const apply = async (parts: { head: unknown }[]) =>
-      parts.map(() => Status.Success);
     await syncPull({
       conn,
       store,
       enclave,
       host,
       crypto: libsodiumCrypto,
-      clock,
-    }, apply);
+    });
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -426,18 +479,15 @@ describe("syncPull", () => {
     }
     await store.downloads.enq(downloads);
 
-    // Multi-batch packing is unit-tested in sync-batch.test.ts.
-    const apply = async (parts: { head: unknown }[]) =>
-      parts.map(() => Status.Success);
+    // Multi-batch byte budgets are unit-tested in sync-batch.test.ts.
     const stat = await syncPull({
       conn,
       store,
       enclave,
       host,
       crypto: libsodiumCrypto,
-      clock,
       maxPullBytes: 4,
-    }, apply);
+    });
 
     expect(stat).toBe(Status.Success);
     expect(await store.downloads.count()).toBe(0);

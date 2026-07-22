@@ -60,17 +60,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
   /**
-   * Serializes sync so doSync never overlaps, while coalescing stampedes:
-   * concurrent sync() share one in-flight drain and at most one trailing
-   * pass if more sync was requested mid-flight (see CoalesceTail).
-   */
-  private syncRuns = new CoalesceTail<Status>();
-
-  /**
-   * Serializes application of archived msgs so concurrent apply /
-   * drainApplyQueue do not interleave markApplied (each job runs fully, in order).
+   * Serializes exec so concurrent drainApplyQueue / apply do not interleave
+   * markApplied (each job runs fully, in order).
    */
   private applyChain: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Coalesces overlapping sync() (one in flight + trailing pass).
+   */
+  private syncRuns = new CoalesceTail<Status>();
 
   public clientState: IStateEmitter<IDiplomaticClientState>;
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
@@ -92,7 +90,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   private lastProgress: SyncProgressEvent = idleProgress;
 
   /**
-   * Debounced sync after local writes (when not handing off via onScheduleSync).
+   * Debounced full sync after local writes (when not handing off via onScheduleSync).
    */
   private scheduledSync: Debounced;
 
@@ -171,13 +169,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   /**
-   * Persist msgs to the archive as unapplied (apld=false), apply via
-   * IStateManager, mark applied, then optionally enqueue upload.
+   * Persist msgs (apld=false), exec into app state, then optionally enq upload.
    *
-   * Order is intentional for crash safety:
-   * 1) durable archive  2) apply + apld=true  3) upload queue
-   * so we never upload something that never applied, and crash between
-   * 1–2 is recovered by drainApplyQueue.
+   * Order (crash-safe):
+   * 1) durable archive  2) exec + apld=true  3) upload queue
+   * Exec is where the app validates the msg; only successes are pushed.
+   * Crash between 1–2 → drainApplyQueue / exec stage recovers.
    */
   private apply = async (
     parts: IMsgParts[],
@@ -209,7 +206,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     const stats = await this.applyHashes(hashes);
 
-    // Upload only after successful (or no-op) apply for each hash.
+    // Upload only after successful (or no-op) exec for each hash.
     if (options.enqueueUpload) {
       const toUpload: Hash[] = [];
       for (let i = 0; i < hashes.length; i++) {
@@ -226,7 +223,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         this.xferState.emit();
       }
     }
-    // Always signal when requested so a peer (worker) can drain the upload queue.
+    // Peer (worker) or local debounced sync drains the upload queue.
     if (options.triggerUpload) {
       this.scheduleSync();
     }
@@ -429,36 +426,31 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   /**
-   * Catch up with hosts (peek → push → pull). Safe under concurrent callers:
-   * overlapping sync() calls coalesce onto one shared run, with a trailing
-   * re-run if anyone requested sync while a run was already in flight.
-   * All waiters resolve with the Status of the final pass of that drain.
+   * Catch up: exec pending → per host peek → push → pull‖open → exec.
+   * Overlapping sync() coalesce (+ trailing if demand mid-flight).
    */
   public sync(): Promise<Status> {
     return this.syncRuns.run(() => this.doSync());
   }
 
   private async doSync(): Promise<Status> {
-    const { clock, connections, crypto, store } = this;
+    const { connections, crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) {
       return Status.MissingSeed;
     }
 
-    // Finish any msgs left unapplied after a crash before talking to hosts.
+    // Unapplied archive (crash / prior open) before talking to hosts.
     await this.drainApplyQueue();
 
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
-      if (!host) {
-        continue;
-      }
+      if (!host) continue;
 
       const syncParams: ISyncParams<Handle> = {
         conn,
         store,
         enclave,
-        clock,
         host,
         crypto,
         maxPushBytes: this.maxPushBytes,
@@ -474,6 +466,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
       this.xferState.emit();
 
+      // Push before pull: local redundancy first.
       const pushStat = await syncPush(syncParams);
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
@@ -481,13 +474,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       }
       this.xferState.emit();
 
-      const pullStat = await syncPull(syncParams, this.apply.bind(this));
+      // Depth-1: next pull ‖ open/exec of current pull batch.
+      const pullStat = await syncPull(syncParams, async () => {
+        await this.drainApplyQueue();
+      });
       if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
         console.error(`Failed to pull: ${pullStat}`);
         return pullStat;
       }
       this.xferState.emit();
     }
+
     this.emitProgress({ phase: "idle" });
     return Status.Success;
   }
@@ -496,7 +493,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Stop further scheduled work and tear down push listeners first.
     this.scheduledSync.cancel();
     await this.disconnect();
-    // Let any in-flight sync finish so it cannot repopulate after clear.
+    // Let in-flight sync finish so it cannot repopulate after clear.
     await this.syncRuns.flush();
     await this.store.wipe();
     await this.state.clear();
@@ -570,8 +567,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   };
 
   /**
-   * After local apply + upload enqueue: either hand off to a peer (worker via
-   * onScheduleSync — debounced there) or debounce sync on this client.
+   * After local exec + upload enqueue: hand off to worker peer or debounce sync.
    */
   private scheduleSync = () => {
     if (this.onScheduleSync) {
@@ -669,13 +665,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
             enclave,
             host,
             crypto,
-            clock,
             maxPushBytes: this.maxPushBytes,
             maxPullBytes: this.maxPullBytes,
             onProgress: this.emitProgress,
             peekProgressEvery: this.peekProgressEvery,
           };
-          return handleNotif(bytes, syncParams, this.apply, this.scheduleSync);
+          return handleNotif(bytes, syncParams, this.scheduleSync);
         },
         () => this.clientState.emit(), // onDisconnect
         () => this.clientState.emit(), // onConnect

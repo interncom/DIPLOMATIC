@@ -5,9 +5,10 @@
 
 export type SyncPhase =
   | "peek"
-  | "push"
   | "pull"
-  | "apply"
+  | "open"
+  | "exec"
+  | "push"
   | "import"
   | "idle";
 

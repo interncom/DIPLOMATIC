@@ -4,11 +4,23 @@ The DIPLOMATIC protocol achieves eventual consistency across a user's client dev
 
 ## Phases
 
-Sync happens in three phases:
+Sync proceeds in phases. Hosts only store encrypted [bags](./entdb#bags); clients hold plaintext [messages](./entdb#messages-messages) and application state.
 
-1. [PEEK](../api/peek) -- Fetch bag headers from host.
-2. [PUSH](../api/push) -- Upload bags to host.
-3. [PULL](../api/pull) -- Download bag bodies from host.
+**Inbound** (catch up from a host):
+
+1. **Peek** — [PEEK](../api/peek): learn which bags the client has not yet seen (headers and sequence numbers).
+2. **Pull** — [PULL](../api/pull): download bag bodies for those sequences.
+3. **Open** — decrypt bags into durable local messages.
+4. **Exec** — apply messages to application state (for example EntDB). Only after a message has been successfully applied may it be eligible to upload to other hosts.
+
+**Outbound** (local changes → host):
+
+1. The client creates a message and applies it locally (**exec**).
+2. **Push** — [PUSH](../api/push): seal the message into a host-specific bag and upload it.
+
+Clients typically **push** before **pull** when both are needed, so local changes reach the host (and thus other devices) before the client spends time downloading.
+
+Peek, pull, open, and exec are conceptually separate. Implementations may overlap work for performance (for example starting the next pull while opening a previous batch) without changing the phase model or durability rules: messages are the durable unit of change; bags are the on-wire form for untrusted hosts.
 
 ## SEQs
 

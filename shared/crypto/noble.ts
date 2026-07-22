@@ -1,6 +1,5 @@
 import { randomBytes } from "@noble/ciphers/webcrypto";
 import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
-import { ed25519 } from "@noble/curves/ed25519";
 import { blake3 } from "@noble/hashes/blake3";
 import { btoh } from "../binary.ts";
 import type {
@@ -56,8 +55,7 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
- * ICrypto via noble for XSalsa20/blake3/keygen, and native WebCrypto for
- * Ed25519 sign/verify (much faster than pure-JS noble curves).
+ * ICrypto: noble for XSalsa20 + blake3; native WebCrypto for all Ed25519.
  */
 export class NobleCrypto implements ICrypto {
   private verifyKeys = new Map<string, CryptoKey>();
@@ -94,12 +92,36 @@ export class NobleCrypto implements ICrypto {
 
   async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
     const seed = derivationSeed; // 32-byte seed
-    // Public key from seed via noble (matches WebCrypto Ed25519 seed→pubkey).
-    const publicKey = ed25519.getPublicKey(seed);
+    // Extractable import so we can export the public key (JWK x / raw).
+    const pkcs8 = ed25519Pkcs8FromSeed(seed);
+    const priv = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      toArrayBuffer(pkcs8),
+      { name: "Ed25519" },
+      true,
+      ["sign"],
+    );
+    const jwk = await globalThis.crypto.subtle.exportKey("jwk", priv);
+    if (typeof jwk.x !== "string") {
+      throw new Error("Ed25519 JWK missing x");
+    }
+    const pubCryptoKey = await globalThis.crypto.subtle.importKey(
+      "jwk",
+      { kty: "OKP", crv: "Ed25519", x: jwk.x },
+      { name: "Ed25519" },
+      true,
+      ["verify"],
+    );
+    const publicKey = new Uint8Array(
+      await globalThis.crypto.subtle.exportKey("raw", pubCryptoKey),
+    );
     // Libsodium format: privateKey = seed + publicKey (64 bytes total)
     const privateKey = new Uint8Array(64);
     privateKey.set(seed, 0);
     privateKey.set(publicKey, 32);
+    // Cache for sign/verify (extractable keys are fine for our use).
+    this.signKeys.set(btoh(seed), priv);
+    this.verifyKeys.set(btoh(publicKey), pubCryptoKey);
     return {
       keyType: "ed25519",
       privateKey: privateKey as PrivateKey,

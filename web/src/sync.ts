@@ -4,6 +4,7 @@
 // Ciphertext stays in RAM only. Upload only after exec (client apply path).
 
 import { batchByBytes } from "./batch";
+import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { Decoder, Encoder } from "./shared/codec";
@@ -33,6 +34,12 @@ import {
 export const defaultMaxPushBytes = 1 << 20;
 export const defaultMaxPullBytes = 1 << 20;
 
+/**
+ * Concurrent peek-item crypto (sig verify + head open + head hash).
+ * WebCrypto Ed25519 verifies pipeline better when overlapped.
+ */
+export const defaultPeekConcurrency = 64;
+
 /** Pull result held in memory until open (not durable). */
 export type IPulled = {
   dl: IDownloadMessage;
@@ -59,6 +66,11 @@ export interface ISyncParams<Handle extends HostHandle> {
   onProgress?: ProgressFn;
   /** Peek progress stride in heads (default `defaultPeekProgressEvery`). */
   peekProgressEvery?: number;
+  /**
+   * Max concurrent peek-item crypto ops (verify + head decrypt + blake3).
+   * Default `defaultPeekConcurrency`. Set 1 for fully serial.
+   */
+  peekConcurrency?: number;
 }
 
 /** Approximate on-wire bag size (sig + kdm + ciphers). Soft limit only. */
@@ -234,6 +246,16 @@ export async function openPulled<Handle extends HostHandle>(
   return ok({ parts, hashes });
 }
 
+type PeekCryptoOk = {
+  ok: true;
+  seq: number;
+  kdm: Uint8Array;
+  headEnc: Uint8Array;
+  headEncHash: Hash;
+};
+type PeekCryptoFail = { ok: false; seq: number; stat: Status };
+type PeekCryptoResult = PeekCryptoOk | PeekCryptoFail;
+
 /** Discover unseen bags and enqueue download work; advance host lastSeq. */
 export async function syncPeek<Handle extends HostHandle>(
   {
@@ -244,6 +266,7 @@ export async function syncPeek<Handle extends HostHandle>(
     crypto,
     onProgress,
     peekProgressEvery,
+    peekConcurrency,
   }: ISyncParams<Handle>,
 ): Promise<Status> {
   const hostKeys = await conn.keys();
@@ -254,87 +277,79 @@ export async function syncPeek<Handle extends HostHandle>(
   }
   const total = items.length;
   const every = peekProgressEvery ?? defaultPeekProgressEvery;
+  const conc = peekConcurrency ?? defaultPeekConcurrency;
   if (onProgress && total > 0) {
     onProgress({ phase: "peek", host: host.label, done: 0, total });
   }
-  let processed = 0;
-  for (const item of items) {
+
+  // Phase 1: concurrent crypto (Ed25519 verify + head decrypt + blake3).
+  // Overlapping WebCrypto verifies is the main win vs serial await.
+  let cryptoDone = 0;
+  const cryptoResults = await mapPool(items, conc, async (item) => {
     const [itemDec, stat] = await decryptPeekItem(
       item,
       hostKeys,
       enclave,
       crypto,
     );
-    if (stat !== Status.Success) {
-      // Skip desyncs client vs host until CHECK reconciles message sets.
-      console.error("peek: decrypting item head", stat);
-      processed += 1;
-      if (
-        onProgress &&
-        shouldEmitItemProgress(processed, total, every)
-      ) {
-        onProgress({
-          phase: "peek",
-          host: host.label,
-          done: processed,
-          total,
-        });
-      }
-      continue;
+    let result: PeekCryptoResult;
+    if (stat !== Status.Success || !itemDec) {
+      result = { ok: false, seq: item.seq, stat };
+    } else {
+      const headEncHash = await crypto.blake3(itemDec.headEnc);
+      result = {
+        ok: true,
+        seq: item.seq,
+        kdm: itemDec.kdm,
+        headEnc: itemDec.headEnc,
+        headEncHash,
+      };
     }
-
-    const headEncHash = await crypto.blake3(itemDec.headEnc);
-    const msgExists = await store.messages.has(headEncHash);
-    if (msgExists) {
-      console.info("peek: skipping download enqueue");
-      await store.uploads.deq(host.label, [headEncHash]);
-      processed += 1;
-      if (
-        onProgress &&
-        shouldEmitItemProgress(processed, total, every)
-      ) {
-        onProgress({
-          phase: "peek",
-          host: host.label,
-          done: processed,
-          total,
-        });
-      }
-      continue;
-    }
-
-    const headDec = new Decoder(itemDec.headEnc);
-    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
-      console.error("peek: reading item head", headStatus);
-      processed += 1;
-      if (
-        onProgress &&
-        shouldEmitItemProgress(processed, total, every)
-      ) {
-        onProgress({
-          phase: "peek",
-          host: host.label,
-          done: processed,
-          total,
-        });
-      }
-      continue;
-    }
-
-    dls.push({ kdm: itemDec.kdm, head, seq: item.seq, host: host.label });
-    processed += 1;
+    cryptoDone += 1;
     if (
       onProgress &&
-      shouldEmitItemProgress(processed, total, every)
+      shouldEmitItemProgress(cryptoDone, total, every)
     ) {
       onProgress({
         phase: "peek",
         host: host.label,
-        done: processed,
+        done: cryptoDone,
         total,
       });
     }
+    return result;
+  });
+
+  // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
+  for (const result of cryptoResults) {
+    if (!result.ok) {
+      // Skip desyncs client vs host until CHECK reconciles message sets.
+      console.error("peek: decrypting item head", result.stat);
+      continue;
+    }
+
+    const msgExists = await store.messages.has(result.headEncHash);
+    if (msgExists) {
+      // Host offered a bag we already archived: no download. Drop redundant
+      // upload queue entry (host already has this head).
+      console.info("peek: local msg; skip download, deq upload");
+      await store.uploads.deq(host.label, [result.headEncHash]);
+      continue;
+    }
+
+    const headDec = new Decoder(result.headEnc);
+    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+    if (headStatus !== Status.Success) {
+      console.error("peek: reading item head", headStatus);
+      continue;
+    }
+
+    dls.push({
+      kdm: result.kdm,
+      head,
+      seq: result.seq,
+      host: host.label,
+    });
   }
   await store.downloads.enq(dls);
 

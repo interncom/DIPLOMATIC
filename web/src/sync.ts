@@ -4,6 +4,7 @@
 // Ciphertext stays in RAM only. Upload only after exec (client apply path).
 
 import { batchByBytes } from "./batch";
+import { sortByHlcDesc } from "./hlc";
 import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
@@ -448,6 +449,10 @@ export async function syncPush<Handle extends HostHandle>(
  * Pull + open for one host, depth-1 pipelined:
  *   await pull(i); start pull(i+1); open(i); afterOpen? (exec)
  * Ciphertext only in the in-flight Promise, never IDB.
+ *
+ * Download work is ordered newest→oldest by message HLC (not host seq).
+ * All bags are still pulled/opened; EntDB LWW already ignores obsolete ops.
+ * Newest-first exec reaches final app state early in a large catch-up.
  */
 export async function syncPull<Handle extends HostHandle>(
   {
@@ -464,11 +469,13 @@ export async function syncPull<Handle extends HostHandle>(
 ): Promise<Status> {
   const limit = maxPullBytes ?? defaultMaxPullBytes;
   const allItems = await store.downloads.list();
-  const items = Array.from(allItems).filter((i) => i.host === host.label);
-  if (items.length < 1) {
+  const hostItems = Array.from(allItems).filter((i) => i.host === host.label);
+  if (hostItems.length < 1) {
     return Status.NoChange;
   }
 
+  // All bags still pulled; HLC order so early exec batches converge UI state.
+  const items = sortByHlcDesc(hostItems, (d) => d.head);
   const batches = batchByBytes(items, (d) => d.head.len, limit);
   const total = items.length;
   let done = 0;
@@ -497,7 +504,9 @@ export async function syncPull<Handle extends HostHandle>(
     if (onProgress) {
       onProgress({ phase: "open", host: host.label, done, total });
     }
-    const [, openStat] = await openPulled(store, enclave, crypto, pulled);
+    // Host may return bodies in any order; re-sort before open/exec.
+    const ordered = sortByHlcDesc(pulled, (p) => p.dl.head);
+    const [, openStat] = await openPulled(store, enclave, crypto, ordered);
     if (openStat !== Status.Success) {
       return openStat;
     }

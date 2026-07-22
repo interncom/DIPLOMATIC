@@ -29,6 +29,7 @@ import type {
   IProtoHost,
   MasterSeed,
 } from "../src/shared/types";
+import { sortByHlcDesc } from "../src/hlc";
 import { MemoryStore } from "../src/stores/memory/store";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
 import type { IStoredMessageWrite } from "../src/types";
@@ -252,13 +253,15 @@ async function main() {
     async () => {
       const pending = await downStore.messages.listUnapplied();
       if (pending.length < 1) return;
-      const toApply = pending.map((m) => ({ ...m.head, bod: m.body }));
+      // Match SyncClient: newest HLC first for early final app state.
+      const ordered = sortByHlcDesc(pending, (m) => m.head);
+      const toApply = ordered.map((m) => ({ ...m.head, bod: m.body }));
       const stats = await state.apply(toApply);
       const done: Hash[] = [];
-      for (let i = 0; i < pending.length; i++) {
+      for (let i = 0; i < ordered.length; i++) {
         const st = stats[i];
         if (st === Status.Success || st === Status.NoChange) {
-          done.push(pending[i].hash);
+          done.push(ordered[i].hash);
         }
       }
       if (done.length > 0) await downStore.messages.markApplied(done);

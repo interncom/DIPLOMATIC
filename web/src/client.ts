@@ -29,6 +29,7 @@ import {
 import { btob64 } from "./shared/binary";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
+import { sortByHlcDesc } from "./hlc";
 import {
   defaultPeekProgressEvery,
   idleProgress,
@@ -250,7 +251,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (pending.length < 1) {
       return [];
     }
-    return this.applyStored(pending);
+    // Newest HLC first: final ent state appears early; obsolete ops still
+    // no-op in EntDB. (IDB listUnapplied order is not HLC order.)
+    const ordered = sortByHlcDesc(pending, (m) => m.head);
+    return this.applyStored(ordered);
   }
 
   /** Apply specific archive keys via IStateManager and mark applied. */

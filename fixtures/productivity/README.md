@@ -41,11 +41,11 @@ npm run perf:sync
 
 ### Baseline (LPC, in-process; machine-dependent)
 
-| Phase | noble Ed25519 | WebCrypto Ed25519 |
-| --- | ---: | ---: |
-| enqueue | ~0.9s | ~2s |
-| push (LPC) | ~103s | ~94s |
-| peek (LPC) | ~73s | ~29s |
-| pull+open+exec | ~4s | ~10s |
+| Phase | noble serial | WebCrypto serial | + concurrent peek |
+| --- | ---: | ---: | ---: |
+| enqueue | ~0.9s | ~2s | ~4s |
+| push (LPC) | ~103s | ~94s | ~87s |
+| peek (LPC) | ~73s | ~29s | **~9.5s** |
+| pull+open+exec | ~4s | ~10s | ~10s |
 
-Peek is the clear win: native Ed25519 verify vs pure-JS noble. Push improves only modestly because seal still pays XSalsa20 + blake3 + store work per bag. Re-run after architecture changes and compare.
+Peek path: native Ed25519 verify, then concurrent crypto (`defaultPeekConcurrency = 64`). Push is still mostly seal/store. Re-run after architecture changes and compare.

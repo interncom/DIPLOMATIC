@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "seed": 1346720326,
+  "entities": 6500,
+  "messages": 42000,
+  "avgMsgsPerEntity": 6.462,
+  "bodyBytes": 2149731,
+  "meanBodyBytes": 51.2,
+  "msgsWithNote": 12283,
+  "fileBytes": 3853097,
+  "bodyShape": "{ type: \"todo\", body: { text: string; note?: string; done: boolean } }",
+  "description": "Simulated productivity-app dump for sync perf (LPC push/peek/pull). Regenerated via web/perf/gen-productivity.ts."
+}

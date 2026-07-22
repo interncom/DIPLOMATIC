@@ -7,6 +7,7 @@ paths=(
   deno/src/
   deno/tests/
   web/src/
+  web/perf/
   hosts/cloudflare/src/
 )
 

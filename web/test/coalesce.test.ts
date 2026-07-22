@@ -214,7 +214,7 @@ describe("Debounced", () => {
 });
 
 describe("SyncClient.sync coalesce+trailing", () => {
-  test("overlapping sync() calls do not overlap doSync and share final Status", async () => {
+  test("overlapping sync() share one doSync promise and final Status", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state: IStateManager = {
       async apply(msgs) {
@@ -241,36 +241,33 @@ describe("SyncClient.sync coalesce+trailing", () => {
       libsodiumCrypto,
     );
 
-    // Instrument seed.load (first await in doSync) to measure concurrency.
-    let depth = 0;
-    let maxDepth = 0;
+    // Gate seed.load so we can stampede sync() mid-run.
     let loads = 0;
     const entered = defer();
     const gate = defer();
     const origLoad = store.seed.load.bind(store.seed);
     store.seed.load = async () => {
       loads++;
-      depth++;
-      maxDepth = Math.max(maxDepth, depth);
       if (loads === 1) {
         entered.resolve();
         await gate.promise;
       }
-      depth--;
       return origLoad();
     };
 
-    // No seed → doSync returns MissingSeed after load; enough to exercise the mutex.
+    // No seed → stages note MissingSeed; enough to exercise run coalesce.
     const p1 = client.sync();
     await entered.promise;
     const p2 = client.sync();
     const p3 = client.sync();
+    // In-flight callers share the same Promise (CoalesceTail).
+    expect(p2).toBe(p1);
+    expect(p3).toBe(p1);
     gate.resolve();
     const results = await Promise.all([p1, p2, p3]);
 
-    expect(maxDepth).toBe(1);
-    // First pass + trailing pass from the mid-flight sync() calls.
-    expect(loads).toBe(2);
-    expect(results.every((s) => s === Status.MissingSeed)).toBe(true);
+    expect(results[0]).toBe(results[1]);
+    expect(results[1]).toBe(results[2]);
+    expect(results[0]).toBe(Status.MissingSeed);
   });
 });

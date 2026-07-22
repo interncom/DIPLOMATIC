@@ -253,7 +253,7 @@ describe("SyncClient apply queue", () => {
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
 
-  test("failed state.apply does not enqueue upload", async () => {
+  test("failed exec does not enqueue upload", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state = mockState(async (msgs) =>
       msgs.map(() => Status.InvalidMessage)
@@ -275,6 +275,7 @@ describe("SyncClient apply queue", () => {
       false,
     );
     await client.insertRaw(encode({ type: "t", body: "x" }));
+    // App rejected the msg — do not push to hosts.
     expect(await store.uploads.count()).toBe(0);
     expect(await store.messages.listUnapplied()).toHaveLength(1);
   });
@@ -410,11 +411,11 @@ describe("SyncClient apply queue", () => {
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
 
-  test("sync drains apply queue before peek/push/pull", async () => {
+  test("sync exec stage drains unapplied archive", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const order: string[] = [];
     const state = mockState(async (msgs) => {
-      order.push("apply");
+      order.push("exec");
       return msgs.map(() => Status.Success);
     });
     const lpcHost = new DiplomaticLPCServer(
@@ -434,7 +435,6 @@ describe("SyncClient apply queue", () => {
       { handle: lpcHost, label: "h", idx: 0 },
       false,
     );
-    // Force a connection so doSync has work (and drains first).
     await client.connect(false, false);
 
     const [eid, eidStat] = makeEID({
@@ -454,7 +454,7 @@ describe("SyncClient apply queue", () => {
 
     const st = await client.sync();
     expect(st).toBe(Status.Success);
-    expect(order[0]).toBe("apply");
+    expect(order).toContain("exec");
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
 

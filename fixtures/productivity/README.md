@@ -41,13 +41,11 @@ npm run perf:sync
 
 ### Baseline (LPC, in-process; machine-dependent)
 
-Recorded once when the fixture was added so later sync work can be compared:
+| Phase | noble Ed25519 | WebCrypto Ed25519 |
+| --- | ---: | ---: |
+| enqueue | ~0.9s | ~2s |
+| push (LPC) | ~103s | ~94s |
+| peek (LPC) | ~73s | ~29s |
+| pull+open+exec | ~4s | ~10s |
 
-| Phase | 42k msgs |
-| --- | --- |
-| enqueue | ~0.9s |
-| push (LPC) | ~100s |
-| peek (LPC) | ~70s |
-| pull+open+exec | ~4s |
-
-Push/peek dominate (per-bag seal/open + head decrypt). Re-run after architecture changes and compare.
+Peek is the clear win: native Ed25519 verify vs pure-JS noble. Push improves only modestly because seal still pays XSalsa20 + blake3 + store work per bag. Re-run after architecture changes and compare.

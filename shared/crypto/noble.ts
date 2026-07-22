@@ -2,6 +2,7 @@ import { randomBytes } from "@noble/ciphers/webcrypto";
 import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 import { ed25519 } from "@noble/curves/ed25519";
 import { blake3 } from "@noble/hashes/blake3";
+import { btoh } from "../binary.ts";
 import type {
   DerivationSeed,
   Hash,
@@ -11,7 +12,57 @@ import type {
   PublicKey,
 } from "../types.ts";
 
+/**
+ * PKCS#8 wrapper for a 32-byte Ed25519 seed (RFC 8410).
+ * 30 2e 02 01 00 30 05 06 03 2b 65 70 04 22 04 20 || seed
+ */
+const ED25519_PKCS8_PREFIX = new Uint8Array([
+  0x30,
+  0x2e,
+  0x02,
+  0x01,
+  0x00,
+  0x30,
+  0x05,
+  0x06,
+  0x03,
+  0x2b,
+  0x65,
+  0x70,
+  0x04,
+  0x22,
+  0x04,
+  0x20,
+]);
+
+function ed25519Pkcs8FromSeed(seed: Uint8Array): Uint8Array {
+  const out = new Uint8Array(ED25519_PKCS8_PREFIX.length + 32);
+  out.set(ED25519_PKCS8_PREFIX);
+  out.set(seed.subarray(0, 32), ED25519_PKCS8_PREFIX.length);
+  return out;
+}
+
+function toBytes(message: Uint8Array | string): Uint8Array {
+  return typeof message === "string"
+    ? new TextEncoder().encode(message)
+    : message;
+}
+
+/** Copy into a fresh ArrayBuffer so SubtleCrypto accepts BufferSource. */
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  return ab;
+}
+
+/**
+ * ICrypto via noble for XSalsa20/blake3/keygen, and native WebCrypto for
+ * Ed25519 sign/verify (much faster than pure-JS noble curves).
+ */
 export class NobleCrypto implements ICrypto {
+  private verifyKeys = new Map<string, CryptoKey>();
+  private signKeys = new Map<string, CryptoKey>();
+
   async genRandomBytes(bytes: number): Promise<Uint8Array> {
     return randomBytes(bytes);
   }
@@ -43,6 +94,7 @@ export class NobleCrypto implements ICrypto {
 
   async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
     const seed = derivationSeed; // 32-byte seed
+    // Public key from seed via noble (matches WebCrypto Ed25519 seed→pubkey).
     const publicKey = ed25519.getPublicKey(seed);
     // Libsodium format: privateKey = seed + publicKey (64 bytes total)
     const privateKey = new Uint8Array(64);
@@ -55,16 +107,51 @@ export class NobleCrypto implements ICrypto {
     };
   }
 
+  private async importSignKey(secKey: Uint8Array): Promise<CryptoKey> {
+    // Libsodium-format secret key: first 32 bytes are the seed.
+    const seed = secKey.subarray(0, 32);
+    const cacheKey = btoh(seed);
+    const cached = this.signKeys.get(cacheKey);
+    if (cached) return cached;
+    const pkcs8 = ed25519Pkcs8FromSeed(seed);
+    const key = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      toArrayBuffer(pkcs8),
+      { name: "Ed25519" },
+      false,
+      ["sign"],
+    );
+    this.signKeys.set(cacheKey, key);
+    return key;
+  }
+
+  private async importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {
+    const cacheKey = btoh(pubKey);
+    const cached = this.verifyKeys.get(cacheKey);
+    if (cached) return cached;
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      toArrayBuffer(pubKey),
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    this.verifyKeys.set(cacheKey, key);
+    return key;
+  }
+
   async signEd25519(
     message: Uint8Array | string,
     secKey: Uint8Array,
   ): Promise<Uint8Array> {
-    const msg = typeof message === "string"
-      ? new TextEncoder().encode(message)
-      : message;
-    // Extract the seed part (first 32 bytes) from libsodium-format private key
-    const seed = secKey.slice(0, 32);
-    return ed25519.sign(msg, seed);
+    const msg = toBytes(message);
+    const key = await this.importSignKey(secKey);
+    const sig = await globalThis.crypto.subtle.sign(
+      { name: "Ed25519" },
+      key,
+      toArrayBuffer(msg),
+    );
+    return new Uint8Array(sig);
   }
 
   async checkSigEd25519(
@@ -72,10 +159,19 @@ export class NobleCrypto implements ICrypto {
     message: Uint8Array | string,
     pubKey: Uint8Array,
   ): Promise<boolean> {
-    const msg = typeof message === "string"
-      ? new TextEncoder().encode(message)
-      : message;
-    return ed25519.verify(sig, msg, pubKey);
+    const msg = toBytes(message);
+    try {
+      const key = await this.importVerifyKey(pubKey);
+      return await globalThis.crypto.subtle.verify(
+        { name: "Ed25519" },
+        key,
+        toArrayBuffer(sig),
+        toArrayBuffer(msg),
+      );
+    } catch {
+      // Invalid key material / unsupported algorithm → not a valid signature.
+      return false;
+    }
   }
 
   async blake3(data: Uint8Array): Promise<Hash> {

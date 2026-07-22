@@ -7,7 +7,9 @@
     "tsc": "tsc",
     "test": "vitest",
     "coverage": "vitest run --coverage",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "perf:gen": "bun run perf/gen-productivity.ts",
+    "perf:sync": "bun run perf/sync-lpc.ts"
   },
   "author": "The Internet Committee",
   "license": "ISC",

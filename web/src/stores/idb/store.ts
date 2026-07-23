@@ -12,8 +12,9 @@ export const UPLOAD_QUEUE_TABLE = "uploadQueue";
 export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
 export const MESSAGES_TABLE = "messages";
 /**
- * Index on messages.apld. Values are "f" (pending) / "t" (applied) —
- * booleans are not valid IndexedDB keys; single-char strings keep keys compact.
+ * Index on messages.apld ({@link APLD_PENDING} / {@link APLD_APPLIED} /
+ * {@link APLD_ERROR}). Booleans are not valid IndexedDB keys; single-char
+ * strings keep keys compact.
  */
 export const MESSAGES_APLD_INDEX = "apld";
 

@@ -17,6 +17,7 @@ import type {
   MasterSeed,
 } from "../src/shared/types";
 import type {
+  ApldState,
   IDownloadMessage,
   IDownloadQueue,
   IHostRow,
@@ -28,7 +29,25 @@ import type {
   IStoredMessage,
   IUploadQueue,
 } from "../src/types";
-import { normalizeStoredMessageData, toStoredMessage } from "../src/types";
+import {
+  APLD_APPLIED,
+  APLD_ERROR,
+  APLD_PENDING,
+  toStoredMessage,
+} from "../src/types";
+
+/** SQLite apld: 0 pending, 1 applied, 2 terminal error. */
+function apldToSql(a: ApldState): number {
+  if (a === APLD_APPLIED) return 1;
+  if (a === APLD_ERROR) return 2;
+  return 0;
+}
+
+function apldFromSql(n: number): ApldState {
+  if (n === 1) return APLD_APPLIED;
+  if (n === 2) return APLD_ERROR;
+  return APLD_PENDING;
+}
 
 function openDb(path: string): Database {
   const db = new Database(path);
@@ -68,11 +87,18 @@ function openDb(path: string): Database {
       off INTEGER,
       ctr INTEGER,
       body BLOB,
-      apld INTEGER NOT NULL DEFAULT 0
+      apld INTEGER NOT NULL DEFAULT 0,
+      err INTEGER
     );
     CREATE INDEX IF NOT EXISTS messages_apld ON messages(apld);
     CREATE INDEX IF NOT EXISTS messages_eid ON messages(eid);
   `);
+  // Older perf DBs may lack err.
+  try {
+    db.exec("ALTER TABLE messages ADD COLUMN err INTEGER");
+  } catch {
+    // column already present
+  }
   return db;
 }
 
@@ -308,9 +334,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
         seq: row.seq,
         kdm: new Uint8Array(row.kdm),
         head,
-        ...(row.headEnc
-          ? { headEnc: new Uint8Array(row.headEnc) }
-          : {}),
+        ...(row.headEnc ? { headEnc: new Uint8Array(row.headEnc) } : {}),
         ...(row.headEncHash
           ? { headEncHash: new Uint8Array(row.headEncHash) as Hash }
           : {}),
@@ -335,21 +359,21 @@ class SqliteMessageStore implements IMessageStore {
   async add(messages: IStorableMessage[]): Promise<Status[]> {
     if (messages.length < 1) return [];
     const ins = this.db.prepare(
-      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, body, apld)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, body, apld, err)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     const results: Status[] = [];
     this.db.exec("BEGIN");
     try {
       for (const { key, data } of messages) {
-        const n = normalizeStoredMessageData(data);
         ins.run(
           btob64(key),
-          n.eid,
-          n.off ?? null,
-          n.ctr ?? null,
-          n.body ?? null,
-          n.apld ? 1 : 0,
+          data.eid,
+          data.off ?? null,
+          data.ctr ?? null,
+          data.body ?? null,
+          apldToSql(data.apld),
+          data.err ?? null,
         );
         results.push(Status.Success);
       }
@@ -379,9 +403,29 @@ class SqliteMessageStore implements IMessageStore {
     }
   }
 
+  private rowToStored(row: {
+    hash: string;
+    eid: Uint8Array;
+    off: number | null;
+    ctr: number | null;
+    body: Uint8Array | null;
+    apld: number;
+    err: number | null;
+  }, key: Hash): Promise<IStoredMessage> {
+    const apld = apldFromSql(row.apld);
+    return toStoredMessage(key, {
+      eid: new Uint8Array(row.eid),
+      ...(row.off !== null ? { off: row.off } : {}),
+      ...(row.ctr !== null ? { ctr: row.ctr } : {}),
+      ...(row.body ? { body: new Uint8Array(row.body) } : {}),
+      apld,
+      ...(apld === APLD_ERROR && row.err !== null ? { err: row.err } : {}),
+    }, this.crypto);
+  }
+
   async get(key: Hash): Promise<IStoredMessage | undefined> {
     const row = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld FROM messages WHERE hash = ?",
+      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE hash = ?",
     ).get(btob64(key)) as {
       hash: string;
       eid: Uint8Array;
@@ -389,15 +433,10 @@ class SqliteMessageStore implements IMessageStore {
       ctr: number | null;
       body: Uint8Array | null;
       apld: number;
+      err: number | null;
     } | null;
     if (!row) return undefined;
-    return await toStoredMessage(key, {
-      eid: new Uint8Array(row.eid) as EntityID,
-      ...(row.off !== null ? { off: row.off } : {}),
-      ...(row.ctr !== null ? { ctr: row.ctr } : {}),
-      ...(row.body ? { body: new Uint8Array(row.body) } : {}),
-      apld: row.apld === 1,
-    }, this.crypto);
+    return await this.rowToStored(row, key);
   }
 
   async has(key: Hash) {
@@ -409,7 +448,7 @@ class SqliteMessageStore implements IMessageStore {
 
   async list(): Promise<Iterable<IStoredMessage>> {
     const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld FROM messages",
+      "SELECT hash, eid, off, ctr, body, apld, err FROM messages",
     ).all() as {
       hash: string;
       eid: Uint8Array;
@@ -417,24 +456,17 @@ class SqliteMessageStore implements IMessageStore {
       ctr: number | null;
       body: Uint8Array | null;
       apld: number;
+      err: number | null;
     }[];
     return await Promise.all(
-      rows.map((row) =>
-        toStoredMessage(b64tob(row.hash) as Hash, {
-          eid: new Uint8Array(row.eid) as EntityID,
-          ...(row.off !== null ? { off: row.off } : {}),
-          ...(row.ctr !== null ? { ctr: row.ctr } : {}),
-          ...(row.body ? { body: new Uint8Array(row.body) } : {}),
-          apld: row.apld === 1,
-        }, this.crypto)
-      ),
+      rows.map((row) => this.rowToStored(row, b64tob(row.hash))),
     );
   }
 
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     // Compare in JS; eid blob equality in SQL is fine for exact match filter.
     const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld FROM messages WHERE eid = ?",
+      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE eid = ?",
     ).all(eid) as {
       hash: string;
       eid: Uint8Array;
@@ -442,6 +474,7 @@ class SqliteMessageStore implements IMessageStore {
       ctr: number | null;
       body: Uint8Array | null;
       apld: number;
+      err: number | null;
     }[];
     if (rows.length < 1) return undefined;
     let best = rows[0];
@@ -452,18 +485,12 @@ class SqliteMessageStore implements IMessageStore {
       const ro = row.off ?? 0;
       if (rc > bc || (rc === bc && ro > bo)) best = row;
     }
-    return await toStoredMessage(b64tob(best.hash) as Hash, {
-      eid: new Uint8Array(best.eid) as EntityID,
-      ...(best.off !== null ? { off: best.off } : {}),
-      ...(best.ctr !== null ? { ctr: best.ctr } : {}),
-      ...(best.body ? { body: new Uint8Array(best.body) } : {}),
-      apld: best.apld === 1,
-    }, this.crypto);
+    return await this.rowToStored(best, b64tob(best.hash));
   }
 
   async listUnapplied(): Promise<IStoredMessage[]> {
     const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld FROM messages WHERE apld = 0",
+      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE apld = 0",
     ).all() as {
       hash: string;
       eid: Uint8Array;
@@ -471,28 +498,39 @@ class SqliteMessageStore implements IMessageStore {
       ctr: number | null;
       body: Uint8Array | null;
       apld: number;
+      err: number | null;
     }[];
     return await Promise.all(
-      rows.map((row) =>
-        toStoredMessage(b64tob(row.hash) as Hash, {
-          eid: new Uint8Array(row.eid) as EntityID,
-          ...(row.off !== null ? { off: row.off } : {}),
-          ...(row.ctr !== null ? { ctr: row.ctr } : {}),
-          ...(row.body ? { body: new Uint8Array(row.body) } : {}),
-          apld: false,
-        }, this.crypto)
-      ),
+      rows.map((row) => this.rowToStored(row, b64tob(row.hash))),
     );
   }
 
   async markApplied(keys: Iterable<Hash>) {
     const upd = this.db.prepare(
-      "UPDATE messages SET apld = 1 WHERE hash = ?",
+      "UPDATE messages SET apld = 1, err = NULL WHERE hash = ?",
     );
     this.db.exec("BEGIN");
     try {
       for (const k of keys) {
         upd.run(btob64(k));
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  async markFailed(
+    entries: Iterable<{ key: Hash; err: Status }>,
+  ): Promise<void> {
+    const upd = this.db.prepare(
+      "UPDATE messages SET apld = 2, err = ? WHERE hash = ?",
+    );
+    this.db.exec("BEGIN");
+    try {
+      for (const { key, err } of entries) {
+        upd.run(err, btob64(key));
       }
       this.db.exec("COMMIT");
     } catch (e) {

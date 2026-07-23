@@ -47,12 +47,14 @@ import {
   syncPush,
 } from "./sync";
 import {
+  APLD_PENDING,
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
   IHostRow,
   IMsgParts,
   IStateEmitter,
+  isTerminalApplyFailure,
   IStore,
   IStoredMessage,
   IStoredMessageWrite,
@@ -171,10 +173,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   /**
-   * Persist msgs (apld=false), exec into app state, then optionally enq upload.
+   * Persist msgs (APLD_PENDING), exec into app state, then optionally enq upload.
    *
    * Order (crash-safe):
-   * 1) durable archive  2) exec + apld=true  3) upload queue
+   * 1) durable archive  2) exec + APLD_APPLIED/APLD_ERROR  3) upload queue
    * Exec is where the app validates the msg; only successes are pushed.
    * Crash between 1–2 → drainApplyQueue / exec stage recovers.
    */
@@ -195,11 +197,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       const hash = await this.crypto.blake3(headEnc);
       const data: IStoredMessageWrite = {
         eid: head.eid,
-        ...(head.off !== 0 ? { off: head.off } : {}),
-        ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body,
-        apld: false,
+        apld: APLD_PENDING,
       };
+      if (head.off !== 0) data.off = head.off;
+      if (head.ctr !== 0) data.ctr = head.ctr;
       hashes.push(hash);
       storables.push({ key: hash, data });
     }
@@ -283,11 +285,13 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   };
 
   /**
-   * Apply a batch of archived msgs via IStateManager and mark successes applied.
+   * Apply a batch of archived msgs via IStateManager and mark outcomes.
+   * Success/NoChange → APLD_APPLIED; terminal failures → APLD_ERROR;
+   * transient stay APLD_PENDING.
    *
    * TODO: may need to chunk large batches (memory / IDB / UI). Also test edge
    * cases: state.apply returning stats.length !== msgs.length (short/long
-   * array, holes) — markApplied currently indexes stats[i] against stored[i]
+   * array, holes) — mark paths currently index stats[i] against stored[i]
    * without validating length alignment.
    */
   private async applyStored(stored: IStoredMessage[]): Promise<Status[]> {
@@ -300,14 +304,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }));
     const stats = await this.state.apply(msgs);
     const done: Hash[] = [];
+    const failed: { key: Hash; err: Status }[] = [];
     for (let i = 0; i < stored.length; i++) {
       const st = stats[i];
       if (st === Status.Success || st === Status.NoChange) {
         done.push(stored[i].hash);
+      } else if (st !== undefined && isTerminalApplyFailure(st)) {
+        failed.push({ key: stored[i].hash, err: st });
       }
     }
     if (done.length > 0) {
       await this.store.messages.markApplied(done);
+    }
+    if (failed.length > 0) {
+      await this.store.messages.markFailed(failed);
     }
     return stats;
   }

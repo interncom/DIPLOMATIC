@@ -14,7 +14,16 @@ import type {
   IStateManager,
   MasterSeed,
 } from "../src/shared/types";
-import { isPendingApply, normalizeStoredMessageData } from "../src/types";
+import {
+  APLD_APPLIED,
+  APLD_ERROR,
+  APLD_PENDING,
+  apldFromStored,
+  isApldState,
+  isPendingApply,
+  isTerminalApplyFailure,
+  setApld,
+} from "../src/types";
 import { msg2StoredMsgData } from "../src/sync";
 import { MockClock } from "../src/shared/clock";
 import { makeEID } from "../src/shared/codecs/eid";
@@ -42,7 +51,7 @@ async function storePending(
     data: {
       eid: opts.eid,
       body: opts.body ?? new Uint8Array([1]),
-      apld: false,
+      apld: APLD_PENDING,
     },
   }]);
 }
@@ -86,23 +95,63 @@ function makeClient(
   );
 }
 
-describe("isPendingApply / normalizeStoredMessageData", () => {
-  test("pending when apld is false or unset", () => {
-    const eid = eidOf(1);
-    expect(isPendingApply({ eid, apld: false })).toBe(true);
-    expect(isPendingApply({ eid })).toBe(true); // legacy unset → pending
-    expect(isPendingApply({ eid, apld: true })).toBe(false);
+describe("apld helpers", () => {
+  test("apld type is only the three ApldState constants", () => {
+    expect(isApldState(APLD_PENDING)).toBe(true);
+    expect(isApldState(APLD_APPLIED)).toBe(true);
+    expect(isApldState(APLD_ERROR)).toBe(true);
+    expect(isApldState("f")).toBe(true);
+    expect(isApldState("t")).toBe(true);
+    expect(isApldState("e")).toBe(true);
+    expect(isApldState(true)).toBe(false);
+    expect(isApldState(false)).toBe(false);
+    expect(isApldState("x")).toBe(false);
+    expect(isApldState(0)).toBe(false);
+    expect(isApldState(undefined)).toBe(false);
   });
 
-  test("normalize coerces missing apld and IDB t/f", () => {
+  test("pending when apld is PENDING or unset; not APPLIED/ERROR", () => {
     const eid = eidOf(1);
-    const n = normalizeStoredMessageData({ eid, body: new Uint8Array([1]) });
-    expect(n.apld).toBe(false);
-    expect(n.eid).toEqual(eid);
-    expect(normalizeStoredMessageData({ eid, apld: "f" }).apld).toBe(false);
-    expect(normalizeStoredMessageData({ eid, apld: "t" }).apld).toBe(true);
-    expect(normalizeStoredMessageData({ eid, apld: false }).apld).toBe(false);
-    expect(normalizeStoredMessageData({ eid, apld: true }).apld).toBe(true);
+    expect(isPendingApply({ eid, apld: APLD_PENDING })).toBe(true);
+    expect(isPendingApply({ eid })).toBe(true); // legacy unset → pending
+    expect(isPendingApply({ eid, apld: APLD_APPLIED })).toBe(false);
+    expect(isPendingApply({ eid, apld: APLD_ERROR })).toBe(false);
+  });
+
+  test("apldFromStored coerces raw storage values", () => {
+    expect(apldFromStored(APLD_PENDING)).toBe(APLD_PENDING);
+    expect(apldFromStored(APLD_APPLIED)).toBe(APLD_APPLIED);
+    expect(apldFromStored(APLD_ERROR)).toBe(APLD_ERROR);
+    expect(apldFromStored(undefined)).toBe(APLD_PENDING);
+    // Runtime-only legacy values (not assignable to ApldState at type level).
+    expect(apldFromStored(false)).toBe(APLD_PENDING);
+    expect(apldFromStored(true)).toBe(APLD_APPLIED);
+    expect(apldFromStored("nope")).toBe(APLD_PENDING);
+  });
+
+  test("setApld mutates in place and clears err when not ERROR", () => {
+    const row = {
+      eid: eidOf(1),
+      body: new Uint8Array([1]),
+      apld: APLD_PENDING,
+      err: Status.InvalidMessage,
+    };
+    setApld(row, APLD_APPLIED);
+    expect(row.apld).toBe(APLD_APPLIED);
+    expect(row.err).toBeUndefined();
+    expect(row.body).toEqual(new Uint8Array([1]));
+    setApld(row, APLD_ERROR, Status.HashMismatch);
+    expect(row.apld).toBe(APLD_ERROR);
+    expect(row.err).toBe(Status.HashMismatch);
+  });
+
+  test("isTerminalApplyFailure classifies statuses", () => {
+    expect(isTerminalApplyFailure(Status.InvalidMessage)).toBe(true);
+    expect(isTerminalApplyFailure(Status.HashMismatch)).toBe(true);
+    expect(isTerminalApplyFailure(Status.Success)).toBe(false);
+    expect(isTerminalApplyFailure(Status.NoChange)).toBe(false);
+    expect(isTerminalApplyFailure(Status.DatabaseError)).toBe(false);
+    expect(isTerminalApplyFailure(Status.StorageError)).toBe(false);
   });
 });
 
@@ -113,22 +162,31 @@ describe("msg2StoredMsgData", () => {
       head: { eid, off: 0, ctr: 0, len: 0 },
       body: new Uint8Array([9]),
     });
-    expect(data.apld).toBe(false);
+    expect(data.apld).toBe(APLD_PENDING);
     expect(isPendingApply(data)).toBe(true);
   });
 });
 
 describe("MemoryMessageStore apply queue", () => {
-  test("listUnapplied returns apld===false (and memory treats unset via normalize on get)", async () => {
+  test("listUnapplied returns apld===f only (not t/e; unset via normalize)", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     await store.messages.add([
       {
         key: hashOf(1),
-        data: { eid: eidOf(1), body: new Uint8Array([1]), apld: false },
+        data: { eid: eidOf(1), body: new Uint8Array([1]), apld: APLD_PENDING },
       },
       {
         key: hashOf(2),
-        data: { eid: eidOf(2), body: new Uint8Array([2]), apld: true },
+        data: { eid: eidOf(2), body: new Uint8Array([2]), apld: APLD_APPLIED },
+      },
+      {
+        key: hashOf(4),
+        data: {
+          eid: eidOf(4),
+          body: new Uint8Array([4]),
+          apld: APLD_ERROR,
+          err: Status.InvalidMessage,
+        },
       },
     ]);
     // Simulate legacy row without apld (bypass write type by writing map directly).
@@ -138,11 +196,14 @@ describe("MemoryMessageStore apply queue", () => {
       { eid: eidOf(3), body: new Uint8Array([3]) },
     );
     const pending = await store.messages.listUnapplied();
-    // false + unset both pending in memory scan
+    // f + unset both pending; t and e excluded
     expect(pending.length).toBe(2);
-    expect(pending.map((p) => p.applied)).toEqual([false, false]);
-    // get normalizes unset → applied false
-    expect((await store.messages.get(hashOf(3)))?.applied).toBe(false);
+    expect(pending.map((p) => p.apld)).toEqual([APLD_PENDING, APLD_PENDING]);
+    // get coerces unset → APLD_PENDING
+    expect((await store.messages.get(hashOf(3)))?.apld).toBe(APLD_PENDING);
+    const failed = await store.messages.get(hashOf(4));
+    expect(failed?.apld).toBe(APLD_ERROR);
+    expect(failed?.err).toBe(Status.InvalidMessage);
   });
 
   test("markApplied flips pending to applied", async () => {
@@ -151,7 +212,18 @@ describe("MemoryMessageStore apply queue", () => {
     await storePending(store, { hash: h, eid: eidOf(10) });
     await store.messages.markApplied([h]);
     expect(await store.messages.listUnapplied()).toHaveLength(0);
-    expect((await store.messages.get(h))?.applied).toBe(true);
+    expect((await store.messages.get(h))?.apld).toBe(APLD_APPLIED);
+  });
+
+  test("markFailed flips pending to e and stores err", async () => {
+    const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+    const h = hashOf(11);
+    await storePending(store, { hash: h, eid: eidOf(11) });
+    await store.messages.markFailed([{ key: h, err: Status.InvalidMessage }]);
+    expect(await store.messages.listUnapplied()).toHaveLength(0);
+    const row = await store.messages.get(h);
+    expect(row?.apld).toBe(APLD_ERROR);
+    expect(row?.err).toBe(Status.InvalidMessage);
   });
 
   test("markApplied ignores missing keys", async () => {
@@ -172,14 +244,14 @@ describe("MemoryMessageStore apply queue", () => {
     expect(pending[0].hash).toEqual(b);
   });
 
-  test("toStoredMessage exposes applied flag", async () => {
+  test("toStoredMessage exposes apld state", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const h = hashOf(30);
     await storePending(store, { hash: h, eid: eidOf(30) });
     const pending = await store.messages.get(h);
-    expect(pending?.applied).toBe(false);
+    expect(pending?.apld).toBe(APLD_PENDING);
     await store.messages.markApplied([h]);
-    expect((await store.messages.get(h))?.applied).toBe(true);
+    expect((await store.messages.get(h))?.apld).toBe(APLD_APPLIED);
   });
 });
 
@@ -197,7 +269,7 @@ describe("SyncClient apply queue", () => {
     expect(state.applied).toHaveLength(1);
     const listed = Array.from(await store.messages.list());
     expect(listed).toHaveLength(1);
-    expect(listed[0].applied).toBe(true);
+    expect(listed[0].apld).toBe(APLD_APPLIED);
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
 
@@ -221,7 +293,7 @@ describe("SyncClient apply queue", () => {
     const listed = Array.from(await store.messages.list());
     expect(listed.length).toBeGreaterThanOrEqual(2);
     for (const m of listed) {
-      expect(m.applied).toBe(true);
+      expect(m.apld).toBe(APLD_APPLIED);
     }
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
@@ -275,9 +347,13 @@ describe("SyncClient apply queue", () => {
       false,
     );
     await client.insertRaw(encode({ type: "t", body: "x" }));
-    // App rejected the msg — do not push to hosts.
+    // App rejected the msg — do not push to hosts; terminal → not pending.
     expect(await store.uploads.count()).toBe(0);
-    expect(await store.messages.listUnapplied()).toHaveLength(1);
+    expect(await store.messages.listUnapplied()).toHaveLength(0);
+    const listed = Array.from(await store.messages.list());
+    expect(listed).toHaveLength(1);
+    expect(listed[0].apld).toBe(APLD_ERROR);
+    expect(listed[0].err).toBe(Status.InvalidMessage);
   });
 
   test("Status.NoChange still marks applied and may enqueue upload", async () => {
@@ -332,10 +408,11 @@ describe("SyncClient apply queue", () => {
     expect(stats).toEqual([Status.Success, Status.InvalidMessage]);
     expect(call).toBe(1);
 
-    const pending = await store.messages.listUnapplied();
-    expect(pending).toHaveLength(1);
-    expect(pending[0].hash).toEqual(h2);
-    expect((await store.messages.get(h1))?.applied).toBe(true);
+    expect(await store.messages.listUnapplied()).toHaveLength(0);
+    expect((await store.messages.get(h1))?.apld).toBe(APLD_APPLIED);
+    const failed = await store.messages.get(h2);
+    expect(failed?.apld).toBe(APLD_ERROR);
+    expect(failed?.err).toBe(Status.InvalidMessage);
   });
 
   test("drainApplyQueue is no-op when empty", async () => {
@@ -363,7 +440,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, body: new Uint8Array([1, 2, 3]), apld: false },
+      data: { eid, body: new Uint8Array([1, 2, 3]), apld: APLD_PENDING },
     }]);
 
     expect(await store.messages.listUnapplied()).toHaveLength(1);
@@ -401,7 +478,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, body: new Uint8Array([9]), apld: false },
+      data: { eid, body: new Uint8Array([9]), apld: APLD_PENDING },
     }]);
     await store.hosts.add({ handle: lpcHost, label: "h", idx: 0 });
 
@@ -448,7 +525,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, off: 1, body: new Uint8Array([8]), apld: false },
+      data: { eid, off: 1, body: new Uint8Array([8]), apld: APLD_PENDING },
     }]);
     order.length = 0;
 
@@ -483,8 +560,7 @@ describe("SyncClient apply queue", () => {
     expect(await store.messages.listUnapplied()).toHaveLength(0);
   });
 
-  test("mixed Success and failure returns per-hash stats from insert path", async () => {
-    // Single-msg path: InvalidMessage → still archived pending
+  test("transient DatabaseError stays pending for retry", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state = mockState(async (msgs) =>
       msgs.map(() => Status.DatabaseError)
@@ -493,9 +569,26 @@ describe("SyncClient apply queue", () => {
     await client.setSeed(seed);
     await client.insertRaw(encode({ type: "t", body: 1 }));
     expect(await store.messages.listUnapplied()).toHaveLength(1);
-    // Retry drain still fails and stays pending
+    // Retry drain still fails and stays pending (non-terminal)
     const stats = await client.drainApplyQueue();
     expect(stats).toEqual([Status.DatabaseError]);
     expect(await store.messages.listUnapplied()).toHaveLength(1);
+  });
+
+  test("terminal InvalidMessage marks e and is not retried", async () => {
+    const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+    const state = mockState(async (msgs) =>
+      msgs.map(() => Status.InvalidMessage)
+    );
+    const client = makeClient(store, state);
+    await client.setSeed(seed);
+    await client.insertRaw(encode({ type: "t", body: 1 }));
+    expect(await store.messages.listUnapplied()).toHaveLength(0);
+    const listed = Array.from(await store.messages.list());
+    expect(listed[0].err).toBe(Status.InvalidMessage);
+    // Drain finds nothing left to apply
+    const stats = await client.drainApplyQueue();
+    expect(stats).toEqual([]);
+    expect(state.applied).toHaveLength(1); // only the insert path attempt
   });
 });

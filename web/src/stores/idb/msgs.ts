@@ -3,26 +3,17 @@ import { Status } from "../../shared/consts";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import {
+  APLD_APPLIED,
+  APLD_ERROR,
+  APLD_PENDING,
   IMessageStore,
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
-  IStoredMessageWrite,
-  normalizeStoredMessageData,
+  setApld,
   toStoredMessage,
 } from "../../types";
 import { MESSAGES_APLD_INDEX, MESSAGES_TABLE } from "./store";
-
-/** IDB index keys must not be boolean; persist apld as "t"|"f". */
-function toIdbMessageRow(data: IStoredMessageWrite): IStoredMessageData {
-  return {
-    eid: data.eid,
-    ...(data.off !== undefined ? { off: data.off } : {}),
-    ...(data.ctr !== undefined ? { ctr: data.ctr } : {}),
-    ...(data.body !== undefined ? { body: data.body } : {}),
-    apld: data.apld ? "t" : "f",
-  };
-}
 
 export class IDBMessageStore implements IMessageStore {
   db: IDBDatabase;
@@ -51,7 +42,8 @@ export class IDBMessageStore implements IMessageStore {
       for (let i = 0; i < messages.length; i++) {
         const { key, data } = messages[i];
         const keyB64 = btob64(key);
-        const req = store.put(toIdbMessageRow(data), keyB64);
+        // Put caller data as-is (omit optional fields at write time).
+        const req = store.put(data, keyB64);
         // We skip req.onsuccess because we default results to Success.
         req.onerror = (evt) => {
           // preventDefault allows continuation if a single insert fails.
@@ -165,8 +157,8 @@ export class IDBMessageStore implements IMessageStore {
     const index = store.index(MESSAGES_APLD_INDEX);
     return new Promise<IStoredMessage[]>((resolve, reject) => {
       const pending: { hash: Hash; data: IStoredMessageData }[] = [];
-      // Pending rows: apld "f" (boolean is not a valid IDB key).
-      const req = index.openCursor(IDBKeyRange.only("f"));
+      // Pending rows only (boolean is not a valid IDB key).
+      const req = index.openCursor(IDBKeyRange.only(APLD_PENDING));
       req.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest).result;
         if (cursor) {
@@ -201,8 +193,34 @@ export class IDBMessageStore implements IMessageStore {
         getReq.onsuccess = () => {
           const data = getReq.result as IStoredMessageData | undefined;
           if (!data) return;
-          const norm = normalizeStoredMessageData(data);
-          store.put(toIdbMessageRow({ ...norm, apld: true }), b64);
+          setApld(data, APLD_APPLIED);
+          store.put(data, b64);
+        };
+        getReq.onerror = (evt) => {
+          evt.preventDefault();
+        };
+      }
+    });
+  }
+
+  async markFailed(
+    entries: Iterable<{ key: Hash; err: Status }>,
+  ): Promise<void> {
+    const list = [...entries];
+    if (list.length === 0) return;
+    const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      for (const { key, err } of list) {
+        const b64 = btob64(key);
+        const getReq = store.get(b64);
+        getReq.onsuccess = () => {
+          const data = getReq.result as IStoredMessageData | undefined;
+          if (!data) return;
+          setApld(data, APLD_ERROR, err);
+          store.put(data, b64);
         };
         getReq.onerror = (evt) => {
           evt.preventDefault();

@@ -19,7 +19,11 @@ import {
   MasterSeed,
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
-import { IDownloadMessage, IStoredMessageData } from "../src/types";
+import {
+  APLD_APPLIED,
+  IDownloadMessage,
+  IStoredMessageData,
+} from "../src/types";
 
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
@@ -127,7 +131,7 @@ describe("syncPeek", () => {
       ...(message.off !== 0 ? { off: message.off } : {}),
       ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
       body: message.bod,
-      apld: true,
+      apld: APLD_APPLIED,
     };
     await store.messages.add([{ key: headEncHash, data: storedData }]);
 
@@ -207,7 +211,7 @@ describe("syncPush", () => {
     const storedData: IStoredMessageData = {
       eid: message.eid,
       body: message.bod,
-      apld: true,
+      apld: APLD_APPLIED,
     };
     await store.messages.add([{ key: hash, data: storedData }]);
     await store.uploads.enq("test", [hash]);
@@ -367,7 +371,7 @@ describe("syncPull", () => {
     // Same moment as import/apply: archive the msg, then deq matching downloads.
     await store.messages.add([{
       key: headEncHash,
-      data: { eid: message.eid, body, apld: true },
+      data: { eid: message.eid, body, apld: APLD_APPLIED },
     }]);
     await deqDownloadsForHeadHashes(store, [headEncHash], libsodiumCrypto);
 

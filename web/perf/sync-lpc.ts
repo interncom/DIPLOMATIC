@@ -38,6 +38,7 @@ import type {
 import { sortByHlcDesc } from "../src/hlc";
 import { SqliteStore } from "./sqlite-store";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
+import { APLD_APPLIED } from "../src/types";
 import type { IStore, IStoredMessageWrite } from "../src/types";
 import {
   type ProdDatasetFile,
@@ -96,16 +97,14 @@ async function enqueueAll(
   let n = 0;
   for (const msg of msgs) {
     const key = await hashMessage(msg, crypto);
-    batch.push({
-      key,
-      data: {
-        eid: msg.eid,
-        ...(msg.off !== 0 ? { off: msg.off } : {}),
-        ...(msg.ctr !== 0 ? { ctr: msg.ctr } : {}),
-        body: msg.bod,
-        apld: true,
-      },
-    });
+    const data: IStoredMessageWrite = {
+      eid: msg.eid,
+      body: msg.bod,
+      apld: APLD_APPLIED,
+    };
+    if (msg.off !== 0) data.off = msg.off;
+    if (msg.ctr !== 0) data.ctr = msg.ctr;
+    batch.push({ key, data });
     if (batch.length >= BATCH) {
       await store.messages.add(batch);
       await store.uploads.enq(HOST_LABEL, batch.map((b) => b.key));
@@ -285,13 +284,21 @@ async function main() {
       const toApply = ordered.map((m) => ({ ...m.head, bod: m.body }));
       const stats = await state.apply(toApply);
       const done: Hash[] = [];
+      const failed: { key: Hash; err: Status }[] = [];
       for (let i = 0; i < ordered.length; i++) {
         const st = stats[i];
         if (st === Status.Success || st === Status.NoChange) {
           done.push(ordered[i].hash);
+        } else if (
+          st !== undefined &&
+          st !== Status.DatabaseError &&
+          st !== Status.StorageError
+        ) {
+          failed.push({ key: ordered[i].hash, err: st });
         }
       }
       if (done.length > 0) await downStore.messages.markApplied(done);
+      if (failed.length > 0) await downStore.messages.markFailed(failed);
     },
   );
   const tPull = performance.now() - tPull0;

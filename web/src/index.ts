@@ -45,6 +45,7 @@ import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
 import type {
+  ApldState,
   Applier,
   IClient,
   IDiplomaticClientState,
@@ -54,7 +55,16 @@ import type {
   IStoredMessageData,
   IStoredMessageWrite,
 } from "./types";
-import { isPendingApply, normalizeStoredMessageData } from "./types";
+import {
+  APLD_APPLIED,
+  APLD_ERROR,
+  APLD_PENDING,
+  apldFromStored,
+  isApldState,
+  isPendingApply,
+  isTerminalApplyFailure,
+  setApld,
+} from "./types";
 import type { SyncProgressEvent } from "./progress";
 import {
   defaultPeekProgressEvery,
@@ -96,6 +106,10 @@ export async function genWebClient(
 }
 
 export {
+  APLD_APPLIED,
+  APLD_ERROR,
+  APLD_PENDING,
+  apldFromStored,
   btoh,
   Clock,
   crypto,
@@ -117,16 +131,18 @@ export {
   idleProgress,
   IEntDB,
   IEntity,
+  isApldState,
   isPendingApply,
+  isTerminalApplyFailure,
   IStore,
   MasterSeed,
   MemoryStore,
-  normalizeStoredMessageData,
   nullEntDB,
   nullStateManager,
   openDiplomaticClient,
   openEntIDB,
   openIDBStore,
+  setApld,
   shouldEmitItemProgress,
   SingletonStateManager,
   StateManager,
@@ -143,6 +159,7 @@ export {
 };
 
 export type {
+  ApldState,
   Applier,
   HostHandle,
   IClient,

@@ -7,6 +7,7 @@ import { Status } from "../src/shared/consts";
 import type { Hash, HostHandle, IBag } from "../src/shared/types";
 import type { MasterSeed } from "../src/shared/types";
 import { ok, err } from "../src/shared/valstat";
+import { APLD_PENDING } from "../src/types";
 import type { IDownloadMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import type { HostSpecificKeyPair, IMessage } from "../src/shared/types";
@@ -189,7 +190,7 @@ describe("pullBodies + openPulled", () => {
     expect(await store.downloads.count()).toBe(0);
     const msgs = Array.from(await store.messages.list());
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].applied).toBe(false);
+    expect(msgs[0].apld).toBe(APLD_PENDING);
     expect(msgs[0].body).toEqual(body);
   });
 

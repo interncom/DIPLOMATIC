@@ -2,12 +2,14 @@ import { b64tob, btob64, bytesEqual } from "../../shared/binary";
 import { ICrypto } from "../../shared/types";
 import { EntityID, Hash } from "../../shared/types";
 import {
+  APLD_APPLIED,
+  APLD_ERROR,
   IMessageStore,
   isPendingApply,
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
-  normalizeStoredMessageData,
+  setApld,
   toStoredMessage,
 } from "../../types";
 import { Status } from "../../shared/consts";
@@ -89,13 +91,19 @@ export class MemoryMessageStore implements IMessageStore {
 
   async markApplied(keys: Iterable<Hash>): Promise<void> {
     for (const key of keys) {
-      const keyStr = btob64(key);
-      const data = this.messages.get(keyStr);
+      const data = this.messages.get(btob64(key));
       if (!data) continue;
-      this.messages.set(keyStr, {
-        ...normalizeStoredMessageData(data),
-        apld: true,
-      });
+      setApld(data, APLD_APPLIED);
+    }
+  }
+
+  async markFailed(
+    entries: Iterable<{ key: Hash; err: Status }>,
+  ): Promise<void> {
+    for (const { key, err } of entries) {
+      const data = this.messages.get(btob64(key));
+      if (!data) continue;
+      setApld(data, APLD_ERROR, err);
     }
   }
 

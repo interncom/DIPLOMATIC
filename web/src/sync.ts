@@ -23,6 +23,7 @@ import {
   shouldEmitItemProgress,
 } from "./progress";
 import {
+  APLD_PENDING,
   IDownloadMessage,
   IHostRow,
   IMsgParts,
@@ -593,13 +594,14 @@ export async function syncPull<Handle extends HostHandle>(
 export function msg2StoredMsgData(
   { head, body }: IMsgParts,
 ): IStoredMessageWrite {
-  return {
+  const data: IStoredMessageWrite = {
     eid: head.eid,
-    ...(head.off !== 0 ? { off: head.off } : {}),
-    ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
     body,
-    apld: false, // exec (or drainApplyQueue) sets true after app apply
+    apld: APLD_PENDING, // exec (or drainApplyQueue) sets APPLIED/ERROR
   };
+  if (head.off !== 0) data.off = head.off;
+  if (head.ctr !== 0) data.ctr = head.ctr;
+  return data;
 }
 
 /**

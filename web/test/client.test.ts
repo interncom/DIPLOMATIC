@@ -21,7 +21,11 @@ import { bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { hostKeys } from "../src/shared/endpoint";
-import { IDownloadMessage, IStoredMessageData } from "../src/types";
+import {
+  APLD_APPLIED,
+  IDownloadMessage,
+  IStoredMessageData,
+} from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
@@ -379,7 +383,7 @@ describe("Client", () => {
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined,
-          apld: true,
+          apld: APLD_APPLIED,
         };
         await store.messages.add([{ key: hash, data }]);
 
@@ -422,7 +426,7 @@ describe("Client", () => {
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined,
-          apld: true,
+          apld: APLD_APPLIED,
         };
         await store.messages.add([{ key: hash, data }]);
 
@@ -509,7 +513,7 @@ describe("Client", () => {
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
-        apld: true,
+        apld: APLD_APPLIED,
       };
       await store.messages.add([{ key: hash, data }]);
 

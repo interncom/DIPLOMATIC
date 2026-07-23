@@ -106,9 +106,22 @@ export interface IDownloadQueue {
 }
 
 /**
+ * Apply lifecycle values for archive rows (IDB-indexable single-char strings;
+ * booleans are not valid IndexedDB keys). Defined first so {@link ApldState}
+ * is only those three literals.
+ */
+export const APLD_PENDING = "f" as const;
+export const APLD_APPLIED = "t" as const;
+export const APLD_ERROR = "e" as const;
+
+/** Only {@link APLD_PENDING}, {@link APLD_APPLIED}, or {@link APLD_ERROR}. */
+export type ApldState =
+  | typeof APLD_PENDING
+  | typeof APLD_APPLIED
+  | typeof APLD_ERROR;
+
+/**
  * Archive fields shared by read and write.
- * `apld`: true once the msg has been applied by the application state manager;
- * false while still pending apply.
  */
 export interface IStoredMessageFields {
   eid: EntityID;
@@ -119,20 +132,24 @@ export interface IStoredMessageFields {
 
 /**
  * What may come back from storage (pre-apld rows can omit the field).
- * IDB stores "t"|"f" (booleans are not valid IndexedDB index keys).
- * Prefer {@link normalizeStoredMessageData} before use.
+ * Typed rows use only {@link ApldState}; {@link apldFromStored} coerces
+ * legacy boolean / unknown values at the storage boundary.
  */
 export interface IStoredMessageData extends IStoredMessageFields {
-  apld?: boolean | "t" | "f";
+  apld?: ApldState;
+  /** Status code when apld is {@link APLD_ERROR}. */
+  err?: number;
 }
 
 /**
  * Required shape for every put into the message archive (app/API layer).
- * Callers must set `apld` (false until applied, then true).
- * The IDB adapter persists this as "t"|"f" for indexing.
+ * `apld` is required and must be one of the three {@link ApldState} values.
+ * Omit optional fields (`off`, `ctr`, `body`, `err`) rather than storing empties.
  */
 export type IStoredMessageWrite = IStoredMessageFields & {
-  apld: boolean;
+  apld: ApldState;
+  /** Status code when apld is {@link APLD_ERROR}. */
+  err?: number;
 };
 
 export interface IStorableMessage {
@@ -144,33 +161,59 @@ export interface IStoredMessage {
   hash: Hash;
   head: IMessageHead;
   body?: EncodedMessage;
-  applied: boolean; // True once this msg has been applied by the application state manager.
+  /** Apply lifecycle — same {@link ApldState} as the archive row. */
+  apld: ApldState;
+  /** Status code when apld is {@link APLD_ERROR}. */
+  err?: number;
+}
+
+/** True only for the three legal {@link ApldState} values. */
+export function isApldState(v: unknown): v is ApldState {
+  return v === APLD_PENDING || v === APLD_APPLIED || v === APLD_ERROR;
 }
 
 /**
- * Coerce stored `apld` to boolean.
- * Applied: true | "t". Pending: false | "f" | missing.
+ * Coerce raw storage values to {@link ApldState}.
+ * Applied: true | APLD_APPLIED. Failed: APLD_ERROR.
+ * Pending: false | APLD_PENDING | missing | anything else.
  */
-export function apldFromStored(v: unknown): boolean {
-  return v === true || v === "t";
+export function apldFromStored(v: unknown): ApldState {
+  if (v === true || v === APLD_APPLIED) return APLD_APPLIED;
+  if (v === APLD_ERROR) return APLD_ERROR;
+  return APLD_PENDING;
 }
 
-/** Coerce storage rows to the write shape with boolean apld. */
-export function normalizeStoredMessageData(
-  data: IStoredMessageData,
-): IStoredMessageWrite {
-  return {
-    eid: data.eid,
-    ...(data.off !== undefined ? { off: data.off } : {}),
-    ...(data.ctr !== undefined ? { ctr: data.ctr } : {}),
-    ...(data.body !== undefined ? { body: data.body } : {}),
-    apld: data.apld === undefined ? false : apldFromStored(data.apld),
-  };
-}
-
-/** Pending apply when not yet marked applied. */
+/** Pending apply when not yet applied or terminally failed. */
 export function isPendingApply(data: IStoredMessageData): boolean {
-  return normalizeStoredMessageData(data).apld === false;
+  return apldFromStored(data.apld) === APLD_PENDING;
+}
+
+/**
+ * Apply failures that should not be retried (poison / protocol / shape).
+ * Transient storage errors stay pending ({@link APLD_PENDING}) for a later drain.
+ */
+export function isTerminalApplyFailure(st: Status): boolean {
+  return st !== Status.Success &&
+    st !== Status.NoChange &&
+    st !== Status.DatabaseError &&
+    st !== Status.StorageError;
+}
+
+/**
+ * Mutate a stored row's apply state in place (no copy).
+ * Clears `err` unless setting {@link APLD_ERROR}.
+ */
+export function setApld(
+  data: IStoredMessageData,
+  apld: ApldState,
+  err?: Status,
+): void {
+  data.apld = apld;
+  if (apld === APLD_ERROR && err !== undefined) {
+    data.err = err;
+  } else {
+    delete data.err;
+  }
 }
 
 export async function toStoredMessage(
@@ -178,25 +221,28 @@ export async function toStoredMessage(
   data: IStoredMessageData,
   crypto: ICrypto,
 ): Promise<IStoredMessage> {
-  const norm = normalizeStoredMessageData(data);
-  const len = norm.body?.length ?? 0;
+  const apld = apldFromStored(data.apld);
+  const body = data.body;
+  const len = body?.length ?? 0;
   let hsh: Uint8Array | undefined;
-  if (norm.body && len > 0) {
-    hsh = await crypto.blake3(norm.body);
+  if (body && len > 0) {
+    hsh = await crypto.blake3(body);
   }
   const head: IMessageHead = {
-    eid: norm.eid,
-    off: norm.off ?? 0,
-    ctr: norm.ctr ?? 0,
+    eid: data.eid,
+    off: data.off ?? 0,
+    ctr: data.ctr ?? 0,
     len,
     hsh,
   };
-  return {
+  const out: IStoredMessage = {
     hash,
     head,
-    body: norm.body,
-    applied: norm.apld,
+    apld,
   };
+  if (body !== undefined) out.body = body;
+  if (apld === APLD_ERROR && data.err !== undefined) out.err = data.err;
+  return out;
 }
 export interface IMessageStore {
   add: (messages: IStorableMessage[]) => Promise<Status[]>;
@@ -205,10 +251,14 @@ export interface IMessageStore {
   del: (keys: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
-  /** Messages stored but not yet applied (apld === false). */
+  /** Messages stored but not yet applied ({@link APLD_PENDING}). */
   listUnapplied: () => Promise<IStoredMessage[]>;
-  /** Mark archive rows as applied (apld = true). */
+  /** Mark archive rows as applied ({@link APLD_APPLIED}). */
   markApplied: (keys: Iterable<Hash>) => Promise<void>;
+  /** Mark archive rows as terminal apply failure ({@link APLD_ERROR}). */
+  markFailed: (
+    entries: Iterable<{ key: Hash; err: Status }>,
+  ) => Promise<void>;
   wipe(): Promise<void>;
 }
 

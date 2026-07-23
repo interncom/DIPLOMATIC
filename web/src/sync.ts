@@ -16,6 +16,7 @@ import { Enclave } from "./shared/enclave";
 import { decryptPeekItem } from "./shared/sync";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
+import { btob64 } from "./shared/binary";
 import {
   defaultPeekProgressEvery,
   ProgressFn,
@@ -204,16 +205,15 @@ export async function openPulled<Handle extends HostHandle>(
   for (const { dl, bodyCph } of items) {
     const { head, kdm, seq, host } = dl;
     // Prefer headEnc/hash from peek (avoids re-encode + double blake3).
-    let headEnc = dl.headEnc;
-    let headEncHash = dl.headEncHash;
-    if (!headEnc) {
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
-      headEnc = enc.result();
+    const [resolved, headStat] = await resolveHeadEnc(dl, crypto);
+    if (headStat !== Status.Success || !resolved) {
+      const seqs = deqByHost.get(host) ?? [];
+      seqs.push(seq);
+      deqByHost.set(host, seqs);
+      continue;
     }
-    if (!headEncHash) {
-      headEncHash = await crypto.blake3(headEnc);
-    }
+    const { headEnc, headEncHash } = resolved;
+
     const key = await enclave.deriveFromKDM(kdm);
     const [contents, openStat] = await openBagBody(
       headEnc,
@@ -265,6 +265,63 @@ type PeekCryptoOk = {
 };
 type PeekCryptoFail = { ok: false; seq: number; stat: Status };
 type PeekCryptoResult = PeekCryptoOk | PeekCryptoFail;
+
+/** headEnc + blake3 key for a download item (peek cache or re-encode). */
+async function resolveHeadEnc(
+  dl: IDownloadMessage,
+  crypto: ICrypto,
+): Promise<ValStat<{ headEnc: Uint8Array; headEncHash: Hash }>> {
+  let headEnc = dl.headEnc;
+  if (!headEnc) {
+    const enc = new Encoder();
+    const st = enc.writeStruct(messageHeadCodec, dl.head);
+    if (st !== Status.Success) return err(st);
+    headEnc = enc.result();
+  }
+  if (dl.headEncHash) {
+    return ok({ headEnc, headEncHash: dl.headEncHash });
+  }
+  const headEncHash = await crypto.blake3(headEnc);
+  return ok({ headEnc, headEncHash });
+}
+
+/**
+ * Drop download-queue rows whose head matches archive keys we just stored
+ * (import / local apply). One list() + batched deq — not per-row messages.has.
+ */
+export async function deqDownloadsForHeadHashes<Handle extends HostHandle>(
+  store: Pick<IStore<Handle>, "downloads">,
+  hashes: Iterable<Hash>,
+  crypto: ICrypto,
+): Promise<void> {
+  const want = new Set<string>();
+  for (const h of hashes) {
+    want.add(btob64(h));
+  }
+  if (want.size < 1) return;
+
+  const dls = Array.from(await store.downloads.list());
+  if (dls.length < 1) return;
+
+  const byHost = new Map<string, number[]>();
+  for (const d of dls) {
+    let hashB64: string | undefined;
+    if (d.headEncHash) {
+      hashB64 = btob64(d.headEncHash);
+    } else {
+      const [resolved, st] = await resolveHeadEnc(d, crypto);
+      if (st !== Status.Success || !resolved) continue;
+      hashB64 = btob64(resolved.headEncHash);
+    }
+    if (!want.has(hashB64)) continue;
+    const seqs = byHost.get(d.host) ?? [];
+    seqs.push(d.seq);
+    byHost.set(d.host, seqs);
+  }
+  for (const [hostLabel, seqs] of byHost) {
+    await store.downloads.deq(hostLabel, seqs);
+  }
+}
 
 /** Discover unseen bags and enqueue download work; advance host lastSeq. */
 export async function syncPeek<Handle extends HostHandle>(
@@ -340,10 +397,11 @@ export async function syncPeek<Handle extends HostHandle>(
 
     const msgExists = await store.messages.has(result.headEncHash);
     if (msgExists) {
-      // Host offered a bag we already archived: no download. Drop redundant
-      // upload queue entry (host already has this head).
+      // Already archived (import or prior sync): no download. Drop any stale
+      // download-queue row and redundant upload (host already has this head).
       console.info("peek: local msg; skip download, deq upload");
       await store.uploads.deq(host.label, [result.headEncHash]);
+      await store.downloads.deq(host.label, [result.seq]);
       continue;
     }
 
@@ -485,7 +543,7 @@ export async function syncPull<Handle extends HostHandle>(
     return Status.NoChange;
   }
 
-  // All bags still pulled; HLC order so early exec batches converge UI state.
+  // HLC order so early exec converges UI state.
   const items = sortByHlcDesc(hostItems, (d) => d.head);
   const batches = batchByBytes(items, (d) => d.head.len, limit);
   const total = items.length;

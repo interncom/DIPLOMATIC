@@ -58,6 +58,8 @@ function openDb(path: string): Database {
       ctr INTEGER NOT NULL,
       len INTEGER NOT NULL,
       hsh BLOB,
+      headEnc BLOB,
+      headEncHash BLOB,
       PRIMARY KEY (host, seq)
     );
     CREATE TABLE IF NOT EXISTS messages (
@@ -234,8 +236,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
   async enq(msgs: Iterable<IDownloadMessage>) {
     const ins = this.db.prepare(
       `INSERT OR REPLACE INTO downloads
-        (host, seq, kdm, eid, off, ctr, len, hsh)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (host, seq, kdm, eid, off, ctr, len, hsh, headEnc, headEncHash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.exec("BEGIN");
     try {
@@ -250,6 +252,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
           head.ctr,
           head.len,
           head.hsh ?? null,
+          m.headEnc ?? null,
+          m.headEncHash ?? null,
         );
       }
       this.db.exec("COMMIT");
@@ -277,7 +281,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
 
   async list(): Promise<IDownloadMessage[]> {
     const rows = this.db.prepare(
-      "SELECT host, seq, kdm, eid, off, ctr, len, hsh FROM downloads",
+      `SELECT host, seq, kdm, eid, off, ctr, len, hsh, headEnc, headEncHash
+       FROM downloads`,
     ).all() as {
       host: string;
       seq: number;
@@ -287,6 +292,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
       ctr: number;
       len: number;
       hsh: Uint8Array | null;
+      headEnc: Uint8Array | null;
+      headEncHash: Uint8Array | null;
     }[];
     return rows.map((row) => {
       const head: IMessageHead = {
@@ -301,6 +308,12 @@ class SqliteDownloadQueue implements IDownloadQueue {
         seq: row.seq,
         kdm: new Uint8Array(row.kdm),
         head,
+        ...(row.headEnc
+          ? { headEnc: new Uint8Array(row.headEnc) }
+          : {}),
+        ...(row.headEncHash
+          ? { headEncHash: new Uint8Array(row.headEncHash) as Hash }
+          : {}),
       };
     });
   }

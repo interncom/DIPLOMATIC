@@ -87,6 +87,15 @@ export interface IDownloadMessage {
   seq: number;
   head: IMessageHead;
   host: string;
+  /**
+   * Encoded message head from peek (or notif). When set, open skips re-encode.
+   * Prefer always setting this on the peek path.
+   */
+  headEnc?: Uint8Array;
+  /**
+   * blake3(headEnc). When set with headEnc, open skips re-hashing the head.
+   */
+  headEncHash?: Hash;
 }
 export interface IDownloadQueue {
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;

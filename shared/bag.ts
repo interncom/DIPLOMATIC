@@ -94,6 +94,8 @@ export async function openBagBody(
   bodyCph: Uint8Array | undefined,
   key: Uint8Array,
   crypto: ICrypto,
+  /** When set (e.g. from peek), skip blake3(headEnc). */
+  headHashKnown?: Hash,
 ): Promise<ValStat<IOpenBag>> {
   // Decode message.
   const dec = new Decoder(headEnc);
@@ -125,9 +127,8 @@ export async function openBagBody(
     }
   }
 
-  // NOTE: openBagBody returns headHash so that callers don't need to re-encode
-  // the message head in order to produce that hash for use as a message index.
-  const headHash = await crypto.blake3(headEnc);
+  // Prefer caller-supplied head hash (peek already computed it).
+  const headHash = headHashKnown ?? await crypto.blake3(headEnc);
 
   return ok({ msgHead, bod: msgBody, headHash });
 }

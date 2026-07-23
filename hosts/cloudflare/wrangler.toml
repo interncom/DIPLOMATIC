@@ -27,8 +27,8 @@ deleted_classes = [ "WebSocketServer" ]
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#d1-databases
 [[d1_databases]]
 binding = "DIP_DB"
-database_name = "diplomatic-beta"
-database_id = "0a5ee394-b912-4347-91c9-3734374c81b4"
+database_name = "diplomatic"
+database_id = "936ba773-318d-4e12-a0ff-d74f95e20bbf"
 
 [observability]
 enabled = true

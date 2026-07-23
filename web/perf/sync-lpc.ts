@@ -3,13 +3,19 @@
 // Run from repo root (or web/):
 //   bun run web/perf/sync-lpc.ts
 //
+// Client stores are SQLite (bun:sqlite) so enqueue/push/peek/pull/open pay real
+// durable I/O (IDB-like). Host is in-memory LPC so host I/O is not the focus.
+//
 // Phases:
 //   1) enqueue all msgs + upload (syncPush via LPC)
 //   2) fresh client: peek all heads, then pull/open/exec (syncPeek + syncPull)
 //
-// Optional: DATASET=path/to/msgs.msgpack
+// Optional:
+//   DATASET=path/to/msgs.msgpack
+//   CLIENT_UP_DB=...    (uploader client archive)
+//   CLIENT_DOWN_DB=...  (downloader client archive)
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import libsodiumCrypto from "../src/crypto";
@@ -30,9 +36,9 @@ import type {
   MasterSeed,
 } from "../src/shared/types";
 import { sortByHlcDesc } from "../src/hlc";
-import { MemoryStore } from "../src/stores/memory/store";
+import { SqliteStore } from "../src/stores/sqlite/store";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
-import type { IStoredMessageWrite } from "../src/types";
+import type { IStore, IStoredMessageWrite } from "../src/types";
 import {
   type ProdDatasetFile,
   recsToMessages,
@@ -41,6 +47,14 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDataset = join(here, "../../fixtures/productivity/msgs.msgpack");
+const defaultClientUpDb = join(
+  here,
+  "../../fixtures/productivity/client-up-perf.db",
+);
+const defaultClientDownDb = join(
+  here,
+  "../../fixtures/productivity/client-down-perf.db",
+);
 
 const SEED = new Uint8Array(32).fill(0x42) as MasterSeed;
 const HOST_LABEL = "lpc";
@@ -73,7 +87,7 @@ async function hashMessage(
 
 /** Persist msgs + enqueue upload for HOST_LABEL (no apply/exec). */
 async function enqueueAll(
-  store: MemoryStore<IProtoHost>,
+  store: IStore<IProtoHost>,
   msgs: IMessage[],
   crypto: typeof libsodiumCrypto,
 ): Promise<number> {
@@ -107,8 +121,16 @@ async function enqueueAll(
   return n;
 }
 
+function wipeDbFiles(path: string) {
+  for (const p of [path, `${path}-wal`, `${path}-shm`]) {
+    if (existsSync(p)) unlinkSync(p);
+  }
+}
+
 async function main() {
   const datasetPath = process.env.DATASET ?? defaultDataset;
+  const clientUpDb = process.env.CLIENT_UP_DB ?? defaultClientUpDb;
+  const clientDownDb = process.env.CLIENT_DOWN_DB ?? defaultClientDownDb;
   console.log(`Loading ${datasetPath}`);
   const tLoad0 = performance.now();
   const file = loadDataset(datasetPath);
@@ -118,7 +140,12 @@ async function main() {
     `  ${msgs.length} msgs, ${file.ents} ents, load+hash ${ms(tLoad)}`,
   );
 
-  // --- shared LPC host ---
+  // --- LPC host in-memory (host I/O not under optimization) ---
+  wipeDbFiles(clientUpDb);
+  wipeDbFiles(clientDownDb);
+  console.log(`Host storage:   memory`);
+  console.log(`Client up:      SQLite ${clientUpDb}`);
+  console.log(`Client down:    SQLite ${clientDownDb}`);
   const storage = createMemoryStorage();
   const hostClock = new MockClock(new Date(0));
   const lpcHost = new DiplomaticLPCServer(
@@ -129,8 +156,8 @@ async function main() {
   );
   const makeTransport = () => new LPCTransport(lpcHost);
 
-  // --- uploader client ---
-  const upStore = new MemoryStore<IProtoHost>(libsodiumCrypto);
+  // --- uploader client (SQLite archive + queues) ---
+  const upStore = new SqliteStore<IProtoHost>(clientUpDb, libsodiumCrypto);
   await upStore.seed.save(SEED);
   await upStore.hosts.add({
     label: HOST_LABEL,
@@ -194,9 +221,9 @@ async function main() {
   if (listSt !== Status.Success) throw new Error(`listHeads ${listSt}`);
   console.log(`  host heads: ${heads.length}`);
 
-  // --- downloader client (same seed, empty archive) ---
+  // --- downloader client (same seed, empty SQLite archive) ---
   console.log("\n=== 3. sync from host (peek → pull/open/exec) ===");
-  const downStore = new MemoryStore<IProtoHost>(libsodiumCrypto);
+  const downStore = new SqliteStore<IProtoHost>(clientDownDb, libsodiumCrypto);
   await downStore.seed.save(SEED);
   await downStore.hosts.add({
     label: HOST_LABEL,
@@ -286,6 +313,8 @@ async function main() {
 
   // --- summary ---
   console.log("\n=== summary ===");
+  console.log(`  host store:     memory (LPC)`);
+  console.log(`  client store:   SQLite (up + down DBs)`);
   console.log(`  dataset:        ${msgs.length} msgs / ${file.ents} ents`);
   console.log(`  load+hash:      ${ms(tLoad)}`);
   console.log(`  enqueue:        ${ms(tEnq)}  (${rate(msgs.length, tEnq)})`);
@@ -293,6 +322,9 @@ async function main() {
   console.log(`  peek (LPC):     ${ms(tPeek)}  (${rate(nDl, tPeek)})`);
   console.log(`  pull+open+exec: ${ms(tPull)}  (${rate(nDl, tPull)})`);
   console.log(`  total sync-ish: ${ms(tEnq + tPush + tPeek + tPull)}`);
+
+  upStore.close();
+  downStore.close();
 
   if (left !== 0) {
     console.error(`FAIL: upload queue not drained (${left})`);

@@ -39,13 +39,22 @@ bun run web/perf/sync-lpc.ts
 npm run perf:sync
 ```
 
+**Host** is in-memory LPC (host I/O not the optimization target). **Client** archives use SQLite (bun:sqlite, IDB-like durability):
+
+| DB | Default path | Override |
+| --- | --- | --- |
+| Uploader client | `fixtures/productivity/client-up-perf.db` | `CLIENT_UP_DB=` |
+| Downloader client | `fixtures/productivity/client-down-perf.db` | `CLIENT_DOWN_DB=` |
+
+App EntDB in the harness remains in-memory (state only).
+
 ### Baseline (LPC, in-process; machine-dependent)
 
-| Phase | noble serial | WebCrypto serial | + concurrent peek |
-| --- | ---: | ---: | ---: |
-| enqueue | ~0.9s | ~2s | ~4s |
-| push (LPC) | ~103s | ~94s | ~87s |
-| peek (LPC) | ~73s | ~29s | **~9.5s** |
-| pull+open+exec | ~4s | ~10s | ~10s |
+| Phase | memory client | **SQLite client** (host memory) |
+| --- | ---: | ---: |
+| enqueue | ~2s | **~14s** |
+| push (LPC) | ~66–100s | **~109s** |
+| peek (LPC) | ~6–10s | **~13s** |
+| pull+open+exec | ~7–12s | **~20s** |
 
-Peek path: native Ed25519 verify, then concurrent crypto (`defaultPeekConcurrency = 64`). Push is still mostly seal/store. Re-run after architecture changes and compare.
+Peek still dominated by concurrent client crypto. Client SQLite shows up on **enqueue**, **push** (`messages.get` + queue), and **pull/open** (archive + download queue). Re-run after architecture changes and compare.

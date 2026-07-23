@@ -15,8 +15,8 @@ import {
   Hash,
   HostHandle,
   HostSpecificKeyPair,
-  MasterSeed,
   IMessage,
+  MasterSeed,
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { IDownloadMessage, IStoredMessageData } from "../src/types";
@@ -91,7 +91,12 @@ describe("syncPeek", () => {
 
     // Seal bag using same host keys that conn will use, and put on host.
     const keys = await generateTestKeys(enclave);
-    const [bag, statBag] = await sealBag(message, keys, libsodiumCrypto, enclave);
+    const [bag, statBag] = await sealBag(
+      message,
+      keys,
+      libsodiumCrypto,
+      enclave,
+    );
     if (statBag !== Status.Success || !bag) {
       expect(statBag).toBe(Status.Success);
       return;
@@ -131,7 +136,13 @@ describe("syncPeek", () => {
     expect(await store.uploads.list("test")).toContainEqual(headEncHash);
 
     // Peek should notice we already have it locally, skip download, and dequeue the upload.
-    const stat = await syncPeek({ conn, store, enclave, host, crypto: libsodiumCrypto });
+    const stat = await syncPeek({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+    });
     expect(stat).toBe(Status.Success);
 
     // Upload was dequeued because host already has it.
@@ -327,6 +338,58 @@ describe("syncPull", () => {
     expect(await store.downloads.count()).toBe(0);
   });
 
+  test("deqDownloadsForHeadHashes clears queue when archive gains the msg", async () => {
+    const { deqDownloadsForHeadHashes } = await import("../src/sync");
+    const body = new Uint8Array([1, 2, 3, 4]);
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(9),
+      off: 0,
+      ctr: 0,
+      len: body.length,
+      bod: body,
+      hsh: await libsodiumCrypto.blake3(body),
+    };
+    const enc = new Encoder();
+    enc.writeStruct(messageHeadCodec, message);
+    const headEnc = enc.result();
+    const headEncHash = await libsodiumCrypto.blake3(headEnc) as Hash;
+
+    await store.downloads.enq([{
+      kdm: new Uint8Array(8).fill(1),
+      head: message,
+      host: "test",
+      seq: 99,
+      headEnc,
+      headEncHash,
+    }]);
+    expect(await store.downloads.count()).toBe(1);
+
+    // Same moment as import/apply: archive the msg, then deq matching downloads.
+    await store.messages.add([{
+      key: headEncHash,
+      data: { eid: message.eid, body, apld: true },
+    }]);
+    await deqDownloadsForHeadHashes(store, [headEncHash], libsodiumCrypto);
+
+    expect(await store.downloads.count()).toBe(0);
+
+    let pullCalls = 0;
+    const origPull = conn.pull.bind(conn);
+    conn.pull = async (seqs) => {
+      pullCalls += 1;
+      return origPull(seqs);
+    };
+    const st = await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+    });
+    expect(st).toBe(Status.NoChange);
+    expect(pullCalls).toBe(0);
+  });
+
   test("single pull batch finishes (no wait for a missing next batch)", async () => {
     const body = new Uint8Array([9, 8, 7, 6]);
     const message: IMessage = {
@@ -379,7 +442,10 @@ describe("syncPull", () => {
         },
       ),
       new Promise<Status>((_, reject) =>
-        setTimeout(() => reject(new Error("syncPull hung on single batch")), 5_000)
+        setTimeout(
+          () => reject(new Error("syncPull hung on single batch")),
+          5_000,
+        )
       ),
     ]);
 

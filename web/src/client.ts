@@ -39,6 +39,7 @@ import { saveBlob } from "./saveBlob";
 import {
   defaultMaxPullBytes,
   defaultMaxPushBytes,
+  deqDownloadsForHeadHashes,
   handleNotif,
   ISyncParams,
   syncPeek,
@@ -204,6 +205,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
 
     await this.store.messages.add(storables);
+
+    // Import / local write: drop any pending downloads for these heads so a
+    // later sync does not re-PULL bags we already have in the archive.
+    await deqDownloadsForHeadHashes(this.store, hashes, this.crypto);
 
     const stats = await this.applyHashes(hashes);
 

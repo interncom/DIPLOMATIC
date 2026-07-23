@@ -40,14 +40,6 @@ export class MemoryMessageStore implements IMessageStore {
     return undefined;
   }
 
-  async getMany(keys: Iterable<Hash>): Promise<(IStoredMessage | undefined)[]> {
-    const out: (IStoredMessage | undefined)[] = [];
-    for (const key of keys) {
-      out.push(await this.get(key));
-    }
-    return out;
-  }
-
   async has(key: Hash) {
     return this.messages.has(btob64(key));
   }

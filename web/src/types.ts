@@ -74,17 +74,10 @@ export interface IHostStore<Handle extends HostHandle> {
 // Encryption is per-host, so should not pre-encrypt the message.
 // So in this context, hash means blake3 hash of encoded message header.
 
-/** Pending upload: archive key + plaintext body size for IDB get batching. */
-export interface IUploadEntry {
-  hash: Hash;
-  /** Body byte length (0 if unknown / empty). */
-  bodyLen: number;
-}
-
 export interface IUploadQueue {
-  enq: (host: string, entries: Iterable<IUploadEntry>) => Promise<void>;
+  enq: (host: string, hshs: Iterable<Hash>) => Promise<void>;
   deq: (host: string, hshs: Iterable<Hash>) => Promise<void>;
-  list: (host: string) => Promise<IUploadEntry[]>;
+  list: (host: string) => Promise<Hash[]>;
   count: () => Promise<number>;
   wipe(): Promise<void>;
 }
@@ -208,11 +201,6 @@ export async function toStoredMessage(
 export interface IMessageStore {
   add: (messages: IStorableMessage[]) => Promise<Status[]>;
   get: (key: Hash) => Promise<IStoredMessage | undefined>;
-  /**
-   * Batch load by archive keys (one store round-trip when possible).
-   * Result aligned with input order; missing keys are undefined.
-   */
-  getMany: (keys: Iterable<Hash>) => Promise<(IStoredMessage | undefined)[]>;
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;
   list: () => Promise<Iterable<IStoredMessage>>;

@@ -1,45 +1,41 @@
 import { btoh, htob } from "../../shared/binary";
 import { Hash } from "../../shared/types";
-import { IUploadEntry, IUploadQueue } from "../../types";
+import { IUploadQueue } from "../../types";
 
 export class MemoryUploadQueue implements IUploadQueue {
-  /** host → (hashHex → bodyLen) */
-  queue = new Map<string, Map<string, number>>();
+  queue = new Map<string, Set<string>>();
 
-  async enq(host: string, entries: Iterable<IUploadEntry>) {
-    let map = this.queue.get(host);
-    if (!map) {
-      map = new Map();
-      this.queue.set(host, map);
-    }
-    for (const e of entries) {
-      map.set(btoh(e.hash), e.bodyLen);
+  async enq(host: string, hshs: Iterable<Hash>) {
+    const set = this.queue.get(host) || new Set();
+    this.queue.set(host, set);
+    for (const hash of hshs) {
+      set.add(btoh(hash));
     }
   }
 
   async deq(host: string, hshs: Iterable<Hash>) {
-    const map = this.queue.get(host);
-    if (map) {
+    const set = this.queue.get(host);
+    if (set) {
       for (const hash of hshs) {
-        map.delete(btoh(hash));
+        set.delete(btoh(hash));
       }
     }
   }
 
-  async list(host: string): Promise<IUploadEntry[]> {
-    const map = this.queue.get(host);
-    if (!map) return [];
-    const out: IUploadEntry[] = [];
-    for (const [hex, bodyLen] of map) {
-      out.push({ hash: htob(hex) as Hash, bodyLen });
+  async list(host: string) {
+    const set = this.queue.get(host);
+    if (!set) return [];
+    const hshs: Hash[] = [];
+    for (const hex of set) {
+      hshs.push(htob(hex) as Hash);
     }
-    return out;
+    return hshs;
   }
 
   async count() {
     let total = 0;
-    for (const map of this.queue.values()) {
-      total += map.size;
+    for (const set of this.queue.values()) {
+      total += set.size;
     }
     return total;
   }

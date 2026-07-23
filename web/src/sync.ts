@@ -441,11 +441,24 @@ export async function syncPeek<Handle extends HostHandle>(
   return Status.Success;
 }
 
+/**
+ * Soft max plaintext body bytes per messages.getMany (IDB load bound).
+ * Sealed bags are larger; push still uses maxPushBytes on bag size.
+ */
+export const defaultMaxGetBodyBytes = 1 << 20;
+
 /** Seal and upload pending msgs; list once so concurrent enqs wait for next sync. */
 export async function syncPush<Handle extends HostHandle>(
-  { conn, store, host, maxPushBytes, onProgress }: ISyncParams<Handle>,
+  {
+    conn,
+    store,
+    host,
+    maxPushBytes,
+    onProgress,
+  }: ISyncParams<Handle>,
 ): Promise<Status> {
-  const limit = maxPushBytes ?? defaultMaxPushBytes;
+  const pushLimit = maxPushBytes ?? defaultMaxPushBytes;
+  const getLimit = defaultMaxGetBodyBytes;
   const pending = await store.uploads.list(host.label);
   const total = pending.length;
   let done = 0;
@@ -453,6 +466,14 @@ export async function syncPush<Handle extends HostHandle>(
   if (onProgress && total > 0) {
     onProgress({ phase: "push", host: host.label, done: 0, total });
   }
+
+  // Group upload entries by bodyLen so each IDB getMany is size-bounded.
+  // Unknown/zero bodyLen still moves progress (count as 1 byte for batching).
+  const getBatches = batchByBytes(
+    pending,
+    (e) => Math.max(1, e.bodyLen),
+    getLimit,
+  );
 
   let bags: IBag[] = [];
   let hashes: Hash[] = [];
@@ -476,37 +497,38 @@ export async function syncPush<Handle extends HostHandle>(
     return st;
   };
 
-  for (const msgHeadEncHash of pending) {
-    const storedMsg = await store.messages.get(msgHeadEncHash);
-    if (!storedMsg) {
-      done += 1;
-      continue;
-    }
-    const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
-    const [bag, statBag] = await conn.seal(msg);
-    if (statBag !== Status.Success) {
-      return statBag;
-    }
-    if (!bag) {
-      return Status.InternalError;
-    }
-    const size = bagBytes(bag);
-
-    if (bags.length > 0 && batchBytes + size > limit) {
-      const st = await flush();
-      if (st !== Status.Success) {
-        return st;
+  for (const entries of getBatches) {
+    const loaded = await store.messages.getMany(entries.map((e) => e.hash));
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const storedMsg = loaded[i];
+      if (!storedMsg) {
+        done += 1;
+        continue;
       }
-    }
-
-    bags.push(bag);
-    hashes.push(msgHeadEncHash);
-    batchBytes += size;
-
-    if (batchBytes >= limit) {
-      const st = await flush();
-      if (st !== Status.Success) {
-        return st;
+      const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
+      const [bag, statBag] = await conn.seal(msg);
+      if (statBag !== Status.Success) {
+        return statBag;
+      }
+      if (!bag) {
+        return Status.InternalError;
+      }
+      const size = bagBytes(bag);
+      if (bags.length > 0 && batchBytes + size > pushLimit) {
+        const st = await flush();
+        if (st !== Status.Success) {
+          return st;
+        }
+      }
+      bags.push(bag);
+      hashes.push(entry.hash);
+      batchBytes += size;
+      if (batchBytes >= pushLimit) {
+        const st = await flush();
+        if (st !== Status.Success) {
+          return st;
+        }
       }
     }
   }

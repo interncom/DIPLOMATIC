@@ -214,15 +214,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     // Upload only after successful (or no-op) exec for each hash.
     if (options.enqueueUpload) {
-      const toUpload: { hash: Hash; bodyLen: number }[] = [];
+      const toUpload: Hash[] = [];
       for (let i = 0; i < hashes.length; i++) {
         const st = stats[i];
         if (st === Status.Success || st === Status.NoChange) {
-          toUpload.push({
-            hash: hashes[i],
-            // Missing body = empty plaintext; 0 is the true size (not "unknown").
-            bodyLen: parts[i].body?.length ?? 0,
-          });
+          toUpload.push(hashes[i]);
         }
       }
       if (toUpload.length > 0) {

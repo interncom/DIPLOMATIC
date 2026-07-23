@@ -132,14 +132,8 @@ describe("syncPeek", () => {
     await store.messages.add([{ key: headEncHash, data: storedData }]);
 
     // Enqueue for upload to this host.
-    await store.uploads.enq("test", [{
-      hash: headEncHash,
-      bodyLen: message.bod?.length ?? 0,
-    }]);
-    expect(await store.uploads.list("test")).toContainEqual({
-      hash: headEncHash,
-      bodyLen: message.bod?.length ?? 0,
-    });
+    await store.uploads.enq("test", [headEncHash]);
+    expect(await store.uploads.list("test")).toContainEqual(headEncHash);
 
     // Peek should notice we already have it locally, skip download, and dequeue the upload.
     const stat = await syncPeek({
@@ -216,7 +210,7 @@ describe("syncPush", () => {
       apld: true,
     };
     await store.messages.add([{ key: hash, data: storedData }]);
-    await store.uploads.enq("test", [{ hash, bodyLen: body.length }]);
+    await store.uploads.enq("test", [hash]);
     return hash;
   }
 

@@ -78,50 +78,20 @@ export class IDBMessageStore implements IMessageStore {
   }
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
-    const [one] = await this.getMany([key]);
-    return one;
-  }
-
-  async getMany(keys: Iterable<Hash>): Promise<(IStoredMessage | undefined)[]> {
-    const keyList = [...keys];
-    if (keyList.length < 1) return [];
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
-    const obj = tx.objectStore(MESSAGES_TABLE);
-    return new Promise<(IStoredMessage | undefined)[]>((resolve, reject) => {
-      const raw: (IStoredMessageData | undefined)[] = new Array(keyList.length);
-      let pending = keyList.length;
-      let failed = false;
-      const finish = async () => {
-        try {
-          const out: (IStoredMessage | undefined)[] = [];
-          for (let i = 0; i < keyList.length; i++) {
-            const data = raw[i];
-            if (data) {
-              out.push(await toStoredMessage(keyList[i], data, this.crypto));
-            } else {
-              out.push(undefined);
-            }
-          }
-          resolve(out);
-        } catch (e) {
-          reject(e);
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<IStoredMessage | undefined>((resolve, reject) => {
+      const b64 = btob64(key);
+      const req = store.get(b64);
+      req.onsuccess = async () => {
+        const data = req.result;
+        if (data) {
+          resolve(await toStoredMessage(key, data, this.crypto));
+        } else {
+          resolve(undefined);
         }
       };
-      for (let i = 0; i < keyList.length; i++) {
-        const idx = i;
-        const req = obj.get(btob64(keyList[i]));
-        req.onsuccess = () => {
-          if (failed) return;
-          raw[idx] = req.result as IStoredMessageData | undefined;
-          pending -= 1;
-          if (pending === 0) void finish();
-        };
-        req.onerror = () => {
-          if (failed) return;
-          failed = true;
-          reject(req.error);
-        };
-      }
+      req.onerror = () => reject(req.error);
     });
   }
 

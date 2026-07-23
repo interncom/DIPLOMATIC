@@ -70,10 +70,14 @@ export class WorkerRuntime {
         void this.emitXferState();
       });
 
-      this.post({ kind: "ready" });
-      this.markReady();
+      // Emit state before ready so a listener attached mid-init can observe
+      // hasSeed before connect resolves on `ready` (avoids auth UI flash).
+      // If events were dropped (Worker started before onmessage), WorkerClient
+      // still hydrates via store + getClientState after the ready barrier.
       await this.emitClientState();
       await this.emitXferState();
+      this.post({ kind: "ready" });
+      this.markReady();
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.failReady(err);

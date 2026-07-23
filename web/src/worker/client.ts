@@ -35,11 +35,13 @@ import type {
   IStore,
 } from "../types";
 import {
+  clientStateFromUnknown,
   isWorkerEvent,
   SerializedHost,
   statusFromUnknown,
   WorkerCmd,
   WorkerEvent,
+  xferStateFromUnknown,
 } from "./protocol";
 
 type Pending = {
@@ -57,6 +59,11 @@ type Pending = {
  * connect also probes with `ping`. Early construction (module scope) is fine even
  * if `ready` fired before `onmessage` was set — the ping still succeeds once the
  * worker has finished init (cmds are held until then on the worker side).
+ *
+ * After the ready barrier, connect hydrates `clientState` / `xferState` from the
+ * shared main-thread store (and recovers via getClientState/getXferState if the
+ * unsolicited events were dropped). Without that, the façade defaults to
+ * `hasSeed: false` and apps flash the unauthenticated UI until a later event.
  */
 export type WorkerClientOptions = {
   /** Already-constructed module Worker running `@interncom/diplomatic/worker`. */
@@ -183,6 +190,11 @@ export class WorkerClient implements IClient<URL> {
    * Handshake: wait for unsolicited `ready` **or** a successful probe `ping`.
    * The probe covers the common case where the app started the Worker early and
    * `ready` was dropped before this thread set `onmessage`.
+   *
+   * Then hydrate client/xfer state from the shared store (and RPC) so
+   * `clientState.get()` is correct before connect returns — unsolicited
+   * `clientState` events are often lost when the Worker starts before
+   * `onmessage` is attached.
    */
   static async connect(
     state: IStateManager,
@@ -211,6 +223,10 @@ export class WorkerClient implements IClient<URL> {
           }, timeoutMs);
         }),
       ]);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       // If the unsolicited ready won the race, still surface probe failures
       // (e.g. broken postMessage) rather than returning a half-dead client.
       // Probe resolves when pong arrives; if ready already marked us live, the
@@ -218,6 +234,11 @@ export class WorkerClient implements IClient<URL> {
       void probe.catch(() => {
         // Terminated / timed out paths reject pending; ignore after race.
       });
+      // Seed/host live in shared IDB — correct hasSeed even if worker events
+      // were dropped. Then RPC for authoritative connected/xfer (also recovers
+      // missed unsolicited pushes).
+      await client.hydrateStateFromStore(store);
+      await client.pullRemoteState();
     } catch (e) {
       client.terminate();
       throw e;
@@ -227,6 +248,50 @@ export class WorkerClient implements IClient<URL> {
       }
     }
     return client;
+  }
+
+  /**
+   * Snapshot seed/host/queues from the shared main-thread store.
+   * `connected` stays false until the worker reports otherwise.
+   */
+  private async hydrateStateFromStore(store: IStore<URL>): Promise<void> {
+    const enclave = await store.seed.load();
+    const hosts = await store.hosts.list();
+    this.cachedClientState = {
+      hasSeed: enclave !== undefined,
+      hasHost: Array.from(hosts).length > 0,
+      connected: false,
+    };
+    const numUploads = await store.uploads.count();
+    const numDownloads = await store.downloads.count();
+    this.cachedXferState = {
+      numUploads,
+      numDownloads,
+      progress: idleProgress,
+    };
+  }
+
+  /**
+   * Request current client/xfer state from the worker. Recovers when unsolicited
+   * `clientState` / `xferState` events fired before `onmessage` was set.
+   */
+  private async pullRemoteState(): Promise<void> {
+    const clientRaw = await this.request({
+      id: this.allocId(),
+      op: "getClientState",
+    });
+    const clientState = clientStateFromUnknown(clientRaw);
+    if (clientState !== undefined) {
+      this.cachedClientState = clientState;
+    }
+    const xferRaw = await this.request({
+      id: this.allocId(),
+      op: "getXferState",
+    });
+    const xferState = xferStateFromUnknown(xferRaw);
+    if (xferState !== undefined) {
+      this.cachedXferState = xferState;
+    }
   }
 
   /** Resolve the ready barrier (idempotent). */

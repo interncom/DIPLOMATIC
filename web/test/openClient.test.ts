@@ -21,8 +21,19 @@ function mockWorker(): Worker {
   } as unknown as Worker;
 }
 
-/** Worker that only answers ping (no unsolicited `ready`) — missed-ready case. */
-function mockWorkerPingOnly(): Worker {
+/**
+ * Worker that answers RPC but posts no unsolicited `ready` / `clientState`.
+ * Simulates early Worker construction where those events were dropped before
+ * `onmessage` was attached.
+ */
+function mockWorkerRpcOnly(opts?: {
+  hasSeed?: boolean;
+  hasHost?: boolean;
+  connected?: boolean;
+}): Worker {
+  const hasSeed = opts?.hasSeed ?? false;
+  const hasHost = opts?.hasHost ?? false;
+  const connected = opts?.connected ?? false;
   const w: {
     postMessage: (data: unknown) => void;
     terminate: ReturnType<typeof vi.fn>;
@@ -35,23 +46,53 @@ function mockWorkerPingOnly(): Worker {
   } = {
     postMessage(data: unknown) {
       if (
-        data &&
-        typeof data === "object" &&
-        "op" in data &&
-        data.op === "ping" &&
-        "id" in data &&
-        typeof data.id === "number"
+        !data ||
+        typeof data !== "object" ||
+        !("op" in data) ||
+        !("id" in data) ||
+        typeof data.id !== "number"
       ) {
-        const id = data.id;
-        queueMicrotask(() => {
-          const handler = w.onmessage;
-          if (handler) {
-            handler({
-              data: { kind: "reply", id, ok: true, result: "pong" },
-            } as MessageEvent<unknown>);
-          }
-        });
+        return;
       }
+      const id = data.id;
+      const op = data.op;
+      queueMicrotask(() => {
+        const handler = w.onmessage;
+        if (!handler) {
+          return;
+        }
+        if (op === "ping") {
+          handler({
+            data: { kind: "reply", id, ok: true, result: "pong" },
+          } as MessageEvent<unknown>);
+          return;
+        }
+        if (op === "getClientState") {
+          handler({
+            data: {
+              kind: "reply",
+              id,
+              ok: true,
+              result: { hasSeed, hasHost, connected },
+            },
+          } as MessageEvent<unknown>);
+          return;
+        }
+        if (op === "getXferState") {
+          handler({
+            data: {
+              kind: "reply",
+              id,
+              ok: true,
+              result: {
+                numUploads: 0,
+                numDownloads: 0,
+                progress: { phase: "idle" },
+              },
+            },
+          } as MessageEvent<unknown>);
+        }
+      });
     },
     terminate: vi.fn(),
     onmessage: null,
@@ -158,9 +199,38 @@ describe("openDiplomaticClient", () => {
         off() {},
       },
       readyTimeoutMs: 2_000,
-      worker: mockWorkerPingOnly(),
+      worker: mockWorkerRpcOnly(),
     });
     expect(opened.mode).toBe("worker");
+    opened.dispose();
+  });
+
+  test("hydrates hasSeed after missed ready/clientState events", async () => {
+    if (typeof indexedDB === "undefined") {
+      return;
+    }
+    if (typeof Worker === "undefined") {
+      // @ts-expect-error minimal stub
+      globalThis.Worker = class {};
+    }
+    // Worker reports seed present via getClientState only (no unsolicited push).
+    // Without post-ready hydration, clientState would stay hasSeed:false and
+    // authenticated apps would flash the init UI.
+    const opened = await openDiplomaticClient({
+      state: {
+        apply: async (msgs) => msgs.map(() => Status.Success),
+        clear: async () => Status.Success,
+        notify() {},
+        on() {},
+        off() {},
+      },
+      readyTimeoutMs: 2_000,
+      worker: mockWorkerRpcOnly({ hasSeed: true, hasHost: true }),
+    });
+    expect(opened.mode).toBe("worker");
+    const state = await opened.client.clientState.get();
+    expect(state.hasSeed).toBe(true);
+    expect(state.hasHost).toBe(true);
     opened.dispose();
   });
 });

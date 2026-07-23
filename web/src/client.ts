@@ -254,12 +254,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   private async doDrainApplyQueue(): Promise<Status[]> {
-    const pending = await this.store.messages.listUnapplied();
+    const pending = await this.store.messages.list(APLD_PENDING);
     if (pending.length < 1) {
       return [];
     }
     // Newest HLC first: final ent state appears early; obsolete ops still
-    // no-op in EntDB. (IDB listUnapplied order is not HLC order.)
+    // no-op in EntDB. (IDB list order by apld index is not HLC order.)
     const ordered = sortByHlcDesc(pending, (m) => m.head);
     return this.applyStored(ordered);
   }

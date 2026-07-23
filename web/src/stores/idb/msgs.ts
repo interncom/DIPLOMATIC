@@ -5,7 +5,7 @@ import { EntityID, Hash } from "../../shared/types";
 import {
   APLD_APPLIED,
   APLD_ERROR,
-  APLD_PENDING,
+  ApldState,
   IMessageStore,
   IStorableMessage,
   IStoredMessage,
@@ -92,23 +92,29 @@ export class IDBMessageStore implements IMessageStore {
     return result !== undefined;
   }
 
-  async list(): Promise<Iterable<IStoredMessage>> {
+  async list(apld?: ApldState): Promise<IStoredMessage[]> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
-    return new Promise<Iterable<IStoredMessage>>((resolve, reject) => {
-      const msgs: IStoredMessage[] = [];
-      const req = store.openCursor();
-      req.onsuccess = async (event) => {
+    return new Promise<IStoredMessage[]>((resolve, reject) => {
+      const pending: { hash: Hash; data: IStoredMessageData }[] = [];
+      const req = apld === undefined
+        ? store.openCursor()
+        : store.index(MESSAGES_APLD_INDEX).openCursor(IDBKeyRange.only(apld));
+      req.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest).result;
         if (cursor) {
-          const key = cursor.key as string;
+          // Out-of-line primary key is the b64 hash.
+          const key =
+            (apld === undefined ? cursor.key : cursor.primaryKey) as string;
           const data = cursor.value as IStoredMessageData;
-          const hash = b64tob(key) as Hash;
-          const msg = await toStoredMessage(hash, data, this.crypto);
-          msgs.push(msg);
+          pending.push({ hash: b64tob(key) as Hash, data });
           cursor.continue();
         } else {
-          resolve(msgs);
+          Promise.all(
+            pending.map(({ hash, data }) =>
+              toStoredMessage(hash, data, this.crypto)
+            ),
+          ).then(resolve).catch(reject);
         }
       };
       req.onerror = () => reject(req.error);
@@ -145,34 +151,6 @@ export class IDBMessageStore implements IMessageStore {
           } else {
             resolve(undefined);
           }
-        }
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async listUnapplied(): Promise<IStoredMessage[]> {
-    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
-    const store = tx.objectStore(MESSAGES_TABLE);
-    const index = store.index(MESSAGES_APLD_INDEX);
-    return new Promise<IStoredMessage[]>((resolve, reject) => {
-      const pending: { hash: Hash; data: IStoredMessageData }[] = [];
-      // Pending rows only (boolean is not a valid IDB key).
-      const req = index.openCursor(IDBKeyRange.only(APLD_PENDING));
-      req.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest).result;
-        if (cursor) {
-          // Primary key is the out-of-line b64 hash used at put().
-          const key = cursor.primaryKey as string;
-          const data = cursor.value as IStoredMessageData;
-          pending.push({ hash: b64tob(key) as Hash, data });
-          cursor.continue();
-        } else {
-          Promise.all(
-            pending.map(({ hash, data }) =>
-              toStoredMessage(hash, data, this.crypto)
-            ),
-          ).then(resolve).catch(reject);
         }
       };
       req.onerror = () => reject(req.error);

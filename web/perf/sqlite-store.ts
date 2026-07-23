@@ -446,10 +446,8 @@ class SqliteMessageStore implements IMessageStore {
     return row !== null;
   }
 
-  async list(): Promise<Iterable<IStoredMessage>> {
-    const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld, err FROM messages",
-    ).all() as {
+  async list(apld?: ApldState): Promise<IStoredMessage[]> {
+    type Row = {
       hash: string;
       eid: Uint8Array;
       off: number | null;
@@ -457,7 +455,14 @@ class SqliteMessageStore implements IMessageStore {
       body: Uint8Array | null;
       apld: number;
       err: number | null;
-    }[];
+    };
+    const rows = apld === undefined
+      ? this.db.prepare(
+        "SELECT hash, eid, off, ctr, body, apld, err FROM messages",
+      ).all() as Row[]
+      : this.db.prepare(
+        "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE apld = ?",
+      ).all(apldToSql(apld)) as Row[];
     return await Promise.all(
       rows.map((row) => this.rowToStored(row, b64tob(row.hash))),
     );
@@ -486,23 +491,6 @@ class SqliteMessageStore implements IMessageStore {
       if (rc > bc || (rc === bc && ro > bo)) best = row;
     }
     return await this.rowToStored(best, b64tob(best.hash));
-  }
-
-  async listUnapplied(): Promise<IStoredMessage[]> {
-    const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE apld = 0",
-    ).all() as {
-      hash: string;
-      eid: Uint8Array;
-      off: number | null;
-      ctr: number | null;
-      body: Uint8Array | null;
-      apld: number;
-      err: number | null;
-    }[];
-    return await Promise.all(
-      rows.map((row) => this.rowToStored(row, b64tob(row.hash))),
-    );
   }
 
   async markApplied(keys: Iterable<Hash>) {

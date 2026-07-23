@@ -4,8 +4,9 @@ import { EntityID, Hash } from "../../shared/types";
 import {
   APLD_APPLIED,
   APLD_ERROR,
+  apldFromStored,
+  ApldState,
   IMessageStore,
-  isPendingApply,
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
@@ -46,13 +47,14 @@ export class MemoryMessageStore implements IMessageStore {
     return this.messages.has(btob64(key));
   }
 
-  async list(): Promise<Iterable<IStoredMessage>> {
-    const entries = Array.from(this.messages.entries());
-    const msgs = await Promise.all(entries.map(([keyStr, data]) => {
+  async list(apld?: ApldState): Promise<IStoredMessage[]> {
+    const out: IStoredMessage[] = [];
+    for (const [keyStr, data] of this.messages) {
+      if (apld !== undefined && apldFromStored(data.apld) !== apld) continue;
       const hash = b64tob(keyStr) as Hash;
-      return toStoredMessage(hash, data, this.crypto);
-    }));
-    return msgs;
+      out.push(await toStoredMessage(hash, data, this.crypto));
+    }
+    return out;
   }
 
   // last returns the stored message with given eid and highest ctr/off.
@@ -77,16 +79,6 @@ export class MemoryMessageStore implements IMessageStore {
       return await toStoredMessage(latest.hash, latest.data, this.crypto);
     }
     return undefined;
-  }
-
-  async listUnapplied(): Promise<IStoredMessage[]> {
-    const out: IStoredMessage[] = [];
-    for (const [keyStr, data] of this.messages) {
-      if (!isPendingApply(data)) continue;
-      const hash = b64tob(keyStr) as Hash;
-      out.push(await toStoredMessage(hash, data, this.crypto));
-    }
-    return out;
   }
 
   async markApplied(keys: Iterable<Hash>): Promise<void> {

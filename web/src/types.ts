@@ -249,10 +249,13 @@ export interface IMessageStore {
   get: (key: Hash) => Promise<IStoredMessage | undefined>;
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;
-  list: () => Promise<Iterable<IStoredMessage>>;
+  /**
+   * List archive rows. Pass {@link ApldState} to filter by apply lifecycle
+   * (e.g. {@link APLD_PENDING} for the apply queue, {@link APLD_ERROR} for
+   * diagnostics). Omit for all messages.
+   */
+  list: (apld?: ApldState) => Promise<IStoredMessage[]>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
-  /** Messages stored but not yet applied ({@link APLD_PENDING}). */
-  listUnapplied: () => Promise<IStoredMessage[]>;
   /** Mark archive rows as applied ({@link APLD_APPLIED}). */
   markApplied: (keys: Iterable<Hash>) => Promise<void>;
   /** Mark archive rows as terminal apply failure ({@link APLD_ERROR}). */

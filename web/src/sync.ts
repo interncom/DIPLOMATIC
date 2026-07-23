@@ -203,18 +203,26 @@ export async function openPulled<Handle extends HostHandle>(
 
   for (const { dl, bodyCph } of items) {
     const { head, kdm, seq, host } = dl;
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const headEnc = enc.result();
-    const headEncHash = await crypto.blake3(headEnc);
+    // Prefer headEnc/hash from peek (avoids re-encode + double blake3).
+    let headEnc = dl.headEnc;
+    let headEncHash = dl.headEncHash;
+    if (!headEnc) {
+      const enc = new Encoder();
+      enc.writeStruct(messageHeadCodec, head);
+      headEnc = enc.result();
+    }
+    if (!headEncHash) {
+      headEncHash = await crypto.blake3(headEnc);
+    }
     const key = await enclave.deriveFromKDM(kdm);
     const [contents, openStat] = await openBagBody(
       headEnc,
       bodyCph,
       key,
       crypto,
+      headEncHash,
     );
-    if (openStat !== Status.Success) {
+    if (openStat !== Status.Success || !contents) {
       // Unopenable bag: drop from download queue (no retry). TODO: per-row open errors.
       const seqs = deqByHost.get(host) ?? [];
       seqs.push(seq);
@@ -223,9 +231,10 @@ export async function openPulled<Handle extends HostHandle>(
     }
 
     const p: IMsgParts = { head, body: contents.bod };
-    toStore.push({ key: headEncHash, data: msg2StoredMsgData(p) });
+    const keyHash = contents.headHash;
+    toStore.push({ key: keyHash, data: msg2StoredMsgData(p) });
     parts.push(p);
-    hashes.push(headEncHash);
+    hashes.push(keyHash);
     const seqs = deqByHost.get(host) ?? [];
     seqs.push(seq);
     deqByHost.set(host, seqs);
@@ -350,6 +359,8 @@ export async function syncPeek<Handle extends HostHandle>(
       head,
       seq: result.seq,
       host: host.label,
+      headEnc: result.headEnc,
+      headEncHash: result.headEncHash,
     });
   }
   await store.downloads.enq(dls);
@@ -604,6 +615,8 @@ export async function handleNotif<Handle extends HostHandle>(
         host: label,
         kdm: peekItem.kdm,
         head,
+        headEnc: peekItem.headEnc,
+        headEncHash,
       }]);
     } else {
       completeBags.push({

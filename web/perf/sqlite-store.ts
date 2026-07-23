@@ -26,6 +26,7 @@ import type {
   IStorableMessage,
   IStore,
   IStoredMessage,
+  IUploadEntry,
   IUploadQueue,
 } from "../src/types";
 import { normalizeStoredMessageData, toStoredMessage } from "../src/types";
@@ -47,6 +48,7 @@ function openDb(path: string): Database {
     CREATE TABLE IF NOT EXISTS uploads (
       host TEXT NOT NULL,
       hash TEXT NOT NULL,
+      bodyLen INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (host, hash)
     );
     CREATE TABLE IF NOT EXISTS downloads (
@@ -175,14 +177,15 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
 class SqliteUploadQueue implements IUploadQueue {
   constructor(private db: Database) {}
 
-  async enq(host: string, hshs: Iterable<Hash>) {
+  async enq(host: string, entries: Iterable<IUploadEntry>) {
     const ins = this.db.prepare(
-      "INSERT OR IGNORE INTO uploads (host, hash) VALUES (?, ?)",
+      `INSERT INTO uploads (host, hash, bodyLen) VALUES (?, ?, ?)
+       ON CONFLICT(host, hash) DO UPDATE SET bodyLen = excluded.bodyLen`,
     );
     this.db.exec("BEGIN");
     try {
-      for (const h of hshs) {
-        ins.run(host, btoh(h));
+      for (const e of entries) {
+        ins.run(host, btoh(e.hash), e.bodyLen);
       }
       this.db.exec("COMMIT");
     } catch (e) {
@@ -207,13 +210,13 @@ class SqliteUploadQueue implements IUploadQueue {
     }
   }
 
-  async list(host: string): Promise<Hash[]> {
+  async list(host: string): Promise<IUploadEntry[]> {
     const rows = this.db.prepare(
-      "SELECT hash FROM uploads WHERE host = ?",
-    ).all(host) as { hash: string }[];
-    const out: Hash[] = [];
+      "SELECT hash, bodyLen FROM uploads WHERE host = ?",
+    ).all(host) as { hash: string; bodyLen: number }[];
+    const out: IUploadEntry[] = [];
     for (const row of rows) {
-      out.push(htob(row.hash) as Hash);
+      out.push({ hash: htob(row.hash) as Hash, bodyLen: row.bodyLen ?? 0 });
     }
     return out;
   }
@@ -308,9 +311,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
         seq: row.seq,
         kdm: new Uint8Array(row.kdm),
         head,
-        ...(row.headEnc
-          ? { headEnc: new Uint8Array(row.headEnc) }
-          : {}),
+        ...(row.headEnc ? { headEnc: new Uint8Array(row.headEnc) } : {}),
         ...(row.headEncHash
           ? { headEncHash: new Uint8Array(row.headEncHash) as Hash }
           : {}),
@@ -380,24 +381,54 @@ class SqliteMessageStore implements IMessageStore {
   }
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
-    const row = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld FROM messages WHERE hash = ?",
-    ).get(btob64(key)) as {
-      hash: string;
-      eid: Uint8Array;
-      off: number | null;
-      ctr: number | null;
-      body: Uint8Array | null;
-      apld: number;
-    } | null;
-    if (!row) return undefined;
-    return await toStoredMessage(key, {
-      eid: new Uint8Array(row.eid) as EntityID,
-      ...(row.off !== null ? { off: row.off } : {}),
-      ...(row.ctr !== null ? { ctr: row.ctr } : {}),
-      ...(row.body ? { body: new Uint8Array(row.body) } : {}),
-      apld: row.apld === 1,
-    }, this.crypto);
+    const [one] = await this.getMany([key]);
+    return one;
+  }
+
+  async getMany(keys: Iterable<Hash>): Promise<(IStoredMessage | undefined)[]> {
+    const keyList = [...keys];
+    if (keyList.length < 1) return [];
+    // Chunk IN lists (SQLite bind limit).
+    const out: (IStoredMessage | undefined)[] = new Array(keyList.length);
+    const byB64 = new Map<string, number[]>();
+    for (let i = 0; i < keyList.length; i++) {
+      const b64 = btob64(keyList[i]);
+      const idxs = byB64.get(b64) ?? [];
+      idxs.push(i);
+      byB64.set(b64, idxs);
+      out[i] = undefined;
+    }
+    const b64s = [...byB64.keys()];
+    const chunk = 99;
+    for (let i = 0; i < b64s.length; i += chunk) {
+      const part = b64s.slice(i, i + chunk);
+      const ph = part.map(() => "?").join(",");
+      const rows = this.db.prepare(
+        `SELECT hash, eid, off, ctr, body, apld FROM messages WHERE hash IN (${ph})`,
+      ).all(...part) as {
+        hash: string;
+        eid: Uint8Array;
+        off: number | null;
+        ctr: number | null;
+        body: Uint8Array | null;
+        apld: number;
+      }[];
+      for (const row of rows) {
+        const idxs = byB64.get(row.hash);
+        if (!idxs) continue;
+        const msg = await toStoredMessage(b64tob(row.hash) as Hash, {
+          eid: new Uint8Array(row.eid) as EntityID,
+          ...(row.off !== null ? { off: row.off } : {}),
+          ...(row.ctr !== null ? { ctr: row.ctr } : {}),
+          ...(row.body ? { body: new Uint8Array(row.body) } : {}),
+          apld: row.apld === 1,
+        }, this.crypto);
+        for (const idx of idxs) {
+          out[idx] = msg;
+        }
+      }
+    }
+    return out;
   }
 
   async has(key: Hash) {

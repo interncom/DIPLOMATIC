@@ -38,7 +38,10 @@ describe("pushBatch", () => {
 
     const h1 = hash(1);
     const h2 = hash(2);
-    await store.uploads.enq("h", [h1, h2]);
+    await store.uploads.enq("h", [
+      { hash: h1, bodyLen: 0 },
+      { hash: h2, bodyLen: 0 },
+    ]);
 
     const conn = {
       push: async () =>
@@ -68,7 +71,10 @@ describe("pushBatch", () => {
 
     const h1 = hash(1);
     const h2 = hash(2);
-    await store.uploads.enq("h", [h1, h2]);
+    await store.uploads.enq("h", [
+      { hash: h1, bodyLen: 0 },
+      { hash: h2, bodyLen: 0 },
+    ]);
 
     const conn = {
       push: async () =>
@@ -86,7 +92,7 @@ describe("pushBatch", () => {
     expect(st).toBe(Status.Success);
     const left = await store.uploads.list("h");
     expect(left).toHaveLength(1);
-    expect(left[0]).toEqual(h2);
+    expect(left[0]).toEqual({ hash: h2, bodyLen: 0 });
     expect((await store.hosts.get("h"))?.lastSeq).toBe(1);
   });
 
@@ -100,7 +106,7 @@ describe("pushBatch", () => {
     await store.hosts.touch("h", 5);
 
     const h1 = hash(1);
-    await store.uploads.enq("h", [h1]);
+    await store.uploads.enq("h", [{ hash: h1, bodyLen: 0 }]);
 
     const conn = {
       push: async () => ok([{ idx: 0, status: Status.Success, seq: 9 }]),
@@ -118,7 +124,7 @@ describe("pushBatch", () => {
       idx: 1,
     });
     const h1 = hash(1);
-    await store.uploads.enq("h", [h1]);
+    await store.uploads.enq("h", [{ hash: h1, bodyLen: 0 }]);
 
     const conn = {
       push: async () => err(Status.CommunicationError),

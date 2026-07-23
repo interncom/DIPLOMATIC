@@ -108,14 +108,26 @@ async function enqueueAll(
     });
     if (batch.length >= BATCH) {
       await store.messages.add(batch);
-      await store.uploads.enq(HOST_LABEL, batch.map((b) => b.key));
+      await store.uploads.enq(
+        HOST_LABEL,
+        batch.map((b) => ({
+          hash: b.key,
+          bodyLen: b.data.body?.length ?? 0,
+        })),
+      );
       n += batch.length;
       batch.length = 0;
     }
   }
   if (batch.length > 0) {
     await store.messages.add(batch);
-    await store.uploads.enq(HOST_LABEL, batch.map((b) => b.key));
+    await store.uploads.enq(
+      HOST_LABEL,
+      batch.map((b) => ({
+        hash: b.key,
+        bodyLen: b.data.body?.length ?? 0,
+      })),
+    );
     n += batch.length;
   }
   return n;

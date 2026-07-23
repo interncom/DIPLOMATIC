@@ -138,7 +138,10 @@ describe("Client", () => {
         },
         host: "label",
       };
-      await store.uploads.enq("label", [hash1, hash2]);
+      await store.uploads.enq("label", [
+        { hash: hash1, bodyLen: 0 },
+        { hash: hash2, bodyLen: 0 },
+      ]);
       await store.downloads.enq([dl]);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({
@@ -207,7 +210,7 @@ describe("Client", () => {
       await client.insertRaw(body);
 
       const hash = new Uint8Array(32).fill(1) as Hash;
-      await store.uploads.enq("test", [hash]);
+      await store.uploads.enq("test", [{ hash, bodyLen: 0 }]);
       const dl: IDownloadMessage = {
         kdm: new Uint8Array(8).fill(3),
         seq: 1,

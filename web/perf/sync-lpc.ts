@@ -36,7 +36,7 @@ import type {
   MasterSeed,
 } from "../src/shared/types";
 import { sortByHlcDesc } from "../src/hlc";
-import { SqliteStore } from "../src/stores/sqlite/store";
+import { SqliteStore } from "./sqlite-store";
 import { syncPeek, syncPull, syncPush } from "../src/sync";
 import type { IStore, IStoredMessageWrite } from "../src/types";
 import {

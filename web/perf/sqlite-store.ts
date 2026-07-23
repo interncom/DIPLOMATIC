@@ -2,10 +2,10 @@
 // Mirrors memory + IDB IStore surface with durable tables.
 
 import { Database } from "bun:sqlite";
-import libsodiumCrypto from "../../crypto";
-import { b64tob, btob64, btoh, htob } from "../../shared/binary";
-import { Status } from "../../shared/consts";
-import { Enclave } from "../../shared/enclave";
+import libsodiumCrypto from "../src/crypto";
+import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
+import { Status } from "../src/shared/consts";
+import { Enclave } from "../src/shared/enclave";
 import type {
   EntityID,
   Hash,
@@ -15,7 +15,7 @@ import type {
   IHostMetadata,
   IMessageHead,
   MasterSeed,
-} from "../../shared/types";
+} from "../src/shared/types";
 import type {
   IDownloadMessage,
   IDownloadQueue,
@@ -27,8 +27,8 @@ import type {
   IStore,
   IStoredMessage,
   IUploadQueue,
-} from "../../types";
-import { normalizeStoredMessageData, toStoredMessage } from "../../types";
+} from "../src/types";
+import { normalizeStoredMessageData, toStoredMessage } from "../src/types";
 
 function openDb(path: string): Database {
   const db = new Database(path);

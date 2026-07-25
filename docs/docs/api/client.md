@@ -1,5 +1,20 @@
 # Client API
 
+## App setup (with or without React)
+
+```ts
+import {
+  openEntDB,
+  entStateManager,
+  openDiplomaticClient,
+} from "@interncom/diplomatic";
+
+const entDB = await openEntDB(); // cache on by default
+// const entDB = await openEntDB({ cache: false }); // durable IDB only
+const state = entStateManager(entDB);
+const { client, dispose } = await openDiplomaticClient({ state, worker });
+```
+
 ## Client State
 
 - `setSeed(seed)`
@@ -22,15 +37,69 @@
 
 ## Data
 
-- `genEID(id)`
-  - Generate a new entity ID.
-- `insert(op)`
-  - Apply an insert operation locally and sync it with registered hosts.
-- `upsert(op, force)`
-  - Apply an upsert operation locally and sync it with registered hosts.
-- `delete(eid)`
-  - Delete an entity locally and sync it with registered hosts.
-  
+Local writes build a message, optimistically apply it to the in-memory EntDB cache (when used), then durable-apply the **same** message through the sync pipeline (archive → exec → upload).
+
+Shared fields on write ops (msgpack body of the ent):
+
+```ts
+type EntFields<T> = {
+  type: string;       // application type name
+  body?: T;           // application payload
+  gid?: string;       // optional group id
+  pid?: EntityID;     // optional parent eid
+};
+```
+
+A [rev](../about/glossary#rev) is the latest observed identity of an ent:
+
+```ts
+type IEntRev = {
+  eid: EntityID;
+  ctr: number;
+  updatedAt: Date;  // last-write time of this rev
+};
+// From a loaded ent: revFromEntity(ent)
+// From a returned msg head: revFromHead(head)
+```
+
+### Methods
+
+All writes take a single opts object (`force` optional where skew can apply).
+
+- `genEID(id?)` — allocate a new entity id (optional 8-byte id material).
+
+- `insert(op)` — create a new ent (new eid, ctr 0).
+
+  ```ts
+  op: EntFields<T> & { id?: Uint8Array }  // id = optional eid material
+  ```
+
+- `update(op)` **(preferred for edits)** — next ctr is `prior.ctr + 1`; no archive I/O.
+
+  ```ts
+  op: EntFields<T> & {
+    prior: IEntRev;
+    force?: boolean;  // clock-skew recovery; default client-wide
+  }
+
+  await client.update({
+    prior: revFromEntity(ent),
+    type: "todo",
+    body: { text: "milk", done: true },
+  });
+  ```
+
+- `delete(op)` — by prior (preferred) or eid (archive lookup).
+
+  ```ts
+  type IDeleteParams =
+    | { prior: IEntRev; force?: boolean }  // preferred
+    | { eid: EntityID; force?: boolean };  // loads prior from archive
+
+  await client.delete({ prior: revFromEntity(ent) });
+  await client.delete({ eid: ent.eid }); // slower
+  ```
+
 ## Import/Export
 
 - `export(filename)`

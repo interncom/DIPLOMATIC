@@ -6,6 +6,10 @@ Prefer terse variable names, even at the expense of immediate readability to an 
 
 Run `style.sh` in the root of the project to enforce style rules after completing your work.
 
+Write the minimum amount of code you can to achieve the task without sacrificing clarity. Don't do "code golf" tricks to shorten the code, but look for refactors or even rearchitectures that would reduce LOC.
+
+Do not introduce new jargon without good reason.
+
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.

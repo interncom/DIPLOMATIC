@@ -17,11 +17,13 @@ import { Clock, IClock } from "../shared/clock";
 import { Status } from "../shared/consts";
 import type {
   EntityID,
+  IDeleteParams,
+  IEntRev,
   IHostConnectionInfo,
   IInsertParams,
   IMessageHead,
   IStateManager,
-  IUpsertParams,
+  IUpdateParams,
   MasterSeed,
   SerializedContent,
 } from "../shared/types";
@@ -365,8 +367,8 @@ export class WorkerClient implements IClient<URL> {
         return;
       }
       case "dirty": {
-        // Worker wrote application state (shared EntDB IDB); re-notify UI.
-        this.state.notify(msg.types);
+        // Worker wrote durable EntDB; cache pulls those eids, notifies types.
+        void this.state.refresh(msg.eids.map(entityIDFromBytes));
         return;
       }
       case "wiped": {
@@ -495,19 +497,19 @@ export class WorkerClient implements IClient<URL> {
     await this.request({ id: this.allocId(), op: "disconnect" });
   }
 
-  /** Local UI write: archive + apply on main (fast UI); upload/sync via worker. */
+  /** Local UI write: archive + apply on main (cache notifies UI); sync via worker. */
   async insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>> {
     await this.ready;
     return this.local.insertRaw(content);
   }
 
-  async upsertRaw(
-    eid: EntityID,
+  async updateRaw(
+    prior: IEntRev,
     content: SerializedContent | undefined,
     force?: boolean,
   ): Promise<ValStat<IMessageHead>> {
     await this.ready;
-    return this.local.upsertRaw(eid, content, force);
+    return this.local.updateRaw(prior, content, force);
   }
 
   async insert<T = unknown>(
@@ -517,17 +519,16 @@ export class WorkerClient implements IClient<URL> {
     return this.local.insert(op);
   }
 
-  async upsert<T = unknown>(
-    op: IUpsertParams<T>,
-    force?: boolean,
+  async update<T = unknown>(
+    op: IUpdateParams<T>,
   ): Promise<ValStat<IMessageHead>> {
     await this.ready;
-    return this.local.upsert(op, force);
+    return this.local.update(op);
   }
 
-  async delete(eid: EntityID): Promise<ValStat<IMessageHead>> {
+  async delete(op: IDeleteParams): Promise<ValStat<IMessageHead>> {
     await this.ready;
-    return this.local.delete(eid);
+    return this.local.delete(op);
   }
 
   async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {
@@ -581,4 +582,8 @@ class WorkerReplyError extends Error {
     super(`WorkerReplyError: ${Status[status]}`);
     this.name = "WorkerReplyError";
   }
+}
+
+function entityIDFromBytes(bytes: Uint8Array): EntityID {
+  return bytes as EntityID;
 }

@@ -54,19 +54,20 @@ const applier = opMapApplier<{ status: ICustomOp }>({
 
 ### UI
 
-Observe state changes in response to operations of a particular type with the `useStateWatcher` hook, and modify app state by calling the client's `upsert` method, which generates a mutation operation (an `UPSERT` rather than a `DELETE`—the only two operation "verbs").
+Observe state changes in response to operations of a particular type with the `useStateWatcher` hook, and modify app state with `client.insert` / `client.update` / `client.delete`. Prefer passing a prior [rev](./about/glossary#rev) from the ent on screen (`revFromEntity`) so updates skip a message-store lookup.
 
 ```typescript
-import { useStateWatcher } from '@interncom/diplomatic'
+import { revFromEntity, useStateWatcher } from '@interncom/diplomatic'
 export default function App() {
   const data = useStateWatcher(stateMgr, "custom", () => database.data)
-  const update = (newData) => client.upsert("custom", newData)
+  const save = (ent, newBody) =>
+    client.update({ prior: revFromEntity(ent), type: "custom", body: newBody })
 
   // ...
 }
 ```
 
-Build an application UI that visualizes the application state and provides the user control mechanisms which trigger `client.upsert` calls to alter the database via operation objects. DIPLOMATIC handles relaying these operations between clients via a cloud host, and also calls the local `applier` defined above with them, to keep all clients in sync.
+Build an application UI that visualizes the application state and provides the user control mechanisms which trigger local writes. DIPLOMATIC handles relaying these messages between clients via a cloud host, and also applies them to local application state (EntDB), to keep all clients in sync.
 
 ## Core Features
 

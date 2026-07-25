@@ -28,7 +28,7 @@ const client = new DiplomaticClient({
 
 export default function App() {
   const count = useStateWatcher(stateMgr, "count", () => appState.count);
-  const inc = () => client.upsert("count", count + 1);
+  const inc = () => client.update({ prior: revFromEntity(ent), type: "count", body: count + 1 });
 
   return (
     <div style={{ width: "100vw", textAlign: "center" }}>

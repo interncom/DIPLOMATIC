@@ -29,7 +29,7 @@ import {
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
-import { entStateManager } from "../src/entdb/entdb";
+import { entStateManager, revFromHead } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
 
 const lpcHost = new DiplomaticLPCServer(
@@ -58,6 +58,7 @@ const createClient = async (clock = mockClock) => {
       return Status.Success;
     },
     notify() {},
+    async refresh() {},
     on(_type, _listener) { },
     off(_type, _listener) { },
   };
@@ -193,6 +194,7 @@ describe("Client", () => {
           return Status.Success;
         },
         notify() {},
+        async refresh() {},
         on(_type, _listener) { },
         off(_type, _listener) { },
       };
@@ -331,22 +333,26 @@ describe("Client", () => {
     });
   });
 
-  describe("upsert", () => {
-    test("stores upsert message and increments counter", async () => {
+  describe("update", () => {
+    test("stores update message and increments counter", async () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
       await client.link(testHost);
-      const eid = new Uint8Array(16).fill(0);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
-      await client.upsertRaw(eid, body1);
+      const [h1, st1] = await client.insertRaw(body1);
+      expect(st1).toBe(Status.Success);
+      if (!h1) throw new Error("missing h1");
       let messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(1);
       expect(messages[0].head.ctr).toBe(0);
       expect(messages[0].body).toEqual(body1);
       expect(messages[0].head.len).toBe(body1.length);
-      await client.upsertRaw(eid, body2);
+      const [prior, stP] = revFromHead(h1);
+      expect(stP).toBe(Status.Success);
+      if (!prior) throw new Error("missing prior");
+      await client.updateRaw(prior, body2);
       messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
       expect(messages[1].head.ctr).toBe(1);
@@ -357,66 +363,48 @@ describe("Client", () => {
     });
 
     describe("clock skew", () => {
-      test("returns ClockOutOfSync when last message timestamp is ahead", async () => {
+      test("returns ClockOutOfSync when prior updatedAt is ahead", async () => {
         const mockClock = new MockClock(new Date(0));
-        const { store, client } = await createClient(mockClock);
-        const eid = new Uint8Array(16).fill(3);
+        const { client } = await createClient(mockClock);
+        const id = await libsodiumCrypto.genRandomBytes(8);
+        const [eid, statEid] = makeEID({ id, ts: new Date(0) });
+        if (statEid !== Status.Success || !eid) {
+          expect(statEid).toEqual(Status.Success);
+          return;
+        }
         const body: EncodedMessage = new Uint8Array([10, 11]);
-
-        // Create a message with future timestamp manually
-        const head: IMessageHead = {
+        const prior = {
           eid,
-          clk: new Date(0),
-          off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
           ctr: 0,
-          len: 0,
-          hsh: undefined,
+          updatedAt: new Date(1000), // ahead of clock (0)
         };
-
-        // Encode head and compute hash
-        const enc = new Encoder();
-        enc.writeStruct(messageHeadCodec, head);
-        const headEnc = enc.result();
-        const hash = await libsodiumCrypto.blake3(headEnc);
-        const data: IStoredMessageData = {
-          eid: head.eid,
-          ...(head.off !== 0 ? { off: head.off } : {}),
-          ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
-          body: undefined,
-          apld: APLD_APPLIED,
-        };
-        await store.messages.add([{ key: hash, data }]);
-
-        // Now upsert should return ClockOutOfSync
-        const result = await client.upsertRaw(eid, body, false);
+        const result = await client.updateRaw(prior, body, false);
         expect(result[0]).toBeUndefined();
         expect(result[1]).toBe(Status.ClockOutOfSync);
       });
 
-      test("allows upsert when force=true despite clock skew", async () => {
+      test("allows update when force=true despite clock skew", async () => {
         const mockClock = new MockClock(new Date(0));
         const { store, client } = await createClient(mockClock);
 
         const id = await libsodiumCrypto.genRandomBytes(8);
         const eidObj = { id, ts: new Date(0) };
         const [eid, statEid] = makeEID(eidObj);
-        if (statEid !== Status.Success) {
+        if (statEid !== Status.Success || !eid) {
           expect(statEid).toEqual(Status.Success);
           return;
         }
 
         const body: EncodedMessage = new Uint8Array([20, 21]);
 
-        // Create a message with future timestamp manually
+        // Seed skewed latest msg in archive (optional; prior alone drives skew).
         const head: IMessageHead = {
           eid,
-          off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+          off: 1000,
           ctr: 5,
           len: 0,
           hsh: undefined,
         };
-
-        // Encode head and compute hash
         const enc = new Encoder();
         enc.writeStruct(messageHeadCodec, head);
         const headEnc = enc.result();
@@ -430,20 +418,19 @@ describe("Client", () => {
         };
         await store.messages.add([{ key: hash, data }]);
 
-        // Now upsert with force=true should succeed
-        const [newMsg, stat] = await client.upsertRaw(
-          head.eid,
-          body,
-          true,
-        );
+        const prior = {
+          eid,
+          ctr: 5,
+          updatedAt: new Date(1000),
+        };
+        const [newMsg, stat] = await client.updateRaw(prior, body, true);
         if (stat !== Status.Success) {
           expect(stat).toBe(Status.Success);
           return;
         }
         expect(newMsg).toBeDefined();
-        expect(newMsg.eid).toEqual(eid);
-        expect(newMsg.ctr).toBe(0); // reset ctr
-        expect(newMsg.off).not.toBe(head.off);
+        // Replacement keeps id bytes; new eid ts = now (0) so off = 0, ctr = 0.
+        expect(newMsg.ctr).toBe(0);
         expect(newMsg.off).toBe(0);
       });
     });
@@ -456,24 +443,18 @@ describe("Client", () => {
       });
       await client.link(testHost);
 
-      const id = await libsodiumCrypto.genRandomBytes(8);
-      const eidObj = { id, ts: new Date(0) };
-      const [eid, statEid] = makeEID(eidObj);
-      if (statEid !== Status.Success) {
-        expect(statEid).toEqual(Status.Success);
-        return;
-      }
-
-      await client.upsertRaw(
-        eid,
-        new Uint8Array([10, 11]),
-      );
-      await client.delete(eid);
+      const [h1, st1] = await client.insertRaw(new Uint8Array([10, 11]));
+      expect(st1).toBe(Status.Success);
+      if (!h1) throw new Error("missing h1");
+      const [prior, stP] = revFromHead(h1);
+      expect(stP).toBe(Status.Success);
+      if (!prior) throw new Error("missing prior");
+      await client.delete({ prior });
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
-      const upsertMsg = messages[0];
-      expect(upsertMsg.head.ctr).toBe(0);
-      expect(upsertMsg.head.len).toBe(2); // new Uint8Array([10, 11]) length 2
+      const insertMsg = messages[0];
+      expect(insertMsg.head.ctr).toBe(0);
+      expect(insertMsg.head.len).toBe(2);
       const deleteMsg = messages[1];
       expect(deleteMsg.head.ctr).toBe(1);
       expect(deleteMsg.head.len).toBe(0);
@@ -489,21 +470,18 @@ describe("Client", () => {
       const id = await libsodiumCrypto.genRandomBytes(8);
       const eidObj = { id, ts: new Date(0) };
       const [eid, statEid] = makeEID(eidObj);
-      if (statEid !== Status.Success) {
+      if (statEid !== Status.Success || !eid) {
         expect(statEid).toEqual(Status.Success);
         return;
       }
 
-      // Create a message with future timestamp manually
       const head: IMessageHead = {
         eid,
-        off: 1000, // timestamp = 0 + 1000 = 1000 > mockClock.now() = 0
+        off: 1000,
         ctr: 0,
         len: 2,
         hsh: undefined,
       };
-
-      // Encode head and compute hash
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
@@ -517,18 +495,21 @@ describe("Client", () => {
       };
       await store.messages.add([{ key: hash, data }]);
 
-      // Now delete should succeed despite clock skew
-      const [respHead, statDel] = await client.delete(eid);
+      const prior = {
+        eid,
+        ctr: 0,
+        updatedAt: new Date(1000),
+      };
+      const [respHead, statDel] = await client.delete({ prior, force: true });
       if (statDel !== Status.Success) {
         expect(statDel).toBe(Status.Success);
         return;
       }
       expect(respHead).toBeDefined();
       expect(respHead.eid).toEqual(eid);
-      expect(respHead.len).toBe(0); // delete message
-      expect(respHead.ctr).toBe(1); // incremented from 0
+      expect(respHead.len).toBe(0);
+      expect(respHead.ctr).toBe(1);
 
-      // Check that two messages are now stored: original upsert and the delete
       const messages = Array.from(await store.messages.list());
       expect(messages.length).toBe(2);
       const deleteMsg = messages[1];

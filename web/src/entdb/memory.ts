@@ -30,8 +30,8 @@ export class EntDBMemory implements IEntDB {
   }
 
   async apply(ops: IOp[]) {
-    // Set of ent types affected by applying ops.
     const types = new Set<string>();
+    const eids: EntityID[] = [];
     const results: Status[] = [];
     for (const op of ops) {
       const key = btob64(op.eid);
@@ -51,9 +51,10 @@ export class EntDBMemory implements IEntDB {
       } else {
         this.ents.delete(key);
       }
+      eids.push(op.eid);
       results.push(Status.Success);
     }
-    return { stats: results, types };
+    return { stats: results, types, eids };
   }
 
   async clear(): Promise<Status> {

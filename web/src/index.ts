@@ -2,14 +2,17 @@
 
 import { SyncClient } from "./client";
 import crypto from "./crypto";
+import { CachedEntDB, openEntDB, type OpenEntDBOptions } from "./entdb/cached";
 import {
   EntitiesQuery,
   entStateManager,
   IEntDB,
   IEntity,
   nullEntDB,
+  revFromEntity,
+  revFromHead,
 } from "./entdb/entdb";
-import { EntIDB, openEntIDB } from "./entdb/idb";
+import { EntIDB } from "./entdb/idb";
 import { EntDBMemory } from "./entdb/memory";
 import {
   useClient,
@@ -32,12 +35,15 @@ import {
   GroupID,
   HostHandle,
   ICrypto,
+  IDeleteParams,
+  IEntRev,
   IHostConnectionInfo,
   IMessage,
   IMutateOp,
   type IOp,
   IStateManager,
   ITransport,
+  IUpdateParams,
   MasterSeed,
 } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
@@ -111,6 +117,7 @@ export {
   APLD_PENDING,
   apldFromStored,
   btoh,
+  CachedEntDB,
   Clock,
   crypto,
   Decoder,
@@ -140,8 +147,10 @@ export {
   nullEntDB,
   nullStateManager,
   openDiplomaticClient,
-  openEntIDB,
+  openEntDB,
   openIDBStore,
+  revFromEntity,
+  revFromHead,
   setApld,
   shouldEmitItemProgress,
   SingletonStateManager,
@@ -164,7 +173,9 @@ export type {
   HostHandle,
   IClient,
   ICrypto,
+  IDeleteParams,
   IDiplomaticClientState,
+  IEntRev,
   IHostConnectionInfo,
   IHostRow,
   IMessage,
@@ -175,10 +186,12 @@ export type {
   IStoredMessageData,
   IStoredMessageWrite,
   ITransport,
+  IUpdateParams,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
+  OpenEntDBOptions,
   SyncProgressEvent,
   WorkerClientOptions,
 };

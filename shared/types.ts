@@ -79,11 +79,31 @@ export function isMutateOp(op: IOp): op is IMutateOp {
 }
 
 export interface IInsertParams<T> extends IMsgEntBody<T> {
+  /** Optional 8-byte id material for the new eid; else random. */
   id?: Uint8Array;
 }
-export interface IUpsertParams<T> extends IMsgEntBody<T> {
-  eid?: EntityID;
+
+/**
+ * Revision of an ent used as the base for update/delete.
+ * Apps almost always already hold this (the row being edited).
+ */
+export interface IEntRev {
+  eid: EntityID;
+  ctr: number;
+  /** Last-write time of this rev (eid.ts + off of the latest msg for this eid). */
+  updatedAt: Date;
 }
+
+export interface IUpdateParams<T> extends IMsgEntBody<T> {
+  prior: IEntRev;
+  /** Clock-skew recovery; default client-wide (usually true). */
+  force?: boolean;
+}
+
+/** Prefer `{ prior }`; `{ eid }` loads prior from the message archive. */
+export type IDeleteParams =
+  | { prior: IEntRev; force?: boolean }
+  | { eid: EntityID; force?: boolean };
 
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
@@ -268,6 +288,12 @@ export interface IStateManager {
    * updated shared application state in IndexedDB).
    */
   notify: (types: Iterable<string>) => void;
+  /**
+   * Peer wrote durable application state for these eids (e.g. sync worker).
+   * With CachedEntDB: pull those eids from durable; type-level UI notifies
+   * fire only if mem changed.
+   */
+  refresh: (eids: Iterable<EntityID>) => Promise<void>;
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
 }

@@ -27,6 +27,7 @@ import {
 import { msg2StoredMsgData } from "../src/sync";
 import { MockClock } from "../src/shared/clock";
 import { makeEID } from "../src/shared/codecs/eid";
+import { revFromHead } from "../src/entdb/entdb";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from "../src/shared/storage/memory";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
@@ -73,6 +74,7 @@ function mockState(
       return Status.Success;
     },
     notify() {},
+    async refresh() {},
     on() {},
     off() {},
   };
@@ -278,7 +280,7 @@ describe("SyncClient apply queue", () => {
     expect(await store.messages.list(APLD_PENDING)).toHaveLength(0);
   });
 
-  test("upsertRaw and delete mark applied", async () => {
+  test("updateRaw and delete mark applied", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state = mockState();
     const client = makeClient(store, state);
@@ -288,13 +290,20 @@ describe("SyncClient apply queue", () => {
     );
     expect(stIns).toBe(Status.Success);
     if (!ins) throw new Error("missing head");
-    const [up, stUp] = await client.upsertRaw(
-      ins.eid,
+    const [prior, stPrior] = revFromHead(ins);
+    expect(stPrior).toBe(Status.Success);
+    if (!prior) throw new Error("missing prior");
+    const [up, stUp] = await client.updateRaw(
+      prior,
       encode({ type: "t", body: 2 }),
     );
     expect(stUp).toBe(Status.Success);
     expect(up).toBeDefined();
-    await client.delete(ins.eid);
+    if (!up) throw new Error("missing up head");
+    const [prior2, stPrior2] = revFromHead(up);
+    expect(stPrior2).toBe(Status.Success);
+    if (!prior2) throw new Error("missing prior2");
+    await client.delete({ prior: prior2 });
     const listed = Array.from(await store.messages.list());
     expect(listed.length).toBeGreaterThanOrEqual(2);
     for (const m of listed) {

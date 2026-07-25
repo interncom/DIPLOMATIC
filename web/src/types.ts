@@ -6,12 +6,14 @@ import type {
   EntityID,
   Hash,
   HostHandle,
+  IDeleteParams,
+  IEntRev,
   IHostConnectionInfo,
   IHostMetadata,
   IInsertParams,
   IMessageHead,
   IOp,
-  IUpsertParams,
+  IUpdateParams,
   MasterSeed,
   SerializedContent,
 } from "./shared/types";
@@ -42,7 +44,7 @@ export interface IDiplomaticClientXferState {
 
 export type Applier = (
   ops: IOp[],
-) => Promise<{ stats: Status[]; types: Set<string> }>;
+) => Promise<{ stats: Status[]; types: Set<string>; eids: EntityID[] }>;
 
 // ISeedStore handles persistence for a MasterSeed.
 export interface ISeedStore {
@@ -292,22 +294,21 @@ export interface IClient<Handle extends HostHandle> {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 
-  // insert/upsert/delete return the msg head, because in case of clock skew,
-  // they may issue a delete and replace with a new msg to get back on a valid
-  // timeline. If that happens, the returned msg head will be different than
-  // the one implied by the provided params.
+  // insert/update/delete return the msg head. On clock skew, update/delete may
+  // issue a delete (+ optional replacement) so the returned head can differ
+  // from a naive read of the params.
   insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
-  upsertRaw(
-    eid: EntityID,
-    content: SerializedContent,
+  updateRaw(
+    prior: IEntRev,
+    content: SerializedContent | undefined,
     force?: boolean,
   ): Promise<ValStat<IMessageHead>>;
   insert<T = unknown>(op: IInsertParams<T>): Promise<ValStat<IMessageHead>>;
-  upsert<T = unknown>(
-    op: IUpsertParams<T>,
-    force?: boolean,
-  ): Promise<ValStat<IMessageHead>>;
-  delete(eid: EntityID): Promise<ValStat<IMessageHead>>;
+  update<T = unknown>(op: IUpdateParams<T>): Promise<ValStat<IMessageHead>>;
+  /**
+   * Delete by `{ prior }` (preferred) or `{ eid }` (archive lookup).
+   */
+  delete(op: IDeleteParams): Promise<ValStat<IMessageHead>>;
 
   /** Allocate an entity id (optional 8-byte id material; else random). */
   genEID(id?: Uint8Array): Promise<ValStat<EntityID>>;

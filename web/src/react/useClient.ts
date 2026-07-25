@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { openEntDB } from "../entdb/cached";
 import { entStateManager, IEntDB } from "../entdb/entdb";
-import { openEntIDB } from "../entdb/idb";
 import { openDiplomaticClient } from "../openClient";
 import { Clock, IClock } from "../shared/clock";
 import {
@@ -167,7 +167,7 @@ export function useClient(opts: UseClientOptions = {}) {
     let dispose: (() => void) | undefined;
 
     (async () => {
-      const entDB = await openEntIDB();
+      const entDB = await openEntDB();
       if (cancelled) return;
       const entMgr = entStateManager(entDB);
 

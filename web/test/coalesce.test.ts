@@ -224,6 +224,7 @@ describe("SyncClient.sync coalesce+trailing", () => {
         return Status.Success;
       },
       notify() {},
+      async refresh() {},
       on() {},
       off() {},
     };

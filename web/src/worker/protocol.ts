@@ -2,7 +2,6 @@
 // Commands are request/reply (id). Events are unsolicited (xferState, dirty, …).
 
 import type { Status } from "../shared/consts";
-import type { EntityID, IMessageHead } from "../shared/types";
 import type { SyncProgressEvent } from "../progress";
 import type {
   IDiplomaticClientState,
@@ -35,37 +34,6 @@ export type WorkerCmd =
   | { id: number; op: "disconnect" }
   | { id: number; op: "sync" }
   | { id: number; op: "wipe" }
-  | { id: number; op: "insertRaw"; body: Uint8Array }
-  | {
-    id: number;
-    op: "upsertRaw";
-    eid: Uint8Array;
-    body?: Uint8Array;
-    force?: boolean;
-  }
-  | {
-    id: number;
-    op: "insert";
-    params: {
-      type: string;
-      body: unknown;
-      gid?: string;
-      pid?: Uint8Array;
-    };
-  }
-  | {
-    id: number;
-    op: "upsert";
-    params: {
-      type: string;
-      body: unknown;
-      eid?: Uint8Array;
-      gid?: string;
-      pid?: Uint8Array;
-    };
-    force?: boolean;
-  }
-  | { id: number; op: "delete"; eid: Uint8Array }
   | { id: number; op: "import"; bytes: Uint8Array }
   | { id: number; op: "export" }
   | { id: number; op: "getClientState" }
@@ -80,8 +48,11 @@ export type WorkerEvent =
   | { kind: "clientState"; state: IDiplomaticClientState }
   /** Queues + sync phase progress (see IDiplomaticClientXferState.progress). */
   | { kind: "xferState"; state: IDiplomaticClientXferState }
-  /** Application state (e.g. EntDB) changed for these op types; re-read IDB. */
-  | { kind: "dirty"; types: string[] }
+  /**
+   * Application state (e.g. EntDB) changed for these eids.
+   * Main cache pulls only those rows from shared IDB, then notifies by type.
+   */
+  | { kind: "dirty"; eids: Uint8Array[] }
   | { kind: "wiped" }
   | WorkerReply;
 
@@ -106,38 +77,6 @@ export function isWorkerCmd(data: unknown): data is WorkerCmd {
 }
 
 /** Narrow helpers for typed replies (avoid casts at call sites). */
-export function headFromUnknown(v: unknown): IMessageHead | undefined {
-  if (!v || typeof v !== "object") {
-    return undefined;
-  }
-  if (!("eid" in v) || !("off" in v) || !("ctr" in v) || !("len" in v)) {
-    return undefined;
-  }
-  const eid = v.eid;
-  const off = v.off;
-  const ctr = v.ctr;
-  const len = v.len;
-  if (!(eid instanceof Uint8Array)) {
-    return undefined;
-  }
-  if (
-    typeof off !== "number" || typeof ctr !== "number" ||
-    typeof len !== "number"
-  ) {
-    return undefined;
-  }
-  const head: IMessageHead = {
-    eid: eid as EntityID,
-    off,
-    ctr,
-    len,
-  };
-  if ("hsh" in v && v.hsh instanceof Uint8Array) {
-    head.hsh = v.hsh;
-  }
-  return head;
-}
-
 export function statusFromUnknown(v: unknown): Status | undefined {
   if (typeof v !== "number") {
     return undefined;

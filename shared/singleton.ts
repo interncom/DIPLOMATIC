@@ -4,6 +4,7 @@ import { eidCodec, IEntityID, makeEID } from "./codecs/eid.ts";
 import { Status } from "./consts.ts";
 import { TypedEventEmitter } from "./events.ts";
 import {
+  EntityID,
   IMessage,
   IStateManager,
   IUpsertMessage,
@@ -89,6 +90,11 @@ export class SingletonStateManager implements IStateManager {
         this.emitter.emit(this.singletonType, null);
       }
     }
+  };
+
+  refresh = async (_eids: Iterable<EntityID>) => {
+    // No durable cache; nothing to pull. Broad notify for this singleton type.
+    this.notify([this.singletonType]);
   };
 
   on = (event: string, listener: () => void) => {

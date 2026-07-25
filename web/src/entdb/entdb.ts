@@ -19,11 +19,14 @@ import { err, ok, ValStat } from "../shared/valstat";
 import {
   EntityID,
   GroupID,
+  IEntRev,
+  IMessageHead,
   IMsgEntBody,
   IOp,
   isMutateOp,
 } from "../shared/types";
-import { StateManager } from "../state.ts";
+
+export { entStateManager } from "./manager.ts";
 
 export interface IEntity<T = unknown> extends Omit<IMsgEntBody<T>, "body"> {
   eid: EntityID;
@@ -44,8 +47,17 @@ export type EntitiesQuery =
   | { type: string; pid: EntityID }
   | { type: string; updatedBetween: IDateRange };
 
+/** Result of applying ops to EntDB. */
+export type ApplyResult = {
+  stats: Status[];
+  /** Types whose rendered state may have changed (for app list invalidation). */
+  types: Set<string>;
+  /** Eids that successfully applied (for granular cache ingest). */
+  eids: EntityID[];
+};
+
 export interface IEntDB {
-  apply: (ops: IOp[]) => Promise<{ stats: Status[]; types: Set<string> }>;
+  apply: (ops: IOp[]) => Promise<ApplyResult>;
   clear: () => Promise<Status>;
   getEnt<T>(
     eid: EntityID,
@@ -56,12 +68,23 @@ export interface IEntDB {
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
 }
 
-export function entStateManager(edb: IEntDB): StateManager {
-  // Wrap so method extract does not lose `this` (Memory uses prototype methods).
-  return new StateManager(
-    (ops) => edb.apply(ops),
-    () => edb.clear(),
-  );
+/** Prior rev from a loaded entity (typical update/delete input). */
+export function revFromEntity(ent: IEntity): IEntRev {
+  return { eid: ent.eid, ctr: ent.ctr, updatedAt: ent.updatedAt };
+}
+
+/** Prior rev from a msg head returned by insert/update/delete. */
+export function revFromHead(head: IMessageHead): ValStat<IEntRev> {
+  const dec = new Decoder(head.eid);
+  const [parsed, st] = dec.readStruct(eidCodec);
+  if (st !== Status.Success) {
+    return err(st);
+  }
+  return ok({
+    eid: head.eid,
+    ctr: head.ctr,
+    updatedAt: new Date(parsed.ts.getTime() + head.off),
+  });
 }
 
 export function applyOp(
@@ -107,6 +130,7 @@ export const nullEntDB: IEntDB = {
   apply: async (ops: IOp[]) => ({
     stats: ops.map(() => Status.NotImplemented),
     types: new Set(),
+    eids: [],
   }),
   clear: async () => Status.NotImplemented,
 };

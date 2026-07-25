@@ -3,12 +3,11 @@
 
 import { SyncClient } from "../client";
 import crypto from "../crypto";
-import { openEntIDB } from "../entdb/idb";
+import { openEntDB } from "../entdb/cached";
 import { Clock } from "../shared/clock";
 import { Status } from "../shared/consts";
 import { hostHTTPTransport } from "../shared/http";
-import { EncodedMessage } from "../shared/message";
-import type { EntityID, MasterSeed } from "../shared/types";
+import type { MasterSeed } from "../shared/types";
 import { StateManager } from "../state";
 import { openIDBStore } from "../stores/idb/store";
 import type { SerializedHost, WorkerCmd, WorkerEvent } from "./protocol";
@@ -34,13 +33,17 @@ export class WorkerRuntime {
   async init(): Promise<void> {
     try {
       const store = await openIDBStore(crypto);
-      const entDB = await openEntIDB();
-      // Real EntDB apply in-worker; signal main to re-read shared IDB.
+      const entDB = await openEntDB({ cache: false });
+      // Real EntDB apply in-worker; signal main with eids to re-read from IDB.
       const state = new StateManager(
         entDB.apply,
         () => entDB.clear(),
-        (types) => {
-          this.post({ kind: "dirty", types: Array.from(types) });
+        (eids) => {
+          if (eids.length < 1) return;
+          this.post({
+            kind: "dirty",
+            eids: eids.map((e) => e.slice()),
+          });
         },
       );
       // Ensure clear also notifies main (wipe path).
@@ -176,74 +179,6 @@ export class WorkerRuntime {
         return undefined;
       }
 
-      // Mutate RPCs: unused today. WorkerClient applies insert/upsert/delete on
-      // main (shared IDB + fast UI) and only hands network sync to the worker.
-      // Kept for a future path: main optimistic cache + async durable write here,
-      // with dirty/ack to reconcile UI to EntDB truth.
-      case "insertRaw": {
-        const [head, stat] = await client.insertRaw(toEncoded(cmd.body));
-        if (stat !== Status.Success) {
-          throw new WorkerStatusError(stat);
-        }
-        return head;
-      }
-
-      case "upsertRaw": {
-        const [head, stat] = await client.upsertRaw(
-          toEntityID(cmd.eid),
-          cmd.body !== undefined ? toEncoded(cmd.body) : undefined,
-          cmd.force,
-        );
-        if (stat !== Status.Success) {
-          throw new WorkerStatusError(stat);
-        }
-        return head;
-      }
-
-      case "insert": {
-        const [head, stat] = await client.insert({
-          type: cmd.params.type,
-          body: cmd.params.body,
-          gid: cmd.params.gid,
-          pid: cmd.params.pid !== undefined
-            ? toEntityID(cmd.params.pid)
-            : undefined,
-        });
-        if (stat !== Status.Success) {
-          throw new WorkerStatusError(stat);
-        }
-        return head;
-      }
-
-      case "upsert": {
-        const [head, stat] = await client.upsert(
-          {
-            type: cmd.params.type,
-            body: cmd.params.body,
-            eid: cmd.params.eid !== undefined
-              ? toEntityID(cmd.params.eid)
-              : undefined,
-            gid: cmd.params.gid,
-            pid: cmd.params.pid !== undefined
-              ? toEntityID(cmd.params.pid)
-              : undefined,
-          },
-          cmd.force,
-        );
-        if (stat !== Status.Success) {
-          throw new WorkerStatusError(stat);
-        }
-        return head;
-      }
-
-      case "delete": {
-        const [head, stat] = await client.delete(toEntityID(cmd.eid));
-        if (stat !== Status.Success) {
-          throw new WorkerStatusError(stat);
-        }
-        return head;
-      }
-
       case "import": {
         const copy = cmd.bytes.slice();
         const blob = new Blob([copy]);
@@ -300,12 +235,4 @@ function toMasterSeed(bytes: Uint8Array): MasterSeed {
     throw new WorkerStatusError(Status.InvalidParam);
   }
   return bytes as MasterSeed;
-}
-
-function toEntityID(bytes: Uint8Array): EntityID {
-  return bytes as EntityID;
-}
-
-function toEncoded(bytes: Uint8Array): EncodedMessage {
-  return bytes;
 }

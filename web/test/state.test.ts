@@ -94,6 +94,7 @@ describe("StateManager.apply", () => {
           op: { type: string },
         ) => op.type),
       ),
+      eids: ops.map((op: { eid: Uint8Array }) => op.eid),
     }));
     const clear = vi.fn().mockResolvedValue(Status.Success);
     stateManager = new StateManager(applier, clear);
@@ -189,6 +190,7 @@ describe("StateManager.clear", () => {
     const applier = vi.fn().mockResolvedValue({
       stats: [],
       types: new Set<string>(),
+      eids: [],
     });
     const mgr = new StateManager(applier, clearer);
     const heard: string[] = [];
@@ -211,6 +213,7 @@ describe("StateManager.clear", () => {
     const applier = vi.fn().mockResolvedValue({
       stats: [],
       types: new Set<string>(),
+      eids: [],
     });
     const mgr = new StateManager(applier, clearer);
     let heard = 0;

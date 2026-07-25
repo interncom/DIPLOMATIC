@@ -43,6 +43,7 @@ const createClient = async (seed: Uint8Array) => {
       return Status.Success;
     },
     notify() {},
+    async refresh() {},
     on(_type, _listener) { },
     off(_type, _listener) { },
   };
@@ -109,14 +110,25 @@ describe("Sync Integration", () => {
     let messages = Array.from(await storeB.messages.list());
     expect(messages.length).toBe(2);
 
-    // Upsert one
-    const eid = messages[0].head.eid;
-    const clk = messages[0].head.clk;
-    await clientA.upsertRaw(eid, clk, new Uint8Array([3]));
+    // Update one using prior from the latest head (same on A after insert).
+    const head = messages[0].head;
+    const { Decoder } = await import("../src/shared/codec");
+    const { eidCodec } = await import("../src/shared/codecs/eid");
+    const dec = new Decoder(head.eid);
+    const [eidDec, stEid] = dec.readStruct(eidCodec);
+    expect(stEid).toBe(Status.Success);
+    if (!eidDec) throw new Error("eid");
+    const priorA = {
+      eid: head.eid,
+      ctr: head.ctr,
+      updatedAt: new Date(eidDec.ts.getTime() + head.off),
+    };
+    const [, stUp] = await clientA.updateRaw(priorA, new Uint8Array([3]));
+    expect(stUp).toBe(Status.Success);
     expect(await clientA.sync()).toBe(Status.Success);
     expect(await clientB.sync()).toBe(Status.Success);
 
     messages = Array.from(await storeB.messages.list());
-    expect(messages.length).toBe(3); // Original + upsert
+    expect(messages.length).toBe(3); // two inserts + update
   });
 });

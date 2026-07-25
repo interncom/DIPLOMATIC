@@ -9,6 +9,7 @@ import { decode } from "@msgpack/msgpack";
 import { TypedEventEmitter } from "./shared/events";
 import { Status } from "./shared/consts";
 import {
+  EntityID,
   IDeleteOp,
   IMessage,
   IMsgEntBody,
@@ -64,20 +65,37 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
   return ok(op);
 }
 
+type PeerIngestFn = (eids: Iterable<EntityID>) => Promise<void>;
+
 // StateManager emits events named by the op type which has just been updated.
 export class StateManager implements IStateManager {
   private emitter = new TypedEventEmitter<null>();
   private clearer: () => Promise<Status>;
-  private onTypes: ((types: Set<string>) => void) | undefined;
+  /** Worker / peer: eids successfully applied to durable EntDB. */
+  private onDirtyEids: ((eids: EntityID[]) => void) | undefined;
+  /**
+   * When set (CachedEntDB), type events are driven by the cache's subscribe
+   * path (immediate + durable ingest). apply() does not re-emit.
+   */
+  private cacheDriven: boolean;
+  private peerIngest: PeerIngestFn | undefined;
 
   constructor(
     public applier: Applier,
     clearer: () => Promise<Status>,
-    /** Optional hook after a successful apply batch (e.g. worker dirty signal). */
-    onTypes?: (types: Set<string>) => void,
+    /**
+     * Called with eids that successfully applied (e.g. worker posts dirty).
+     */
+    onDirtyEids?: (eids: EntityID[]) => void,
+    opts?: {
+      cacheDriven?: boolean;
+      peerIngest?: PeerIngestFn;
+    },
   ) {
     this.clearer = clearer;
-    this.onTypes = onTypes;
+    this.onDirtyEids = onDirtyEids;
+    this.cacheDriven = opts?.cacheDriven ?? false;
+    this.peerIngest = opts?.peerIngest;
   }
 
   apply = async (msgs: IMessage[]) => {
@@ -92,7 +110,7 @@ export class StateManager implements IStateManager {
       ops.push(op);
     }
 
-    const { stats: applyStats, types } = await this.applier(ops);
+    const { stats: applyStats, types, eids } = await this.applier(ops);
 
     const results: Status[] = [];
     for (let i = 0; i < msgs.length; i++) {
@@ -109,11 +127,14 @@ export class StateManager implements IStateManager {
       results.push(Status.Success);
     }
 
-    for (const type of types) {
-      this.emitter.emit(type, null);
+    // Non-cache appliers: emit type events here.
+    if (!this.cacheDriven) {
+      for (const type of types) {
+        this.emitter.emit(type, null);
+      }
     }
-    if (types.size > 0) {
-      this.onTypes?.(types);
+    if (eids.length > 0) {
+      this.onDirtyEids?.(eids);
     }
     return results;
   };
@@ -128,11 +149,25 @@ export class StateManager implements IStateManager {
     return stat;
   };
 
-  /** Notify type subscribers without applying msgs (shared-IDB peer updates). */
+  /** Notify type subscribers without applying msgs. */
   notify = (types: Iterable<string>) => {
     for (const type of types) {
       this.emitter.emit(type, null);
     }
+  };
+
+  /**
+   * Peer (e.g. sync worker) updated durable EntDB for these eids.
+   * Cache pulls those rows; apps still hear type-level events via subscribe.
+   */
+  refresh = async (eids: Iterable<EntityID>) => {
+    if (this.peerIngest) {
+      await this.peerIngest(eids);
+      return;
+    }
+    // No cache: cannot map eid→type cheaply; callers without cache should
+    // not rely on granular dirty (tests / singleton notify broadly).
+    void eids;
   };
 
   on = (opType: string, listener: () => void) => {
@@ -153,6 +188,8 @@ export const nullStateManager: IStateManager = {
     return Status.Success;
   },
   notify: function (_types): void {
+  },
+  refresh: async function (_eids): Promise<void> {
   },
   on: function (_type, _listener): void {
   },

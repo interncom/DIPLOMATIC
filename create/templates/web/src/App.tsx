@@ -41,7 +41,7 @@ export default function App() {
   const handleSubmit = useCallback(async (evt: React.FormEvent) => {
     evt.preventDefault();
     if (!client) return;
-    await client.upsert<string>({ type: entType, body: statusField });
+    await client.insert<string>({ type: entType, body: statusField });
     setStatusField("");
   }, [statusField, client]);
 

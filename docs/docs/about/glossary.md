@@ -1,6 +1,6 @@
 # Glossary
 
-Also published in the docs site under About → Glossary (`docs/docs/about/glossary.md`).
+Shared terms used in code and docs. Mirrors repo-root `GLOSSARY.md` (for agents and contributors).
 
 ## msg
 

@@ -16,6 +16,8 @@ import {
   Hash,
   HostHandle,
   ICrypto,
+  IDeleteParams,
+  IEntRev,
   IHostConnectionInfo,
   IInsertParams,
   IMessage,
@@ -23,10 +25,11 @@ import {
   IMsgEntBody,
   IStateManager,
   ITransport,
-  IUpsertParams,
+  IUpdateParams,
   MasterSeed,
 } from "./shared/types";
 import { btob64 } from "./shared/binary";
+import { revFromHead } from "./entdb/entdb";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
 import { sortByHlcDesc } from "./hlc";
@@ -64,8 +67,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
   /**
-   * Serializes exec so concurrent drainApplyQueue / apply do not interleave
-   * markApplied (each job runs fully, in order).
+   * Serializes local mutates + exec so concurrent drainApplyQueue / apply do
+   * not interleave markApplied (each job runs fully, in order).
    */
   private applyChain: Promise<unknown> = Promise.resolve();
 
@@ -179,14 +182,27 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * 1) durable archive  2) exec + APLD_APPLIED/APLD_ERROR  3) upload queue
    * Exec is where the app validates the msg; only successes are pushed.
    * Crash between 1–2 → drainApplyQueue / exec stage recovers.
+   *
+   * Serialized on applyChain (with local mutates).
    */
-  private apply = async (
+  private apply = (
+    parts: IMsgParts[],
+    options?: { enqueueUpload: boolean; triggerUpload: boolean },
+  ): Promise<Status[]> => {
+    return this.enqueueApplyJob(() => this.doApply(parts, options));
+  };
+
+  /**
+   * Core apply without enqueue. Caller must already hold applyChain when
+   * composing makeUpdate + apply in one job.
+   */
+  private async doApply(
     parts: IMsgParts[],
     options: { enqueueUpload: boolean; triggerUpload: boolean } = {
       enqueueUpload: true,
       triggerUpload: true,
     },
-  ): Promise<Status[]> => {
+  ): Promise<Status[]> {
     const hashes: Hash[] = [];
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
@@ -212,7 +228,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // later sync does not re-PULL bags we already have in the archive.
     await deqDownloadsForHeadHashes(this.store, hashes, this.crypto);
 
-    const stats = await this.applyHashes(hashes);
+    const stats = await this.doApplyHashes(hashes);
 
     // Upload only after successful (or no-op) exec for each hash.
     if (options.enqueueUpload) {
@@ -237,7 +253,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
 
     return stats;
-  };
+  }
 
   private enqueueApplyJob<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.applyChain.then(fn, fn);
@@ -266,23 +282,25 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   /** Apply specific archive keys via IStateManager and mark applied. */
   private applyHashes = (hashes: Hash[]): Promise<Status[]> => {
-    return this.enqueueApplyJob(async () => {
-      const loaded: IStoredMessage[] = [];
-      for (const h of hashes) {
-        const m = await this.store.messages.get(h);
-        if (m) loaded.push(m);
-      }
-      const applied = await this.applyStored(loaded);
-      const byHash = new Map<string, Status>();
-      for (let i = 0; i < loaded.length; i++) {
-        byHash.set(
-          btob64(loaded[i].hash),
-          applied[i] ?? Status.InternalError,
-        );
-      }
-      return hashes.map((h) => byHash.get(btob64(h)) ?? Status.NotFound);
-    });
+    return this.enqueueApplyJob(() => this.doApplyHashes(hashes));
   };
+
+  private async doApplyHashes(hashes: Hash[]): Promise<Status[]> {
+    const loaded: IStoredMessage[] = [];
+    for (const h of hashes) {
+      const m = await this.store.messages.get(h);
+      if (m) loaded.push(m);
+    }
+    const applied = await this.applyStored(loaded);
+    const byHash = new Map<string, Status>();
+    for (let i = 0; i < loaded.length; i++) {
+      byHash.set(
+        btob64(loaded[i].hash),
+        applied[i] ?? Status.InternalError,
+      );
+    }
+    return hashes.map((h) => byHash.get(btob64(h)) ?? Status.NotFound);
+  }
 
   /**
    * Apply a batch of archived msgs via IStateManager and mark outcomes.
@@ -328,84 +346,133 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (stat !== Status.Success) {
       return err<IMessageHead>(stat);
     }
-    await this.apply([{ head, body: bod }]);
+    const stats = await this.apply([{ head, body: bod }]);
+    const st = stats[0];
+    if (st !== Status.Success && st !== Status.NoChange) {
+      return err<IMessageHead>(st ?? Status.InternalError);
+    }
     return ok(head);
   }
 
-  public async upsertRaw(
-    eid: EntityID,
+  /**
+   * Build the next update/delete msg from prior. Pure: no archive I/O.
+   * Returns ClockOutOfSync if prior is in the future (caller handles force).
+   */
+  private async makeUpdate(
+    prior: IEntRev,
     bod: EncodedMessage | undefined,
-    force = false,
-  ): Promise<ValStat<IMessageHead>> {
-    const { clock, crypto, store } = this;
+  ): Promise<ValStat<IMsgParts>> {
+    const { clock, crypto } = this;
     const now = clock.now();
-    const last = await store.messages.last(eid);
-    if (last) {
-      const decEid = new Decoder(eid);
-      const [eidDec, statEid] = decEid.readStruct(eidCodec);
-      if (statEid !== Status.Success) {
-        return err<IMessageHead>(statEid);
-      }
-
-      const ts = eidDec.ts.getTime() + last.head.off;
-      if (ts > now.getTime()) {
-        // last was created in the future. So either:
-        // a) another client's clock is skewed into the future, or
-        // b) this client's clock is skewed into the past.
-
-        if (force === false) {
-          return err<IMessageHead>(Status.ClockOutOfSync);
-        }
-
-        // We need to recover from skew.
-        // We do so by deleting the invalid entity and replacing it.
-        // To overwrite the skewed entity, the delete must increment off,
-        // even if that places the delete into the future as well.
-        const offDel = last.head.off + 1;
-        const offCtr = last.head.ctr + 1;
-        const delHead = { eid, off: offDel, ctr: offCtr, len: 0 };
-        const statsDel = await this.apply([{ head: delHead, body: undefined }]);
-        const statDel = statsDel[0];
-        if (statDel !== Status.Success) {
-          return err<IMessageHead>(statDel);
-        }
-
-        if (bod === undefined) {
-          // This upsert was a delete.
-          // Therefore, we're done.
-          // There's no replacement left to insert.
-          return ok(delHead);
-        }
-
-        // Replace with a new msg that retains the old eid but clk of now.
-        const [replEID, statReplEID] = makeEID({ id: eidDec.id, ts: now });
-        if (statReplEID !== Status.Success) {
-          return err<IMessageHead>(statReplEID);
-        }
-        const replParams = { now, eid: replEID, ctr: 0, bod, crypto };
-        const [repl, statRepl] = await genUpsertHead(replParams);
-        if (statRepl !== Status.Success) {
-          return err<IMessageHead>(statRepl);
-        }
-        const statsApply = await this.apply([{ head: repl, body: bod }]);
-        const statApply = statsApply[0];
-        if (statApply !== Status.Success) {
-          return err<IMessageHead>(statApply);
-        }
-        return ok(repl);
-      }
+    if (prior.updatedAt.getTime() > now.getTime()) {
+      return err(Status.ClockOutOfSync);
     }
-    const ctr = (last?.head.ctr ?? -1) + 1;
-    const [msg, statMsg] = await genUpsertHead({ now, eid, ctr, bod, crypto });
+    const ctr = prior.ctr + 1;
+    const [head, statMsg] = await genUpsertHead({
+      now,
+      eid: prior.eid,
+      ctr,
+      bod,
+      crypto,
+    });
     if (statMsg !== Status.Success) {
-      return err<IMessageHead>(statMsg);
+      return err(statMsg);
     }
-    const statsApply = await this.apply([{ head: msg, body: bod }]);
-    const statApply = statsApply[0];
-    if (statApply !== Status.Success) {
-      return err<IMessageHead>(statApply);
+    return ok({ head, body: bod });
+  }
+
+  /**
+   * Recover when prior's last-write time is in the future relative to this
+   * clock. That means either:
+   * a) another client's clock is skewed into the future, or
+   * b) this client's clock is skewed into the past.
+   *
+   * We recover by deleting the skewed ent and (for a non-delete write)
+   * replacing it. The delete must increment off so it overwrites the skewed
+   * state, even if that places the delete into the future as well.
+   * Replacement keeps the same id bytes with a new created-at of now.
+   */
+  private async updateWithSkew(
+    prior: IEntRev,
+    bod: EncodedMessage | undefined,
+    force: boolean,
+  ): Promise<ValStat<IMessageHead>> {
+    if (force === false) {
+      return err(Status.ClockOutOfSync);
     }
-    return ok(msg);
+    const { clock, crypto } = this;
+    const now = clock.now();
+    const decEid = new Decoder(prior.eid);
+    const [eidDec, statEid] = decEid.readStruct(eidCodec);
+    if (statEid !== Status.Success) {
+      return err(statEid);
+    }
+    // off must beat prior; may still be in the future relative to now.
+    const priorOff = prior.updatedAt.getTime() - eidDec.ts.getTime();
+    const delHead: IMessageHead = {
+      eid: prior.eid,
+      off: priorOff + 1,
+      ctr: prior.ctr + 1,
+      len: 0,
+    };
+    const statsDel = await this.apply([
+      { head: delHead, body: undefined },
+    ]);
+    const statDel = statsDel[0];
+    if (statDel !== Status.Success && statDel !== Status.NoChange) {
+      return err(statDel ?? Status.InternalError);
+    }
+    if (bod === undefined) {
+      // Caller was deleting; skew delete is the whole write.
+      return ok(delHead);
+    }
+    // Replace: same id bytes, created-at = now, ctr 0.
+    const [replEID, statReplEID] = makeEID({ id: eidDec.id, ts: now });
+    if (statReplEID !== Status.Success) {
+      return err(statReplEID);
+    }
+    const [repl, statRepl] = await genUpsertHead({
+      now,
+      eid: replEID,
+      ctr: 0,
+      bod,
+      crypto,
+    });
+    if (statRepl !== Status.Success) {
+      return err(statRepl);
+    }
+    const stats = await this.apply([{ head: repl, body: bod }]);
+    const st = stats[0];
+    if (st !== Status.Success && st !== Status.NoChange) {
+      return err(st ?? Status.InternalError);
+    }
+    return ok(repl);
+  }
+
+  public async updateRaw(
+    prior: IEntRev,
+    bod: EncodedMessage | undefined,
+    force = this.forceSkewHandlingByDefault,
+  ): Promise<ValStat<IMessageHead>> {
+    // prior was written "in the future" relative to this clock → skew path.
+    if (prior.updatedAt.getTime() > this.clock.now().getTime()) {
+      return this.updateWithSkew(prior, bod, force);
+    }
+
+    return this.enqueueApplyJob(async () => {
+      // prior is the app's latest observed rev (from cache / revFromEntity).
+      // Next ctr = prior.ctr + 1. Stale priors still produce a msg; LWW applies.
+      const [parts, stMake] = await this.makeUpdate(prior, bod);
+      if (stMake !== Status.Success) {
+        return err<IMessageHead>(stMake);
+      }
+      const stats = await this.doApply([parts]);
+      const st = stats[0];
+      if (st !== Status.Success && st !== Status.NoChange) {
+        return err<IMessageHead>(st ?? Status.InternalError);
+      }
+      return ok(parts.head);
+    });
   }
 
   public async insert<T = unknown>(op: IInsertParams<T>) {
@@ -415,23 +482,52 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return this.insertRaw(entBodyEnc);
   }
 
-  public async upsert<T = unknown>(
-    op: IUpsertParams<T>,
-    force = this.forceSkewHandlingByDefault,
-  ) {
-    const { eid, body, type, gid, pid } = op;
-    if (eid === undefined) {
-      return this.insert(op);
-    }
+  public async update<T = unknown>(op: IUpdateParams<T>) {
+    const { prior, body, type, gid, pid, force } = op;
     const entBody: IMsgEntBody = { body, type, gid, pid };
     const entBodyEnc = encode(entBody);
-    return this.upsertRaw(eid, entBodyEnc, force);
+    return this.updateRaw(
+      prior,
+      entBodyEnc,
+      force ?? this.forceSkewHandlingByDefault,
+    );
   }
 
-  public async delete(eid: EntityID) {
-    // NOTE: force (clock-skew handling) is set to true here.
-    // When deleting, there's no reason not to force skew handling.
-    return this.upsertRaw(eid, undefined, true);
+  /**
+   * Delete by `{ prior }` (preferred) or `{ eid }` (archive lookup).
+   * `force` defaults to true (skew recovery on delete).
+   */
+  public async delete(op: IDeleteParams) {
+    const force = op.force ?? true;
+    if ("prior" in op) {
+      return this.updateRaw(op.prior, undefined, force);
+    }
+    const [prior, st] = await this.revFromArchive(op.eid);
+    if (st !== Status.Success) {
+      return err<IMessageHead>(st);
+    }
+    return this.updateRaw(prior, undefined, force);
+  }
+
+  /**
+   * Latest rev for eid from the message archive.
+   * If none, returns ctr -1 so the next write uses ctr 0.
+   */
+  private async revFromArchive(eid: EntityID): Promise<ValStat<IEntRev>> {
+    const last = await this.store.messages.last(eid);
+    if (last) {
+      return revFromHead(last.head);
+    }
+    const dec = new Decoder(eid);
+    const [parsed, st] = dec.readStruct(eidCodec);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    return ok({
+      eid,
+      ctr: -1,
+      updatedAt: parsed.ts,
+    });
   }
 
   public async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {

@@ -109,23 +109,31 @@ export class EntIDB implements IEntDB {
   }
 
   apply = async (ops: IOp[]) => {
-    // Set of ent types affected by applying ops.
     const types = new Set<string>();
+    const eids: EntityID[] = [];
 
     if (!this.db) {
-      return { stats: ops.map(() => Status.DatabaseClosed), types };
+      return {
+        stats: ops.map(() => Status.DatabaseClosed),
+        types,
+        eids,
+      };
     }
     const tx = this.db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
-    return new Promise<{ stats: Status[]; types: Set<string> }>((resolve) => {
+    return new Promise<{
+      stats: Status[];
+      types: Set<string>;
+      eids: EntityID[];
+    }>((resolve) => {
       const results: Status[] = new Array(ops.length).fill(Status.Success);
       if (ops.length < 1) {
-        resolve({ stats: [], types });
+        resolve({ stats: [], types, eids });
         return;
       }
 
       tx.oncomplete = () => {
-        resolve({ stats: results, types });
+        resolve({ stats: results, types, eids });
       };
       tx.onerror = () => {
         for (let i = 0; i < results.length; i++) {
@@ -133,7 +141,7 @@ export class EntIDB implements IEntDB {
             results[i] = Status.DatabaseError;
           }
         }
-        resolve({ stats: results, types });
+        resolve({ stats: results, types, eids });
       };
 
       // Group ops by eidB64.
@@ -167,6 +175,7 @@ export class EntIDB implements IEntDB {
             : undefined;
 
           // Sequentially apply applyOp for each op in the group.
+          let groupChanged = false;
           for (const { op, index } of group) {
             const [next, stat] = applyOp(curr, op);
             if (stat !== Status.Success) {
@@ -174,12 +183,16 @@ export class EntIDB implements IEntDB {
               results[index] = stat;
               continue;
             }
+            groupChanged = true;
             if (next) {
               types.add(next.type);
             } else if (curr) {
               types.add(curr.type);
             }
             curr = next;
+          }
+          if (groupChanged) {
+            eids.push(group[0].op.eid);
           }
 
           // Persist the final state of the ent if it exists, otherwise delete.
@@ -366,6 +379,7 @@ export class EntIDB implements IEntDB {
   }
 }
 
+/** Durable IndexedDB EntDB. Internal-only. Apps use {@link openEntDB} instead. */
 export async function openEntIDB() {
   const entDB = new EntIDB();
   await entDB.init();

@@ -16,22 +16,22 @@ Open http://localhost:4177/ (not `file://`).
 
 ## Defaults
 
-| Param | Default | Why |
-|---|---|---|
-| N | 100 000 | large apply/list scale |
-| EID bytes | **14** | typical DIPLOMATIC EID (8 random + 6 date) |
-| Point sample | 1000 | single-entity loads |
+| Param        | Default | Why                                        |
+| ------------ | ------- | ------------------------------------------ |
+| N            | 100 000 | large apply/list scale                     |
+| EID bytes    | **14**  | typical DIPLOMATIC EID (8 random + 6 date) |
+| Point sample | 1000    | single-entity loads                        |
 
 ## Metrics
 
-| Column | Maps to |
-|---|---|
+| Column                | Maps to                             |
+| --------------------- | ----------------------------------- |
 | encode/decode eid+pid | `entityToStored` / `storedToEntity` |
-| insert/apply | bulk `put` in one tx |
-| point | `get(eid)` + decode |
-| list-by-pid | index `["typ","pid"]` `getAll` |
-| type scan | index `["typ","crd"]` range |
-| getAll | full store (export-ish) |
+| insert/apply          | bulk `put` in one tx                |
+| point                 | `get(eid)` + decode                 |
+| list-by-pid           | index `["typ","pid"]` `getAll`      |
+| type scan             | index `["typ","crd"]` range         |
+| getAll                | full store (export-ish)             |
 
 ## Encodings
 

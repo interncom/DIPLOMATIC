@@ -145,12 +145,11 @@ const VARIANTS = [
       throw new Error("binary key is not ArrayBuffer/Uint8Array");
     },
     keySizeLabel: (k) => {
-      const n =
-        k instanceof ArrayBuffer
-          ? k.byteLength
-          : k instanceof Uint8Array
-          ? k.byteLength
-          : -1;
+      const n = k instanceof ArrayBuffer
+        ? k.byteLength
+        : k instanceof Uint8Array
+        ? k.byteLength
+        : -1;
       return `${n} B`;
     },
   },
@@ -543,7 +542,9 @@ function renderTable(results, n, nPoint, idBytes) {
       fmt: (r) =>
         r.pointMs == null
           ? "—"
-          : `${fmtMs(r.pointMs)} (${fmtOps(nPoint, r.pointMs)}; ${r.pointHits}/${nPoint})`,
+          : `${fmtMs(r.pointMs)} (${
+            fmtOps(nPoint, r.pointMs)
+          }; ${r.pointHits}/${nPoint})`,
     },
     {
       key: "listPidMs",
@@ -582,8 +583,8 @@ function renderTable(results, n, nPoint, idBytes) {
   const table = document.createElement("table");
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  hr.innerHTML =
-    `<th>encoding</th>` + cols.map((c) => `<th>${c.label}</th>`).join("");
+  hr.innerHTML = `<th>encoding</th>` +
+    cols.map((c) => `<th>${c.label}</th>`).join("");
   thead.appendChild(hr);
   table.appendChild(thead);
 
@@ -621,8 +622,7 @@ function renderTable(results, n, nPoint, idBytes) {
 
   const meta = document.createElement("p");
   meta.className = "notes";
-  meta.textContent =
-    `N=${n.toLocaleString()} ents · ${idBytes}-byte EIDs · ` +
+  meta.textContent = `N=${n.toLocaleString()} ents · ${idBytes}-byte EIDs · ` +
     `~${N_PARENTS} parents · types=[${TYPES.join(",")}] · ` +
     `point sample=${nPoint.toLocaleString()} · ` +
     `UA: ${navigator.userAgent}`;
@@ -653,7 +653,10 @@ function setBusy(busy) {
 
 runBtn.addEventListener("click", async () => {
   const n = Math.max(1000, Number(nRowsEl.value) || DEFAULT_N);
-  const nPoint = Math.min(n, Math.max(10, Number(nPointEl.value) || DEFAULT_POINT));
+  const nPoint = Math.min(
+    n,
+    Math.max(10, Number(nPointEl.value) || DEFAULT_POINT),
+  );
   const idBytes = Math.max(
     4,
     Math.min(64, Number(idBytesEl?.value) || DEFAULT_ID_BYTES),
@@ -703,7 +706,9 @@ runBtn.addEventListener("click", async () => {
       else {
         log(
           statusEl,
-          `${v.name}: insert ${fmtMs(r.insertMs)}, point ${fmtMs(r.pointMs)}, ` +
+          `${v.name}: insert ${fmtMs(r.insertMs)}, point ${
+            fmtMs(r.pointMs)
+          }, ` +
             `list-pid ${fmtMs(r.listPidMs)}, type ${fmtMs(r.typeScanMs)}`,
           "ok",
         );

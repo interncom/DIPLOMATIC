@@ -10,7 +10,10 @@
 //    pull those eids from durable; notify types only if mem changed.
 //
 // Reads always hit mem. First list/count of a type pulls durable once
-// (merge, so it does not clobber a concurrent in-flight apply's mem state).
+// under the write chain (merge, so it does not clobber a concurrent
+// in-flight apply's mem state). After a type is warm, list/count serve
+// mem without the chain so concurrent queries are not serialized
+// (stale-until-notify, same as hot getEnt).
 
 import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
@@ -243,17 +246,24 @@ export class CachedEntDB implements IEntDB {
   async getEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
-    const st = await this.run(() => this.warmType(query.type));
-    if (st !== Status.Success) {
-      return err(st);
+    // Warm types: serve mem without the write chain so concurrent list
+    // queries do not serialize (same stale-until-notify model as hot getEnt).
+    // Cold types: warm under run() so first IDB load does not race apply/ingest.
+    if (!this.warmed.has(query.type)) {
+      const st = await this.run(() => this.warmType(query.type));
+      if (st !== Status.Success) {
+        return err(st);
+      }
     }
     return this.mem.getEntities<T>(query);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
-    const st = await this.run(() => this.warmType(type));
-    if (st !== Status.Success) {
-      return err(st);
+    if (!this.warmed.has(type)) {
+      const st = await this.run(() => this.warmType(type));
+      if (st !== Status.Success) {
+        return err(st);
+      }
     }
     return this.mem.countEntities({ type });
   }

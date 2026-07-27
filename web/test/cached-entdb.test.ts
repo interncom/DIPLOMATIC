@@ -117,4 +117,53 @@ describe("CachedEntDB", () => {
     expect(st).toBe(Status.Success);
     expect(ent?.body).toEqual({ n: 7 });
   });
+
+  test("warm getEntities does not re-hit durable", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const op = await mutateOp({ n: 2 }, "todo", new Date(2000), 0, 0);
+    await durable.apply([op]);
+
+    const [first, st1] = await cache.getEntities({ type: "todo" });
+    expect(st1).toBe(Status.Success);
+    expect(first).toHaveLength(1);
+
+    let durableLists = 0;
+    const orig = durable.getEntities.bind(durable);
+    durable.getEntities = async (q) => {
+      durableLists += 1;
+      return orig(q);
+    };
+
+    const [second, st2] = await cache.getEntities({ type: "todo" });
+    expect(st2).toBe(Status.Success);
+    expect(second).toHaveLength(1);
+    expect(durableLists).toBe(0);
+
+    const [n, stN] = await cache.countEntities({ type: "todo" });
+    expect(stN).toBe(Status.Success);
+    expect(n).toBe(1);
+    expect(durableLists).toBe(0);
+  });
+
+  test("concurrent warm list reads all see mem", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const ops = await Promise.all([
+      mutateOp({ n: 1 }, "item", new Date(1000), 0, 0, 1),
+      mutateOp({ n: 2 }, "item", new Date(1000), 0, 0, 2),
+      mutateOp({ n: 3 }, "item", new Date(1000), 0, 0, 3),
+    ]);
+    await durable.apply(ops);
+
+    // First call warms; remaining should hit mem without serializing on durable.
+    await cache.getEntities({ type: "item" });
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => cache.getEntities({ type: "item" })),
+    );
+    for (const [ents, st] of results) {
+      expect(st).toBe(Status.Success);
+      expect(ents).toHaveLength(3);
+    }
+  });
 });

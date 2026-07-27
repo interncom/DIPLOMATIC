@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>IDB key encoding bench (EntDB-shaped)</title>
-  <style>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IDB key encoding bench (EntDB-shaped)</title>
+    <style>
     :root {
       color-scheme: light dark;
       --bg: Canvas;
@@ -15,7 +15,8 @@
       --ok: #16a34a;
       --err: #dc2626;
       --row-alt: color-mix(in srgb, CanvasText 4%, Canvas);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+        sans-serif;
     }
     body {
       margin: 0 auto;
@@ -25,8 +26,16 @@
       color: var(--fg);
       line-height: 1.45;
     }
-    h1 { font-size: 1.35rem; font-weight: 650; margin: 0 0 0.35rem; }
-    p.sub { color: var(--muted); margin: 0 0 1.25rem; font-size: 0.95rem; }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 650;
+      margin: 0 0 0.35rem;
+    }
+    p.sub {
+      color: var(--muted);
+      margin: 0 0 1.25rem;
+      font-size: 0.95rem;
+    }
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -60,7 +69,10 @@
       font-weight: 600;
       cursor: pointer;
     }
-    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
     button.secondary {
       background: transparent;
       color: var(--fg);
@@ -79,16 +91,23 @@
       max-height: 14rem;
       overflow: auto;
     }
-    #status .err { color: var(--err); }
-    #status .ok { color: var(--ok); }
-    .table-wrap { overflow-x: auto; }
+    #status .err {
+      color: var(--err);
+    }
+    #status .ok {
+      color: var(--ok);
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.85rem;
       margin-bottom: 0.75rem;
     }
-    th, td {
+    th,
+    td {
       border: 1px solid var(--border);
       padding: 0.4rem 0.5rem;
       text-align: right;
@@ -98,79 +117,97 @@
       background: var(--row-alt);
       font-weight: 600;
     }
-    th:first-child, td:first-child {
+    th:first-child,
+    td:first-child {
       text-align: left;
       font-weight: 600;
     }
-    tbody tr:nth-child(even) { background: var(--row-alt); }
-    td.best { font-weight: 700; color: var(--ok); }
-    td.fail { color: var(--err); font-weight: 600; white-space: normal; }
-    .notes { color: var(--muted); font-size: 0.88rem; }
-    .notes code { font-size: 0.85em; }
-    h2 { font-size: 1.05rem; margin: 1.5rem 0 0.6rem; }
-  </style>
-</head>
-<body>
-  <h1>IndexedDB key encoding bench</h1>
-  <p class="sub">
+    tbody tr:nth-child(even) {
+      background: var(--row-alt);
+    }
+    td.best {
+      font-weight: 700;
+      color: var(--ok);
+    }
+    td.fail {
+      color: var(--err);
+      font-weight: 600;
+      white-space: normal;
+    }
+    .notes {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    .notes code {
+      font-size: 0.85em;
+    }
+    h2 {
+      font-size: 1.05rem;
+      margin: 1.5rem 0 0.6rem;
+    }
+    </style>
+  </head>
+  <body>
+    <h1>IndexedDB key encoding bench</h1>
+    <p class="sub">
     EntDB-shaped workload: entity rows with <code>eid</code> keyPath,
     optional <code>pid</code>, <code>typ</code>/<code>crd</code> indexes,
     small body. Compares encodings of binary IDs (default 14-byte EID).
     Serve over HTTP — not <code>file://</code>.
   </p>
 
-  <div class="controls">
-    <label>
+    <div class="controls">
+      <label>
       Rows (N)
       <input id="nRows" type="number" min="1000" step="1000" value="100000" />
     </label>
-    <label>
+      <label>
       EID bytes
       <input id="idBytes" type="number" min="4" max="64" value="14" />
     </label>
-    <label>
+      <label>
       Point queries
       <input id="nPoint" type="number" min="10" step="10" value="1000" />
     </label>
-    <button id="run" type="button">Run benchmarks</button>
-    <button id="wipe" type="button" class="secondary">Wipe DB</button>
-  </div>
+      <button id="run" type="button">Run benchmarks</button>
+      <button id="wipe" type="button" class="secondary">Wipe DB</button>
+    </div>
 
-  <div id="status">Idle. Click Run benchmarks.</div>
+    <div id="status">Idle. Click Run benchmarks.</div>
 
-  <h2>Results</h2>
-  <div id="results" class="table-wrap">
-    <p class="notes">No results yet.</p>
-  </div>
+    <h2>Results</h2>
+    <div id="results" class="table-wrap">
+      <p class="notes">No results yet.</p>
+    </div>
 
-  <h2>Encodings</h2>
-  <ul class="notes">
-    <li><strong>binary</strong> — store <code>Uint8Array</code> as-is (encode is a no-op).</li>
-    <li><strong>base64</strong> — padded (production <code>btob64</code> shape).</li>
-    <li><strong>base64u</strong> — unpadded base64.</li>
-    <li><strong>base128</strong> — 7-bit code units (repo <code>btob128</code>).</li>
-    <li><strong>hex</strong> — 2 chars/byte.</li>
-    <li><strong>latin1</strong> — one JS string code unit per byte via
+    <h2>Encodings</h2>
+    <ul class="notes">
+      <li><strong>binary</strong> — store <code>Uint8Array</code> as-is (encode is a no-op).</li>
+      <li><strong>base64</strong> — padded (production <code>btob64</code> shape).</li>
+      <li><strong>base64u</strong> — unpadded base64.</li>
+      <li><strong>base128</strong> — 7-bit code units (repo <code>btob128</code>).</li>
+      <li><strong>hex</strong> — 2 chars/byte.</li>
+      <li><strong>latin1</strong> — one JS string code unit per byte via
       <code>String.fromCharCode</code> (0–255). Same <em>character count</em> as
       raw length, but still a string (UTF-16 in the JS heap; IDB string storage
       ≠ raw binary key bytes). See notes below.</li>
-  </ul>
+    </ul>
 
-  <h2>Workload (DIPLOMATIC-shaped)</h2>
-  <ul class="notes">
-    <li><strong>encode/decode eid+pid</strong> — write/read tax like
+    <h2>Workload (DIPLOMATIC-shaped)</h2>
+    <ul class="notes">
+      <li><strong>encode/decode eid+pid</strong> — write/read tax like
       <code>entityToStored</code> / <code>storedToEntity</code>.</li>
-    <li><strong>insert/apply</strong> — one tx bulk <code>put</code> (EntDB apply).</li>
-    <li><strong>point</strong> — <code>get(eid)</code> + decode (single-entity load).</li>
-    <li><strong>list-by-pid</strong> — compound index <code>["typ","pid"]</code>
+      <li><strong>insert/apply</strong> — one tx bulk <code>put</code> (EntDB apply).</li>
+      <li><strong>point</strong> — <code>get(eid)</code> + decode (single-entity load).</li>
+      <li><strong>list-by-pid</strong> — compound index <code>["typ","pid"]</code>
       <code>getAll</code> (children under a parent).</li>
-    <li><strong>type scan</strong> — <code>["typ","crd"]</code> range for one type.</li>
-    <li><strong>getAll</strong> — full table (export/wipe; less common online).</li>
-    <li>~80% of rows have a <code>pid</code> among ~500 parents; 5 types; small JSON body.</li>
-  </ul>
+      <li><strong>type scan</strong> — <code>["typ","crd"]</code> range for one type.</li>
+      <li><strong>getAll</strong> — full table (export/wipe; less common online).</li>
+      <li>~80% of rows have a <code>pid</code> among ~500 parents; 5 types; small JSON body.</li>
+    </ul>
 
-  <h2>latin1 vs binary size</h2>
-  <p class="notes">
+    <h2>latin1 vs binary size</h2>
+    <p class="notes">
     latin1 packs one byte → one string code unit, so the “key size” column shows
     the same number (e.g. 14) as binary’s byte length. That is <em>not</em> the
     same storage cost: binary keys are a byte sequence; string keys are
@@ -180,6 +217,6 @@
     for true 1:1 byte keys; latin1 is only interesting as a dense string encoding.
   </p>
 
-  <script type="module" src="./bench.js"></script>
-</body>
+    <script type="module" src="./bench.js"></script>
+  </body>
 </html>

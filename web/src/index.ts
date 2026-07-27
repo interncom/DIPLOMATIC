@@ -23,7 +23,7 @@ import {
 import useStateWatcher, {
   useStateWatcherSuspense,
 } from "./react/useStateWatcher";
-import { btoh, htob } from "./shared/binary";
+import { b64tob, btob64, btoh, htob } from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, genSingletonEID } from "./shared/codecs/eid";
@@ -116,6 +116,8 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
+  b64tob,
+  btob64,
   btoh,
   CachedEntDB,
   Clock,

@@ -19,14 +19,158 @@ type EntitiesQuery = {
   updatedBetween?: IDateRange;
 };
 
+/** Options for {@link EntDBMemory}. */
+export type EntDBMemoryOptions = {
+  /**
+   * Secondary type / type+pid / type+gid indexes for list queries.
+   * Default true. Disable only if you need to save the index memory.
+   */
+  indexes?: boolean;
+};
+
+/**
+ * eidKey → entity within one type (or one type+parent / type+group bucket).
+ * Map (not array) so put/del stay O(1).
+ */
+type EntBucket = Map<string, IEntity>;
+
 export class EntDBMemory implements IEntDB {
   ents: Map<string, IEntity> = new Map();
 
-  constructor(initEnts: IEntity[] = []) {
+  private readonly useIndex: boolean;
+  /** type → eidKey → ent */
+  private byType = new Map<string, EntBucket>();
+  /** type → pidKey → eidKey → ent */
+  private byTypePid = new Map<string, Map<string, EntBucket>>();
+  /** type → gid → eidKey → ent */
+  private byTypeGid = new Map<string, Map<string, EntBucket>>();
+
+  constructor(initEnts: IEntity[] = [], opts?: EntDBMemoryOptions) {
+    this.useIndex = opts?.indexes !== false;
     for (const ent of initEnts) {
-      const key = btob64(ent.eid);
-      this.ents.set(key, ent);
+      this.put(ent);
     }
+  }
+
+  /** Install or replace an entity; keeps secondary indexes in sync. */
+  put(ent: IEntity): void {
+    const key = btob64(ent.eid);
+    const prev = this.ents.get(key);
+    if (prev) {
+      this.unindex(key, prev);
+    }
+    this.ents.set(key, ent);
+    this.index(key, ent);
+  }
+
+  /** Remove by eid key; keeps secondary indexes in sync. */
+  del(key: string): void {
+    const prev = this.ents.get(key);
+    if (!prev) {
+      return;
+    }
+    this.unindex(key, prev);
+    this.ents.delete(key);
+  }
+
+  private index(key: string, ent: IEntity): void {
+    if (!this.useIndex) {
+      return;
+    }
+    let typeBucket = this.byType.get(ent.type);
+    if (!typeBucket) {
+      typeBucket = new Map();
+      this.byType.set(ent.type, typeBucket);
+    }
+    typeBucket.set(key, ent);
+
+    if (ent.pid) {
+      const pk = btob64(ent.pid);
+      let byPid = this.byTypePid.get(ent.type);
+      if (!byPid) {
+        byPid = new Map();
+        this.byTypePid.set(ent.type, byPid);
+      }
+      let pidBucket = byPid.get(pk);
+      if (!pidBucket) {
+        pidBucket = new Map();
+        byPid.set(pk, pidBucket);
+      }
+      pidBucket.set(key, ent);
+    }
+
+    if (typeof ent.gid === "string") {
+      let byGid = this.byTypeGid.get(ent.type);
+      if (!byGid) {
+        byGid = new Map();
+        this.byTypeGid.set(ent.type, byGid);
+      }
+      let gidBucket = byGid.get(ent.gid);
+      if (!gidBucket) {
+        gidBucket = new Map();
+        byGid.set(ent.gid, gidBucket);
+      }
+      gidBucket.set(key, ent);
+    }
+  }
+
+  private unindex(key: string, ent: IEntity): void {
+    if (!this.useIndex) {
+      return;
+    }
+    const typeBucket = this.byType.get(ent.type);
+    if (typeBucket) {
+      typeBucket.delete(key);
+      if (typeBucket.size === 0) {
+        this.byType.delete(ent.type);
+      }
+    }
+
+    if (ent.pid) {
+      const pk = btob64(ent.pid);
+      const byPid = this.byTypePid.get(ent.type);
+      const pidBucket = byPid?.get(pk);
+      if (pidBucket) {
+        pidBucket.delete(key);
+        if (pidBucket.size === 0) {
+          byPid?.delete(pk);
+        }
+      }
+      if (byPid && byPid.size === 0) {
+        this.byTypePid.delete(ent.type);
+      }
+    }
+
+    if (typeof ent.gid === "string") {
+      const byGid = this.byTypeGid.get(ent.type);
+      const gidBucket = byGid?.get(ent.gid);
+      if (gidBucket) {
+        gidBucket.delete(key);
+        if (gidBucket.size === 0) {
+          byGid?.delete(ent.gid);
+        }
+      }
+      if (byGid && byGid.size === 0) {
+        this.byTypeGid.delete(ent.type);
+      }
+    }
+  }
+
+  private clearIndexes(): void {
+    this.byType.clear();
+    this.byTypePid.clear();
+    this.byTypeGid.clear();
+  }
+
+  private bucketList<T>(bucket: EntBucket | undefined): IEntity<T>[] {
+    if (!bucket || bucket.size === 0) {
+      return [];
+    }
+    const out: IEntity<T>[] = [];
+    for (const ent of bucket.values()) {
+      out.push(ent as IEntity<T>);
+    }
+    return out;
   }
 
   async apply(ops: IOp[]) {
@@ -47,9 +191,9 @@ export class EntDBMemory implements IEntDB {
         types.add(curr.type);
       }
       if (next) {
-        this.ents.set(key, next);
+        this.put(next);
       } else {
-        this.ents.delete(key);
+        this.del(key);
       }
       eids.push(op.eid);
       results.push(Status.Success);
@@ -59,6 +203,7 @@ export class EntDBMemory implements IEntDB {
 
   async clear(): Promise<Status> {
     this.ents.clear();
+    this.clearIndexes();
     return Status.Success;
   }
 
@@ -67,12 +212,39 @@ export class EntDBMemory implements IEntDB {
   ): Promise<ValStat<IEntity<T> | undefined>> {
     const key = btob64(eid);
     const ent = this.ents.get(key);
-    return ok(ent as IEntity<T>);
+    return ok(ent as IEntity<T> | undefined);
   }
 
   private async getAllEntities<T>(
     { type, gid, pid, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
+    if (this.useIndex) {
+      if (pid !== undefined) {
+        const pk = btob64(pid);
+        return ok(this.bucketList<T>(this.byTypePid.get(type)?.get(pk)));
+      }
+      if (gid !== undefined) {
+        return ok(this.bucketList<T>(this.byTypeGid.get(type)?.get(gid)));
+      }
+      if (updatedBetween !== undefined) {
+        const results: IEntity<T>[] = [];
+        const typeBucket = this.byType.get(type);
+        if (typeBucket) {
+          for (const ent of typeBucket.values()) {
+            if (
+              ent.updatedAt >= updatedBetween.start &&
+              ent.updatedAt <= updatedBetween.end
+            ) {
+              results.push(ent as IEntity<T>);
+            }
+          }
+        }
+        return ok(results);
+      }
+      return ok(this.bucketList<T>(this.byType.get(type)));
+    }
+
+    // Full-map scan (indexes disabled).
     const results: IEntity<T>[] = [];
     if (pid !== undefined) {
       for (const ent of this.ents.values()) {
@@ -118,6 +290,9 @@ export class EntDBMemory implements IEntDB {
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
+    if (this.useIndex) {
+      return ok(this.byType.get(type)?.size ?? 0);
+    }
     let count = 0;
     for (const ent of this.ents.values()) {
       if (ent.type === type) {

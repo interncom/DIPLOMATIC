@@ -2,7 +2,12 @@
 
 import { SyncClient } from "./client";
 import crypto from "./crypto";
-import { CachedEntDB, openEntDB, type OpenEntDBOptions } from "./entdb/cached";
+import {
+  CachedEntDB,
+  type CachedEntDBOptions,
+  openEntDB,
+  type OpenEntDBOptions,
+} from "./entdb/cached";
 import {
   EntitiesQuery,
   entStateManager,
@@ -13,7 +18,7 @@ import {
   revFromHead,
 } from "./entdb/entdb";
 import { EntIDB } from "./entdb/idb";
-import { EntDBMemory } from "./entdb/memory";
+import { EntDBMemory, type EntDBMemoryOptions } from "./entdb/memory";
 import {
   useClient,
   useClientState,
@@ -172,6 +177,8 @@ export {
 export type {
   ApldState,
   Applier,
+  CachedEntDBOptions,
+  EntDBMemoryOptions,
   HostHandle,
   IClient,
   ICrypto,

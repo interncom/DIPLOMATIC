@@ -29,11 +29,22 @@ export type OpenEntDBOptions = {
    * Set false for durable-only (e.g. sync worker).
    */
   cache?: boolean;
+  /**
+   * Secondary type/pid/gid indexes on the in-memory layer (default true).
+   * Speeds up getEntities list queries after a type is warm.
+   * Ignored when `cache` is false.
+   */
+  indexes?: boolean;
+};
+
+export type CachedEntDBOptions = {
+  /** Secondary mem indexes (default true). See {@link OpenEntDBOptions.indexes}. */
+  indexes?: boolean;
 };
 
 /**
  * Open EntDB for the app (or worker). Single entry point.
- * Default: cached. Pass `{ cache: false }` for durable IDB only.
+ * Default: cached with mem indexes. Pass `{ cache: false }` for durable IDB only.
  */
 export async function openEntDB(
   opts?: OpenEntDBOptions,
@@ -42,7 +53,7 @@ export async function openEntDB(
   if (opts?.cache === false) {
     return durable;
   }
-  return new CachedEntDB(durable);
+  return new CachedEntDB(durable, undefined, { indexes: opts?.indexes });
 }
 
 export class CachedEntDB implements IEntDB {
@@ -52,9 +63,13 @@ export class CachedEntDB implements IEntDB {
   private listeners = new Set<EntChangeListener>();
   private chain: Promise<unknown> = Promise.resolve();
 
-  constructor(durable: IEntDB, init?: IEntity[]) {
+  constructor(
+    durable: IEntDB,
+    init?: IEntity[],
+    opts?: CachedEntDBOptions,
+  ) {
     this.durable = durable;
-    this.mem = new EntDBMemory(init ?? []);
+    this.mem = new EntDBMemory(init ?? [], { indexes: opts?.indexes });
     if (init) {
       for (const ent of init) {
         this.warmed.add(ent.type);
@@ -90,7 +105,7 @@ export class CachedEntDB implements IEntDB {
   apply(ops: IOp[]) {
     return this.run(async () => {
       // 1–2. Mem immediately + durable in parallel (mem is sync).
-      const memResult = applyOps(this.mem.ents, ops);
+      const memResult = applyOps(this.mem, ops);
       this.emit(memResult.types);
 
       const durResult = await this.durable.apply(ops);
@@ -165,7 +180,7 @@ export class CachedEntDB implements IEntDB {
       }
       if (ent) {
         // Always install durable row (authority), even if we skip notify.
-        this.mem.ents.set(key, ent);
+        this.mem.put(ent);
         this.warmed.add(ent.type);
         if (!prev || !sameEntity(prev, ent)) {
           changed.add(ent.type);
@@ -174,7 +189,7 @@ export class CachedEntDB implements IEntDB {
           }
         }
       } else if (prev) {
-        this.mem.ents.delete(key);
+        this.mem.del(key);
         changed.add(prev.type);
       }
     }
@@ -194,7 +209,7 @@ export class CachedEntDB implements IEntDB {
         const key = btob64(ent.eid);
         const curr = this.mem.ents.get(key);
         if (!curr || entWins(ent, curr)) {
-          this.mem.ents.set(key, ent);
+          this.mem.put(ent);
         }
       }
     }
@@ -218,7 +233,7 @@ export class CachedEntDB implements IEntDB {
         return err(st);
       }
       if (ent) {
-        this.mem.ents.set(key, ent);
+        this.mem.put(ent);
         this.warmed.add(ent.type);
       }
       return ok(ent);
@@ -294,16 +309,16 @@ function entWins(a: IEntity, b: IEntity): boolean {
   return a.ctr > b.ctr;
 }
 
-/** Apply ops to an in-memory entity set (LWW per eid). */
+/** Apply ops to mem (LWW per eid); uses put/del so indexes stay correct. */
 function applyOps(
-  ents: Map<string, IEntity>,
+  mem: EntDBMemory,
   ops: IOp[],
 ): { stats: Status[]; types: Set<string> } {
   const types = new Set<string>();
   const results: Status[] = [];
   for (const op of ops) {
     const key = btob64(op.eid);
-    const curr = ents.get(key);
+    const curr = mem.ents.get(key);
     const [next, stat] = applyOp(curr, op);
     if (stat !== Status.Success) {
       results.push(stat);
@@ -315,9 +330,9 @@ function applyOps(
       types.add(curr.type);
     }
     if (next) {
-      ents.set(key, next);
+      mem.put(next);
     } else {
-      ents.delete(key);
+      mem.del(key);
     }
     results.push(Status.Success);
   }

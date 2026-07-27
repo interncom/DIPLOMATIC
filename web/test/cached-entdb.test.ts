@@ -78,6 +78,42 @@ describe("CachedEntDB", () => {
     }
   });
 
+  // Regression: writing a row before the first list must not mark the type
+  // warm with only that row in mem (would hide every other durable row).
+  test("apply before first list still warms full type from durable", async () => {
+    const durable = new EntDBMemory();
+    const existing = await mutateOp({ n: 1 }, "diary", new Date(1000), 0, 0, 1);
+    await durable.apply([existing]);
+
+    const cache = new CachedEntDB(durable);
+    const created = await mutateOp({ n: 2 }, "diary", new Date(2000), 0, 0, 2);
+    await cache.apply([created]);
+
+    const [ents, st] = await cache.getEntities({ type: "diary" });
+    expect(st).toBe(Status.Success);
+    expect(ents).toHaveLength(2);
+    const bodies = ents?.map((e) => e.body).sort((a, b) =>
+      (a as { n: number }).n - (b as { n: number }).n
+    );
+    expect(bodies).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  test("getEnt before first list still warms full type from durable", async () => {
+    const durable = new EntDBMemory();
+    const a = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    const b = await mutateOp({ n: 2 }, "note", new Date(2000), 0, 0, 2);
+    await durable.apply([a, b]);
+
+    const cache = new CachedEntDB(durable);
+    const [one, st1] = await cache.getEnt(a.eid);
+    expect(st1).toBe(Status.Success);
+    expect(one?.body).toEqual({ n: 1 });
+
+    const [ents, st] = await cache.getEntities({ type: "note" });
+    expect(st).toBe(Status.Success);
+    expect(ents).toHaveLength(2);
+  });
+
   test("ingestFromDurable pulls eids only and notifies types on change", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);

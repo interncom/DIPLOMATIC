@@ -14,6 +14,11 @@
 // in-flight apply's mem state). After a type is warm, list/count serve
 // mem without the chain so concurrent queries are not serialized
 // (stale-until-notify, same as hot getEnt).
+//
+// `warmed` means the full type has been loaded from durable (or was
+// provided via constructor init). apply / getEnt / ingest only touch
+// individual eids — they must not mark a type warm, or a write before
+// the first list would hide every other row of that type until restart.
 
 import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
@@ -114,12 +119,11 @@ export class CachedEntDB implements IEntDB {
       const durResult = await this.durable.apply(ops);
 
       // 3. Authority: mem := durable for these eids.
+      // Do not mark types warm here: only these eids are in mem. A later
+      // list/count still needs warmType if the type was never fully loaded.
       const { changed, status } = await this.pullEids(ops.map((o) => o.eid));
       this.emit(changed);
 
-      for (const t of durResult.types) {
-        this.warmed.add(t);
-      }
       if (status !== Status.Success) {
         return {
           stats: ops.map(() => status),
@@ -183,8 +187,8 @@ export class CachedEntDB implements IEntDB {
       }
       if (ent) {
         // Always install durable row (authority), even if we skip notify.
+        // Single-eid ingest is not a full type load — leave warmed alone.
         this.mem.put(ent);
-        this.warmed.add(ent.type);
         if (!prev || !sameEntity(prev, ent)) {
           changed.add(ent.type);
           if (prev && prev.type !== ent.type) {
@@ -235,9 +239,10 @@ export class CachedEntDB implements IEntDB {
       if (st !== Status.Success) {
         return err(st);
       }
+      // Point get is not a full type load — leave warmed alone so a later
+      // list still pulls the rest of the type from durable.
       if (ent) {
         this.mem.put(ent);
-        this.warmed.add(ent.type);
       }
       return ok(ent);
     });

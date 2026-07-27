@@ -9,7 +9,8 @@
     "coverage": "vitest run --coverage",
     "fmt": "deno fmt",
     "perf:gen": "bun run perf/gen-productivity.ts",
-    "perf:sync": "bun run perf/sync-lpc.ts"
+    "perf:sync": "bun run perf/sync-lpc.ts",
+    "perf:idb": "python3 -m http.server 4177 --directory perf/idb"
   },
   "author": "The Internet Committee",
   "license": "ISC",

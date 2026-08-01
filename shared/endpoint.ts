@@ -6,8 +6,8 @@ import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { Status } from "./consts.ts";
-import { Enclave } from "./enclave.ts";
-import { HostSpecificKeyPair, ICrypto, IProtoHost } from "./types.ts";
+import { Enclave, type Identity } from "./enclave.ts";
+import { ICrypto, IProtoHost } from "./types.ts";
 import { ValStat } from "./valstat.ts";
 
 interface IProtoClient {
@@ -20,7 +20,7 @@ export interface IAuthenticatedEndpoint<ReqItem, Resp> {
   // encodeReq writes request data to the provided reqEnc.
   encodeReq(
     client: IProtoClient,
-    keys: HostSpecificKeyPair,
+    identity: Identity,
     authTS: IAuthTimestamp,
     body: Iterable<ReqItem>,
     reqEnc: Encoder,
@@ -38,17 +38,6 @@ export interface IAuthenticatedEndpoint<ReqItem, Resp> {
 }
 
 export interface IAuthData {
-  keys: HostSpecificKeyPair;
+  identity: Identity;
   authTS: IAuthTimestamp;
-}
-
-export async function hostKeys(
-  host: IProtoClient,
-  keyPath: string,
-  idx?: number,
-): Promise<HostSpecificKeyPair> {
-  const { crypto, enclave } = host;
-  const derivSeed = await enclave.derive(keyPath, idx);
-  const keys = await crypto.deriveEd25519KeyPair(derivSeed);
-  return keys as HostSpecificKeyPair;
 }

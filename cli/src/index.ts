@@ -96,10 +96,10 @@ export class CLIClient<Handle extends HostHandle> {
   ): Promise<ValStat<IOpenBag>> {
     if (!this.conn) return err(Status.ConnectionClosed);
 
-    const hostKeys = await this.conn.keys();
+    const hostIdnt = await this.conn.identity();
     const [itemDec, statPeekItem] = await decryptPeekItem(
       peekItem,
-      hostKeys,
+      hostIdnt.publicKey,
       this.enclave,
       crypto,
     );

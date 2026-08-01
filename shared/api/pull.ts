@@ -8,7 +8,7 @@ export const pullEnd: IAuthenticatedEndpoint<
   number,
   IBagPullItem[]
 > = {
-  async encodeReq(_client, _keys, authTS, seqs, reqEnc): Promise<Status> {
+  async encodeReq(_client, _identity, authTS, seqs, reqEnc): Promise<Status> {
     const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
     if (s1 !== Status.Success) return s1;
     for (const seq of seqs) {

@@ -20,7 +20,7 @@ import { EncodedMessage } from "../src/shared/message";
 import { bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
-import { hostKeys } from "../src/shared/endpoint";
+
 import {
   APLD_APPLIED,
   IDownloadMessage,
@@ -533,16 +533,11 @@ describe("Client", () => {
       expect(await client.sync()).toBe(Status.Success);
       expect(await store.uploads.count()).toBe(0);
       const enclave = (await store.seed.load())!;
-      const keys = await hostKeys(
-        {
-          enclave: enclave,
-          crypto: libsodiumCrypto,
-          clock: lpcHost.clock,
-        },
-        "test",
-        1,
+      const hostIdnt = await enclave.deriveIdentity("test", 1);
+      const [list, statList] = await lpcHost.storage.listHeads(
+        hostIdnt.publicKey,
+        0,
       );
-      const [list, statList] = await lpcHost.storage.listHeads(keys.publicKey, 0);
       if (statList !== Status.Success) {
         expect(statList).toEqual(Status.Success);
         return;
@@ -571,11 +566,7 @@ describe("Client", () => {
       if (!enclave) {
         return;
       }
-      const keys = await hostKeys(
-        { enclave: enclave, crypto: libsodiumCrypto, clock: lpcHost.clock },
-        host.label,
-        1,
-      );
+      const hostIdnt = await enclave.deriveIdentity(host.label, 1);
       const body: EncodedMessage = new Uint8Array([4, 5, 6]);
       const msg: IMessage = {
         eid: new Uint8Array(16).fill(0),
@@ -585,13 +576,18 @@ describe("Client", () => {
         len: body.length,
         bod: body,
       };
-      const [bag, statBag] = await sealBag(msg, keys, libsodiumCrypto, enclave);
+      const [bag, statBag] = await sealBag(
+        msg,
+        hostIdnt,
+        libsodiumCrypto,
+        enclave,
+      );
       if (statBag !== Status.Success) {
         expect(statBag).toBe(Status.Success);
         return;
       }
 
-      const [, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+      const [, setStatus] = await lpcHost.storage.setBags(hostIdnt.publicKey, [
         bag,
       ]);
       expect(setStatus).toBe(Status.Success);

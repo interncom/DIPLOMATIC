@@ -18,7 +18,7 @@ import type {
   PublicKey,
 } from "../../shared/types.ts";
 import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 
 const baseCryptoImpl: ICrypto = {
   checkSigEd25519: async (

@@ -3,7 +3,7 @@ import { userEnd } from "../../../shared/api/user.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../../shared/consts.ts";
-import type { Identity } from "../../../shared/enclave.ts";
+import type { Identity } from "../../../shared/crypto/enclave.ts";
 import {
   createMockHost,
   createMockHostOutOfSync,

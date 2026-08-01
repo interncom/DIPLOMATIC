@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { openPulled, pullBodies, pushBatch } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
-import { Enclave } from "../src/shared/enclave";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
 import type { Hash, HostHandle, IBag } from "../src/shared/types";
 import type { MasterSeed } from "../src/shared/types";

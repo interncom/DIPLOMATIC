@@ -1,5 +1,5 @@
 import libsodiumCrypto from "../../crypto";
-import { Enclave } from "../../shared/enclave";
+import { Enclave } from "../../shared/crypto/enclave";
 import { MasterSeed } from "../../shared/types";
 import { ISeedStore } from "../../types";
 

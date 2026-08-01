@@ -7,15 +7,15 @@
 // handles bind public inputs only and call back into the enclave — they do not
 // hold key bytes (hardware can swap in a session handle later).
 
-import { concat } from "./binary.ts";
-import { kdmBytes } from "./consts.ts";
+import { concat } from "../binary.ts";
+import { kdmBytes } from "../consts.ts";
 import type {
   DerivationSeed,
   ICrypto,
   KeyPair,
   MasterSeed,
   PublicKey,
-} from "./types.ts";
+} from "../types.ts";
 
 export type EncryptCipher = {
   encrypt: (data: Uint8Array) => Promise<Uint8Array>;

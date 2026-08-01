@@ -3,7 +3,7 @@ import { syncPeek, syncPull, syncPush } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import DiplomaticClientAPI from "../src/shared/client";
 import libsodiumCrypto from "../src/crypto";
-import { Enclave } from "../src/shared/enclave";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { MockClock } from "../src/shared/clock";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";

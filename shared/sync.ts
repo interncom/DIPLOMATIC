@@ -2,7 +2,7 @@ import { Decoder } from "./codec.ts";
 import { IBagPeekItem } from "./codecs/peekItem.ts";
 import { peekItemHeadCodec } from "./codecs/peekItemHead.ts";
 import { Status } from "./consts.ts";
-import { Enclave } from "./enclave.ts";
+import { Enclave } from "./crypto/enclave.ts";
 import { ICrypto, PublicKey } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 

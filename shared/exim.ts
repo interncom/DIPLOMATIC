@@ -8,7 +8,7 @@ import { IFileHead } from "./codecs/fileHead.ts";
 import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
-import { Enclave } from "./enclave.ts";
+import { Enclave } from "./crypto/enclave.ts";
 import { ICrypto, IMessageHead } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 

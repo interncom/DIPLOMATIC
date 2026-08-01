@@ -4,7 +4,11 @@
 import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
-import { type DecryptCipher, Enclave, type Identity } from "./enclave.ts";
+import {
+  type DecryptCipher,
+  Enclave,
+  type Identity,
+} from "./crypto/enclave.ts";
 import { bytesEqual } from "./binary.ts";
 import { EncodedMessage } from "./message.ts";
 import { err, ok, type ValStat } from "./valstat.ts";

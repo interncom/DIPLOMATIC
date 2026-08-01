@@ -3,14 +3,13 @@
 
 import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
-import { kdmBytes, Status } from "./consts.ts";
-import { type DecryptCipher, Enclave } from "./enclave.ts";
-import { bytesEqual, concat } from "./binary.ts";
+import { Status } from "./consts.ts";
+import { type DecryptCipher, Enclave, type Identity } from "./enclave.ts";
+import { bytesEqual } from "./binary.ts";
 import { EncodedMessage } from "./message.ts";
 import { err, ok, type ValStat } from "./valstat.ts";
 import type {
   Hash,
-  HostSpecificKeyPair,
   IBag,
   ICrypto,
   IHostCrypto,
@@ -27,27 +26,9 @@ export function bagSigValid(
   return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
 }
 
-// kdmFor computes the key derivation material for an encoded msgHead.
-export async function kdmFor(
-  msgHeadEnc: Uint8Array,
-  keys: HostSpecificKeyPair,
-  crypto: ICrypto,
-): Promise<Uint8Array> {
-  // 1. We use a different key for each bag, so that cracking one key does
-  //    not compromise all of the user's bags.
-  // 2. Deterministically deriving the KDM from the plaintext message head
-  //    prevents an attacker from forging arbitrary bags if they get a key.
-  // 3. Mixing the host-specific private key in prevents that deterministic
-  //    KDM from being used as a unique identifier across hosts.
-  const kdmSource = concat(keys.privateKey, msgHeadEnc);
-  const kdmHash = await crypto.blake3(kdmSource);
-  const kdm = kdmHash.slice(0, kdmBytes);
-  return kdm;
-}
-
 export async function sealBag(
   msg: IMessage,
-  keys: HostSpecificKeyPair,
+  identity: Identity,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<ValStat<IBag>> {
@@ -64,16 +45,16 @@ export async function sealBag(
   }
   const headEnc = enc.result();
 
-  // KDM is public; cipher is an opaque handle (key stays in the enclave).
-  const kdm = await kdmFor(headEnc, keys, crypto);
+  // KDM via identity (private key stays in enclave); cipher is opaque.
+  const kdm = await identity.kdmFor(headEnc);
   const cipher = enclave.deriveCipher(kdm, "encrypt");
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
   const headCph = await cipher.encrypt(headEnc);
   const bodyCph = msg.bod ? await cipher.encrypt(msg.bod) : new Uint8Array(0);
 
-  // Wrap in bag.
-  const sig = await crypto.signEd25519(headCph, keys.privateKey);
+  // Sign ciphertext (private key stays in enclave).
+  const sig = await identity.sign(headCph);
   return ok({
     sig,
     kdm,

@@ -10,7 +10,7 @@ import { ok, err } from "../src/shared/valstat";
 import { APLD_PENDING } from "../src/types";
 import type { IDownloadMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
-import type { HostSpecificKeyPair, IMessage } from "../src/shared/types";
+import type { IMessage } from "../src/shared/types";
 
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
 
@@ -135,9 +135,7 @@ describe("pullBodies + openPulled", () => {
   test("pull then open archives msg and deqs download", async () => {
     const store = new MemoryStore<HostHandle>(libsodiumCrypto);
     const enclave = new Enclave(testSeed, libsodiumCrypto);
-    const keys = await libsodiumCrypto.deriveEd25519KeyPair(
-      await enclave.derive("test", 1),
-    ) as HostSpecificKeyPair;
+    const hostIdnt = await enclave.deriveIdentity("test", 1);
 
     const body = new Uint8Array([1, 2, 3, 4]);
     const message: IMessage = {
@@ -149,7 +147,7 @@ describe("pullBodies + openPulled", () => {
     };
     const [bag, bagStat] = await sealBag(
       message,
-      keys,
+      hostIdnt,
       libsodiumCrypto,
       enclave,
     );

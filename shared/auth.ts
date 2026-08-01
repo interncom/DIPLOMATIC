@@ -2,7 +2,8 @@ import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { type IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { clockToleranceMs, Status } from "./consts.ts";
-import type { ICrypto, IHostCrypto, KeyPair } from "./types.ts";
+import type { Identity } from "./enclave.ts";
+import type { IHostCrypto } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 export type EncodedAuthTimestamp = Uint8Array;
@@ -15,9 +16,8 @@ export type EncodedAuthTimestamp = Uint8Array;
 // Clocks must be synchronized to ensure correct op order.
 
 export async function makeAuthTimestamp(
-  keys: KeyPair,
+  identity: Pick<Identity, "publicKey" | "sign">,
   ts: Date,
-  crypto: ICrypto,
 ): Promise<ValStat<IAuthTimestamp>> {
   const enc = new Encoder();
   const statTs = enc.writeDate(ts);
@@ -25,9 +25,9 @@ export async function makeAuthTimestamp(
     return err(statTs);
   }
   const encodedTs = enc.result();
-  const sig = await crypto.signEd25519(encodedTs, keys.privateKey);
+  const sig = await identity.sign(encodedTs);
   return ok({
-    pubKey: keys.publicKey,
+    pubKey: identity.publicKey,
     sig,
     timestamp: ts,
   });

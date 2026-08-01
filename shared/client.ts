@@ -6,12 +6,11 @@ import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
-import { Enclave } from "./enclave.ts";
-import { hostKeys, IAuthenticatedEndpoint } from "./endpoint.ts";
+import { Enclave, type Identity } from "./enclave.ts";
+import { IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import type {
   HostHandle,
-  HostSpecificKeyPair,
   IBag,
   ICrypto,
   IHostConnectionInfo,
@@ -39,18 +38,24 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     },
     items: Iterable<ReqItem>,
   ): Promise<ValStat<Resp>> {
-    const { clock, crypto, transport } = this;
+    const { clock, transport } = this;
     const { endpoint, name } = apiCall;
 
     // Form request.
-    const keys = await this.keys();
+    const id = await this.identity();
     const now = clock.now();
-    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(id, now);
     if (statAuthTS !== Status.Success) {
       return err(statAuthTS);
     }
     const enc = new Encoder();
-    const encStatus = await endpoint.encodeReq(this, keys, authTS, items, enc);
+    const encStatus = await endpoint.encodeReq(
+      this,
+      id,
+      authTS,
+      items,
+      enc,
+    );
     if (encStatus !== Status.Success) return err(encStatus);
 
     // Send request.
@@ -88,22 +93,18 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
 
     // Return response.
     const respVS = endpoint.decodeResp(dec);
-    // console.info(`API call: ${APICallName[name]}`, {
-    //   req: items,
-    //   resp: respVS,
-    // });
     return respVS;
   }
 
-  keys = (): Promise<HostSpecificKeyPair> => {
-    const { host } = this;
-    return hostKeys(this, host.label, host.idx);
+  identity = (): Promise<Identity> => {
+    const { host, enclave } = this;
+    return enclave.deriveIdentity(host.label, host.idx ?? 0);
   };
 
   seal = async (msg: IMessage): Promise<ValStat<IBag>> => {
     const { crypto, enclave } = this;
-    const keys = await this.keys();
-    return sealBag(msg, keys, crypto, enclave);
+    const id = await this.identity();
+    return sealBag(msg, id, crypto, enclave);
   };
 
   register = () => this.call(api.user, []);
@@ -117,11 +118,11 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     onDisconnect?: () => void,
     onConnect?: () => void,
   ) => {
-    const { clock, crypto, host, transport } = this;
+    const { clock, transport } = this;
     const { listener } = transport;
-    const keys = await hostKeys(this, host.label, host.idx);
+    const id = await this.identity();
     const now = clock.now();
-    const [authTS, statAuthTS] = await makeAuthTimestamp(keys, now, crypto);
+    const [authTS, statAuthTS] = await makeAuthTimestamp(id, now);
     if (statAuthTS !== Status.Success) {
       return statAuthTS;
     }

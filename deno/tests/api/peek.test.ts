@@ -1,3 +1,4 @@
+import type { Identity } from "../../../shared/enclave.ts";
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { peekEnd } from "../../../shared/api/peek.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
@@ -7,11 +8,7 @@ import {
   peekItemCodec,
 } from "../../../shared/codecs/peekItem.ts";
 import { Status } from "../../../shared/consts.ts";
-import {
-  HostSpecificKeyPair,
-  IStorage,
-  PublicKey,
-} from "../../../shared/types.ts";
+import { IStorage, PublicKey } from "../../../shared/types.ts";
 import { ok, ValStat } from "../../../shared/valstat.ts";
 import {
   baseMockStorage,
@@ -43,7 +40,7 @@ const mockHost = createMockHost({ storage: mockStorage });
 Deno.test("peekEnd.encodeReq", () => {
   // deno-lint-ignore no-explicit-any
   const client = {} as any; // Mock
-  const keys = {} as HostSpecificKeyPair; // Mock
+  const keys = {} as Identity; // Mock
   const tsAuth = createTestAuthTimestamp(
     new Uint8Array(32).fill(1) as PublicKey,
     new Date("2023-01-01T00:00:00.000Z"),

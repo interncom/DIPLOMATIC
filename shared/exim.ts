@@ -1,7 +1,6 @@
 // exim is short for Export/Import.
 // This is where we define export file format.
 
-import { kdmFor } from "./bag.ts";
 import { bytesEqual } from "./binary.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { fileCodec } from "./codecs/file.ts";
@@ -10,7 +9,7 @@ import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./enclave.ts";
-import { HostSpecificKeyPair, ICrypto, IMessageHead } from "./types.ts";
+import { ICrypto, IMessageHead } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 /* File format
@@ -57,10 +56,7 @@ export async function encodeFile(
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<ValStat<Uint8Array>> {
-  const derivSeed = await enclave.derive(keyLbl, keyIdx);
-  const keys = await crypto.deriveEd25519KeyPair(
-    derivSeed,
-  ) as HostSpecificKeyPair;
+  const identity = await enclave.deriveIdentity(keyLbl, keyIdx);
 
   const encIndex = new Encoder();
   const encBody = new Encoder();
@@ -73,7 +69,7 @@ export async function encodeFile(
     if (statHeadEnc !== Status.Success) return err(statHeadEnc);
     const headEnc = encHead.result();
 
-    const kdm = await kdmFor(headEnc, keys, crypto);
+    const kdm = await identity.kdmFor(headEnc);
     const cipher = enclave.deriveCipher(kdm, "encrypt");
     const headCph = await cipher.encrypt(headEnc);
     const bodyCph = msg.body
@@ -107,8 +103,8 @@ export async function encodeFile(
   const indexEnc = encIndex.result();
   const hsh = await crypto.blake3(indexEnc);
 
-  // Sign the hash to prove ownership.
-  const sig = await crypto.signEd25519(hsh, keys.privateKey);
+  // Sign the hash to prove ownership (private key stays in enclave).
+  const sig = await identity.sign(hsh);
 
   const head: IFileHead = {
     lbl: keyLbl,
@@ -134,16 +130,13 @@ export async function decodeFile(
   if (statDecode !== Status.Success) return err(statDecode);
   const { head, indexEnc, bodyEnc } = fileStruct;
 
-  const derivSeed = await enclave.derive(head.lbl, head.idx);
-  const keys = await crypto.deriveEd25519KeyPair(
-    derivSeed,
-  ) as HostSpecificKeyPair;
+  const identity = await enclave.deriveIdentity(head.lbl, head.idx);
 
   // Check that hash signature is valid.
   const sigValid = await crypto.checkSigEd25519(
     head.sig,
     head.hsh,
-    keys.publicKey,
+    identity.publicKey,
   );
   if (!sigValid) return err(Status.InvalidSignature);
 

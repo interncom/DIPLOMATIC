@@ -5,12 +5,7 @@ import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/enclave.ts";
-import type {
-  HostSpecificKeyPair,
-  IBag,
-  IMessage,
-  MasterSeed,
-} from "../../shared/types.ts";
+import type { IBag, IMessage, MasterSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 Deno.test("bag", async (t) => {
@@ -78,10 +73,7 @@ Deno.test("bag", async (t) => {
     // Setup enclave and keypair
     const seed = (await crypto.gen256BitSecureRandomSeed()) as MasterSeed;
     const enclave = new Enclave(seed, crypto);
-    const hostKDM = await enclave.derive("test-host", 0);
-    const keyPair = await crypto.deriveEd25519KeyPair(
-      hostKDM,
-    ) as HostSpecificKeyPair;
+    const hostIdnt = await enclave.deriveIdentity("test-host", 0);
 
     // Create a test message
     const id = await crypto.genRandomBytes(8);
@@ -102,7 +94,7 @@ Deno.test("bag", async (t) => {
     };
 
     // Seal the message
-    const [bag, statBag] = await sealBag(msg, keyPair, crypto, enclave);
+    const [bag, statBag] = await sealBag(msg, hostIdnt, crypto, enclave);
     if (statBag !== Status.Success) {
       assertEquals(statBag, Status.Success);
       return;
@@ -111,7 +103,7 @@ Deno.test("bag", async (t) => {
     // Open the bag
     const [openedMsg, status] = await openBag(
       bag,
-      keyPair.publicKey,
+      hostIdnt.publicKey,
       crypto,
       enclave,
     );

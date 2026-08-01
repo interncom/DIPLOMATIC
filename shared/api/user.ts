@@ -5,7 +5,7 @@ import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { ok } from "../valstat.ts";
 
 export const userEnd: IAuthenticatedEndpoint<never, void> = {
-  async encodeReq(_client, _keys, authTS, _body, reqEnc) {
+  async encodeReq(_client, _identity, authTS, _body, reqEnc) {
     const status = reqEnc.writeStruct(authTimestampCodec, authTS);
     return status;
   },

@@ -14,7 +14,6 @@ import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import {
   Hash,
   HostHandle,
-  HostSpecificKeyPair,
   IMessage,
   MasterSeed,
 } from "../src/shared/types";
@@ -28,16 +27,9 @@ import {
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
 
-async function generateTestKeys(enclave: Enclave) {
-  const hostSeed = await enclave.derive("test", 1);
-  return await libsodiumCrypto.deriveEd25519KeyPair(
-    hostSeed,
-  ) as HostSpecificKeyPair;
-}
-
 async function createTestBag(message: IMessage, enclave: Enclave) {
-  const keys = await generateTestKeys(enclave);
-  return sealBag(message, keys, libsodiumCrypto, enclave);
+  const hostIdnt = await enclave.deriveIdentity("test", 1);
+  return sealBag(message, hostIdnt, libsodiumCrypto, enclave);
 }
 
 describe("syncPeek", () => {
@@ -72,8 +64,8 @@ describe("syncPeek", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const keys = await conn.keys();
-    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    const hostIdnt = await conn.identity();
+    const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
 
@@ -93,11 +85,11 @@ describe("syncPeek", () => {
       bod: new Uint8Array([1, 2, 3, 4]),
     };
 
-    // Seal bag using same host keys that conn will use, and put on host.
-    const keys = await generateTestKeys(enclave);
+    // Seal bag using same host identity that conn will use, and put on host.
+    const hostIdnt = await enclave.deriveIdentity("test", 1);
     const [bag, statBag] = await sealBag(
       message,
-      keys,
+      hostIdnt,
       libsodiumCrypto,
       enclave,
     );
@@ -105,7 +97,7 @@ describe("syncPeek", () => {
       expect(statBag).toBe(Status.Success);
       return;
     }
-    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+    const [seqs, setStatus] = await lpcHost.storage.setBags(hostIdnt.publicKey, [
       bag,
     ]);
     if (setStatus !== Status.Success || !seqs?.[0]) {
@@ -191,8 +183,8 @@ describe("syncPush", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const keys = await conn.keys();
-    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    const hostIdnt = await conn.identity();
+    const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
 
@@ -289,8 +281,8 @@ describe("syncPull", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const keys = await conn.keys();
-    const [_, addStatus] = await lpcHost.storage.addUser(keys.publicKey);
+    const hostIdnt = await conn.identity();
+    const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
 
@@ -310,7 +302,7 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await generateTestKeys(enclave);
+    const keys = await enclave.deriveIdentity("test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -408,7 +400,7 @@ describe("syncPull", () => {
     expect(statBag).toBe(Status.Success);
     if (statBag !== Status.Success || !bag) return;
 
-    const keys = await generateTestKeys(enclave);
+    const keys = await enclave.deriveIdentity("test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -487,7 +479,7 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await generateTestKeys(enclave);
+    const keys = await enclave.deriveIdentity("test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -519,7 +511,7 @@ describe("syncPull", () => {
   });
 
   test("drains download queue under a tight maxPullBytes budget", async () => {
-    const keys = await generateTestKeys(enclave);
+    const keys = await enclave.deriveIdentity("test", 1);
     const downloads: IDownloadMessage[] = [];
 
     for (let i = 0; i < 3; i++) {

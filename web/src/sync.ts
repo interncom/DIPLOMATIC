@@ -52,7 +52,7 @@ export type IPulled = {
 /** Host connection methods used by sync phases. */
 export type SyncConn<Handle extends HostHandle> = Pick<
   DiplomaticClientAPI<Handle>,
-  "pull" | "push" | "peek" | "seal" | "keys"
+  "pull" | "push" | "peek" | "seal" | "identity"
 >;
 
 export interface ISyncParams<Handle extends HostHandle> {
@@ -336,7 +336,7 @@ export async function syncPeek<Handle extends HostHandle>(
     peekConcurrency,
   }: ISyncParams<Handle>,
 ): Promise<Status> {
-  const hostKeys = await conn.keys();
+  const hostIdnt = await conn.identity();
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(host.lastSeq);
   if (peekStatus !== Status.Success) {
@@ -355,7 +355,7 @@ export async function syncPeek<Handle extends HostHandle>(
   const cryptoResults = await mapPool(items, conc, async (item) => {
     const [itemDec, stat] = await decryptPeekItem(
       item,
-      hostKeys,
+      hostIdnt.publicKey,
       enclave,
       crypto,
     );
@@ -620,7 +620,7 @@ export async function handleNotif<Handle extends HostHandle>(
   scheduleSync: () => void,
 ) {
   const label = host.label;
-  const keys = await conn.keys();
+  const hostIdnt = await conn.identity();
 
   const dec = new Decoder(bytes);
   const [notifItems, statBatch] = dec.readStructs(notifItemCodec);
@@ -645,7 +645,7 @@ export async function handleNotif<Handle extends HostHandle>(
   for (const item of notifItems) {
     const [peekItem, s2] = await decryptPeekItem(
       { seq: item.seq, headCph: item.headCph },
-      keys,
+      hostIdnt.publicKey,
       enclave,
       crypto,
     );

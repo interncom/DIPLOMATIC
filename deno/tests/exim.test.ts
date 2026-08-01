@@ -77,26 +77,12 @@ class MockCrypto implements ICrypto {
   }
 }
 
-class MockEnclave extends Enclave {
-  constructor() {
-    super(new Uint8Array(32).fill(0x11) as MasterSeed, new MockCrypto());
-  }
-
-  override async derive(keyPath: string, idx = 0): Promise<DerivationSeed> {
-    const data = new TextEncoder().encode(keyPath + idx.toString());
-    return new Uint8Array(32).fill(data.length % 256) as DerivationSeed;
-  }
-
-  override async deriveFromKDM(kdm: Uint8Array): Promise<DerivationSeed> {
-    return new Uint8Array(32).fill(kdm[0] || 0x22) as DerivationSeed;
-  }
-}
-
 const lbl = "test-label";
+const testSeed = new Uint8Array(32).fill(0x11) as MasterSeed;
 
 Deno.test("encodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const enclave = new MockEnclave();
+  const enclave = new Enclave(testSeed, crypto);
 
   await t.step("empty messages", async () => {
     const msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }> = [];
@@ -267,7 +253,7 @@ Deno.test("encodeFile", async (t) => {
 
 Deno.test("decodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const enclave = new MockEnclave();
+  const enclave = new Enclave(testSeed, crypto);
 
   await t.step("round-trip empty messages", async () => {
     const [file, statEnc] = await encodeFile(lbl, 0, [], crypto, enclave);

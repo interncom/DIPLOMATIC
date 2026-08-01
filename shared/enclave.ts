@@ -145,19 +145,4 @@ export class Enclave {
     const kdmHash = await this.#crypto.blake3(kdmSource);
     return kdmHash.slice(0, kdmBytes);
   }
-
-  /**
-   * @deprecated Prefer deriveCipher. Returns raw key material; will become
-   * private once all callers are moved inside the enclave.
-   */
-  async deriveFromKDM(kdm: Uint8Array): Promise<DerivationSeed> {
-    return (await this.#keyFromKDM(kdm)) as Uint8Array as DerivationSeed;
-  }
-
-  /**
-   * @deprecated Prefer deriveIdentity. Returns raw key material.
-   */
-  async derive(keyPath: string, idx = 0): Promise<DerivationSeed> {
-    return this.#deriveSeed(keyPath, idx);
-  }
 }

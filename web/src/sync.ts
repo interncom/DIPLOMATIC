@@ -214,12 +214,11 @@ export async function openPulled<Handle extends HostHandle>(
       continue;
     }
     const { headEnc, headEncHash } = resolved;
-
-    const key = await enclave.deriveFromKDM(kdm);
+    const cipher = enclave.deriveCipher(kdm, "decrypt");
     const [contents, openStat] = await openBagBody(
       headEnc,
       bodyCph,
-      key,
+      cipher,
       crypto,
       headEncHash,
     );
@@ -703,11 +702,11 @@ export async function handleNotif<Handle extends HostHandle>(
 
   const toStore: IStorableMessage[] = [];
   for (const input of completeBags) {
-    const key = await enclave.deriveFromKDM(input.kdm);
+    const cipher = enclave.deriveCipher(input.kdm, "decrypt");
     const [contents, stat] = await openBagBody(
       input.headEnc,
       input.bodyCph,
-      key,
+      cipher,
       crypto,
     );
     if (stat !== Status.Success) {

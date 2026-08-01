@@ -6,18 +6,11 @@ Deno.test("crypto", async () => {
   const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
   const enclave = new Enclave(seed, libsodiumCrypto);
 
-  // Create some simple KDM (key derivation material)
+  // Key stays inside the enclave; cipher is an opaque handle.
   const kdm = new Uint8Array(8).fill(0x42);
-  const encKey = await enclave.deriveFromKDM(kdm);
-
   const plaintext = new Uint8Array([0x12, 0x34]);
-  const cipher = await libsodiumCrypto.encryptXSalsa20Poly1305Combined(
-    plaintext,
-    encKey,
-  );
-  const dec = await libsodiumCrypto.decryptXSalsa20Poly1305Combined(
-    cipher,
-    encKey,
-  );
+  const cipher = enclave.deriveCipher(kdm, "both");
+  const cph = await cipher.encrypt(plaintext);
+  const dec = await cipher.decrypt(cph);
   assertEquals(plaintext, dec);
 });

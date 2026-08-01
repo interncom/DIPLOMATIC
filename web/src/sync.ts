@@ -12,7 +12,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { notifItemCodec } from "./shared/codecs/notifItem";
 import { Status } from "./shared/consts";
-import { Enclave } from "./shared/enclave";
+import { Enclave } from "./shared/crypto/enclave";
 import { decryptPeekItem } from "./shared/sync";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";

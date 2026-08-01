@@ -1,6 +1,6 @@
 import type { SyncProgressEvent } from "./progress";
 import { Status } from "./shared/consts";
-import type { Enclave } from "./shared/enclave";
+import type { Enclave } from "./shared/crypto/enclave";
 import type { EncodedMessage } from "./shared/message";
 import type {
   EntityID,

@@ -6,7 +6,7 @@ import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
-import { Enclave, type Identity } from "./enclave.ts";
+import { Enclave, type Identity } from "./crypto/enclave.ts";
 import { IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import type {

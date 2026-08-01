@@ -5,7 +5,7 @@ import { makeEID } from "../../shared/codecs/eid.ts";
 import type { IMessage } from "../../shared/types.ts";
 
 import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import type { MasterSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 

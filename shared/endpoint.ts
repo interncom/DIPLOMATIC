@@ -6,7 +6,7 @@ import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { Status } from "./consts.ts";
-import { Enclave, type Identity } from "./enclave.ts";
+import { Enclave, type Identity } from "./crypto/enclave.ts";
 import { ICrypto, IProtoHost } from "./types.ts";
 import { ValStat } from "./valstat.ts";
 

@@ -1,4 +1,4 @@
-import type { Identity } from "../../../shared/enclave.ts";
+import type { Identity } from "../../../shared/crypto/enclave.ts";
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";

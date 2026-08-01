@@ -6,7 +6,7 @@ import { Status } from "../../shared/consts.ts";
 import { IClock } from "../../shared/clock.ts";
 import { ICrypto, IHostMetadata } from "../../shared/types.ts";
 import { ok, ValStat } from "../../shared/valstat.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 // import { makeAuthTimestamp } from "../../shared/auth.ts";
 
 const mockClock: IClock = {

@@ -3,7 +3,7 @@ import { Decoder } from "../../shared/codec.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type {

@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
-import { Enclave } from "../src/shared/enclave";
+import { Enclave } from "../src/shared/crypto/enclave";
 import type {
   EntityID,
   Hash,

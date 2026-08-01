@@ -4,7 +4,7 @@ import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import type { IBag, IMessage, MasterSeed } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 

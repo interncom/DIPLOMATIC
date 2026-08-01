@@ -1,6 +1,6 @@
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import libsodiumCrypto from "../src/crypto.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 
 Deno.test("crypto", async () => {
   const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();

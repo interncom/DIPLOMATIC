@@ -20,7 +20,7 @@ import libsodiumCrypto from "../src/crypto.ts";
 import { Clock, MockClock } from "../../shared/clock.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";

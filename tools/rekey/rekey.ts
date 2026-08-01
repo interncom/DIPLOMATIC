@@ -1,5 +1,5 @@
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
-import { Enclave } from "../../shared/enclave.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import type { MasterSeed } from "../../shared/types.ts";

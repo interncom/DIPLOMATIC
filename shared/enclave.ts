@@ -6,16 +6,16 @@ import { concat } from "./binary.ts";
 
 export class Enclave {
   #seed: MasterSeed;
-  private crypto: ICrypto;
+  #crypto: ICrypto;
 
   constructor(seed: MasterSeed, crypto: ICrypto) {
     this.#seed = seed;
-    this.crypto = crypto;
+    this.#crypto = crypto;
   }
 
   async deriveFromKDM(kdm: Uint8Array): Promise<DerivationSeed> {
     const data = concat(this.#seed, kdm);
-    return (await this.crypto.blake3(data)) as Uint8Array as DerivationSeed;
+    return (await this.#crypto.blake3(data)) as Uint8Array as DerivationSeed;
   }
 
   async derive(keyPath: string, idx = 0): Promise<DerivationSeed> {

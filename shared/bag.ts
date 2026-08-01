@@ -4,7 +4,7 @@
 import { Decoder, Encoder } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { kdmBytes, Status } from "./consts.ts";
-import { Enclave } from "./enclave.ts";
+import { type DecryptCipher, Enclave } from "./enclave.ts";
 import { bytesEqual, concat } from "./binary.ts";
 import { EncodedMessage } from "./message.ts";
 import { err, ok, type ValStat } from "./valstat.ts";
@@ -64,15 +64,13 @@ export async function sealBag(
   }
   const headEnc = enc.result();
 
-  // Derive encryption key.
+  // KDM is public; cipher is an opaque handle (key stays in the enclave).
   const kdm = await kdmFor(headEnc, keys, crypto);
-  const key = await enclave.deriveFromKDM(kdm);
+  const cipher = enclave.deriveCipher(kdm, "encrypt");
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-  const headCph = await crypto.encryptXSalsa20Poly1305Combined(headEnc, key);
-  const bodyCph = msg.bod
-    ? await crypto.encryptXSalsa20Poly1305Combined(msg.bod, key)
-    : new Uint8Array(0);
+  const headCph = await cipher.encrypt(headEnc);
+  const bodyCph = msg.bod ? await cipher.encrypt(msg.bod) : new Uint8Array(0);
 
   // Wrap in bag.
   const sig = await crypto.signEd25519(headCph, keys.privateKey);
@@ -92,7 +90,7 @@ export interface IOpenBag {
 export async function openBagBody(
   headEnc: Uint8Array,
   bodyCph: Uint8Array | undefined,
-  key: Uint8Array,
+  cipher: DecryptCipher,
   crypto: ICrypto,
   /** When set (e.g. from peek), skip blake3(headEnc). */
   headHashKnown?: Hash,
@@ -104,11 +102,11 @@ export async function openBagBody(
     return err(Status.InvalidMessage);
   }
 
-  // Decrypt body, if any.
+  // Decrypt body, if any (key stays in the enclave via cipher).
   let msgBody: Uint8Array | undefined;
   try {
     msgBody = bodyCph && bodyCph.length > 0
-      ? await crypto.decryptXSalsa20Poly1305Combined(bodyCph, key)
+      ? await cipher.decrypt(bodyCph)
       : undefined;
   } catch {
     return err(Status.DecryptionError);
@@ -145,20 +143,21 @@ export async function openBag(
     return err(Status.InvalidSignature);
   }
 
-  // Derive key.
-  const key = await enclave.deriveFromKDM(bag.kdm);
+  const cipher = enclave.deriveCipher(bag.kdm, "decrypt");
 
-  // Decrypt head.
-  const msgHeadEnc = await crypto.decryptXSalsa20Poly1305Combined(
-    bag.headCph,
-    key,
-  );
+  // Decrypt head (key stays in the enclave via cipher).
+  let msgHeadEnc: Uint8Array;
+  try {
+    msgHeadEnc = await cipher.decrypt(bag.headCph);
+  } catch {
+    return err(Status.DecryptionError);
+  }
 
   // Use openBagBody for the rest.
   const [contents, status] = await openBagBody(
     msgHeadEnc,
     bag.bodyCph,
-    key,
+    cipher,
     crypto,
   );
   if (status !== Status.Success) {

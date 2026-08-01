@@ -105,8 +105,8 @@ export class CLIClient<Handle extends HostHandle> {
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
-    const key = await this.enclave.deriveFromKDM(itemDec.kdm);
-    return openBagBody(itemDec.headEnc, pullItem.bodyCph, key, crypto);
+    const cipher = this.enclave.deriveCipher(itemDec.kdm, "decrypt");
+    return openBagBody(itemDec.headEnc, pullItem.bodyCph, cipher, crypto);
   }
 
   async upsertSingletonSync(type: string, body: Uint8Array): Promise<Status> {

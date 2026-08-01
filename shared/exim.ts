@@ -74,10 +74,10 @@ export async function encodeFile(
     const headEnc = encHead.result();
 
     const kdm = await kdmFor(headEnc, keys, crypto);
-    const key = await enclave.deriveFromKDM(kdm);
-    const headCph = await crypto.encryptXSalsa20Poly1305Combined(headEnc, key);
+    const cipher = enclave.deriveCipher(kdm, "encrypt");
+    const headCph = await cipher.encrypt(headEnc);
     const bodyCph = msg.body
-      ? await crypto.encryptXSalsa20Poly1305Combined(msg.body, key)
+      ? await cipher.encrypt(msg.body)
       : new Uint8Array(0);
 
     const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined
@@ -164,11 +164,13 @@ export async function decodeFile(
 
   const messages: { head: IMessageHead; body?: Uint8Array }[] = [];
   for (const item of items) {
-    const key = await enclave.deriveFromKDM(item.kdm);
-    const headEnc = await crypto.decryptXSalsa20Poly1305Combined(
-      item.headCph,
-      key,
-    );
+    const cipher = enclave.deriveCipher(item.kdm, "decrypt");
+    let headEnc: Uint8Array;
+    try {
+      headEnc = await cipher.decrypt(item.headCph);
+    } catch {
+      return err(Status.DecryptionError);
+    }
     const [msgHead, headStatus] = messageHeadCodec.decode(
       new Decoder(headEnc),
     );
@@ -181,10 +183,11 @@ export async function decodeFile(
         item.offBody,
         item.offBody + item.lenBody,
       );
-      itemBodyEnc = await crypto.decryptXSalsa20Poly1305Combined(
-        itemBodyCph,
-        key,
-      );
+      try {
+        itemBodyEnc = await cipher.decrypt(itemBodyCph);
+      } catch {
+        return err(Status.DecryptionError);
+      }
       const hashItemBody = await crypto.blake3(itemBodyEnc);
       if (!bytesEqual(hashItemBody, msgHead.hsh)) {
         return err(Status.HashMismatch);

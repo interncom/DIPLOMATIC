@@ -30,10 +30,10 @@ export async function decryptPeekItem(
   if (!valid) {
     return err(Status.InvalidSignature);
   }
-  const key = await enclave.deriveFromKDM(kdm);
+  const cipher = enclave.deriveCipher(kdm, "decrypt");
   let headEnc: Uint8Array;
   try {
-    headEnc = await crypto.decryptXSalsa20Poly1305Combined(headCph, key);
+    headEnc = await cipher.decrypt(headCph);
   } catch {
     // Decryption failed, skip
     return err(Status.DecryptionError);

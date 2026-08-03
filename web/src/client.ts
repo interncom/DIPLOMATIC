@@ -577,6 +577,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       const peekStat = await syncPeek(syncParams);
       if (peekStat !== Status.Success) {
         console.error(`Failed to peek: ${peekStat}`);
+        // Still publish queue depths (e.g. offline after local enqueue) and
+        // clear any mid-phase progress so Sync UI is not stuck on "peek".
+        this.emitProgress({ phase: "idle" });
         return peekStat;
       }
       this.xferState.emit();
@@ -585,6 +588,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       const pushStat = await syncPush(syncParams);
       if (pushStat !== Status.Success) {
         console.error(`Failed to push: ${pushStat}`);
+        this.emitProgress({ phase: "idle" });
         return pushStat;
       }
       this.xferState.emit();
@@ -595,6 +599,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       });
       if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
         console.error(`Failed to pull: ${pullStat}`);
+        this.emitProgress({ phase: "idle" });
         return pullStat;
       }
       this.xferState.emit();

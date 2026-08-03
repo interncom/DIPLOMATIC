@@ -150,6 +150,20 @@ export class WorkerClient implements IClient<URL> {
       },
     );
 
+    // Local apply enqueues uploads on the shared store and emits local.xferState.
+    // The UI listens to this façade; without forwarding, offline writes never
+    // update pending counts (worker only posts xferState after successful
+    // peek/push/pull, which never runs while disconnected).
+    this.local.xferState.listen((state) => {
+      this.cachedXferState = {
+        numUploads: state.numUploads,
+        numDownloads: state.numDownloads,
+        // Keep worker-driven phase progress; local writer never runs network.
+        progress: this.cachedXferState.progress,
+      };
+      this.xferState.emit();
+    });
+
     this.ready = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;

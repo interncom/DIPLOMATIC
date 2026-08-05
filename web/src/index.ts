@@ -83,6 +83,7 @@ import {
   idleProgress,
   shouldEmitItemProgress,
 } from "./progress";
+import { checksumHashes, cmpBytes } from "./shared/checksum";
 import {
   openDiplomaticClient,
   type OpenDiplomaticClientMainOptions,
@@ -126,7 +127,9 @@ export {
   btob64,
   btoh,
   CachedEntDB,
+  checksumHashes,
   Clock,
+  cmpBytes,
   crypto,
   Decoder,
   defaultPeekProgressEvery,

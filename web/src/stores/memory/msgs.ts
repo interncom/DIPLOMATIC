@@ -57,6 +57,14 @@ export class MemoryMessageStore implements IMessageStore {
     return out;
   }
 
+  async listKeys(): Promise<Hash[]> {
+    const out: Hash[] = [];
+    for (const keyStr of this.messages.keys()) {
+      out.push(b64tob(keyStr) as Hash);
+    }
+    return out;
+  }
+
   // last returns the stored message with given eid and highest ctr/off.
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     let latest: { hash: Hash; data: IStoredMessageData } | undefined;

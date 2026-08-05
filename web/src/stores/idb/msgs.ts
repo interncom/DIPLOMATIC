@@ -121,6 +121,26 @@ export class IDBMessageStore implements IMessageStore {
     });
   }
 
+  async listKeys(): Promise<Hash[]> {
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<Hash[]>((resolve, reject) => {
+      const keys: Hash[] = [];
+      // Keys only — no body decode.
+      const req = store.openKeyCursor();
+      req.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result;
+        if (cursor) {
+          keys.push(b64tob(cursor.key as string) as Hash);
+          cursor.continue();
+        } else {
+          resolve(keys);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   // last returns the stored message with given eid, clk and highest ctr/off.
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");

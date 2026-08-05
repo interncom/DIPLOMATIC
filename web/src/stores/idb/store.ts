@@ -47,10 +47,12 @@ export class IDBStore implements IStore<URL> {
   }
 }
 
+export const DIPLOMATIC_STORE_DB_NAME = "diplomatic-store-db";
+
 export async function openIDBStoreDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(
-      "diplomatic-store-db",
+      DIPLOMATIC_STORE_DB_NAME,
       DIPLOMATIC_STORE_DB_VERSION,
     );
     req.onupgradeneeded = () => {
@@ -87,15 +89,41 @@ export async function openIDBStoreDB(): Promise<IDBDatabase> {
         msgStore.createIndex(MESSAGES_APLD_INDEX, "apld", { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onblocked = () => {
+      console.warn(
+        "[DIPLOMATIC] protocol store IDB upgrade blocked " +
+          `(${DIPLOMATIC_STORE_DB_NAME} → v${DIPLOMATIC_STORE_DB_VERSION}); ` +
+          "waiting for other connections to close",
+      );
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      // Main + worker share this DB. Close on versionchange so a peer upgrade
+      // is not blocked (same multi-connection rule as EntDB).
+      db.onversionchange = () => {
+        db.close();
+      };
+      resolve(db);
+    };
+    req.onerror = () =>
+      reject(req.error ?? new Error("protocol store IndexedDB open failed"));
   });
 }
 
 export async function openIDBStore(crypto: ICrypto) {
   const db = await openIDBStoreDB();
-  if (navigator.storage && navigator.storage.persist) {
-    await navigator.storage.persist();
+  // persist() can be slow or unavailable in workers; never block worker ready.
+  if (typeof navigator !== "undefined" && navigator.storage?.persist) {
+    try {
+      await Promise.race([
+        navigator.storage.persist(),
+        new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), 2_000);
+        }),
+      ]);
+    } catch {
+      // Non-fatal: durable storage request is best-effort.
+    }
   }
   return new IDBStore(db, crypto);
 }

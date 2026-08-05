@@ -45,6 +45,8 @@ export type WorkerReply =
 
 export type WorkerEvent =
   | { kind: "ready" }
+  /** Worker init failed (e.g. IDB open); main should fail handshake, not hang. */
+  | { kind: "initError"; message: string }
   | { kind: "clientState"; state: IDiplomaticClientState }
   /** Queues + sync phase progress (see IDiplomaticClientXferState.progress). */
   | { kind: "xferState"; state: IDiplomaticClientXferState }

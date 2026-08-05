@@ -15,6 +15,11 @@ export const typeParentIndexName = "entity_type_parent_id";
 /** multiEntry index on tags[]; query by tag then filter by type. */
 export const tagsIndexName = "entity_tags";
 
+/** Shared by main thread and sync worker — must stay in lockstep. */
+export const ENT_IDB_NAME = "db";
+/** v12: multiEntry tags index (entity_tags). */
+export const ENT_IDB_VERSION = 12;
+
 interface IStoredEntity<T = unknown> {
   bod: T;
   crd: Date; // createdAt
@@ -73,70 +78,58 @@ function storedToEntity<T>(
 
 export class EntIDB implements IEntDB {
   db: IDBDatabase | undefined;
+  /** In-flight open; coalesces concurrent ensureDb / peer upgrade reopen. */
+  private opening: Promise<IDBDatabase> | undefined;
 
   async init() {
-    this.db = await new Promise((resolve, reject) => {
-      // v12: multiEntry tags index (entity_tags).
-      const req = indexedDB.open("db", 12);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        const tx = req.transaction;
-        if (!tx) {
-          throw new Error("Transaction is null during upgrade");
-        }
-        if (!db.objectStoreNames.contains(entityTableName)) {
-          db.createObjectStore(entityTableName, {
-            keyPath: "eid",
-            autoIncrement: false,
-          });
-        }
-        const store = tx.objectStore(entityTableName);
-        if (!store.indexNames.contains(typeIndexName)) {
-          store.createIndex(typeIndexName, ["typ", "crd"], {
-            unique: false,
-          });
-        }
-        if (!store.indexNames.contains(typeUpdatedAtIndexName)) {
-          store.createIndex(typeUpdatedAtIndexName, ["typ", "upd"], {
-            unique: false,
-          });
-        }
-        if (!store.indexNames.contains(typeGroupIndexName)) {
-          store.createIndex(typeGroupIndexName, ["typ", "gid"], {
-            unique: false,
-          });
-        }
-        if (!store.indexNames.contains(typeParentIndexName)) {
-          store.createIndex(typeParentIndexName, ["typ", "pid"], {
-            unique: false,
-          });
-        }
-        // multiEntry on array keyPath only (IDB forbids multiEntry + compound
-        // keyPath). Lookup by tag, then filter typ in app code.
-        if (!store.indexNames.contains(tagsIndexName)) {
-          store.createIndex(tagsIndexName, "tags", {
-            unique: false,
-            multiEntry: true,
-          });
+    await this.ensureDb();
+  }
+
+  /**
+   * Open (or reopen) the shared EntDB IDB connection.
+   * Main + worker both hold connections; on versionchange we must close so the
+   * peer's upgrade is not blocked forever (classic multi-connection hang).
+   */
+  private async ensureDb(): Promise<IDBDatabase> {
+    if (this.db) {
+      return this.db;
+    }
+    if (this.opening) {
+      return this.opening;
+    }
+    this.opening = openEntIdbConnection().then((db) => {
+      db.onversionchange = () => {
+        // Let the other realm (worker/main/tab) finish schema upgrade.
+        db.close();
+        if (this.db === db) {
+          this.db = undefined;
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      this.db = db;
+      this.opening = undefined;
+      return db;
+    }, (err) => {
+      this.opening = undefined;
+      throw err;
     });
+    return this.opening;
   }
 
   apply = async (ops: IOp[]) => {
     const types = new Set<string>();
     const eids: EntityID[] = [];
 
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return {
         stats: ops.map(() => Status.DatabaseClosed),
         types,
         eids,
       };
     }
-    const tx = this.db.transaction(entityTableName, "readwrite");
+    const tx = db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<{
       stats: Status[];
@@ -243,10 +236,13 @@ export class EntIDB implements IEntDB {
   };
 
   async clear() {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return Status.DatabaseClosed;
     }
-    const tx = this.db.transaction(entityTableName, "readwrite");
+    const tx = db.transaction(entityTableName, "readwrite");
     const store = tx.objectStore(entityTableName);
     return new Promise<Status>((resolve) => {
       tx.oncomplete = () => resolve(Status.Success);
@@ -258,11 +254,14 @@ export class EntIDB implements IEntDB {
   async getEnt<T>(
     eid: EntityID,
   ): Promise<ValStat<IEntity<T> | undefined>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
     const eidHex = btob64(eid);
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const store = tx.objectStore(entityTableName);
     return new Promise((resolve) => {
       const req = store.get(eidHex);
@@ -284,10 +283,13 @@ export class EntIDB implements IEntDB {
     start: Date,
     end: Date,
   ): Promise<ValStat<IEntity<T>[]>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeUpdatedAtIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(
@@ -305,10 +307,13 @@ export class EntIDB implements IEntDB {
     opType: string,
     gid: GroupID,
   ): Promise<ValStat<IEntity<T>[]>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeGroupIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(IDBKeyRange.only([opType, gid]));
@@ -323,10 +328,13 @@ export class EntIDB implements IEntDB {
   async getAllOfType<T>(
     opType: string,
   ): Promise<ValStat<IEntity<T>[]>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(
@@ -344,10 +352,13 @@ export class EntIDB implements IEntDB {
     opType: string,
     tag: string,
   ): Promise<ValStat<IEntity<T>[]>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(tagsIndexName);
     return new Promise((resolve) => {
       const req = index.getAll(IDBKeyRange.only(tag));
@@ -366,12 +377,15 @@ export class EntIDB implements IEntDB {
   private async getAllEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
-    if (!this.db) {
-      return err(Status.DatabaseClosed);
-    }
     if ("pid" in query) {
+      let db: IDBDatabase;
+      try {
+        db = await this.ensureDb();
+      } catch {
+        return err(Status.DatabaseClosed);
+      }
       const pidB64 = btob64(query.pid);
-      const tx = this.db.transaction(entityTableName, "readonly");
+      const tx = db.transaction(entityTableName, "readonly");
       const index = tx.objectStore(entityTableName).index(typeParentIndexName);
       return new Promise((resolve) => {
         const req = index.getAll(IDBKeyRange.only([query.type, pidB64]));
@@ -407,10 +421,13 @@ export class EntIDB implements IEntDB {
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
-    if (!this.db) {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = this.db.transaction(entityTableName, "readonly");
+    const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
       const range = IDBKeyRange.bound([type], [type, []]);
@@ -419,6 +436,75 @@ export class EntIDB implements IEntDB {
       req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }
+}
+
+function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
+  if (!db.objectStoreNames.contains(entityTableName)) {
+    db.createObjectStore(entityTableName, {
+      keyPath: "eid",
+      autoIncrement: false,
+    });
+  }
+  const store = tx.objectStore(entityTableName);
+  if (!store.indexNames.contains(typeIndexName)) {
+    store.createIndex(typeIndexName, ["typ", "crd"], {
+      unique: false,
+    });
+  }
+  if (!store.indexNames.contains(typeUpdatedAtIndexName)) {
+    store.createIndex(typeUpdatedAtIndexName, ["typ", "upd"], {
+      unique: false,
+    });
+  }
+  if (!store.indexNames.contains(typeGroupIndexName)) {
+    store.createIndex(typeGroupIndexName, ["typ", "gid"], {
+      unique: false,
+    });
+  }
+  if (!store.indexNames.contains(typeParentIndexName)) {
+    store.createIndex(typeParentIndexName, ["typ", "pid"], {
+      unique: false,
+    });
+  }
+  // multiEntry on array keyPath only (IDB forbids multiEntry + compound
+  // keyPath). Lookup by tag, then filter typ in app code.
+  if (!store.indexNames.contains(tagsIndexName)) {
+    store.createIndex(tagsIndexName, "tags", {
+      unique: false,
+      multiEntry: true,
+    });
+  }
+}
+
+function openEntIdbConnection(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ENT_IDB_NAME, ENT_IDB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      const tx = req.transaction;
+      if (!tx) {
+        reject(new Error("Transaction is null during EntDB upgrade"));
+        return;
+      }
+      try {
+        upgradeEntIdb(db, tx);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    };
+    req.onblocked = () => {
+      // Another main/worker/tab connection has not closed yet. We wait until
+      // their onversionchange handler closes; without that, open hangs forever.
+      console.warn(
+        "[DIPLOMATIC] EntDB IDB upgrade blocked " +
+          `(${ENT_IDB_NAME} → v${ENT_IDB_VERSION}); ` +
+          "waiting for other connections to close",
+      );
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () =>
+      reject(req.error ?? new Error("EntDB IndexedDB open failed"));
+  });
 }
 
 /** Durable IndexedDB EntDB. Internal-only. Apps use {@link openEntDB} instead. */

@@ -65,6 +65,17 @@ const implementers = await entDB.getEntities({
 
 Use `btob64` / package helpers so binary eids encode stably across platforms.
 
+### Frontier checksum
+
+EntDB can compute a **frontier checksum** of all live rows (not bodies): for each ent, encode `eid`, `updatedAt`, and `ctr`, then hash the sorted set of those encodings (`checksumSet`). Deletes do not appear.
+
+```ts
+const [digest, st] = await entDB.checksum(crypto);
+// WorkerClient (optional): await client.entcheck();
+```
+
+Use with `client.msgcheck()` to distinguish “archives match but derived state does not” from incomplete sync. To re-derive ents from the msg archive after an applier change, call `client.rebuild()`. Details: [Client API](../api/client#checksums).
+
 ### Bags
 
 The DIPLOMATIC relays messages via untrusted hosts. To secure messages when on hosts, DIPLOMATIC wraps them in bags, as in "diplomatic bags" immune from inspection. [Laws of Man](https://www.state.gov/diplomatic-pouches) secure the contents of diplomatic bags. [Laws of Math](https://datatracker.ietf.org/doc/html/rfc8439) secure the contents of DIPLOMATIC bags.

@@ -45,6 +45,7 @@ describe("msgToOp", () => {
     const msgEntBody = {
       type: "testEntity",
       body: { key: "value" },
+      tags: ["impl:x", "label:y"],
     };
     const bod = encode(msgEntBody);
 
@@ -66,6 +67,7 @@ describe("msgToOp", () => {
     expect(mutateOp.eid).toEqual(msg.eid);
     expect(mutateOp.type).toBe("testEntity");
     expect(mutateOp.body).toEqual({ key: "value" });
+    expect(mutateOp.tags).toEqual(["impl:x", "label:y"]);
   });
 
   test("returns InvalidMessage when bod is invalid msgpack", () => {

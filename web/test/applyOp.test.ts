@@ -49,6 +49,36 @@ describe("applyOp", () => {
         body: { data: "new" },
       });
     });
+
+    it("op mutate normalizes tags (dedupe, drop empty)", () => {
+      const op: IOp = {
+        off: 0,
+        ctr: 1,
+        eid,
+        type: "test",
+        tags: ["a", "", "b", "a"],
+        body: { data: "t" },
+      };
+
+      const [result, stat] = applyOp(undefined, op);
+      expect(stat).toBe(Status.Success);
+      expect(result?.tags).toEqual(["a", "b"]);
+    });
+
+    it("op mutate with empty tags omits tags field", () => {
+      const op: IOp = {
+        off: 0,
+        ctr: 1,
+        eid,
+        type: "test",
+        tags: ["", ""],
+        body: { data: "t" },
+      };
+
+      const [result, stat] = applyOp(undefined, op);
+      expect(stat).toBe(Status.Success);
+      expect(result?.tags).toBeUndefined();
+    });
   });
 
   describe("curr is defined", () => {

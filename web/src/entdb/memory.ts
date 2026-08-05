@@ -16,13 +16,14 @@ type EntitiesQuery = {
   type: string;
   gid?: GroupID;
   pid?: EntityID;
+  tag?: string;
   updatedBetween?: IDateRange;
 };
 
 /** Options for {@link EntDBMemory}. */
 export type EntDBMemoryOptions = {
   /**
-   * Secondary type / type+pid / type+gid indexes for list queries.
+   * Secondary type / type+pid / type+gid / type+tag indexes for list queries.
    * Default true. Disable only if you need to save the index memory.
    */
   indexes?: boolean;
@@ -44,6 +45,8 @@ export class EntDBMemory implements IEntDB {
   private byTypePid = new Map<string, Map<string, EntBucket>>();
   /** type → gid → eidKey → ent */
   private byTypeGid = new Map<string, Map<string, EntBucket>>();
+  /** type → tag → eidKey → ent */
+  private byTypeTag = new Map<string, Map<string, EntBucket>>();
 
   constructor(initEnts: IEntity[] = [], opts?: EntDBMemoryOptions) {
     this.useIndex = opts?.indexes !== false;
@@ -112,6 +115,22 @@ export class EntDBMemory implements IEntDB {
       }
       gidBucket.set(key, ent);
     }
+
+    if (ent.tags) {
+      let byTag = this.byTypeTag.get(ent.type);
+      if (!byTag) {
+        byTag = new Map();
+        this.byTypeTag.set(ent.type, byTag);
+      }
+      for (const tag of ent.tags) {
+        let tagBucket = byTag.get(tag);
+        if (!tagBucket) {
+          tagBucket = new Map();
+          byTag.set(tag, tagBucket);
+        }
+        tagBucket.set(key, ent);
+      }
+    }
   }
 
   private unindex(key: string, ent: IEntity): void {
@@ -154,12 +173,31 @@ export class EntDBMemory implements IEntDB {
         this.byTypeGid.delete(ent.type);
       }
     }
+
+    if (ent.tags) {
+      const byTag = this.byTypeTag.get(ent.type);
+      if (byTag) {
+        for (const tag of ent.tags) {
+          const tagBucket = byTag.get(tag);
+          if (tagBucket) {
+            tagBucket.delete(key);
+            if (tagBucket.size === 0) {
+              byTag.delete(tag);
+            }
+          }
+        }
+        if (byTag.size === 0) {
+          this.byTypeTag.delete(ent.type);
+        }
+      }
+    }
   }
 
   private clearIndexes(): void {
     this.byType.clear();
     this.byTypePid.clear();
     this.byTypeGid.clear();
+    this.byTypeTag.clear();
   }
 
   private bucketList<T>(bucket: EntBucket | undefined): IEntity<T>[] {
@@ -216,7 +254,7 @@ export class EntDBMemory implements IEntDB {
   }
 
   private async getAllEntities<T>(
-    { type, gid, pid, updatedBetween }: EntitiesQuery,
+    { type, gid, pid, tag, updatedBetween }: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
     if (this.useIndex) {
       if (pid !== undefined) {
@@ -225,6 +263,9 @@ export class EntDBMemory implements IEntDB {
       }
       if (gid !== undefined) {
         return ok(this.bucketList<T>(this.byTypeGid.get(type)?.get(gid)));
+      }
+      if (tag !== undefined) {
+        return ok(this.bucketList<T>(this.byTypeTag.get(type)?.get(tag)));
       }
       if (updatedBetween !== undefined) {
         const results: IEntity<T>[] = [];
@@ -257,6 +298,12 @@ export class EntDBMemory implements IEntDB {
         if (
           ent.type === type && (typeof ent.gid === "string" && ent.gid === gid)
         ) {
+          results.push(ent as IEntity<T>);
+        }
+      }
+    } else if (tag !== undefined) {
+      for (const ent of this.ents.values()) {
+        if (ent.type === type && ent.tags && ent.tags.includes(tag)) {
           results.push(ent as IEntity<T>);
         }
       }

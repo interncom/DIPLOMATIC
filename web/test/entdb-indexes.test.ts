@@ -19,7 +19,13 @@ function mutate(
   eid: Uint8Array,
   type: string,
   body: unknown,
-  opts?: { gid?: string; pid?: Uint8Array; off?: number; ctr?: number },
+  opts?: {
+    gid?: string;
+    pid?: Uint8Array;
+    tags?: string[];
+    off?: number;
+    ctr?: number;
+  },
 ): IOp {
   return {
     eid,
@@ -29,6 +35,7 @@ function mutate(
     body,
     gid: opts?.gid,
     pid: opts?.pid,
+    tags: opts?.tags,
   };
 }
 
@@ -78,6 +85,96 @@ describe("EntDBMemory indexes", () => {
       const [count, stC] = await db.countEntities({ type: "goal" });
       expect(stC).toBe(Status.Success);
       expect(count).toBe(3);
+    });
+
+    it("lists by tag (multi-value multiEntry)", async () => {
+      const goal = await eidAt(2000, 52);
+      const other = await eidAt(3000, 53);
+      const noTags = await eidAt(4000, 54);
+      const tagA = "impl:AAA";
+      const tagB = "impl:BBB";
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g" }, {
+          tags: [tagA, tagB, "", tagA], // empty + dup dropped on apply
+        }),
+        mutate(other, "goal", { n: "o" }, { tags: [tagA] }),
+        mutate(noTags, "goal", { n: "z" }),
+        mutate(await eidAt(5000, 55), "task", { n: "t" }, { tags: [tagA] }),
+      ]);
+
+      const [byA, stA] = await db.getEntities({ type: "goal", tag: tagA });
+      expect(stA).toBe(Status.Success);
+      expect(byA).toHaveLength(2);
+      const namesA = new Set(byA?.map((e) =>
+        e.body && typeof e.body === "object" && "n" in e.body
+          ? e.body.n
+          : undefined
+      ));
+      expect(namesA).toEqual(new Set(["g", "o"]));
+
+      const [byB, stB] = await db.getEntities({ type: "goal", tag: tagB });
+      expect(stB).toBe(Status.Success);
+      expect(byB).toHaveLength(1);
+      expect(byB?.[0]?.body).toEqual({ n: "g" });
+      expect(byB?.[0]?.tags).toEqual([tagA, tagB]);
+
+      const [emptyTag] = await db.getEntities({ type: "goal", tag: "" });
+      expect(emptyTag).toHaveLength(0);
+      const [missing] = await db.getEntities({
+        type: "goal",
+        tag: "impl:nope",
+      });
+      expect(missing).toHaveLength(0);
+    });
+
+    it("reindexes tags on update and delete", async () => {
+      const goal = await eidAt(2000, 60);
+      const tagA = "impl:AAA";
+      const tagB = "impl:BBB";
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g" }, { tags: [tagA, tagB], ctr: 1 }),
+      ]);
+      const [beforeA] = await db.getEntities({ type: "goal", tag: tagA });
+      expect(beforeA).toHaveLength(1);
+
+      // Drop tagA; keep tagB.
+      await db.apply([
+        mutate(goal, "goal", { n: "g2" }, {
+          tags: [tagB],
+          off: 10,
+          ctr: 1,
+        }),
+      ]);
+      const [afterA] = await db.getEntities({ type: "goal", tag: tagA });
+      expect(afterA).toHaveLength(0);
+      const [afterB] = await db.getEntities({ type: "goal", tag: tagB });
+      expect(afterB).toHaveLength(1);
+      expect(afterB?.[0]?.tags).toEqual([tagB]);
+
+      // Clear tags.
+      await db.apply([
+        mutate(goal, "goal", { n: "g3" }, { off: 20, ctr: 1 }),
+      ]);
+      const [cleared] = await db.getEntities({ type: "goal", tag: tagB });
+      expect(cleared).toHaveLength(0);
+
+      // Re-tag then delete entity.
+      await db.apply([
+        mutate(goal, "goal", { n: "g4" }, {
+          tags: [tagA, tagB],
+          off: 30,
+          ctr: 1,
+        }),
+      ]);
+      await db.apply([{ eid: goal, off: 40, ctr: 2 }]);
+      const [delA] = await db.getEntities({ type: "goal", tag: tagA });
+      const [delB] = await db.getEntities({ type: "goal", tag: tagB });
+      expect(delA).toHaveLength(0);
+      expect(delB).toHaveLength(0);
+      const [cnt] = await db.countEntities({ type: "goal" });
+      expect(cnt).toBe(0);
     });
 
     it("reindexes on type/pid/gid change and delete", async () => {
@@ -174,5 +271,45 @@ describe("CachedEntDB indexes via put/del", () => {
 
     const [kids] = await cache.getEntities({ type: "goal", pid: parent });
     expect(kids).toHaveLength(1);
+  });
+
+  it("warm + tag query after durable apply", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const goal = await eidAt(2000, 70);
+    const tag = "impl:OBJ";
+
+    await durable.apply([
+      mutate(goal, "goal", { n: "g" }, { tags: [tag] }),
+    ]);
+
+    const [hits, st] = await cache.getEntities({ type: "goal", tag });
+    expect(st).toBe(Status.Success);
+    expect(hits).toHaveLength(1);
+    expect(hits?.[0]?.tags).toEqual([tag]);
+  });
+
+  it("apply path keeps tag index coherent", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable, undefined, { indexes: true });
+    const goal = await eidAt(2000, 71);
+    const tagA = "impl:A";
+    const tagB = "impl:B";
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g" }, { tags: [tagA, tagB] }),
+    ]);
+    const [a1] = await cache.getEntities({ type: "goal", tag: tagA });
+    const [b1] = await cache.getEntities({ type: "goal", tag: tagB });
+    expect(a1).toHaveLength(1);
+    expect(b1).toHaveLength(1);
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g2" }, { tags: [tagB], off: 5, ctr: 1 }),
+    ]);
+    const [a2] = await cache.getEntities({ type: "goal", tag: tagA });
+    const [b2] = await cache.getEntities({ type: "goal", tag: tagB });
+    expect(a2).toHaveLength(0);
+    expect(b2).toHaveLength(1);
   });
 });

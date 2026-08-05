@@ -476,15 +476,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async insert<T = unknown>(op: IInsertParams<T>) {
-    const { body, type, gid, pid } = op;
-    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const { body, type, gid, pid, tags } = op;
+    const entBody: IMsgEntBody = { body, type, gid, pid, tags };
     const entBodyEnc = encode(entBody);
     return this.insertRaw(entBodyEnc);
   }
 
   public async update<T = unknown>(op: IUpdateParams<T>) {
-    const { prior, body, type, gid, pid, force } = op;
-    const entBody: IMsgEntBody = { body, type, gid, pid };
+    const { prior, body, type, gid, pid, tags, force } = op;
+    const entBody: IMsgEntBody = { body, type, gid, pid, tags };
     const entBodyEnc = encode(entBody);
     return this.updateRaw(
       prior,

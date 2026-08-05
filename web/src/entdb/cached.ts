@@ -38,7 +38,7 @@ export type OpenEntDBOptions = {
    */
   cache?: boolean;
   /**
-   * Secondary type/pid/gid indexes on the in-memory layer (default true).
+   * Secondary type/pid/gid/tag indexes on the in-memory layer (default true).
    * Speeds up getEntities list queries after a type is warm.
    * Ignored when `cache` is false.
    */
@@ -290,7 +290,21 @@ function sameEntity(a: IEntity, b: IEntity): boolean {
   if (a.gid !== b.gid) return false;
   if (!bytesEqual(a.eid, b.eid)) return false;
   if (!optBytesEqual(a.pid, b.pid)) return false;
+  if (!sameTags(a.tags, b.tags)) return false;
   return sameBody(a.body, b.body);
+}
+
+function sameTags(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function optBytesEqual(

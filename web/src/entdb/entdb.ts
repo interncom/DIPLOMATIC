@@ -9,6 +9,9 @@
 // 1. "type" - Mandatory. Groups ents by their application-defined type.
 // 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents.
 // 3. "gid" (group ID) - Optional. Supports non-hierarchical grouping.
+// 4. "tags" - Optional string[]; multi-value reverse index (multiEntry).
+//    Like pid reverse lookup, but N:M. Opaque strings; clients define semantics
+//    (e.g. impl:<btob64(eid)> for non-exclusive "implements" links).
 // These are msgpack-encoded within the DIPLOMATIC msg body.
 // The rest of the ent data lives alongside those, encoded the same way.
 
@@ -45,7 +48,33 @@ export type EntitiesQuery =
   | { type: string }
   | { type: string; gid: GroupID }
   | { type: string; pid: EntityID }
+  | { type: string; tag: string }
   | { type: string; updatedBetween: IDateRange };
+
+/**
+ * Normalize tags for storage/index: drop non-strings and empty strings, dedupe
+ * (first occurrence wins). Returns undefined when there are no tags left.
+ */
+export function normalizeTags(
+  tags: unknown,
+): string[] | undefined {
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tags) {
+    if (typeof t !== "string" || t.length === 0) {
+      continue;
+    }
+    if (seen.has(t)) {
+      continue;
+    }
+    seen.add(t);
+    out.push(t);
+  }
+  return out.length > 0 ? out : undefined;
+}
 
 /** Result of applying ops to EntDB. */
 export type ApplyResult = {
@@ -107,10 +136,12 @@ export function applyOp(
 
   // Now, either curr doesn't exist or op is newer than curr, so op wins.
   if (isMutateOp(op)) {
+    const tags = normalizeTags(op.tags);
     return ok({
       eid: op.eid,
       gid: op.gid,
       pid: op.pid,
+      ...(tags !== undefined ? { tags } : {}),
       type: op.type,
       createdAt: opEID.ts,
       updatedAt: opUpdatedAt,

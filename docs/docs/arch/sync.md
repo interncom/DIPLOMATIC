@@ -36,6 +36,16 @@ When a DIPLOMATIC client receives a new message, it applies that message to its 
 
 Following this procedure, when all clients have the same set of messages, regardless of the order they received the messages in, all client state will have the same set of ents each with contents set to that of the latest message with corresponding eid.
 
+### Rebuild and checksums
+
+Msgs are durable; EntDB (or any applier) is **derived**. After a schema or applier change, a client may hold a complete message archive while its derived ents are wrong.
+
+- **`rebuild`** — optionally inventories each linked host from seq 0 and pulls any missing bags, then clears application state and re-executes every archived msg. See [Client API](../api/client#rebuild).
+- **`msgcheck`** — compact digest of the local msg archive (set of head hashes). Equal digests on two devices mean the same set of msgs.
+- **EntDB `checksum` / worker `entcheck`** — digest of the live LWW frontier (`eid`, `updatedAt`, `ctr` per ent), not body contents. Pair with `msgcheck`: same archive digest but different frontier digests ⇒ re-derive with `rebuild`.
+
+See [Client API — Checksums](../api/client#checksums).
+
 ### Ordering
 
 That state update procedure requires a mechanism to order messages by recency. DIPLOMATIC orders messages using hybrid logical clock (HLC): a timestamp paired with an ent-specific counter. When a client creates an message, it sets the HLC's time component to be its view of the current time, and sets the counter component to the maximum counter it has seen for that ent, plus 1. The counter ensures that multiple events happening at the same time (e.g. high-frequency measurements) are still ordered correctly.

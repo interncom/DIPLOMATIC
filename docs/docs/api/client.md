@@ -103,6 +103,58 @@ All writes take a single opts object (`force` optional where skew can apply).
   await client.delete({ eid: ent.eid }); // slower
   ```
 
+## Rebuild
+
+- `rebuild(options?)` — wipe application state (e.g. EntDB) and re-derive it by replaying the local message archive.
+
+  ```ts
+  await client.rebuild();                    // default: inventory hosts first
+  await client.rebuild({ checkHost: false }); // local archive only
+  ```
+
+  By default (`checkHost: true`), each linked host is peeked from sequence 0 so any bags missing from the local archive are pulled before replay. Use this after an applier/schema change when msgs are correct but derived ents are wrong. Does **not** wipe the message archive, seed, or hosts.
+
+  With a sync worker, rebuild runs on the worker (network + EntDB apply off the main thread).
+
+## Checksums
+
+Digests for comparing archives and LWW frontiers across devices. Both use the same set construction: **blake3(concat(sort_lex(byte records)))**. Empty set → blake3 of empty input.
+
+### `msgcheck()` — message archive
+
+- `msgcheck()` → `Hash` (32-byte blake3 digest)
+
+  Checksum of the **set of msg head hashes** (archive keys). Keys are decoded to raw bytes (store encoding such as base64 IDB keys is irrelevant), sorted lexicographically, concatenated, then hashed.
+
+  ```ts
+  const a = await clientA.msgcheck();
+  const b = await clientB.msgcheck();
+  // equal digests ⇒ same set of msgs locally
+  ```
+
+  With a sync worker, runs off the main thread.
+
+### EntDB frontier — `checksum` / `entcheck`
+
+Not a content hash of bodies. Fingerprints **live** ents only (deletes are absent): each row as `eid ‖ updatedAt ‖ ctr` (varbytes eid, date as ms varint, ctr varint), then the same set-checksum as above.
+
+- `entDB.checksum(crypto)` → `ValStat<Hash>` — primary API; works on any `IEntDB` (memory, IDB, cached). Cached EntDB checksums the durable store, not a partial in-memory cache.
+
+  ```ts
+  import { crypto } from "@interncom/diplomatic";
+  const [digest, st] = await entDB.checksum(crypto);
+  ```
+
+- `WorkerClient.entcheck()` → `Hash` — same digest via the sync worker (off main). Not on `IClient` / `SyncClient` (those have no EntDB handle); call `entDB.checksum(crypto)` on the main-thread path.
+
+### Interpreting digests
+
+| `msgcheck` | Ent frontier | Meaning |
+|------------|--------------|---------|
+| equal | equal | Archives and LWW frontiers agree |
+| equal | differ | Same msgs, wrong derived state → `rebuild()` |
+| differ | * | Archives diverge → sync / `rebuild({ checkHost: true })` |
+
 ## Import/Export
 
 - `export(filename)`

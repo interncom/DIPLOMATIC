@@ -46,9 +46,12 @@ type EntFields<T> = {
   type: string;       // application type name
   body?: T;           // application payload
   gid?: string;       // optional group id
-  pid?: EntityID;     // optional parent eid
+  pid?: EntityID;     // optional parent eid (exclusive hierarchy)
+  tags?: string[];    // optional multi-value reverse-indexed tags (N:M refs)
 };
 ```
+
+`tags` are opaque strings (exact match). EntDB multiEntry-indexes them for reverse lookup via `getEntities({ type, tag })` — same performance model as `pid` reverse lookup, but multi-value. Clients define conventions (e.g. `impl:${btob64(eid)}`). Empty strings and duplicates are dropped on apply.
 
 A [rev](../about/glossary#rev) is the latest observed identity of an ent:
 

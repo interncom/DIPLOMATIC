@@ -12,6 +12,8 @@ export const typeIndexName = "entity_type_created_at";
 export const typeUpdatedAtIndexName = "entity_type_updated_at";
 export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
+/** multiEntry index on tags[]; query by tag then filter by type. */
+export const tagsIndexName = "entity_tags";
 
 interface IStoredEntity<T = unknown> {
   bod: T;
@@ -20,6 +22,7 @@ interface IStoredEntity<T = unknown> {
   eid: string;
   gid?: string;
   pid?: string;
+  tags?: string[];
   typ: string;
   upd: Date; // updatedAt
 }
@@ -32,6 +35,7 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
     eid: btob64(ent.eid),
     gid: ent.gid,
     pid: ent.pid ? btob64(ent.pid) : undefined,
+    tags: ent.tags,
     typ: ent.type,
     upd: ent.updatedAt,
   };
@@ -41,6 +45,9 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   }
   if (stored.pid === undefined) {
     delete stored.pid;
+  }
+  if (stored.tags === undefined) {
+    delete stored.tags;
   }
   if (stored.ctr === undefined) {
     delete stored.ctr;
@@ -60,6 +67,7 @@ function storedToEntity<T>(
     eid: b64tob(stored.eid) as EntityID,
     gid: stored.gid,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
+    ...(stored.tags !== undefined ? { tags: stored.tags } : {}),
   };
 }
 
@@ -68,7 +76,8 @@ export class EntIDB implements IEntDB {
 
   async init() {
     this.db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open("db", 11);
+      // v12: multiEntry tags index (entity_tags).
+      const req = indexedDB.open("db", 12);
       req.onupgradeneeded = () => {
         const db = req.result;
         const tx = req.transaction;
@@ -100,6 +109,14 @@ export class EntIDB implements IEntDB {
         if (!store.indexNames.contains(typeParentIndexName)) {
           store.createIndex(typeParentIndexName, ["typ", "pid"], {
             unique: false,
+          });
+        }
+        // multiEntry on array keyPath only (IDB forbids multiEntry + compound
+        // keyPath). Lookup by tag, then filter typ in app code.
+        if (!store.indexNames.contains(tagsIndexName)) {
+          store.createIndex(tagsIndexName, "tags", {
+            unique: false,
+            multiEntry: true,
           });
         }
       };
@@ -323,6 +340,29 @@ export class EntIDB implements IEntDB {
     });
   }
 
+  async getByTag<T>(
+    opType: string,
+    tag: string,
+  ): Promise<ValStat<IEntity<T>[]>> {
+    if (!this.db) {
+      return err(Status.DatabaseClosed);
+    }
+    const tx = this.db.transaction(entityTableName, "readonly");
+    const index = tx.objectStore(entityTableName).index(tagsIndexName);
+    return new Promise((resolve) => {
+      const req = index.getAll(IDBKeyRange.only(tag));
+      req.onsuccess = () => {
+        const storedEnts = req.result as IStoredEntity<T>[];
+        // multiEntry index is tag-only; keep type filter (same API as pid/gid).
+        const ents = storedEnts
+          .filter((s) => s.typ === opType)
+          .map(storedToEntity);
+        resolve(ok(ents));
+      };
+      req.onerror = () => resolve(err(Status.DatabaseError));
+    });
+  }
+
   private async getAllEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
@@ -344,6 +384,8 @@ export class EntIDB implements IEntDB {
       });
     } else if ("gid" in query) {
       return await this.getGroupMembers<T>(query.type, query.gid);
+    } else if ("tag" in query) {
+      return await this.getByTag<T>(query.type, query.tag);
     } else if ("updatedBetween" in query) {
       return await this.getAllOfTypeUpdatedBetween<T>(
         query.type,

@@ -17,6 +17,7 @@ import { Clock, IClock } from "../shared/clock";
 import { Status } from "../shared/consts";
 import type {
   EntityID,
+  Hash,
   IDeleteParams,
   IEntRev,
   IHostConnectionInfo,
@@ -570,6 +571,12 @@ export class WorkerClient implements IClient<URL> {
       op: "rebuild",
       checkHost: options?.checkHost,
     });
+  }
+
+  /** Local archive checksum (main-thread store; no worker round-trip). */
+  async msgcheck(): Promise<Hash> {
+    await this.ready;
+    return this.local.msgcheck();
   }
 
   async wipe(): Promise<void> {

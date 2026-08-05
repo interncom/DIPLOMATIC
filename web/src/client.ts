@@ -29,6 +29,7 @@ import {
   MasterSeed,
 } from "./shared/types";
 import { btob64 } from "./shared/binary";
+import { checksumHashes } from "./shared/checksum";
 import { revFromHead } from "./entdb/entdb";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
@@ -636,6 +637,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     // Serialize clear + replay with local mutates / drain.
     return this.enqueueApplyJob(() => this.replay());
+  }
+
+  /**
+   * Checksum of the local msg archive (set of head hashes).
+   * listKeys → raw bytes → sort → blake3(concat); empty → blake3(∅).
+   * Store key encoding is irrelevant; we always sort decoded (binary) hashes.
+   */
+  public async msgcheck(): Promise<Hash> {
+    const keys = await this.store.messages.listKeys();
+    return checksumHashes(keys, this.crypto);
   }
 
   /**

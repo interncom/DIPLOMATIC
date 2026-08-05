@@ -257,6 +257,8 @@ export interface IMessageStore {
    * diagnostics). Omit for all messages.
    */
   list: (apld?: ApldState) => Promise<IStoredMessage[]>;
+  /** Archive keys only (head hashes). Prefer over {@link list} for checksums. */
+  listKeys: () => Promise<Hash[]>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
   /** Mark archive rows as applied ({@link APLD_APPLIED}). */
   markApplied: (keys: Iterable<Hash>) => Promise<void>;
@@ -322,6 +324,13 @@ export interface IClient<Handle extends HostHandle> {
    * Pass `{ checkHost: false }` to skip the host inventory (local-only).
    */
   rebuild(options?: { checkHost?: boolean }): Promise<Status>;
+
+  /**
+   * Checksum of the local msg archive as a set of head hashes.
+   * Decodes store keys to raw hashes, sorts lexicographically, blake3(concat).
+   * Key encoding (e.g. b64 in IDB) is independent of this definition.
+   */
+  msgcheck(): Promise<Hash>;
 
   wipe(): Promise<void>;
 

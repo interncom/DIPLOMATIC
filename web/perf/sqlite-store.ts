@@ -468,6 +468,13 @@ class SqliteMessageStore implements IMessageStore {
     );
   }
 
+  async listKeys(): Promise<Hash[]> {
+    const rows = this.db.prepare("SELECT hash FROM messages").all() as {
+      hash: string;
+    }[];
+    return rows.map((row) => b64tob(row.hash) as Hash);
+  }
+
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     // Compare in JS; eid blob equality in SQL is fine for exact match filter.
     const rows = this.db.prepare(

@@ -181,6 +181,86 @@ describe("Client", () => {
     });
   });
 
+  describe("rebuild", () => {
+    test("clears state and replays archive without host check", async () => {
+      const entDB = new EntDBMemory();
+      const stateMgr = entStateManager(entDB);
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+      const client = new SyncClient(
+        mockClock,
+        stateMgr,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+
+      const seed = new Uint8Array(32).fill(3) as MasterSeed;
+      await client.setSeed(seed);
+      // No host link: local-only archive.
+      const entBod: EncodedMessage = encode({
+        type: "todo",
+        body: { text: "rebuild-me" },
+      });
+      await client.insertRaw(entBod);
+
+      const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
+      expect(beforeStat).toBe(Status.Success);
+      expect(before?.length).toBe(1);
+
+      // Simulate derived state diverging from archive (schema/applier bug).
+      await entDB.clear();
+      const [empty, emptyStat] = await entDB.getEntities({ type: "todo" });
+      expect(emptyStat).toBe(Status.Success);
+      expect(empty?.length).toBe(0);
+      expect(Array.from(await store.messages.list()).length).toBe(1);
+
+      const st = await client.rebuild({ checkHost: false });
+      expect(st).toBe(Status.Success);
+
+      const [after, afterStat] = await entDB.getEntities({ type: "todo" });
+      expect(afterStat).toBe(Status.Success);
+      expect(after?.length).toBe(1);
+      expect(after?.[0].body).toEqual({ text: "rebuild-me" });
+      // Archive preserved.
+      expect(Array.from(await store.messages.list()).length).toBe(1);
+    });
+
+    test("replays all msgs including previously applied", async () => {
+      let applyCount = 0;
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+      const state: IStateManager = {
+        async apply(msgs) {
+          applyCount += msgs.length;
+          return msgs.map(() => Status.Success);
+        },
+        async clear() {
+          return Status.Success;
+        },
+        notify() {},
+        async refresh() {},
+        on() {},
+        off() {},
+      };
+      const client = new SyncClient(
+        mockClock,
+        state,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+      const seed = new Uint8Array(32).fill(4) as MasterSeed;
+      await client.setSeed(seed);
+      await client.insertRaw(new Uint8Array([1]));
+      await client.insertRaw(new Uint8Array([2]));
+      expect(applyCount).toBe(2);
+
+      applyCount = 0;
+      const st = await client.rebuild({ checkHost: false });
+      expect(st).toBe(Status.Success);
+      expect(applyCount).toBe(2);
+    });
+  });
+
   describe("wipe", () => {
     test("clears protocol store and calls state.clear", async () => {
       const store = new MemoryStore<IProtoHost>(libsodiumCrypto);

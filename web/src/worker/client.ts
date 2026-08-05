@@ -561,6 +561,17 @@ export class WorkerClient implements IClient<URL> {
     return this.requestStatus({ id: this.allocId(), op: "sync" });
   }
 
+  async rebuild(options?: { checkHost?: boolean }): Promise<Status> {
+    await this.ready;
+    this.scheduledSync.cancel();
+    await this.scheduledSync.flush();
+    return this.requestStatus({
+      id: this.allocId(),
+      op: "rebuild",
+      checkHost: options?.checkHost,
+    });
+  }
+
   async wipe(): Promise<void> {
     await this.ready;
     await this.request({ id: this.allocId(), op: "wipe" });

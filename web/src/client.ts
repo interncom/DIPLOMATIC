@@ -609,6 +609,148 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return Status.Success;
   }
 
+  /**
+   * Rebuild application state from the local message archive.
+   *
+   * By default, inventories each linked host from seq 0 (full header list),
+   * enqueues and pulls any bags missing from the archive, then clears EntDB
+   * (or other app state) and re-executes every archived msg. Use after a
+   * schema/applier change when derived ents diverge from the durable archive.
+   *
+   * Pass `{ checkHost: false }` to skip the host inventory (offline / local-only).
+   * Does not wipe the message archive, seed, or hosts.
+   */
+  public async rebuild(
+    options?: { checkHost?: boolean },
+  ): Promise<Status> {
+    // Wait out in-flight sync; cancel debounced work so it cannot interleave.
+    this.scheduledSync.cancel();
+    await this.syncRuns.flush();
+
+    const checkHost = options?.checkHost ?? true;
+    if (checkHost) {
+      const st = await this.repull();
+      if (st !== Status.Success) {
+        return st;
+      }
+    }
+    // Serialize clear + replay with local mutates / drain.
+    return this.enqueueApplyJob(() => this.replay());
+  }
+
+  /**
+   * Peek each host from seq 0 and pull any bags not already in the archive.
+   * Leaves open msgs as APLD_PENDING; does not exec (rebuild replays everything).
+   */
+  private async repull(): Promise<Status> {
+    const { connections, crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) {
+      return Status.MissingSeed;
+    }
+
+    const hosts = Array.from(await store.hosts.list());
+    if (hosts.length < 1) {
+      return Status.Success;
+    }
+
+    // Connect to any hosts that are known but not connected.
+    for (const host of hosts) {
+      const existing = connections.get(host.label);
+      if (!existing || !existing.isConnected()) {
+        // No listen/sync: inventory only; rebuild will replay after pull.
+        await this.connectToHost(host, false, false);
+      }
+    }
+
+    // Peek and pull from each host.
+    for (const [label, conn] of connections) {
+      const host = await store.hosts.get(label);
+      // TODO: handle missing hosts better. If all were missing, would be NOP but still report success.
+      if (!host) continue;
+
+      // Full inventory: override lastSeq so peek returns every head.
+      const syncParams: ISyncParams<Handle> = {
+        conn,
+        store,
+        enclave,
+        host: { ...host, lastSeq: 0 },
+        crypto,
+        maxPushBytes: this.maxPushBytes,
+        maxPullBytes: this.maxPullBytes,
+        onProgress: this.emitProgress,
+        peekProgressEvery: this.peekProgressEvery,
+      };
+
+      const peekStat = await syncPeek(syncParams);
+      if (peekStat !== Status.Success) {
+        console.error(`rebuild: failed to peek: ${peekStat}`);
+        this.emitProgress({ phase: "idle" });
+        return peekStat;
+      }
+      this.xferState.emit();
+
+      // Open only — no exec; replay applies the full archive after clear.
+      const pullStat = await syncPull(syncParams);
+      if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
+        console.error(`rebuild: failed to pull: ${pullStat}`);
+        this.emitProgress({ phase: "idle" });
+        return pullStat;
+      }
+      this.xferState.emit();
+    }
+
+    this.emitProgress({ phase: "idle" });
+    return Status.Success;
+  }
+
+  /**
+   * Clear app state and re-exec every archived msg (HLC newest-first batches).
+   * Caller must hold applyChain.
+   */
+  private async replay(): Promise<Status> {
+    const clearStat = await this.state.clear();
+    if (clearStat !== Status.Success) {
+      return clearStat;
+    }
+
+    // TODO: could message store just maintain these in sorted order so we don't have to sort manually?
+    const all = await this.store.messages.list();
+    const ordered = sortByHlcDesc(all, (m) => m.head);
+    const total = ordered.length;
+    if (total < 1) {
+      this.emitProgress({ phase: "idle" });
+      return Status.Success;
+    }
+
+    let processed = 0;
+    while (processed < ordered.length) {
+      let totalBytes = 0;
+      let count = 0;
+      let end = processed;
+      for (
+        let i = processed;
+        i < ordered.length && count < 100 && totalBytes < 100 * 1024;
+        i++
+      ) {
+        totalBytes += ordered[i].head.len;
+        count++;
+        end = i + 1;
+      }
+      const batch = ordered.slice(processed, end);
+      await this.applyStored(batch);
+      this.emitProgress({
+        phase: "exec",
+        done: end,
+        total,
+      });
+      processed = end;
+    }
+
+    this.emitProgress({ phase: "idle" });
+    return Status.Success;
+  }
+
   public async wipe() {
     // Stop further scheduled work and tear down push listeners first.
     this.scheduledSync.cancel();

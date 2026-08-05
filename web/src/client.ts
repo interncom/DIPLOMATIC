@@ -29,7 +29,7 @@ import {
   MasterSeed,
 } from "./shared/types";
 import { btob64 } from "./shared/binary";
-import { checksumHashes } from "./shared/checksum";
+import { checksumSet } from "./shared/checksum";
 import { revFromHead } from "./entdb/entdb";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
@@ -646,7 +646,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    */
   public async msgcheck(): Promise<Hash> {
     const keys = await this.store.messages.listKeys();
-    return checksumHashes(keys, this.crypto);
+    return checksumSet(keys, this.crypto);
   }
 
   /**

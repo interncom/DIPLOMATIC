@@ -586,6 +586,22 @@ export class WorkerClient implements IClient<URL> {
     return result as Hash;
   }
 
+  /**
+   * EntDB frontier checksum off main (eid+upd+ctr). Not on IClient —
+   * SyncClient has no EntDB; use entDB.checksum(crypto) on the main path.
+   */
+  async entcheck(): Promise<Hash> {
+    await this.ready;
+    const result = await this.request({
+      id: this.allocId(),
+      op: "entcheck",
+    });
+    if (!(result instanceof Uint8Array)) {
+      throw new Error(`${logPrefix} entcheck: expected Uint8Array`);
+    }
+    return result as Hash;
+  }
+
   async wipe(): Promise<void> {
     await this.ready;
     await this.request({ id: this.allocId(), op: "wipe" });

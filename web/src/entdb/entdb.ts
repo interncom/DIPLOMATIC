@@ -22,6 +22,8 @@ import { err, ok, ValStat } from "../shared/valstat";
 import {
   EntityID,
   GroupID,
+  Hash,
+  ICrypto,
   IEntRev,
   IMessageHead,
   IMsgEntBody,
@@ -95,6 +97,11 @@ export interface IEntDB {
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
+  /**
+   * Frontier checksum of live rows: eid + updatedAt + ctr per ent
+   * (see encodeEntRev / checksumEntRevs). Not a content hash of bodies.
+   */
+  checksum(crypto: ICrypto): Promise<ValStat<Hash>>;
 }
 
 /** Prior rev from a loaded entity (typical update/delete input). */
@@ -158,6 +165,7 @@ export const nullEntDB: IEntDB = {
   getEnt: async () => err(Status.NotImplemented),
   getEntities: async (_query: EntitiesQuery) => err(Status.NotImplemented),
   countEntities: async () => err(Status.NotImplemented),
+  checksum: async () => err(Status.NotImplemented),
   apply: async (ops: IOp[]) => ({
     stats: ops.map(() => Status.NotImplemented),
     types: new Set(),

@@ -83,6 +83,8 @@ export class WorkerRuntime {
       this.markReady();
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      // Surface to main: without this, connect only sees a ready timeout.
+      this.post({ kind: "initError", message: err.message });
       this.failReady(err);
       throw err;
     }

@@ -370,6 +370,12 @@ export class WorkerClient implements IClient<URL> {
         this.markReady();
         return;
       }
+      case "initError": {
+        this.failReady(
+          new Error(`${logPrefix} worker init failed: ${msg.message}`),
+        );
+        return;
+      }
       case "clientState": {
         this.cachedClientState = msg.state;
         this.clientState.emit();

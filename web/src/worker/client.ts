@@ -573,10 +573,17 @@ export class WorkerClient implements IClient<URL> {
     });
   }
 
-  /** Local archive checksum (main-thread store; no worker round-trip). */
+  /** Archive checksum via worker (listKeys + sort + blake3 off main). */
   async msgcheck(): Promise<Hash> {
     await this.ready;
-    return this.local.msgcheck();
+    const result = await this.request({
+      id: this.allocId(),
+      op: "msgcheck",
+    });
+    if (!(result instanceof Uint8Array)) {
+      throw new Error(`${logPrefix} msgcheck: expected Uint8Array`);
+    }
+    return result as Hash;
   }
 
   async wipe(): Promise<void> {

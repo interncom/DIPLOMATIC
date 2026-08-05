@@ -29,7 +29,11 @@ scope.onmessage = (ev: MessageEvent<unknown>) => {
 async function handleCmd(cmd: WorkerCmd): Promise<void> {
   try {
     const result = await runtime.handle(cmd);
-    if (cmd.op === "export" && result instanceof Uint8Array) {
+    // Transfer large/binary results (export archive; msgcheck digest).
+    if (
+      (cmd.op === "export" || cmd.op === "msgcheck") &&
+      result instanceof Uint8Array
+    ) {
       const copy = result.slice();
       scope.postMessage(replyOk(cmd.id, copy), [copy.buffer]);
       return;

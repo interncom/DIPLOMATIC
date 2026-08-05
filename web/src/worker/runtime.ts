@@ -182,6 +182,11 @@ export class WorkerRuntime {
         });
       }
 
+      case "msgcheck": {
+        // Heavy key walk + sort + blake3 off the main thread.
+        return await client.msgcheck();
+      }
+
       case "wipe": {
         await client.wipe();
         return undefined;

@@ -34,6 +34,7 @@ export type WorkerCmd =
   | { id: number; op: "disconnect" }
   | { id: number; op: "sync" }
   | { id: number; op: "rebuild"; checkHost?: boolean }
+  | { id: number; op: "msgcheck" }
   | { id: number; op: "wipe" }
   | { id: number; op: "import"; bytes: Uint8Array }
   | { id: number; op: "export" }

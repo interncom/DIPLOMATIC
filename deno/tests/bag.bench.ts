@@ -60,7 +60,12 @@ async function bench(size: number, suffix: string) {
     if (stat !== Status.Success) {
       throw new Error(`Error decoding bag: ${stat}`);
     }
-    const [, openStat] = await openBag(bag, hostIdnt.publicKey, crypto, enclave);
+    const [, openStat] = await openBag(
+      bag,
+      hostIdnt.publicKey,
+      crypto,
+      enclave,
+    );
     if (openStat !== Status.Success) {
       throw new Error(`Open bag failed: ${openStat}`);
     }

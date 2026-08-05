@@ -176,6 +176,12 @@ export class WorkerRuntime {
         return await client.sync();
       }
 
+      case "rebuild": {
+        return await client.rebuild({
+          checkHost: cmd.checkHost ?? true,
+        });
+      }
+
       case "wipe": {
         await client.wipe();
         return undefined;

@@ -131,4 +131,42 @@ describe("Sync Integration", () => {
     messages = Array.from(await storeB.messages.list());
     expect(messages.length).toBe(3); // two inserts + update
   });
+
+  test("rebuild checkHost pulls missing bags then replays archive", async () => {
+    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
+    const { client: clientA } = await createClient(masterSeed);
+    const { store: storeB, client: clientB } = await createClient(masterSeed);
+
+    await clientA.link({ handle: lpcHost, label: "test", idx: 1 });
+    await clientB.link({ handle: lpcHost, label: "test", idx: 1 });
+    await clientA.connect(false);
+    await clientB.connect(false);
+
+    const msg1: EncodedMessage = new Uint8Array([10, 20]);
+    const msg2: EncodedMessage = new Uint8Array([30, 40]);
+    await clientA.insertRaw(msg1);
+    await clientA.insertRaw(msg2);
+    expect(await clientA.sync()).toBe(Status.Success);
+    expect(await clientB.sync()).toBe(Status.Success);
+
+    let messagesB = Array.from(await storeB.messages.list());
+    expect(messagesB.length).toBe(2);
+
+    // Drop one archived msg on B (as if pruning or incomplete sync).
+    const drop = messagesB[0];
+    await storeB.messages.del([drop.hash]);
+    messagesB = Array.from(await storeB.messages.list());
+    expect(messagesB.length).toBe(1);
+
+    // lastSeq is already at host max, so normal sync would not re-peek.
+    // rebuild with checkHost inventories from seq 0 and recovers the bag.
+    expect(await clientB.rebuild({ checkHost: true })).toBe(Status.Success);
+
+    messagesB = Array.from(await storeB.messages.list());
+    expect(messagesB.length).toBe(2);
+    const bodies = messagesB.map((m) => m.body).sort((a, b) =>
+      (a?.[0] ?? 0) - (b?.[0] ?? 0)
+    );
+    expect(bodies).toEqual([msg1, msg2]);
+  });
 });

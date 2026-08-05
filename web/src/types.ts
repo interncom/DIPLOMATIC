@@ -315,6 +315,14 @@ export interface IClient<Handle extends HostHandle> {
 
   sync(): Promise<Status>;
 
+  /**
+   * Wipe application state (e.g. EntDB) and rebuild it by replaying the local
+   * message archive. By default, first peeks the full host header list (seq 0)
+   * and pulls any missing bags so the archive is complete before replay.
+   * Pass `{ checkHost: false }` to skip the host inventory (local-only).
+   */
+  rebuild(options?: { checkHost?: boolean }): Promise<Status>;
+
   wipe(): Promise<void>;
 
   import(file: File): Promise<Status>;

@@ -1,10 +1,11 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { applyOp, IEntDB, IEntity } from "./entdb";
+import { applyOp, IEntDB, IEntity, revFromEntity } from "./entdb";
 import { btob64, bytesEqual } from "../shared/binary";
+import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp } from "../shared/types";
+import { EntityID, GroupID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 
 interface IDateRange {
@@ -347,5 +348,13 @@ export class EntDBMemory implements IEntDB {
       }
     }
     return ok(count);
+  }
+
+  async checksum(crypto: ICrypto): Promise<ValStat<Hash>> {
+    const revs = [];
+    for (const ent of this.ents.values()) {
+      revs.push(revFromEntity(ent));
+    }
+    return checksumEntRevs(revs, crypto);
   }
 }

@@ -83,7 +83,12 @@ import {
   idleProgress,
   shouldEmitItemProgress,
 } from "./progress";
-import { checksumHashes, cmpBytes } from "./shared/checksum";
+import {
+  checksumEntRevs,
+  checksumSet,
+  cmpBytes,
+  encodeEntRev,
+} from "./shared/checksum";
 import {
   openDiplomaticClient,
   type OpenDiplomaticClientMainOptions,
@@ -127,13 +132,15 @@ export {
   btob64,
   btoh,
   CachedEntDB,
-  checksumHashes,
+  checksumEntRevs,
+  checksumSet,
   Clock,
   cmpBytes,
   crypto,
   Decoder,
   defaultPeekProgressEvery,
   eidCodec,
+  encodeEntRev,
   Encoder,
   EntDBMemory,
   EntIDB,

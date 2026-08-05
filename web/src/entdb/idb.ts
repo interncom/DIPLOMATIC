@@ -1,10 +1,17 @@
 // IndexedDB implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
+import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, IOp } from "../shared/types";
+import { EntityID, GroupID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-import { applyOp, EntitiesQuery, IEntDB, IEntity } from "./entdb";
+import {
+  applyOp,
+  EntitiesQuery,
+  IEntDB,
+  IEntity,
+  revFromEntity,
+} from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
 
 export const entityTableName = "entities";
@@ -433,6 +440,32 @@ export class EntIDB implements IEntDB {
       const range = IDBKeyRange.bound([type], [type, []]);
       const req = index.count(range);
       req.onsuccess = () => resolve(ok(req.result));
+      req.onerror = () => resolve(err(Status.DatabaseError));
+    });
+  }
+
+  async checksum(crypto: ICrypto): Promise<ValStat<Hash>> {
+    let db: IDBDatabase;
+    try {
+      db = await this.ensureDb();
+    } catch {
+      return err(Status.DatabaseClosed);
+    }
+    const tx = db.transaction(entityTableName, "readonly");
+    const store = tx.objectStore(entityTableName);
+    const revs: ReturnType<typeof revFromEntity>[] = [];
+    return new Promise((resolve) => {
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          const stored = cursor.value as IStoredEntity;
+          revs.push(revFromEntity(storedToEntity(stored)));
+          cursor.continue();
+        } else {
+          void checksumEntRevs(revs, crypto).then(resolve);
+        }
+      };
       req.onerror = () => resolve(err(Status.DatabaseError));
     });
   }

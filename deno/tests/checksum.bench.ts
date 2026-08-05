@@ -1,6 +1,6 @@
 // Benchmark msg-set checksum: sort + concat + blake3 over N head hashes.
 
-import { checksumHashes } from "../../shared/checksum.ts";
+import { checksumSet } from "../../shared/checksum.ts";
 import type { Hash } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
@@ -36,14 +36,14 @@ const sizes = [
 for (const { n, label } of sizes) {
   const hashes = makeHashes(n);
 
-  Deno.bench(`checksumHashes (${label} hashes)`, {
+  Deno.bench(`checksumSet (${label} hashes)`, {
     // 1m is heavy; fewer group samples keep the suite usable.
-    group: "checksumHashes",
+    group: "checksumSet",
     baseline: n === 1_000,
   }, async () => {
     // Copy the array so each iter pays full sort cost (sort is in-place).
     const copy = hashes.slice();
-    await checksumHashes(copy, crypto);
+    await checksumSet(copy, crypto);
   });
 }
 
@@ -62,7 +62,7 @@ for (const { n, label } of sizes) {
     concat.set(sorted[i], i * HASH_LEN);
   }
 
-  Deno.bench("checksumHashes phases (100k): sort only", () => {
+  Deno.bench("checksumSet phases (100k): sort only", () => {
     const copy = hashes.slice();
     copy.sort((a, b) => {
       for (let i = 0; i < HASH_LEN; i++) {
@@ -72,7 +72,7 @@ for (const { n, label } of sizes) {
     });
   });
 
-  Deno.bench("checksumHashes phases (100k): blake3 concat only", async () => {
+  Deno.bench("checksumSet phases (100k): blake3 concat only", async () => {
     await crypto.blake3(concat);
   });
 }

@@ -4,6 +4,7 @@
 import { SyncClient } from "../client";
 import crypto from "../crypto";
 import { openEntDB } from "../entdb/cached";
+import type { IEntDB } from "../entdb/entdb";
 import { Clock } from "../shared/clock";
 import { Status } from "../shared/consts";
 import { hostHTTPTransport } from "../shared/http";
@@ -16,6 +17,7 @@ export type PostFn = (msg: WorkerEvent, transfer?: Transferable[]) => void;
 
 export class WorkerRuntime {
   private client: SyncClient<URL> | undefined;
+  private entDB: IEntDB | undefined;
   private post: PostFn;
   /** Resolves when init finishes (success or failure). Cmds wait on this. */
   private whenReady: Promise<void>;
@@ -64,6 +66,7 @@ export class WorkerRuntime {
         crypto,
       );
       this.client = client;
+      this.entDB = entDB;
 
       // Progress lives on xferState; one channel for queues + phase ticks.
       client.clientState.listen(() => {
@@ -185,6 +188,21 @@ export class WorkerRuntime {
       case "msgcheck": {
         // Heavy key walk + sort + blake3 off the main thread.
         return await client.msgcheck();
+      }
+
+      case "entcheck": {
+        const entDB = this.entDB;
+        if (!entDB) {
+          throw new WorkerStatusError(Status.InternalError);
+        }
+        const [digest, st] = await entDB.checksum(crypto);
+        if (st !== Status.Success) {
+          throw new WorkerStatusError(st);
+        }
+        if (!digest) {
+          throw new WorkerStatusError(Status.InternalError);
+        }
+        return digest;
       }
 
       case "wipe": {

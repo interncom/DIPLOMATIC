@@ -23,7 +23,7 @@
 import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
-import { EntityID, IOp } from "../shared/types";
+import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat";
 import { applyOp, EntitiesQuery, IEntDB, IEntity } from "./entdb";
 import { openEntIDB } from "./idb";
@@ -271,6 +271,11 @@ export class CachedEntDB implements IEntDB {
       }
     }
     return this.mem.countEntities({ type });
+  }
+
+  /** Durable authority — mem may be only partially warm. */
+  async checksum(crypto: ICrypto): Promise<ValStat<Hash>> {
+    return this.durable.checksum(crypto);
   }
 }
 

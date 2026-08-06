@@ -30,12 +30,15 @@ import type {
 } from "../shared/types";
 import type { ValStat } from "../shared/valstat";
 import type {
+  ApldState,
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
   IHostRow,
   IStateEmitter,
   IStore,
+  IStoredMessage,
+  ListMsgsOpts,
 } from "../types";
 import {
   clientStateFromUnknown,
@@ -571,6 +574,17 @@ export class WorkerClient implements IClient<URL> {
       op: "rebuild",
       checkHost: options?.checkHost,
     });
+  }
+
+  /** Shared message IDB on main — no worker RPC. */
+  async listMsgs(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
+    await this.ready;
+    return this.local.listMsgs(opts);
+  }
+
+  async countMsgs(apld?: ApldState): Promise<number> {
+    await this.ready;
+    return this.local.countMsgs(apld);
   }
 
   /** Archive checksum via worker (listKeys + sort + blake3 off main). */

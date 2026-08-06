@@ -10,6 +10,7 @@ import {
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
+  ListMsgsOpts,
   setApld,
   toStoredMessage,
 } from "../../types";
@@ -92,7 +93,9 @@ export class IDBMessageStore implements IMessageStore {
     return result !== undefined;
   }
 
-  async list(apld?: ApldState): Promise<IStoredMessage[]> {
+  async list(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
+    const apld = opts?.apld;
+    const body = opts?.body !== false;
     const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
     const store = tx.objectStore(MESSAGES_TABLE);
     return new Promise<IStoredMessage[]>((resolve, reject) => {
@@ -112,11 +115,23 @@ export class IDBMessageStore implements IMessageStore {
         } else {
           Promise.all(
             pending.map(({ hash, data }) =>
-              toStoredMessage(hash, data, this.crypto)
+              toStoredMessage(hash, data, this.crypto, { body })
             ),
           ).then(resolve).catch(reject);
         }
       };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async count(apld?: ApldState): Promise<number> {
+    const tx = this.db.transaction(MESSAGES_TABLE, "readonly");
+    const store = tx.objectStore(MESSAGES_TABLE);
+    return new Promise<number>((resolve, reject) => {
+      const req = apld === undefined
+        ? store.count()
+        : store.index(MESSAGES_APLD_INDEX).count(IDBKeyRange.only(apld));
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
   }

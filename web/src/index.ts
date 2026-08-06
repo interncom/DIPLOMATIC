@@ -66,6 +66,7 @@ import type {
   IStoredMessage,
   IStoredMessageData,
   IStoredMessageWrite,
+  ListMsgsOpts,
 } from "./types";
 import {
   APLD_APPLIED,
@@ -208,6 +209,7 @@ export type {
   IStoredMessageWrite,
   ITransport,
   IUpdateParams,
+  ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,

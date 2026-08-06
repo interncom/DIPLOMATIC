@@ -277,7 +277,7 @@ async function main() {
       crypto: libsodiumCrypto,
     },
     async () => {
-      const pending = await downStore.messages.list(APLD_PENDING);
+      const pending = await downStore.messages.list({ apld: APLD_PENDING });
       if (pending.length < 1) return;
       // Match SyncClient: newest HLC first for early final app state.
       const ordered = sortByHlcDesc(pending, (m) => m.head);

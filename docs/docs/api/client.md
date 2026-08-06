@@ -155,6 +155,42 @@ Not a content hash of bodies. Fingerprints **live** ents only (deletes are absen
 | equal | differ | Same msgs, wrong derived state → `rebuild()` |
 | differ | * | Archives diverge → sync / `rebuild({ checkHost: true })` |
 
+## Apply diagnostics
+
+Each archived msg has an apply lifecycle state (`apld`):
+
+| Value | Constant | Meaning |
+|-------|----------|---------|
+| `"f"` | `APLD_PENDING` | stored, not yet successfully applied (also transient storage errors) |
+| `"t"` | `APLD_APPLIED` | exec succeeded (`Success` / `NoChange`) |
+| `"e"` | `APLD_ERROR` | terminal apply failure; `err` holds a `Status` code |
+
+Use these when digests disagree or the app looks out of sync:
+
+- `countMsgs(apld?)` → number of msgs (optional filter). Prefer over list+length for badges.
+- `listMsgs(opts?)` → enumerate msgs for inspection.
+  - `opts.apld` — filter (e.g. `APLD_ERROR` for poison msgs, `APLD_PENDING` for stuck drain)
+  - `opts.body` — include payloads and derive `head.hsh` (**default `true`**). Pass `body: false` for lighter listings (`body`/`hsh` omitted; `head.len` still reflects stored size).
+
+```ts
+import { APLD_ERROR, Status } from "@interncom/diplomatic";
+
+const n = await client.countMsgs(APLD_ERROR);
+if (n > 0) {
+  const failed = await client.listMsgs({ apld: APLD_ERROR });
+  for (const m of failed) {
+    console.warn(Status[m.err ?? 0], m.head.ctr, m.hash);
+    // m.body present by default — decode as needed
+  }
+  // Badge / head-only scan:
+  const light = await client.listMsgs({ apld: APLD_ERROR, body: false });
+}
+// After fixing the applier/schema:
+await client.rebuild();
+```
+
+With a sync worker, list/count read the shared message archive on the main thread (no worker RPC).
+
 ## Import/Export
 
 - `export(filename)`

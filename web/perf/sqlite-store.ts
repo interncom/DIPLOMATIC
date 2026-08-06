@@ -28,6 +28,7 @@ import type {
   IStore,
   IStoredMessage,
   IUploadQueue,
+  ListMsgsOpts,
 } from "../src/types";
 import {
   APLD_APPLIED,
@@ -403,24 +404,34 @@ class SqliteMessageStore implements IMessageStore {
     }
   }
 
-  private rowToStored(row: {
-    hash: string;
-    eid: Uint8Array;
-    off: number | null;
-    ctr: number | null;
-    body: Uint8Array | null;
-    apld: number;
-    err: number | null;
-  }, key: Hash): Promise<IStoredMessage> {
+  private rowToStored(
+    row: {
+      hash: string;
+      eid: Uint8Array;
+      off: number | null;
+      ctr: number | null;
+      body: Uint8Array | null;
+      apld: number;
+      err: number | null;
+    },
+    key: Hash,
+    opts?: { body?: boolean },
+  ): Promise<IStoredMessage> {
     const apld = apldFromSql(row.apld);
-    return toStoredMessage(key, {
-      eid: new Uint8Array(row.eid),
-      ...(row.off !== null ? { off: row.off } : {}),
-      ...(row.ctr !== null ? { ctr: row.ctr } : {}),
-      ...(row.body ? { body: new Uint8Array(row.body) } : {}),
-      apld,
-      ...(apld === APLD_ERROR && row.err !== null ? { err: row.err } : {}),
-    }, this.crypto);
+    // Pass body bytes for len; toStoredMessage omits payload/hsh when body: false.
+    return toStoredMessage(
+      key,
+      {
+        eid: new Uint8Array(row.eid) as EntityID,
+        ...(row.off !== null ? { off: row.off } : {}),
+        ...(row.ctr !== null ? { ctr: row.ctr } : {}),
+        ...(row.body ? { body: new Uint8Array(row.body) } : {}),
+        apld,
+        ...(apld === APLD_ERROR && row.err !== null ? { err: row.err } : {}),
+      },
+      this.crypto,
+      opts,
+    );
   }
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
@@ -446,7 +457,7 @@ class SqliteMessageStore implements IMessageStore {
     return row !== null;
   }
 
-  async list(apld?: ApldState): Promise<IStoredMessage[]> {
+  async list(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
     type Row = {
       hash: string;
       eid: Uint8Array;
@@ -456,6 +467,8 @@ class SqliteMessageStore implements IMessageStore {
       apld: number;
       err: number | null;
     };
+    const apld = opts?.apld;
+    const body = opts?.body !== false;
     const rows = apld === undefined
       ? this.db.prepare(
         "SELECT hash, eid, off, ctr, body, apld, err FROM messages",
@@ -464,8 +477,24 @@ class SqliteMessageStore implements IMessageStore {
         "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE apld = ?",
       ).all(apldToSql(apld)) as Row[];
     return await Promise.all(
-      rows.map((row) => this.rowToStored(row, b64tob(row.hash))),
+      rows.map((row) =>
+        this.rowToStored(row, b64tob(row.hash) as Hash, { body })
+      ),
     );
+  }
+
+  async count(apld?: ApldState): Promise<number> {
+    if (apld === undefined) {
+      const row = this.db.prepare("SELECT COUNT(*) AS n FROM messages")
+        .get() as {
+          n: number;
+        };
+      return row.n;
+    }
+    const row = this.db.prepare(
+      "SELECT COUNT(*) AS n FROM messages WHERE apld = ?",
+    ).get(apldToSql(apld)) as { n: number };
+    return row.n;
   }
 
   async listKeys(): Promise<Hash[]> {
@@ -497,7 +526,7 @@ class SqliteMessageStore implements IMessageStore {
       const ro = row.off ?? 0;
       if (rc > bc || (rc === bc && ro > bo)) best = row;
     }
-    return await this.rowToStored(best, b64tob(best.hash));
+    return await this.rowToStored(best, b64tob(best.hash) as Hash);
   }
 
   async markApplied(keys: Iterable<Hash>) {

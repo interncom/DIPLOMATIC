@@ -10,7 +10,6 @@ ARCH
 - use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
 
 CLIENT
-- add a flag to messages in the client store indicating if they've been applied or not. Then syncPull becomes only responsible for downloading and storing (but not applying) messages. In a separate follow-up phase, apply the unapplied messages. Also handle case of failed application in web/src/client.ts apply().
 - client override server skewed push rejection by adjusting local timestamp with host offset (no API change necessary)
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey
 - split React portion into separate package?

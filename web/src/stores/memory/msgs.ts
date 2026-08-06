@@ -10,6 +10,7 @@ import {
   IStorableMessage,
   IStoredMessage,
   IStoredMessageData,
+  ListMsgsOpts,
   setApld,
   toStoredMessage,
 } from "../../types";
@@ -47,14 +48,25 @@ export class MemoryMessageStore implements IMessageStore {
     return this.messages.has(btob64(key));
   }
 
-  async list(apld?: ApldState): Promise<IStoredMessage[]> {
+  async list(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
+    const apld = opts?.apld;
+    const body = opts?.body !== false;
     const out: IStoredMessage[] = [];
     for (const [keyStr, data] of this.messages) {
       if (apld !== undefined && apldFromStored(data.apld) !== apld) continue;
       const hash = b64tob(keyStr) as Hash;
-      out.push(await toStoredMessage(hash, data, this.crypto));
+      out.push(await toStoredMessage(hash, data, this.crypto, { body }));
     }
     return out;
+  }
+
+  async count(apld?: ApldState): Promise<number> {
+    if (apld === undefined) return this.messages.size;
+    let n = 0;
+    for (const data of this.messages.values()) {
+      if (apldFromStored(data.apld) === apld) n++;
+    }
+    return n;
   }
 
   async listKeys(): Promise<Hash[]> {

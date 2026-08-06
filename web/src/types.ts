@@ -218,17 +218,35 @@ export function setApld(
   }
 }
 
+/**
+ * Options for archive list / client diagnostics.
+ * `body` defaults to **true**. Pass `body: false` for heads + apld + err only.
+ */
+export type ListMsgsOpts = {
+  /** Filter by apply lifecycle; omit for all archive rows. */
+  apld?: ApldState;
+  /**
+   * Include msg bodies and derive `head.hsh` from them.
+   * Default `true`. Pass `false` to omit body and `hsh` (cheaper diagnostics);
+   * `head.len` still reflects stored size.
+   */
+  body?: boolean;
+};
+
 export async function toStoredMessage(
   hash: Hash,
   data: IStoredMessageData,
   crypto: ICrypto,
+  opts?: { body?: boolean },
 ): Promise<IStoredMessage> {
+  // Default include body (get/last/list). Pass body: false to skip payload/hsh.
+  const includeBody = opts?.body !== false;
   const apld = apldFromStored(data.apld);
-  const body = data.body;
-  const len = body?.length ?? 0;
+  const raw = data.body;
+  const len = raw?.length ?? 0;
   let hsh: Uint8Array | undefined;
-  if (body && len > 0) {
-    hsh = await crypto.blake3(body);
+  if (includeBody && raw && len > 0) {
+    hsh = await crypto.blake3(raw);
   }
   const head: IMessageHead = {
     eid: data.eid,
@@ -242,7 +260,7 @@ export async function toStoredMessage(
     head,
     apld,
   };
-  if (body !== undefined) out.body = body;
+  if (includeBody && raw !== undefined) out.body = raw;
   if (apld === APLD_ERROR && data.err !== undefined) out.err = data.err;
   return out;
 }
@@ -252,11 +270,12 @@ export interface IMessageStore {
   has: (key: Hash) => Promise<boolean>;
   del: (keys: Iterable<Hash>) => Promise<void>;
   /**
-   * List archive rows. Pass {@link ApldState} to filter by apply lifecycle
-   * (e.g. {@link APLD_PENDING} for the apply queue, {@link APLD_ERROR} for
-   * diagnostics). Omit for all messages.
+   * List archive rows. Filter with `apld` (e.g. {@link APLD_ERROR}).
+   * Bodies included by default; pass `body: false` to omit.
    */
-  list: (apld?: ApldState) => Promise<IStoredMessage[]>;
+  list: (opts?: ListMsgsOpts) => Promise<IStoredMessage[]>;
+  /** Count archive rows; optional apld filter (IDB index when available). */
+  count: (apld?: ApldState) => Promise<number>;
   /** Archive keys only (head hashes). Prefer over {@link list} for checksums. */
   listKeys: () => Promise<Hash[]>;
   last: (eid: EntityID) => Promise<IStoredMessage | undefined>;
@@ -331,6 +350,18 @@ export interface IClient<Handle extends HostHandle> {
    * Key encoding (e.g. b64 in IDB) is independent of this definition.
    */
   msgcheck(): Promise<Hash>;
+
+  /**
+   * List local archive rows for diagnostics (failed apply, pending drain, dump).
+   * Bodies included by default; pass `body: false` for lighter listings.
+   */
+  listMsgs(opts?: ListMsgsOpts): Promise<IStoredMessage[]>;
+
+  /**
+   * Count archive rows; optional apld filter.
+   * Prefer over list+length for badges.
+   */
+  countMsgs(apld?: ApldState): Promise<number>;
 
   wipe(): Promise<void>;
 

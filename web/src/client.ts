@@ -52,6 +52,7 @@ import {
 } from "./sync";
 import {
   APLD_PENDING,
+  ApldState,
   IClient,
   IDiplomaticClientState,
   IDiplomaticClientXferState,
@@ -62,6 +63,7 @@ import {
   IStore,
   IStoredMessage,
   IStoredMessageWrite,
+  ListMsgsOpts,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -271,7 +273,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   private async doDrainApplyQueue(): Promise<Status[]> {
-    const pending = await this.store.messages.list(APLD_PENDING);
+    const pending = await this.store.messages.list({ apld: APLD_PENDING });
     if (pending.length < 1) {
       return [];
     }
@@ -647,6 +649,19 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public async msgcheck(): Promise<Hash> {
     const keys = await this.store.messages.listKeys();
     return checksumSet(keys, this.crypto);
+  }
+
+  /**
+   * List local archive rows (failed apply, pending drain, full dump).
+   * Bodies included by default; pass `body: false` for lighter listings.
+   */
+  public listMsgs(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
+    return this.store.messages.list(opts);
+  }
+
+  /** Count archive rows; optional apld filter. Prefer over list+length. */
+  public countMsgs(apld?: ApldState): Promise<number> {
+    return this.store.messages.count(apld);
   }
 
   /**

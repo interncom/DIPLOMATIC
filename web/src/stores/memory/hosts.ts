@@ -30,6 +30,8 @@ function applyStats<H extends HostHandle>(
 export class MemoryHostStore<Handle extends HostHandle>
   implements IHostStore<Handle> {
   hosts = new Map<string, IHostRow<Handle>>();
+  /** Serializes recordStats so concurrent peeks do not drop bag/dupe deltas. */
+  private statsChain: Promise<void> = Promise.resolve();
 
   async add(info: IHostConnectionInfo<Handle>) {
     const host: IHostRow<Handle> = {
@@ -47,10 +49,14 @@ export class MemoryHostStore<Handle extends HostHandle>
   }
 
   async recordStats(label: string, u: HostStatsUpdate) {
-    const host = this.hosts.get(label);
-    if (!host) return;
-    applyStats(host, u);
-    this.hosts.set(label, { ...host });
+    const run = this.statsChain.then(() => {
+      const host = this.hosts.get(label);
+      if (!host) return;
+      applyStats(host, u);
+      this.hosts.set(label, { ...host });
+    });
+    this.statsChain = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   async get(label: string) {

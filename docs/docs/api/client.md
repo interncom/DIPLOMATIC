@@ -201,6 +201,7 @@ Host **bag** count and client **msg** count are different metrics: bags are per-
   - `opts.pull` (default **true**): enqueue downloads for msgs on the host missing locally.
   - `opts.push` (default **false**): enqueue uploads for local archive msgs missing on the host.
   - `opts.sync` (default **true**): run `sync()` afterward so queues drain (pull open/exec + push). Pass `sync: false` for inventory-only.
+  - Cancels debounced sync and waits for any in-flight `sync()` before inventory (same safeguard as `rebuild`), so a full peek does not overlap a normal peek.
 
 ```ts
 const [hostCheck, st] = await client.reconcile("primary", {

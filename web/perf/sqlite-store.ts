@@ -18,6 +18,7 @@ import type {
 } from "../src/shared/types";
 import type {
   ApldState,
+  HostStatsUpdate,
   IDownloadMessage,
   IDownloadQueue,
   IHostRow,
@@ -62,7 +63,9 @@ function openDb(path: string): Database {
     CREATE TABLE IF NOT EXISTS hosts (
       label TEXT PRIMARY KEY,
       idx INTEGER NOT NULL,
-      lastSeq INTEGER NOT NULL DEFAULT 0
+      lastSeq INTEGER NOT NULL DEFAULT 0,
+      numBags INTEGER NOT NULL DEFAULT 0,
+      numDupes INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS uploads (
       host TEXT NOT NULL,
@@ -94,9 +97,19 @@ function openDb(path: string): Database {
     CREATE INDEX IF NOT EXISTS messages_apld ON messages(apld);
     CREATE INDEX IF NOT EXISTS messages_eid ON messages(eid);
   `);
-  // Older perf DBs may lack err.
+  // Older perf DBs may lack err / host bag stats.
   try {
     db.exec("ALTER TABLE messages ADD COLUMN err INTEGER");
+  } catch {
+    // column already present
+  }
+  try {
+    db.exec("ALTER TABLE hosts ADD COLUMN numBags INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // column already present
+  }
+  try {
+    db.exec("ALTER TABLE hosts ADD COLUMN numDupes INTEGER NOT NULL DEFAULT 0");
   } catch {
     // column already present
   }
@@ -137,21 +150,51 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
     this.handles.set(info.label, info.handle);
     const idx = info.idx ?? 0;
     this.db.prepare(
-      `INSERT INTO hosts (label, idx, lastSeq) VALUES (?, ?, 0)
+      `INSERT INTO hosts (label, idx, lastSeq, numBags, numDupes)
+       VALUES (?, ?, 0, 0, 0)
        ON CONFLICT(label) DO UPDATE SET idx = excluded.idx`,
     ).run(info.label, idx);
   }
 
   async touch(label: string, seq: number) {
+    await this.recordStats(label, { lastSeq: seq });
+  }
+
+  async recordStats(label: string, u: HostStatsUpdate) {
+    const row = this.db.prepare(
+      "SELECT lastSeq, numBags, numDupes FROM hosts WHERE label = ?",
+    ).get(label) as {
+      lastSeq: number;
+      numBags: number;
+      numDupes: number;
+    } | null;
+    if (!row) return;
+    let lastSeq = row.lastSeq;
+    let numBags = row.numBags ?? 0;
+    let numDupes = row.numDupes ?? 0;
+    if (u.setLastSeq !== undefined) lastSeq = u.setLastSeq;
+    else if (u.lastSeq !== undefined && u.lastSeq > lastSeq) {
+      lastSeq = u.lastSeq;
+    }
+    if (u.numBags !== undefined) numBags = u.numBags;
+    else if (u.bagDelta) numBags += u.bagDelta;
+    if (u.numDupes !== undefined) numDupes = u.numDupes;
+    else if (u.dupeDelta) numDupes += u.dupeDelta;
     this.db.prepare(
-      "UPDATE hosts SET lastSeq = ? WHERE label = ? AND lastSeq < ?",
-    ).run(seq, label, seq);
+      "UPDATE hosts SET lastSeq = ?, numBags = ?, numDupes = ? WHERE label = ?",
+    ).run(lastSeq, numBags, numDupes, label);
   }
 
   async get(label: string): Promise<IHostRow<Handle> | undefined> {
     const row = this.db.prepare(
-      "SELECT label, idx, lastSeq FROM hosts WHERE label = ?",
-    ).get(label) as { label: string; idx: number; lastSeq: number } | null;
+      "SELECT label, idx, lastSeq, numBags, numDupes FROM hosts WHERE label = ?",
+    ).get(label) as {
+      label: string;
+      idx: number;
+      lastSeq: number;
+      numBags: number;
+      numDupes: number;
+    } | null;
     if (!row) return undefined;
     const handle = this.handles.get(label);
     if (handle === undefined) return undefined;
@@ -159,6 +202,8 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
       label: row.label,
       idx: row.idx,
       lastSeq: row.lastSeq,
+      numBags: row.numBags ?? 0,
+      numDupes: row.numDupes ?? 0,
       handle,
     };
   }
@@ -177,8 +222,14 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
 
   async list(): Promise<Iterable<IHostRow<Handle>>> {
     const rows = this.db.prepare(
-      "SELECT label, idx, lastSeq FROM hosts",
-    ).all() as { label: string; idx: number; lastSeq: number }[];
+      "SELECT label, idx, lastSeq, numBags, numDupes FROM hosts",
+    ).all() as {
+      label: string;
+      idx: number;
+      lastSeq: number;
+      numBags: number;
+      numDupes: number;
+    }[];
     const out: IHostRow<Handle>[] = [];
     for (const row of rows) {
       const handle = this.handles.get(row.label);
@@ -187,6 +238,8 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
         label: row.label,
         idx: row.idx,
         lastSeq: row.lastSeq,
+        numBags: row.numBags ?? 0,
+        numDupes: row.numDupes ?? 0,
         handle,
       });
     }

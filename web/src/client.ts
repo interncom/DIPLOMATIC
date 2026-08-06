@@ -46,6 +46,7 @@ import {
   deqDownloadsForHeadHashes,
   handleNotif,
   ISyncParams,
+  reconcileHost,
   syncPeek,
   syncPull,
   syncPush,
@@ -64,6 +65,7 @@ import {
   IStoredMessage,
   IStoredMessageWrite,
   ListMsgsOpts,
+  ReconcileOpts,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -662,6 +664,66 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   /** Count archive rows; optional apld filter. Prefer over list+length. */
   public countMsgs(apld?: ApldState): Promise<number> {
     return this.store.messages.count(apld);
+  }
+
+  /**
+   * Full inventory of one host (peek seq 0): set numBags/numDupes/lastSeq on
+   * the host row; optionally enqueue downloads (`pull`, default true) and/or
+   * uploads (`push`, default false). By default runs {@link sync} afterward so
+   * queues drain. Returns ephemeral host msg checksum (distinct msgs on host;
+   * same construction as {@link msgcheck}). Read counts via {@link hosts}.
+   */
+  public async reconcile(
+    hostLabel: string,
+    opts?: ReconcileOpts,
+  ): Promise<ValStat<Hash>> {
+    const { connections, crypto, store } = this;
+    const enclave = await store.seed.load();
+    if (!enclave) return err(Status.MissingSeed);
+
+    let host = await store.hosts.get(hostLabel);
+    if (!host) return err(Status.NotFound);
+
+    let conn = connections.get(hostLabel);
+    if (!conn || !conn.isConnected()) {
+      await this.connectToHost(host, false, false);
+      host = await store.hosts.get(hostLabel);
+      if (!host) return err(Status.NotFound);
+      conn = connections.get(hostLabel);
+    }
+    if (!conn) return err(Status.InternalError);
+
+    const [report, st] = await reconcileHost({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto,
+      maxPushBytes: this.maxPushBytes,
+      maxPullBytes: this.maxPullBytes,
+      onProgress: this.emitProgress,
+      peekProgressEvery: this.peekProgressEvery,
+    }, opts);
+    this.xferState.emit();
+    if (st !== Status.Success) {
+      this.emitProgress({ phase: "idle" });
+      return err(st);
+    }
+    if (!report) {
+      this.emitProgress({ phase: "idle" });
+      return err(Status.InternalError);
+    }
+
+    // Default: drain upload/download queues so sets actually reconcile.
+    if (opts?.sync !== false) {
+      const syncSt = await this.sync();
+      if (syncSt !== Status.Success) {
+        return err(syncSt);
+      }
+    } else {
+      this.emitProgress({ phase: "idle" });
+    }
+    return ok(report.msgcheck);
   }
 
   /**

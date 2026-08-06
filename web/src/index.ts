@@ -59,6 +59,7 @@ import { SingletonStateManager } from "./shared/singleton";
 import type {
   ApldState,
   Applier,
+  HostStatsUpdate,
   IClient,
   IDiplomaticClientState,
   IHostRow,
@@ -67,6 +68,7 @@ import type {
   IStoredMessageData,
   IStoredMessageWrite,
   ListMsgsOpts,
+  ReconcileOpts,
 } from "./types";
 import {
   APLD_APPLIED,
@@ -193,6 +195,7 @@ export type {
   CachedEntDBOptions,
   EntDBMemoryOptions,
   HostHandle,
+  HostStatsUpdate,
   IClient,
   ICrypto,
   IDeleteParams,
@@ -215,6 +218,7 @@ export type {
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
   OpenEntDBOptions,
+  ReconcileOpts,
   SyncProgressEvent,
   WorkerClientOptions,
 };

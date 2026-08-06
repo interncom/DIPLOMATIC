@@ -17,6 +17,7 @@ import { decryptPeekItem } from "./shared/sync";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import { btob64 } from "./shared/binary";
+import { checksumSet } from "./shared/checksum";
 import {
   defaultPeekProgressEvery,
   ProgressFn,
@@ -30,6 +31,8 @@ import {
   IStorableMessage,
   IStore,
   type IStoredMessageWrite,
+  type ReconcileOpts,
+  type ReconcileResult,
 } from "./types";
 
 /** Default soft cap for one push/pull request (~1 MiB). Apps with large
@@ -388,6 +391,11 @@ export async function syncPeek<Handle extends HostHandle>(
   });
 
   // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
+  // Track head occurrences in this batch for dupe accounting.
+  const batchHeadCount = new Map<string, number>();
+  let dupeDelta = 0;
+  const pendingUp = await store.uploads.list(host.label);
+  const pendingUpKeys = new Set(pendingUp.map((h) => btob64(h)));
   for (const result of cryptoResults) {
     if (!result.ok) {
       // Skip desyncs client vs host until CHECK reconciles message sets.
@@ -395,11 +403,28 @@ export async function syncPeek<Handle extends HostHandle>(
       continue;
     }
 
+    const headKey = btob64(result.headEncHash);
+    const n = (batchHeadCount.get(headKey) ?? 0) + 1;
+    batchHeadCount.set(headKey, n);
+    // Second+ bag for same head in this batch is a host-side extra.
+    if (n > 1) {
+      dupeDelta += 1;
+    }
+
     const msgExists = await store.messages.has(result.headEncHash);
     if (msgExists) {
       // Already archived (import or prior sync): no download. Drop any stale
       // download-queue row and redundant upload (host already has this head).
       console.info("peek: local msg; skip download, deq upload");
+      // Cross-batch host dupe heuristic: first occurrence in this batch of a
+      // msg we already hold, and we were not waiting to push it → extra bag
+      // on host for a msg we already have (upload already deq'd earlier).
+      // Corrected to absolute on reconcile. Skip if still on upload queue
+      // (our first bag for a local write, not a host duplicate).
+      if (n === 1 && !pendingUpKeys.has(headKey)) {
+        dupeDelta += 1;
+      }
+      pendingUpKeys.delete(headKey);
       await store.uploads.deq(host.label, [result.headEncHash]);
       await store.downloads.deq(host.label, [result.seq]);
       continue;
@@ -423,10 +448,15 @@ export async function syncPeek<Handle extends HostHandle>(
   }
   await store.downloads.enq(dls);
 
-  // Host will not re-offer these seqs on later peeks.
+  // Host will not re-offer these seqs on later peeks. Bag/dupe counts update
+  // in the same stats write as lastSeq so they cannot drift.
   if (items.length > 0) {
     const maxSeq = Math.max(...items.map((i) => i.seq));
-    await store.hosts.touch(host.label, maxSeq);
+    await store.hosts.recordStats(host.label, {
+      lastSeq: maxSeq,
+      bagDelta: items.length,
+      dupeDelta: dupeDelta > 0 ? dupeDelta : undefined,
+    });
   }
 
   if (onProgress) {
@@ -739,4 +769,189 @@ export async function handleNotif<Handle extends HostHandle>(
   if (outOfSeq || needPull || toStore.length > 0) {
     scheduleSync();
   }
+}
+
+/**
+ * Full host inventory (PEEK from seq 0): set absolute numBags/numDupes/lastSeq,
+ * and optionally enqueue downloads (msgs on host missing locally) and/or
+ * uploads (local msgs missing on host). Does not pull/push network beyond
+ * peek — caller should sync() to drain queues.
+ *
+ * lastSeq is set to the max bag seq in the inventory (0 if empty), including
+ * rewind when the host has fewer bags than a prior cursor believed.
+ */
+export async function reconcileHost<Handle extends HostHandle>(
+  params: ISyncParams<Handle>,
+  opts: ReconcileOpts = {},
+): Promise<ValStat<ReconcileResult>> {
+  const pull = opts.pull !== false;
+  const push = opts.push === true;
+  const {
+    conn,
+    store,
+    enclave,
+    host,
+    crypto,
+    onProgress,
+    peekProgressEvery,
+    peekConcurrency,
+  } = params;
+
+  const hostIdnt = await conn.identity();
+  // Full inventory: ignore local cursor.
+  const [items, peekStatus] = await conn.peek(0);
+  if (peekStatus !== Status.Success) {
+    return err(peekStatus);
+  }
+
+  const total = items.length;
+  const every = peekProgressEvery ?? defaultPeekProgressEvery;
+  const conc = peekConcurrency ?? defaultPeekConcurrency;
+  if (onProgress && total > 0) {
+    onProgress({ phase: "peek", host: host.label, done: 0, total });
+  }
+
+  let cryptoDone = 0;
+  const cryptoResults = await mapPool(items, conc, async (item) => {
+    const [itemDec, stat] = await decryptPeekItem(
+      item,
+      hostIdnt.publicKey,
+      enclave,
+      crypto,
+    );
+    let result: PeekCryptoResult;
+    if (stat !== Status.Success || !itemDec) {
+      result = { ok: false, seq: item.seq, stat };
+    } else {
+      const headEncHash = await crypto.blake3(itemDec.headEnc);
+      result = {
+        ok: true,
+        seq: item.seq,
+        kdm: itemDec.kdm,
+        headEnc: itemDec.headEnc,
+        headEncHash,
+      };
+    }
+    cryptoDone += 1;
+    if (onProgress && shouldEmitItemProgress(cryptoDone, total, every)) {
+      onProgress({
+        phase: "peek",
+        host: host.label,
+        done: cryptoDone,
+        total,
+      });
+    }
+    return result;
+  });
+
+  // msgKey (archive key / blake3 of encoded msg header) → first bag + count
+  type MsgAgg = {
+    hash: Hash;
+    count: number;
+    sample: Extract<PeekCryptoResult, { ok: true }>;
+  };
+  const byMsg = new Map<string, MsgAgg>();
+  for (const result of cryptoResults) {
+    if (!result.ok) continue;
+    const k = btob64(result.headEncHash);
+    const cur = byMsg.get(k);
+    if (cur) {
+      cur.count += 1;
+    } else {
+      byMsg.set(k, { hash: result.headEncHash, count: 1, sample: result });
+    }
+  }
+
+  let numDupes = 0;
+  const uniqueHashes: Hash[] = [];
+  for (const agg of byMsg.values()) {
+    if (agg.count > 1) numDupes += agg.count - 1;
+    uniqueHashes.push(agg.hash);
+  }
+  const bagCount = items.length;
+  const uniqueMsgs = byMsg.size;
+  // Same set-checksum as local msgcheck (distinct msgs only; dup bags ignored).
+  const hostMsgcheck = await checksumSet(uniqueHashes, crypto);
+
+  const dls: IDownloadMessage[] = [];
+  let missingLocal = 0;
+  for (const agg of byMsg.values()) {
+    const exists = await store.messages.has(agg.hash);
+    if (exists) {
+      // Host already has this msg — drop redundant upload if any.
+      await store.uploads.deq(host.label, [agg.hash]);
+      continue;
+    }
+    missingLocal += 1;
+    if (!pull) continue;
+    const r = agg.sample;
+    const headDec = new Decoder(r.headEnc);
+    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+    if (headStatus !== Status.Success) {
+      console.error("reconcile: reading msg header", headStatus);
+      continue;
+    }
+    dls.push({
+      kdm: r.kdm,
+      head,
+      seq: r.seq,
+      host: host.label,
+      headEnc: r.headEnc,
+      headEncHash: r.headEncHash,
+    });
+  }
+  if (dls.length > 0) {
+    await store.downloads.enq(dls);
+  }
+
+  let missingHost = 0;
+  if (push) {
+    const localKeys = await store.messages.listKeys();
+    const hostKeys = new Set(byMsg.keys());
+    const toUpload: Hash[] = [];
+    for (const key of localKeys) {
+      if (!hostKeys.has(btob64(key))) {
+        missingHost += 1;
+        toUpload.push(key);
+      }
+    }
+    if (toUpload.length > 0) {
+      await store.uploads.enq(host.label, toUpload);
+    }
+  } else {
+    // Still count local msgs absent on host (no enqueue).
+    const localKeys = await store.messages.listKeys();
+    const hostKeys = new Set(byMsg.keys());
+    for (const key of localKeys) {
+      if (!hostKeys.has(btob64(key))) missingHost += 1;
+    }
+  }
+
+  // Absolute stats from full inventory — lastSeq is max bag seq (or 0).
+  const setLastSeq = items.length > 0
+    ? Math.max(...items.map((i) => i.seq))
+    : 0;
+  await store.hosts.recordStats(host.label, {
+    numBags: bagCount,
+    numDupes,
+    setLastSeq,
+  });
+
+  if (onProgress) {
+    onProgress({
+      phase: "peek",
+      host: host.label,
+      done: total,
+      total,
+    });
+  }
+
+  return ok({
+    msgcheck: hostMsgcheck,
+    bagCount,
+    uniqueMsgs,
+    numDupes,
+    missingLocal,
+    missingHost,
+  });
 }

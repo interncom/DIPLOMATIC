@@ -28,7 +28,7 @@ import type {
   MasterSeed,
   SerializedContent,
 } from "../shared/types";
-import type { ValStat } from "../shared/valstat";
+import { err, ok, type ValStat } from "../shared/valstat";
 import type {
   ApldState,
   IClient,
@@ -39,6 +39,7 @@ import type {
   IStore,
   IStoredMessage,
   ListMsgsOpts,
+  ReconcileOpts,
 } from "../types";
 import {
   clientStateFromUnknown,
@@ -585,6 +586,36 @@ export class WorkerClient implements IClient<URL> {
   async countMsgs(apld?: ApldState): Promise<number> {
     await this.ready;
     return this.local.countMsgs(apld);
+  }
+
+  /**
+   * Full host inventory on the worker (network + crypto off main).
+   * Returns ephemeral host msg checksum; host row stats in shared IDB.
+   */
+  async reconcile(
+    hostLabel: string,
+    opts?: ReconcileOpts,
+  ): Promise<ValStat<Hash>> {
+    await this.ready;
+    try {
+      const result = await this.request({
+        id: this.allocId(),
+        op: "reconcile",
+        hostLabel,
+        pull: opts?.pull,
+        push: opts?.push,
+        sync: opts?.sync,
+      });
+      if (!(result instanceof Uint8Array) || result.length !== 32) {
+        return err(Status.InternalError);
+      }
+      return ok(result as Hash);
+    } catch (e) {
+      if (e instanceof WorkerReplyError && e.status !== Status.Success) {
+        return err(e.status);
+      }
+      return err(Status.InternalError);
+    }
   }
 
   /** Archive checksum via worker (listKeys + sort + blake3 off main). */

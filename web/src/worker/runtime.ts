@@ -185,6 +185,21 @@ export class WorkerRuntime {
         });
       }
 
+      case "reconcile": {
+        const [digest, st] = await client.reconcile(cmd.hostLabel, {
+          pull: cmd.pull,
+          push: cmd.push,
+          sync: cmd.sync,
+        });
+        if (st !== Status.Success) {
+          throw new WorkerStatusError(st);
+        }
+        if (!digest) {
+          throw new WorkerStatusError(Status.InternalError);
+        }
+        return digest;
+      }
+
       case "msgcheck": {
         // Heavy key walk + sort + blake3 off the main thread.
         return await client.msgcheck();

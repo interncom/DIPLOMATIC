@@ -1,6 +1,6 @@
 import { Status } from "../../shared/consts";
 import { IHostConnectionInfo, IHostMetadata } from "../../shared/types";
-import type { IHostRow, IHostStore } from "../../types";
+import type { HostStatsUpdate, IHostRow, IHostStore } from "../../types";
 import { HOSTS_TABLE } from "./store";
 
 // deno-lint-ignore no-explicit-any
@@ -10,10 +10,38 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
     handle: new URL(row.handle),
     idx: row.idx,
     lastSeq: row.lastSeq || 0,
+    numBags: row.numBags || 0,
+    numDupes: row.numDupes || 0,
     clockOffset: row.clockOffset,
     subscription: row.subscription,
   };
   return host;
+}
+
+function mergeStatsOntoRow(
+  // deno-lint-ignore no-explicit-any
+  row: any,
+  u: HostStatsUpdate,
+  // deno-lint-ignore no-explicit-any
+): any {
+  const next = { ...row };
+  if (u.setLastSeq !== undefined) {
+    next.lastSeq = u.setLastSeq;
+  } else if (u.lastSeq !== undefined) {
+    const prev = next.lastSeq || 0;
+    if (u.lastSeq > prev) next.lastSeq = u.lastSeq;
+  }
+  if (u.numBags !== undefined) {
+    next.numBags = u.numBags;
+  } else if (u.bagDelta !== undefined && u.bagDelta !== 0) {
+    next.numBags = (next.numBags || 0) + u.bagDelta;
+  }
+  if (u.numDupes !== undefined) {
+    next.numDupes = u.numDupes;
+  } else if (u.dupeDelta !== undefined && u.dupeDelta !== 0) {
+    next.numDupes = (next.numDupes || 0) + u.dupeDelta;
+  }
+  return next;
 }
 
 export class IDBHostStore implements IHostStore<URL> {
@@ -24,16 +52,27 @@ export class IDBHostStore implements IHostStore<URL> {
   }
 
   async add(info: IHostConnectionInfo<URL>) {
-    return this.put(info);
+    return this.put({
+      ...info,
+      lastSeq: 0,
+      numBags: 0,
+      numDupes: 0,
+    });
   }
 
   private async put(
-    info: Omit<IHostRow<URL>, "lastSeq"> & { lastSeq?: number },
+    info: Omit<IHostRow<URL>, "lastSeq" | "numBags" | "numDupes"> & {
+      lastSeq?: number;
+      numBags?: number;
+      numDupes?: number;
+    },
   ) {
     const host = {
       ...info,
       handle: info.handle.toString(),
       lastSeq: info.lastSeq ?? 0,
+      numBags: info.numBags ?? 0,
+      numDupes: info.numDupes ?? 0,
     };
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
@@ -47,6 +86,10 @@ export class IDBHostStore implements IHostStore<URL> {
   // lastSeq only advances. Concurrent peek/push/notif must not regress the cursor.
   // Check and put run in one transaction so the compare is not stale vs other writers.
   async touch(label: string, seq: number) {
+    return this.recordStats(label, { lastSeq: seq });
+  }
+
+  async recordStats(label: string, u: HostStatsUpdate) {
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);
     return new Promise<void>((resolve, reject) => {
@@ -56,9 +99,7 @@ export class IDBHostStore implements IHostStore<URL> {
       getReq.onsuccess = () => {
         const row = getReq.result;
         if (!row) return;
-        const prev = row.lastSeq || 0;
-        if (seq <= prev) return;
-        store.put({ ...row, lastSeq: seq });
+        store.put(mergeStatsOntoRow(row, u));
       };
     });
   }

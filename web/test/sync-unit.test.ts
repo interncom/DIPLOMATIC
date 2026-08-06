@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { syncPeek, syncPull, syncPush } from "../src/sync";
+import { reconcileHost, syncPeek, syncPull, syncPush } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
 import DiplomaticClientAPI from "../src/shared/client";
 import libsodiumCrypto from "../src/crypto";
@@ -7,10 +7,13 @@ import { Enclave } from "../src/shared/crypto/enclave";
 import { MockClock } from "../src/shared/clock";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
-import memStorage from "../src/shared/storage/memory";
+import memStorage, {
+  createMemoryStorage,
+} from "../src/shared/storage/memory";
 import { sealBag } from "../src/shared/bag";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
+import { checksumSet } from "../src/shared/checksum";
 import {
   Hash,
   HostHandle,
@@ -23,6 +26,7 @@ import {
   IDownloadMessage,
   IStoredMessageData,
 } from "../src/types";
+import { bytesEqual } from "../src/shared/binary";
 
 // Fixed seed for deterministic key derivation
 const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
@@ -148,6 +152,263 @@ describe("syncPeek", () => {
     // No download was enqueued.
     const downloads = Array.from(await store.downloads.list());
     expect(downloads.length).toBe(0);
+  });
+
+  test("increments numBags on incremental peek", async () => {
+    // Isolated host so leftover bags from other tests do not inflate counts.
+    const storage = createMemoryStorage();
+    const isolatedHost = new DiplomaticLPCServer(
+      storage,
+      libsodiumCrypto,
+      new CallbackNotifier(),
+      new MockClock(new Date(0)),
+    );
+    const transport = new LPCTransport(isolatedHost);
+    const isolatedConn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+      () => Promise.resolve(Status.Success),
+    );
+    const hostIdnt = await isolatedConn.identity();
+    await isolatedHost.storage.addUser(hostIdnt.publicKey);
+    await store.hosts.add({ label: "test", handle: isolatedHost, idx: 1 });
+
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(2),
+      off: 0,
+      ctr: 0,
+      len: 2,
+      bod: new Uint8Array([9, 9]),
+    };
+    const [bag, statBag] = await createTestBag(message, enclave);
+    expect(statBag).toBe(Status.Success);
+    if (!bag) return;
+    await isolatedHost.storage.setBags(hostIdnt.publicKey, [bag]);
+
+    const stat = await syncPeek({
+      conn: isolatedConn,
+      store,
+      enclave,
+      host: { ...host, lastSeq: 0, numBags: 0, numDupes: 0 },
+      crypto: libsodiumCrypto,
+    });
+    expect(stat).toBe(Status.Success);
+    const row = await store.hosts.get("test");
+    expect(row?.numBags).toBe(1);
+    expect(row?.numDupes).toBe(0);
+    expect(row?.lastSeq).toBeGreaterThan(0);
+  });
+});
+
+describe("reconcileHost", () => {
+  let store: MemoryStore<HostHandle>;
+  let enclave: Enclave;
+  let clock: MockClock;
+  let host: {
+    label: string;
+    idx: number;
+    lastSeq: number;
+    numBags: number;
+    numDupes: number;
+    handle?: HostHandle;
+  };
+  let conn: DiplomaticClientAPI<HostHandle>;
+  let lpcHost: DiplomaticLPCServer;
+
+  beforeEach(async () => {
+    store = new MemoryStore(libsodiumCrypto);
+    enclave = new Enclave(testSeed, libsodiumCrypto);
+    clock = new MockClock(new Date(0));
+    host = {
+      label: "test",
+      idx: 1,
+      lastSeq: 0,
+      numBags: 0,
+      numDupes: 0,
+    };
+    // Isolated host storage so bags do not leak across tests.
+    const storage = createMemoryStorage();
+    lpcHost = new DiplomaticLPCServer(
+      storage,
+      libsodiumCrypto,
+      new CallbackNotifier(),
+      new MockClock(new Date(0)),
+    );
+    const transport = new LPCTransport(lpcHost);
+    conn = new DiplomaticClientAPI(
+      enclave,
+      libsodiumCrypto,
+      host,
+      clock,
+      transport,
+      () => Promise.resolve(Status.Success),
+    );
+    const hostIdnt = await conn.identity();
+    await lpcHost.storage.addUser(hostIdnt.publicKey);
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+  });
+
+  test("sets numBags/numDupes and reports set differences", async () => {
+    const hostIdnt = await enclave.deriveIdentity("test", 1);
+
+    // Two bags, same head (duplicate on host).
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(3),
+      off: 0,
+      ctr: 0,
+      len: 3,
+      bod: new Uint8Array([1, 2, 3]),
+    };
+    const [bag1, s1] = await createTestBag(message, enclave);
+    const [bag2, s2] = await createTestBag(message, enclave);
+    expect(s1).toBe(Status.Success);
+    expect(s2).toBe(Status.Success);
+    if (!bag1 || !bag2) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [bag1, bag2]);
+
+    // Local-only msg (on client, not on host).
+    const localOnly: IMessage = {
+      eid: new Uint8Array(16).fill(4),
+      off: 0,
+      ctr: 0,
+      len: 1,
+      bod: new Uint8Array([7]),
+    };
+    let hsh: Uint8Array | undefined;
+    if (localOnly.bod && localOnly.len > 0) {
+      hsh = await libsodiumCrypto.blake3(localOnly.bod);
+    }
+    const enc = new Encoder();
+    messageHeadCodec.encode(enc, { ...localOnly, hsh });
+    const localHash = await libsodiumCrypto.blake3(enc.result()) as Hash;
+    await store.messages.add([{
+      key: localHash,
+      data: {
+        eid: localOnly.eid,
+        body: localOnly.bod,
+        apld: APLD_APPLIED,
+      },
+    }]);
+
+    const [report, st] = await reconcileHost(
+      {
+        conn,
+        store,
+        enclave,
+        host: { ...host, handle: lpcHost },
+        crypto: libsodiumCrypto,
+      },
+      { pull: true, push: true },
+    );
+    expect(st).toBe(Status.Success);
+    expect(report).toBeDefined();
+    if (!report) return;
+    expect(report.bagCount).toBe(2);
+    expect(report.uniqueMsgs).toBe(1);
+    expect(report.numDupes).toBe(1);
+    expect(report.missingLocal).toBe(1); // host msg not in archive
+    expect(report.missingHost).toBe(1); // local-only
+    // Host msgcheck = checksum of distinct msgs only (ignores bag dups).
+    expect(report.msgcheck).toBeDefined();
+    expect(report.msgcheck.length).toBe(32);
+
+    const row = await store.hosts.get("test");
+    expect(row?.numBags).toBe(2);
+    expect(row?.numDupes).toBe(1);
+    expect(row?.lastSeq).toBeGreaterThan(0);
+
+    // pull enqueued download for missing local head
+    expect(Array.from(await store.downloads.list()).length).toBe(1);
+    // push enqueued local-only
+    expect(await store.uploads.list("test")).toHaveLength(1);
+  });
+
+  test("pull false does not enqueue downloads", async () => {
+    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const message: IMessage = {
+      eid: new Uint8Array(16).fill(5),
+      off: 0,
+      ctr: 0,
+      len: 1,
+      bod: new Uint8Array([1]),
+    };
+    const [bag, s] = await createTestBag(message, enclave);
+    expect(s).toBe(Status.Success);
+    if (!bag) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
+
+    const [report, st] = await reconcileHost(
+      {
+        conn,
+        store,
+        enclave,
+        host: { ...host, handle: lpcHost },
+        crypto: libsodiumCrypto,
+      },
+      { pull: false, push: false },
+    );
+    expect(st).toBe(Status.Success);
+    expect(report?.missingLocal).toBe(1);
+    expect(Array.from(await store.downloads.list()).length).toBe(0);
+  });
+
+  test("host msgcheck matches checksum of distinct msgs", async () => {
+    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const msgA: IMessage = {
+      eid: new Uint8Array(16).fill(6),
+      off: 0,
+      ctr: 0,
+      len: 1,
+      bod: new Uint8Array([1]),
+    };
+    const msgB: IMessage = {
+      eid: new Uint8Array(16).fill(7),
+      off: 0,
+      ctr: 0,
+      len: 1,
+      bod: new Uint8Array([2]),
+    };
+    const [bagA1] = await createTestBag(msgA, enclave);
+    const [bagA2] = await createTestBag(msgA, enclave); // dupe of A
+    const [bagB] = await createTestBag(msgB, enclave);
+    if (!bagA1 || !bagA2 || !bagB) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [bagA1, bagA2, bagB]);
+
+    // Expected: msgs A and B only (A has two bags on host).
+    const msgHash = async (m: IMessage) => {
+      let hsh: Uint8Array | undefined;
+      if (m.bod && m.len > 0) hsh = await libsodiumCrypto.blake3(m.bod);
+      const enc = new Encoder();
+      messageHeadCodec.encode(enc, { ...m, hsh });
+      return await libsodiumCrypto.blake3(enc.result()) as Hash;
+    };
+    const ha = await msgHash(msgA);
+    const hb = await msgHash(msgB);
+    const expected = await checksumSet([ha, hb], libsodiumCrypto);
+
+    // Stale high cursor — reconcile should reset lastSeq from inventory.
+    await store.hosts.recordStats("test", { lastSeq: 999 });
+
+    const [report, st] = await reconcileHost(
+      {
+        conn,
+        store,
+        enclave,
+        host: { ...host, handle: lpcHost, lastSeq: 999 },
+        crypto: libsodiumCrypto,
+      },
+      { pull: false, push: false },
+    );
+    expect(st).toBe(Status.Success);
+    expect(report?.uniqueMsgs).toBe(2);
+    expect(report?.numDupes).toBe(1);
+    expect(bytesEqual(report!.msgcheck, expected)).toBe(true);
+    const row = await store.hosts.get("test");
+    expect(row?.lastSeq).toBeLessThan(999);
+    expect(row?.lastSeq).toBeGreaterThan(0);
   });
 });
 

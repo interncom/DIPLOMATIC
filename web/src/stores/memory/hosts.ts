@@ -4,7 +4,28 @@ import {
   IHostConnectionInfo,
   IHostMetadata,
 } from "../../shared/types";
-import type { IHostRow, IHostStore } from "../../types";
+import type { HostStatsUpdate, IHostRow, IHostStore } from "../../types";
+
+function applyStats<H extends HostHandle>(
+  host: IHostRow<H>,
+  u: HostStatsUpdate,
+): void {
+  if (u.setLastSeq !== undefined) {
+    host.lastSeq = u.setLastSeq;
+  } else if (u.lastSeq !== undefined && u.lastSeq > host.lastSeq) {
+    host.lastSeq = u.lastSeq;
+  }
+  if (u.numBags !== undefined) {
+    host.numBags = u.numBags;
+  } else if (u.bagDelta !== undefined && u.bagDelta !== 0) {
+    host.numBags = (host.numBags ?? 0) + u.bagDelta;
+  }
+  if (u.numDupes !== undefined) {
+    host.numDupes = u.numDupes;
+  } else if (u.dupeDelta !== undefined && u.dupeDelta !== 0) {
+    host.numDupes = (host.numDupes ?? 0) + u.dupeDelta;
+  }
+}
 
 export class MemoryHostStore<Handle extends HostHandle>
   implements IHostStore<Handle> {
@@ -14,17 +35,22 @@ export class MemoryHostStore<Handle extends HostHandle>
     const host: IHostRow<Handle> = {
       ...info,
       lastSeq: 0,
+      numBags: 0,
+      numDupes: 0,
     };
     this.hosts.set(info.label, host);
   }
 
   // lastSeq only advances. Concurrent peek/push/notif must not regress the cursor.
   async touch(label: string, seq: number) {
+    await this.recordStats(label, { lastSeq: seq });
+  }
+
+  async recordStats(label: string, u: HostStatsUpdate) {
     const host = this.hosts.get(label);
-    if (!host || seq <= host.lastSeq) {
-      return;
-    }
-    this.hosts.set(label, { ...host, lastSeq: seq });
+    if (!host) return;
+    applyStats(host, u);
+    this.hosts.set(label, { ...host });
   }
 
   async get(label: string) {

@@ -29,9 +29,10 @@ scope.onmessage = (ev: MessageEvent<unknown>) => {
 async function handleCmd(cmd: WorkerCmd): Promise<void> {
   try {
     const result = await runtime.handle(cmd);
-    // Transfer large/binary results (export; msgcheck / entcheck digests).
+    // Transfer large/binary results (export; msgcheck / entcheck / reconcile).
     if (
-      (cmd.op === "export" || cmd.op === "msgcheck" || cmd.op === "entcheck") &&
+      (cmd.op === "export" || cmd.op === "msgcheck" || cmd.op === "entcheck" ||
+        cmd.op === "reconcile") &&
       result instanceof Uint8Array
     ) {
       const copy = result.slice();

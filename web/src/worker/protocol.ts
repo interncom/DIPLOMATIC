@@ -34,6 +34,14 @@ export type WorkerCmd =
   | { id: number; op: "disconnect" }
   | { id: number; op: "sync" }
   | { id: number; op: "rebuild"; checkHost?: boolean }
+  | {
+    id: number;
+    op: "reconcile";
+    hostLabel: string;
+    pull?: boolean;
+    push?: boolean;
+    sync?: boolean;
+  }
   | { id: number; op: "msgcheck" }
   | { id: number; op: "entcheck" }
   | { id: number; op: "wipe" }

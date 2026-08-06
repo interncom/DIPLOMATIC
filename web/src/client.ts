@@ -669,7 +669,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   /**
    * Full inventory of one host (peek seq 0): set numBags/numDupes/lastSeq on
    * the host row; optionally enqueue downloads (`pull`, default true) and/or
-   * uploads (`push`, default false). By default runs {@link sync} afterward so
+   * uploads (`push`, default false). Waits out in-flight {@link sync} first
+   * (same as {@link rebuild}). By default runs {@link sync} afterward so
    * queues drain. Returns ephemeral host msg checksum (distinct msgs on host;
    * same construction as {@link msgcheck}). Read counts via {@link hosts}.
    */
@@ -677,6 +678,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     hostLabel: string,
     opts?: ReconcileOpts,
   ): Promise<ValStat<Hash>> {
+    // Prevent overlapping peek/push/pull with inventory.
+    this.scheduledSync.cancel();
+    await this.syncRuns.flush();
+
     const { connections, crypto, store } = this;
     const enclave = await store.seed.load();
     if (!enclave) return err(Status.MissingSeed);

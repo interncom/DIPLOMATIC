@@ -391,8 +391,9 @@ export async function syncPeek<Handle extends HostHandle>(
   });
 
   // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
-  // Track head occurrences in this batch for dupe accounting.
-  const batchHeadCount = new Map<string, number>();
+  // Track msg occurrences in this batch for dupe accounting / download de-dupe.
+  const batchMsgCount = new Map<string, number>();
+  const enqMsgs = new Set<string>();
   let dupeDelta = 0;
   const pendingUp = await store.uploads.list(host.label);
   const pendingUpKeys = new Set(pendingUp.map((h) => btob64(h)));
@@ -403,10 +404,10 @@ export async function syncPeek<Handle extends HostHandle>(
       continue;
     }
 
-    const headKey = btob64(result.headEncHash);
-    const n = (batchHeadCount.get(headKey) ?? 0) + 1;
-    batchHeadCount.set(headKey, n);
-    // Second+ bag for same head in this batch is a host-side extra.
+    const msgKey = btob64(result.headEncHash);
+    const n = (batchMsgCount.get(msgKey) ?? 0) + 1;
+    batchMsgCount.set(msgKey, n);
+    // Second+ bag for same msg in this batch is a host-side extra.
     if (n > 1) {
       dupeDelta += 1;
     }
@@ -414,18 +415,24 @@ export async function syncPeek<Handle extends HostHandle>(
     const msgExists = await store.messages.has(result.headEncHash);
     if (msgExists) {
       // Already archived (import or prior sync): no download. Drop any stale
-      // download-queue row and redundant upload (host already has this head).
+      // download-queue row and redundant upload (host already has this msg).
       console.info("peek: local msg; skip download, deq upload");
       // Cross-batch host dupe heuristic: first occurrence in this batch of a
       // msg we already hold, and we were not waiting to push it → extra bag
       // on host for a msg we already have (upload already deq'd earlier).
       // Corrected to absolute on reconcile. Skip if still on upload queue
       // (our first bag for a local write, not a host duplicate).
-      if (n === 1 && !pendingUpKeys.has(headKey)) {
+      if (n === 1 && !pendingUpKeys.has(msgKey)) {
         dupeDelta += 1;
       }
-      pendingUpKeys.delete(headKey);
+      pendingUpKeys.delete(msgKey);
       await store.uploads.deq(host.label, [result.headEncHash]);
+      await store.downloads.deq(host.label, [result.seq]);
+      continue;
+    }
+
+    // Already enqueueing a download for this msg from an earlier bag in batch.
+    if (enqMsgs.has(msgKey)) {
       await store.downloads.deq(host.label, [result.seq]);
       continue;
     }
@@ -437,6 +444,7 @@ export async function syncPeek<Handle extends HostHandle>(
       continue;
     }
 
+    enqMsgs.add(msgKey);
     dls.push({
       kdm: result.kdm,
       head,

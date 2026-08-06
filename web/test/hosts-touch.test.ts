@@ -95,4 +95,16 @@ describe("MemoryHostStore.recordStats", () => {
     expect(row?.lastSeq).toBe(3);
     expect(row?.numBags).toBe(3);
   });
+
+  test("concurrent recordStats deltas all apply (serialized)", async () => {
+    const n = 50;
+    await Promise.all(
+      Array.from({ length: n }, () =>
+        hosts.recordStats("h", { bagDelta: 1, dupeDelta: 1 })
+      ),
+    );
+    const row = await hosts.get("h");
+    expect(row?.numBags).toBe(n);
+    expect(row?.numDupes).toBe(n);
+  });
 });

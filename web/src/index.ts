@@ -69,6 +69,7 @@ import type {
   IStoredMessageWrite,
   ListMsgsOpts,
   ReconcileOpts,
+  ReconcileReport,
 } from "./types";
 import {
   APLD_APPLIED,
@@ -219,6 +220,7 @@ export type {
   OpenedDiplomaticClient,
   OpenEntDBOptions,
   ReconcileOpts,
+  ReconcileReport,
   SyncProgressEvent,
   WorkerClientOptions,
 };

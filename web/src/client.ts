@@ -66,6 +66,7 @@ import {
   IStoredMessageWrite,
   ListMsgsOpts,
   ReconcileOpts,
+  ReconcileReport,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -667,18 +668,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   /**
-   * Full inventory of one host (peek seq 0): set numBags/numDupes/lastSeq on
-   * the host row; optionally enqueue downloads (`pull`, default true) and/or
-   * uploads (`push`, default false). Waits out in-flight {@link sync} first
-   * (same as {@link rebuild}). By default runs {@link sync} afterward so
-   * queues drain, then re-inventories so the returned host msg checksum (and
-   * bag counts) reflect post-drain host state. Read counts via {@link hosts}.
+   * Full inventory of one host (peek seq 0): advances lastSeq; optionally
+   * enqueues pull/push. Waits out in-flight {@link sync} first (same as
+   * {@link rebuild}). By default drains via {@link sync}, then re-inventories.
+   * Returns ephemeral {@link ReconcileReport} (msgcheck, numBags, numDupes) —
+   * bag tallies are not persisted.
    */
   public async reconcile(
     hostLabel: string,
     opts?: ReconcileOpts,
-  ): Promise<ValStat<Hash>> {
-    // Prevent overlapping peek/push/pull with inventory.
+  ): Promise<ValStat<ReconcileReport>> {
+    // Same as rebuild: no overlapping sync() while we inventory.
     this.scheduledSync.cancel();
     await this.syncRuns.flush();
 
@@ -698,16 +698,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     if (!conn) return err(Status.InternalError);
 
-    const [report, st] = await reconcileHost({
+    const peekParams = {
       conn,
       store,
       enclave,
-      host,
       crypto,
       maxPushBytes: this.maxPushBytes,
       maxPullBytes: this.maxPullBytes,
       onProgress: this.emitProgress,
       peekProgressEvery: this.peekProgressEvery,
+    };
+
+    const [report, st] = await reconcileHost({
+      ...peekParams,
+      host,
     }, opts);
     this.xferState.emit();
     if (st !== Status.Success) {
@@ -719,10 +723,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       return err(Status.InternalError);
     }
 
-    // Default: drain upload/download queues so sets actually reconcile.
+    // Default: drain queues so sets actually reconcile.
     if (opts?.sync === false) {
       this.emitProgress({ phase: "idle" });
-      return ok(report.msgcheck);
+      return ok(report);
     }
 
     const syncSt = await this.sync();
@@ -730,22 +734,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       return err(syncSt);
     }
 
-    // Host msgcheck from the first inventory is pre-push/pull. Re-inventory
-    // after drain so the returned checksum (and absolute bag/dupe counts)
-    // match the host post-reconcile — otherwise first link+push looks like a
-    // mismatch until a second reconcile.
+    // First inventory is pre-push/pull. Re-inventory after drain.
     const hostAfter = await store.hosts.get(hostLabel);
     if (!hostAfter) return err(Status.NotFound);
     const [after, st2] = await reconcileHost({
-      conn,
-      store,
-      enclave,
+      ...peekParams,
       host: hostAfter,
-      crypto,
-      maxPushBytes: this.maxPushBytes,
-      maxPullBytes: this.maxPullBytes,
-      onProgress: this.emitProgress,
-      peekProgressEvery: this.peekProgressEvery,
     }, { pull: false, push: false });
     this.xferState.emit();
     this.emitProgress({ phase: "idle" });
@@ -753,7 +747,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       return err(st2);
     }
     if (!after) return err(Status.InternalError);
-    return ok(after.msgcheck);
+    return ok(after);
   }
 
   /**

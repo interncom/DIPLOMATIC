@@ -29,14 +29,29 @@ scope.onmessage = (ev: MessageEvent<unknown>) => {
 async function handleCmd(cmd: WorkerCmd): Promise<void> {
   try {
     const result = await runtime.handle(cmd);
-    // Transfer large/binary results (export; msgcheck / entcheck / reconcile).
+    // Transfer large/binary results (export; msgcheck / entcheck digests).
     if (
-      (cmd.op === "export" || cmd.op === "msgcheck" || cmd.op === "entcheck" ||
-        cmd.op === "reconcile") &&
+      (cmd.op === "export" || cmd.op === "msgcheck" || cmd.op === "entcheck") &&
       result instanceof Uint8Array
     ) {
       const copy = result.slice();
       scope.postMessage(replyOk(cmd.id, copy), [copy.buffer]);
+      return;
+    }
+    // Reconcile report: transfer msgcheck buffer.
+    if (
+      cmd.op === "reconcile" &&
+      result &&
+      typeof result === "object" &&
+      "msgcheck" in result &&
+      result.msgcheck instanceof Uint8Array
+    ) {
+      const msgcheck = result.msgcheck.slice();
+      const report = {
+        ...result,
+        msgcheck,
+      };
+      scope.postMessage(replyOk(cmd.id, report), [msgcheck.buffer]);
       return;
     }
     scope.postMessage(replyOk(cmd.id, result));

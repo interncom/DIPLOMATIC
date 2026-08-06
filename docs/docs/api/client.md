@@ -195,27 +195,25 @@ With a sync worker, list/count read the shared message archive on the main threa
 
 Host **bag** count and client **msg** count are different metrics: bags are per-seq envelopes on the host; msgs are the distinct changes in a client archive (archive key = hash of the encoded msg). A host can hold duplicate bags for the same msg and/or be missing msgs the client has.
 
-- `reconcile(hostLabel, opts?)` → `ValStat<Hash>`
-  - Full PEEK from seq 0 (inventory): set absolute `numBags` / `numDupes` / `lastSeq` on the host row (`lastSeq` = max bag seq, or 0 if none — including rewind when the host has fewer bags than a prior cursor).
-  - Returns an **ephemeral** host msg checksum: set of distinct msgs on the host, same construction as `msgcheck()` (not stored). With default `sync: true`, checksum is taken **after** queues drain (second inventory) so a first link+push matches local when the host has caught up. With `sync: false`, checksum is the pre-drain inventory snapshot. Host may still have extra duplicate bags (checksum ignores bag dups).
+- `reconcile(hostLabel, opts?)` → `ValStat<ReconcileReport>`
+  - Full PEEK from seq 0 (inventory); advances `lastSeq` on the host row.
+  - Returns **ephemeral** `{ msgcheck, numBags, numDupes }` (not stored). With default `sync: true`, after drain + re-inventory. `msgcheck` is the set of distinct msgs on the host (same construction as `msgcheck()`).
   - `opts.pull` (default **true**): enqueue downloads for msgs on the host missing locally.
   - `opts.push` (default **false**): enqueue uploads for local archive msgs missing on the host.
-  - `opts.sync` (default **true**): run `sync()` afterward so queues drain, then re-inventory for the returned checksum and absolute bag/dupe counts. Pass `sync: false` for inventory-only.
-  - Cancels debounced sync and waits for any in-flight `sync()` before inventory (same safeguard as `rebuild`), so a full peek does not overlap a normal peek.
+  - `opts.sync` (default **true**): run `sync()` afterward so queues drain, then re-inventory. Pass `sync: false` for inventory-only.
+  - Cancels debounced sync and waits for in-flight `sync()` before inventory (same as `rebuild`).
 
 ```ts
-const [hostCheck, st] = await client.reconcile("primary", {
+const [report, st] = await client.reconcile("primary", {
   pull: true,
-  push: true, // default sync: true drains queues, then re-checksums host
+  push: true,
 });
+// report.msgcheck, report.numBags, report.numDupes — keep in app state if needed
 const localCheck = await client.msgcheck();
-// hostCheck equals localCheck ⇒ same set of msgs (post-drain host inventory)
-
-const h = (await client.hosts()).find((x) => x.label === "primary");
-// h.numBags, h.numDupes, h.lastSeq — durable; bags/dupes also updated on incremental peek
+// report.msgcheck equals localCheck ⇒ same set of msgs
 ```
 
-`numDupes` is the number of **extra** bags beyond one bag per msg (`Σ max(0, bags_for_msg − 1)`). Incremental peeks add to `numBags` / `numDupes` when new bags or extras are detected; `reconcile` resets both (and `lastSeq`) from a full inventory.
+`numDupes` is the number of **extra** bags beyond one bag per msg (`Σ max(0, bags_for_msg − 1)`).
 
 ## Import/Export
 

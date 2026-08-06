@@ -391,12 +391,8 @@ export async function syncPeek<Handle extends HostHandle>(
   });
 
   // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
-  // Track msg occurrences in this batch for dupe accounting / download de-dupe.
-  const batchMsgCount = new Map<string, number>();
+  // De-dupe downloads within this batch (same msg, multiple bags).
   const enqMsgs = new Set<string>();
-  let dupeDelta = 0;
-  const pendingUp = await store.uploads.list(host.label);
-  const pendingUpKeys = new Set(pendingUp.map((h) => btob64(h)));
   for (const result of cryptoResults) {
     if (!result.ok) {
       // Skip desyncs client vs host until CHECK reconciles message sets.
@@ -405,27 +401,11 @@ export async function syncPeek<Handle extends HostHandle>(
     }
 
     const msgKey = btob64(result.headEncHash);
-    const n = (batchMsgCount.get(msgKey) ?? 0) + 1;
-    batchMsgCount.set(msgKey, n);
-    // Second+ bag for same msg in this batch is a host-side extra.
-    if (n > 1) {
-      dupeDelta += 1;
-    }
-
     const msgExists = await store.messages.has(result.headEncHash);
     if (msgExists) {
       // Already archived (import or prior sync): no download. Drop any stale
       // download-queue row and redundant upload (host already has this msg).
       console.info("peek: local msg; skip download, deq upload");
-      // Cross-batch host dupe heuristic: first occurrence in this batch of a
-      // msg we already hold, and we were not waiting to push it → extra bag
-      // on host for a msg we already have (upload already deq'd earlier).
-      // Corrected to absolute on reconcile. Skip if still on upload queue
-      // (our first bag for a local write, not a host duplicate).
-      if (n === 1 && !pendingUpKeys.has(msgKey)) {
-        dupeDelta += 1;
-      }
-      pendingUpKeys.delete(msgKey);
       await store.uploads.deq(host.label, [result.headEncHash]);
       await store.downloads.deq(host.label, [result.seq]);
       continue;
@@ -456,15 +436,10 @@ export async function syncPeek<Handle extends HostHandle>(
   }
   await store.downloads.enq(dls);
 
-  // Host will not re-offer these seqs on later peeks. Bag/dupe counts update
-  // in the same stats write as lastSeq so they cannot drift.
+  // Advance cursor only (bag tallies are not tracked on the host row).
   if (items.length > 0) {
     const maxSeq = Math.max(...items.map((i) => i.seq));
-    await store.hosts.recordStats(host.label, {
-      lastSeq: maxSeq,
-      bagDelta: items.length,
-      dupeDelta: dupeDelta > 0 ? dupeDelta : undefined,
-    });
+    await store.hosts.recordStats(host.label, { lastSeq: maxSeq });
   }
 
   if (onProgress) {
@@ -780,10 +755,10 @@ export async function handleNotif<Handle extends HostHandle>(
 }
 
 /**
- * Full host inventory (PEEK from seq 0): set absolute numBags/numDupes/lastSeq,
- * and optionally enqueue downloads (msgs on host missing locally) and/or
- * uploads (local msgs missing on host). Does not pull/push network beyond
- * peek — caller should sync() to drain queues.
+ * Full host inventory (PEEK from seq 0): set lastSeq; optionally enqueue
+ * downloads (msgs on host missing locally) and/or uploads (local msgs missing
+ * on host). Returns ephemeral bag tallies + msgcheck (not persisted). Does not
+ * pull/push beyond peek — caller should sync() to drain queues.
  *
  * lastSeq is set to the max bag seq in the inventory (0 if empty), including
  * rewind when the host has fewer bags than a prior cursor believed.
@@ -876,7 +851,7 @@ export async function reconcileHost<Handle extends HostHandle>(
     if (agg.count > 1) numDupes += agg.count - 1;
     uniqueHashes.push(agg.hash);
   }
-  const bagCount = items.length;
+  const numBags = items.length;
   const uniqueMsgs = byMsg.size;
   // Same set-checksum as local msgcheck (distinct msgs only; dup bags ignored).
   const hostMsgcheck = await checksumSet(uniqueHashes, crypto);
@@ -935,15 +910,11 @@ export async function reconcileHost<Handle extends HostHandle>(
     }
   }
 
-  // Absolute stats from full inventory — lastSeq is max bag seq (or 0).
+  // lastSeq only — bag tallies are returned, not stored on the host row.
   const setLastSeq = items.length > 0
     ? Math.max(...items.map((i) => i.seq))
     : 0;
-  await store.hosts.recordStats(host.label, {
-    numBags: bagCount,
-    numDupes,
-    setLastSeq,
-  });
+  await store.hosts.recordStats(host.label, { setLastSeq });
 
   if (onProgress) {
     onProgress({
@@ -956,7 +927,7 @@ export async function reconcileHost<Handle extends HostHandle>(
 
   return ok({
     msgcheck: hostMsgcheck,
-    bagCount,
+    numBags,
     uniqueMsgs,
     numDupes,
     missingLocal,

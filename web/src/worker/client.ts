@@ -40,6 +40,7 @@ import type {
   IStoredMessage,
   ListMsgsOpts,
   ReconcileOpts,
+  ReconcileReport,
 } from "../types";
 import {
   clientStateFromUnknown,
@@ -590,12 +591,12 @@ export class WorkerClient implements IClient<URL> {
 
   /**
    * Full host inventory on the worker (network + crypto off main).
-   * Returns ephemeral host msg checksum; host row stats in shared IDB.
+   * Returns ephemeral msgcheck + bag counts (not persisted).
    */
   async reconcile(
     hostLabel: string,
     opts?: ReconcileOpts,
-  ): Promise<ValStat<Hash>> {
+  ): Promise<ValStat<ReconcileReport>> {
     await this.ready;
     try {
       const result = await this.request({
@@ -606,10 +607,10 @@ export class WorkerClient implements IClient<URL> {
         push: opts?.push,
         sync: opts?.sync,
       });
-      if (!(result instanceof Uint8Array) || result.length !== 32) {
+      if (!isReconcileReport(result)) {
         return err(Status.InternalError);
       }
-      return ok(result as Hash);
+      return ok(result);
     } catch (e) {
       if (e instanceof WorkerReplyError && e.status !== Status.Success) {
         return err(e.status);
@@ -688,6 +689,17 @@ class WorkerReplyError extends Error {
     super(`WorkerReplyError: ${Status[status]}`);
     this.name = "WorkerReplyError";
   }
+}
+
+function isReconcileReport(v: unknown): v is ReconcileReport {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    o.msgcheck instanceof Uint8Array &&
+    o.msgcheck.length === 32 &&
+    typeof o.numBags === "number" &&
+    typeof o.numDupes === "number"
+  );
 }
 
 function entityIDFromBytes(bytes: Uint8Array): EntityID {

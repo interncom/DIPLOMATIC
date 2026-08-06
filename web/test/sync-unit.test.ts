@@ -179,8 +179,7 @@ describe("syncPeek", () => {
     expect(downloads.length).toBe(0);
   });
 
-  test("increments numBags on incremental peek", async () => {
-    // Isolated host so leftover bags from other tests do not inflate counts.
+  test("advances lastSeq on incremental peek", async () => {
     const storage = createMemoryStorage();
     const isolatedHost = new DiplomaticLPCServer(
       storage,
@@ -201,14 +200,8 @@ describe("syncPeek", () => {
     await isolatedHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: isolatedHost, idx: 1 });
 
-    const message: IMessage = {
-      eid: new Uint8Array(16).fill(2),
-      off: 0,
-      ctr: 0,
-      len: 2,
-      bod: new Uint8Array([9, 9]),
-    };
-    const [bag, statBag] = await createTestBag(message, enclave);
+    const m = testMsg(2, [9, 9]);
+    const [bag, statBag] = await createTestBag(m, enclave);
     expect(statBag).toBe(Status.Success);
     if (!bag) return;
     await isolatedHost.storage.setBags(hostIdnt.publicKey, [bag]);
@@ -217,31 +210,20 @@ describe("syncPeek", () => {
       conn: isolatedConn,
       store,
       enclave,
-      host: { ...host, lastSeq: 0, numBags: 0, numDupes: 0 },
+      host: { ...host, lastSeq: 0 },
       crypto: libsodiumCrypto,
     });
     expect(stat).toBe(Status.Success);
     const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(1);
-    expect(row?.numDupes).toBe(0);
     expect(row?.lastSeq).toBeGreaterThan(0);
   });
 });
 
-/**
- * Host bag/dupe counters on incremental peek (isolated host storage).
- */
-describe("syncPeek host bag/dupe stats", () => {
+describe("syncPeek download de-dupe", () => {
   let store: MemoryStore<HostHandle>;
   let enclave: Enclave;
   let clock: MockClock;
-  let hostRow: {
-    label: string;
-    idx: number;
-    lastSeq: number;
-    numBags: number;
-    numDupes: number;
-  };
+  let hostRow: { label: string; idx: number; lastSeq: number };
   let lpcHost: DiplomaticLPCServer;
   let conn: DiplomaticClientAPI<HostHandle>;
   let hostIdnt: Awaited<ReturnType<Enclave["deriveIdentity"]>>;
@@ -269,13 +251,7 @@ describe("syncPeek host bag/dupe stats", () => {
     store = new MemoryStore(libsodiumCrypto);
     enclave = new Enclave(testSeed, libsodiumCrypto);
     clock = new MockClock(new Date(0));
-    hostRow = {
-      label: "test",
-      idx: 1,
-      lastSeq: 0,
-      numBags: 0,
-      numDupes: 0,
-    };
+    hostRow = { label: "test", idx: 1, lastSeq: 0 };
     const storage = createMemoryStorage();
     lpcHost = new DiplomaticLPCServer(
       storage,
@@ -297,38 +273,7 @@ describe("syncPeek host bag/dupe stats", () => {
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
 
-  async function peekFrom(lastSeq: number) {
-    const row = await store.hosts.get("test");
-    return syncPeek({
-      conn,
-      store,
-      enclave,
-      host: {
-        ...hostRow,
-        lastSeq: row?.lastSeq ?? lastSeq,
-        numBags: row?.numBags ?? 0,
-        numDupes: row?.numDupes ?? 0,
-        handle: lpcHost,
-      },
-      crypto: libsodiumCrypto,
-    });
-  }
-
-  test("empty peek leaves numBags/numDupes/lastSeq unchanged", async () => {
-    await store.hosts.recordStats("test", {
-      lastSeq: 3,
-      numBags: 3,
-      numDupes: 1,
-    });
-    const st = await peekFrom(3);
-    expect(st).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    expect(row?.lastSeq).toBe(3);
-    expect(row?.numBags).toBe(3);
-    expect(row?.numDupes).toBe(1);
-  });
-
-  test("two bags for same msg in one peek: numBags=2, numDupes=1", async () => {
+  test("two bags same msg enqueue one download", async () => {
     const m = testMsg(20, [1]);
     const [b1, s1] = await createTestBag(m, enclave);
     const [b2, s2] = await createTestBag(m, enclave);
@@ -337,16 +282,19 @@ describe("syncPeek host bag/dupe stats", () => {
     if (!b1 || !b2) return;
     await lpcHost.storage.setBags(hostIdnt.publicKey, [b1, b2]);
 
-    expect(await peekFrom(0)).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(2);
-    expect(row?.numDupes).toBe(1);
-    expect(row?.lastSeq).toBe(2);
-    // First bag is new → download enqueued once (not twice).
+    const st = await syncPeek({
+      conn,
+      store,
+      enclave,
+      host: { ...hostRow, handle: lpcHost },
+      crypto: libsodiumCrypto,
+    });
+    expect(st).toBe(Status.Success);
     expect(Array.from(await store.downloads.list())).toHaveLength(1);
+    expect((await store.hosts.get("test"))?.lastSeq).toBe(2);
   });
 
-  test("local msg with pending upload is not counted as dupe", async () => {
+  test("local msg with pending upload deqs upload", async () => {
     const m = testMsg(21, [2]);
     const hash = await msgHash(m);
     await archive(m, hash);
@@ -355,118 +303,14 @@ describe("syncPeek host bag/dupe stats", () => {
     if (!bag) return;
     await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
 
-    expect(await peekFrom(0)).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(1);
-    expect(row?.numDupes).toBe(0); // first host bag for our push, not a dupe
-    expect(await store.uploads.list("test")).toHaveLength(0);
-  });
-
-  test("local msg without upload queue counts as host dupe", async () => {
-    const m = testMsg(22, [3]);
-    const hash = await msgHash(m);
-    await archive(m, hash);
-    // No uploads.enq — e.g. already pushed / imported elsewhere.
-    const [bag] = await createTestBag(m, enclave);
-    if (!bag) return;
-    await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
-
-    expect(await peekFrom(0)).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(1);
-    expect(row?.numDupes).toBe(1);
-  });
-
-  test("sequential peeks accumulate numBags; second peek can add a dupe", async () => {
-    const m = testMsg(23, [4]);
-    const hash = await msgHash(m);
-    const [b1] = await createTestBag(m, enclave);
-    if (!b1) return;
-    await lpcHost.storage.setBags(hostIdnt.publicKey, [b1]);
-
-    expect(await peekFrom(0)).toBe(Status.Success);
-    let row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(1);
-    expect(row?.numDupes).toBe(0);
-    const seq1 = row!.lastSeq;
-
-    // Archive after first peek (as if we pulled+applied), then host gets a dupe bag.
-    await archive(m, hash);
-    const [b2] = await createTestBag(m, enclave);
-    if (!b2) return;
-    await lpcHost.storage.setBags(hostIdnt.publicKey, [b2]);
-
-    expect(await peekFrom(seq1)).toBe(Status.Success);
-    row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(2);
-    expect(row?.numDupes).toBe(1);
-    expect(row?.lastSeq).toBeGreaterThan(seq1);
-  });
-
-  test("mixed batch: new msg + two bags for known msg", async () => {
-    const known = testMsg(24, [5]);
-    const novel = testMsg(25, [6]);
-    const knownHash = await msgHash(known);
-    await archive(known, knownHash);
-
-    const [k1] = await createTestBag(known, enclave);
-    const [k2] = await createTestBag(known, enclave);
-    const [n1] = await createTestBag(novel, enclave);
-    if (!k1 || !k2 || !n1) return;
-    await lpcHost.storage.setBags(hostIdnt.publicKey, [k1, k2, n1]);
-
-    expect(await peekFrom(0)).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    // 3 bags; known contributes 2 dups (first of known without upload = dupe,
-    // second of known = within-batch dupe).
-    expect(row?.numBags).toBe(3);
-    expect(row?.numDupes).toBe(2);
-    expect(Array.from(await store.downloads.list())).toHaveLength(1); // novel only
-  });
-
-  test("concurrent peeks of the same new bags double-count numBags (no lock across peeks)", async () => {
-    // Documents client contract: SyncClient coalesces sync so peeks do not
-    // overlap; concurrent syncPeek callers can both see the same seqs and each
-    // apply bagDelta. Prefer single-flight sync (or reconcile for absolute).
-    const m = testMsg(26, [7]);
-    const [bag] = await createTestBag(m, enclave);
-    if (!bag) return;
-    await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
-
-    const peekArgs = {
+    await syncPeek({
       conn,
       store,
       enclave,
-      host: {
-        ...hostRow,
-        lastSeq: 0,
-        numBags: 0,
-        numDupes: 0,
-        handle: lpcHost,
-      },
+      host: { ...hostRow, handle: lpcHost },
       crypto: libsodiumCrypto,
-    };
-    const [st1, st2] = await Promise.all([
-      syncPeek(peekArgs),
-      syncPeek(peekArgs),
-    ]);
-    expect(st1).toBe(Status.Success);
-    expect(st2).toBe(Status.Success);
-    const row = await store.hosts.get("test");
-    // Both peeks saw 1 bag before either advanced lastSeq (same lastSeq=0).
-    expect(row?.numBags).toBe(2);
-  });
-
-  test("concurrent recordStats deltas compose under host-store serialization", async () => {
-    await Promise.all([
-      store.hosts.recordStats("test", { bagDelta: 1, dupeDelta: 1, lastSeq: 1 }),
-      store.hosts.recordStats("test", { bagDelta: 2, dupeDelta: 0, lastSeq: 3 }),
-      store.hosts.recordStats("test", { bagDelta: 1, dupeDelta: 1, lastSeq: 2 }),
-    ]);
-    const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(4);
-    expect(row?.numDupes).toBe(2);
-    expect(row?.lastSeq).toBe(3); // max of advances
+    });
+    expect(await store.uploads.list("test")).toHaveLength(0);
   });
 });
 
@@ -478,8 +322,6 @@ describe("reconcileHost", () => {
     label: string;
     idx: number;
     lastSeq: number;
-    numBags: number;
-    numDupes: number;
     handle?: HostHandle;
   };
   let conn: DiplomaticClientAPI<HostHandle>;
@@ -493,8 +335,6 @@ describe("reconcileHost", () => {
       label: "test",
       idx: 1,
       lastSeq: 0,
-      numBags: 0,
-      numDupes: 0,
     };
     // Isolated host storage so bags do not leak across tests.
     const storage = createMemoryStorage();
@@ -518,7 +358,7 @@ describe("reconcileHost", () => {
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
 
-  test("sets numBags/numDupes and reports set differences", async () => {
+  test("returns bag tallies and reports set differences", async () => {
     const hostIdnt = await enclave.deriveIdentity("test", 1);
 
     // Two bags, same head (duplicate on host).
@@ -573,7 +413,7 @@ describe("reconcileHost", () => {
     expect(st).toBe(Status.Success);
     expect(report).toBeDefined();
     if (!report) return;
-    expect(report.bagCount).toBe(2);
+    expect(report.numBags).toBe(2);
     expect(report.uniqueMsgs).toBe(1);
     expect(report.numDupes).toBe(1);
     expect(report.missingLocal).toBe(1); // host msg not in archive
@@ -582,10 +422,10 @@ describe("reconcileHost", () => {
     expect(report.msgcheck).toBeDefined();
     expect(report.msgcheck.length).toBe(32);
 
+    // Bag tallies are ephemeral (not on host row); lastSeq is persisted.
     const row = await store.hosts.get("test");
-    expect(row?.numBags).toBe(2);
-    expect(row?.numDupes).toBe(1);
     expect(row?.lastSeq).toBeGreaterThan(0);
+    expect("numBags" in (row ?? {})).toBe(false);
 
     // pull enqueued download for missing local head
     expect(Array.from(await store.downloads.list()).length).toBe(1);

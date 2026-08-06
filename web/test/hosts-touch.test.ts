@@ -57,54 +57,14 @@ describe("MemoryHostStore.recordStats", () => {
     });
   });
 
-  test("starts numBags/numDupes at 0", async () => {
-    const row = await hosts.get("h");
-    expect(row?.numBags).toBe(0);
-    expect(row?.numDupes).toBe(0);
-  });
-
-  test("applies bag/dupe deltas with lastSeq in one update", async () => {
-    await hosts.recordStats("h", {
-      lastSeq: 5,
-      bagDelta: 3,
-      dupeDelta: 1,
-    });
-    const row = await hosts.get("h");
-    expect(row?.lastSeq).toBe(5);
-    expect(row?.numBags).toBe(3);
-    expect(row?.numDupes).toBe(1);
-  });
-
-  test("absolute numBags/numDupes replace (reconcile)", async () => {
-    await hosts.recordStats("h", { bagDelta: 10, dupeDelta: 2 });
-    await hosts.recordStats("h", { numBags: 7, numDupes: 1 });
-    const row = await hosts.get("h");
-    expect(row?.numBags).toBe(7);
-    expect(row?.numDupes).toBe(1);
-  });
-
-  test("lastSeq advances only (incremental); setLastSeq can rewind", async () => {
-    await hosts.recordStats("h", { lastSeq: 10, bagDelta: 1 });
-    await hosts.recordStats("h", { lastSeq: 4, bagDelta: 1 });
+  test("lastSeq advances only; setLastSeq can rewind", async () => {
+    await hosts.recordStats("h", { lastSeq: 10 });
+    await hosts.recordStats("h", { lastSeq: 4 });
     let row = await hosts.get("h");
     expect(row?.lastSeq).toBe(10);
-    expect(row?.numBags).toBe(2);
 
-    await hosts.recordStats("h", { setLastSeq: 3, numBags: 3, numDupes: 0 });
+    await hosts.recordStats("h", { setLastSeq: 3 });
     row = await hosts.get("h");
     expect(row?.lastSeq).toBe(3);
-    expect(row?.numBags).toBe(3);
-  });
-
-  test("concurrent recordStats deltas all apply (serialized)", async () => {
-    const n = 50;
-    await Promise.all(
-      Array.from({ length: n }, () =>
-        hosts.recordStats("h", { bagDelta: 1, dupeDelta: 1 })
-      ),
-    );
-    const row = await hosts.get("h");
-    expect(row?.numBags).toBe(n);
-    expect(row?.numDupes).toBe(n);
   });
 });

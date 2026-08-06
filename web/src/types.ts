@@ -56,39 +56,17 @@ export interface ISeedStore {
 export interface IHostRow<Handle extends HostHandle>
   extends IHostConnectionInfo<Handle>, Partial<IHostMetadata> {
   lastSeq: number;
-  /**
-   * Bags known on this host (full reconcile sets absolute; incremental peek
-   * adds newly seen seqs).
-   */
-  numBags: number;
-  /**
-   * Extra bags beyond one per msg (`Σ max(0, bags_for_msg − 1)`). Absolute on
-   * reconcile; +delta on peek when a new duplicate bag for a known msg is seen.
-   */
-  numDupes: number;
 }
 
 /**
- * Atomic host cursor + bag/dupe stats update (one store transaction).
- * Absolute fields replace; deltas add. `lastSeq` only advances; use
- * `setLastSeq` for a full-inventory absolute cursor (reconcile).
+ * Host row cursor write (one store transaction).
+ * `lastSeq` only advances unless `setLastSeq` is set.
  */
 export type HostStatsUpdate = {
   /** New lastSeq if greater than current (incremental peek/push). */
   lastSeq?: number;
   /** Absolute lastSeq, including rewind (full inventory). */
   setLastSeq?: number;
-  /** Absolute bag count (full inventory). */
-  numBags?: number;
-  /** Absolute dupe count (full inventory). */
-  numDupes?: number;
-  /** Count of newly peeked bags to add to numBags. */
-  bagDelta?: number;
-  /**
-   * Count of newly seen extra bags for a msg already on the host (duplicate
-   * bags for the same msg) to add to numDupes.
-   */
-  dupeDelta?: number;
 };
 
 // IHostStore handles persistence of hosts table.
@@ -101,10 +79,7 @@ export interface IHostStore<Handle extends HostHandle> {
   wipe: () => Promise<void>;
   // Advance host lastSeq if seq is greater; never rewind.
   touch: (label: string, seq: number) => Promise<void>;
-  /**
-   * Apply lastSeq / numBags / numDupes in one transaction so counts do not
-   * drift vs the cursor under concurrent peek/push.
-   */
+  /** Apply lastSeq updates in one transaction. */
   recordStats: (label: string, u: HostStatsUpdate) => Promise<void>;
 }
 
@@ -116,22 +91,28 @@ export type ReconcileOpts = {
   push?: boolean;
   /**
    * After inventory, run {@link IClient.sync} to drain upload/download queues.
-   * Default true. Pass false for inventory-only (counts + checksum).
+   * Default true. Pass false for inventory-only.
    */
   sync?: boolean;
 };
 
-/** Internal result of a full host inventory (not the public client API). */
-export type ReconcileResult = {
-  /**
-   * Set-checksum of distinct msgs on the host (archive keys; same construction
-   * as {@link IClient.msgcheck}). Ephemeral — not stored on the host row.
-   */
+/**
+ * Result of {@link IClient.reconcile}: host msg checksum and bag tallies from
+ * the (post-drain) full inventory. Ephemeral — not persisted.
+ */
+export type ReconcileReport = {
+  /** Distinct msgs on host (same construction as {@link IClient.msgcheck}). */
   msgcheck: Hash;
-  bagCount: number;
-  /** Distinct msgs among bags (dup bags for the same msg count once). */
-  uniqueMsgs: number;
+  /** Total bags on host (includes duplicate bags for the same msg). */
+  numBags: number;
+  /** Extra bags beyond one per msg. */
   numDupes: number;
+};
+
+/** Full inventory details (internal; includes set-diff counts). */
+export type ReconcileResult = ReconcileReport & {
+  /** Distinct msgs among bags. */
+  uniqueMsgs: number;
   /** Msgs on host not in local archive. */
   missingLocal: number;
   /** Local archive msgs not seen on host. */
@@ -432,16 +413,15 @@ export interface IClient<Handle extends HostHandle> {
   countMsgs(apld?: ApldState): Promise<number>;
 
   /**
-   * Full host inventory (peek from seq 0): set numBags/numDupes/lastSeq;
-   * optionally enqueue downloads (`pull`) and/or uploads (`push`). Default
-   * drains via {@link sync}, then re-inventories so the returned host msg
-   * checksum matches post-drain host state (same construction as
-   * {@link msgcheck}). Read counts via {@link hosts}.
+   * Full host inventory (peek from seq 0); optionally enqueue pull/push.
+   * Default drains via {@link sync}, then re-inventories. Returns ephemeral
+   * host msgcheck + numBags + numDupes (not persisted). Advances lastSeq only
+   * on the host row.
    */
   reconcile(
     hostLabel: string,
     opts?: ReconcileOpts,
-  ): Promise<ValStat<Hash>>;
+  ): Promise<ValStat<ReconcileReport>>;
 
   wipe(): Promise<void>;
 

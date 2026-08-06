@@ -186,7 +186,7 @@ export class WorkerRuntime {
       }
 
       case "reconcile": {
-        const [digest, st] = await client.reconcile(cmd.hostLabel, {
+        const [report, st] = await client.reconcile(cmd.hostLabel, {
           pull: cmd.pull,
           push: cmd.push,
           sync: cmd.sync,
@@ -194,10 +194,10 @@ export class WorkerRuntime {
         if (st !== Status.Success) {
           throw new WorkerStatusError(st);
         }
-        if (!digest) {
+        if (!report) {
           throw new WorkerStatusError(Status.InternalError);
         }
-        return digest;
+        return report;
       }
 
       case "msgcheck": {

@@ -10,8 +10,6 @@ function idbRowToHostRow(row: any): IHostRow<URL> {
     handle: new URL(row.handle),
     idx: row.idx,
     lastSeq: row.lastSeq || 0,
-    numBags: row.numBags || 0,
-    numDupes: row.numDupes || 0,
     clockOffset: row.clockOffset,
     subscription: row.subscription,
   };
@@ -31,16 +29,9 @@ function mergeStatsOntoRow(
     const prev = next.lastSeq || 0;
     if (u.lastSeq > prev) next.lastSeq = u.lastSeq;
   }
-  if (u.numBags !== undefined) {
-    next.numBags = u.numBags;
-  } else if (u.bagDelta !== undefined && u.bagDelta !== 0) {
-    next.numBags = (next.numBags || 0) + u.bagDelta;
-  }
-  if (u.numDupes !== undefined) {
-    next.numDupes = u.numDupes;
-  } else if (u.dupeDelta !== undefined && u.dupeDelta !== 0) {
-    next.numDupes = (next.numDupes || 0) + u.dupeDelta;
-  }
+  // Drop legacy bag-tally fields if present (no longer used).
+  delete next.numBags;
+  delete next.numDupes;
   return next;
 }
 
@@ -55,24 +46,16 @@ export class IDBHostStore implements IHostStore<URL> {
     return this.put({
       ...info,
       lastSeq: 0,
-      numBags: 0,
-      numDupes: 0,
     });
   }
 
   private async put(
-    info: Omit<IHostRow<URL>, "lastSeq" | "numBags" | "numDupes"> & {
-      lastSeq?: number;
-      numBags?: number;
-      numDupes?: number;
-    },
+    info: Omit<IHostRow<URL>, "lastSeq"> & { lastSeq?: number },
   ) {
     const host = {
       ...info,
       handle: info.handle.toString(),
       lastSeq: info.lastSeq ?? 0,
-      numBags: info.numBags ?? 0,
-      numDupes: info.numDupes ?? 0,
     };
     const tx = this.db.transaction(HOSTS_TABLE, "readwrite");
     const store = tx.objectStore(HOSTS_TABLE);

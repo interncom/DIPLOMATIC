@@ -432,11 +432,11 @@ export interface IClient<Handle extends HostHandle> {
   countMsgs(apld?: ApldState): Promise<number>;
 
   /**
-   * Full host inventory (peek from seq 0): set numBags/numDupes/lastSeq on the
-   * host row; optionally enqueue downloads (`pull`) and/or uploads (`push`).
-   * Returns ephemeral host msg checksum (distinct msgs on host; same as
-   * {@link msgcheck}) for UI comparison with local archive. Call
-   * {@link sync} to drain queues. Read counts via {@link hosts}.
+   * Full host inventory (peek from seq 0): set numBags/numDupes/lastSeq;
+   * optionally enqueue downloads (`pull`) and/or uploads (`push`). Default
+   * drains via {@link sync}, then re-inventories so the returned host msg
+   * checksum matches post-drain host state (same construction as
+   * {@link msgcheck}). Read counts via {@link hosts}.
    */
   reconcile(
     hostLabel: string,

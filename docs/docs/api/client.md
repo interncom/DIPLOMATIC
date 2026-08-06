@@ -197,20 +197,19 @@ Host **bag** count and client **msg** count are different metrics: bags are per-
 
 - `reconcile(hostLabel, opts?)` → `ValStat<Hash>`
   - Full PEEK from seq 0 (inventory): set absolute `numBags` / `numDupes` / `lastSeq` on the host row (`lastSeq` = max bag seq, or 0 if none — including rewind when the host has fewer bags than a prior cursor).
-  - Returns an **ephemeral** host msg checksum: set of distinct msgs on the host, same construction as `msgcheck()` (not stored). Equal digests ⇒ host’s msg set matches the local archive (host may still have extra duplicate bags).
+  - Returns an **ephemeral** host msg checksum: set of distinct msgs on the host, same construction as `msgcheck()` (not stored). With default `sync: true`, checksum is taken **after** queues drain (second inventory) so a first link+push matches local when the host has caught up. With `sync: false`, checksum is the pre-drain inventory snapshot. Host may still have extra duplicate bags (checksum ignores bag dups).
   - `opts.pull` (default **true**): enqueue downloads for msgs on the host missing locally.
   - `opts.push` (default **false**): enqueue uploads for local archive msgs missing on the host.
-  - `opts.sync` (default **true**): run `sync()` afterward so queues drain (pull open/exec + push). Pass `sync: false` for inventory-only.
+  - `opts.sync` (default **true**): run `sync()` afterward so queues drain, then re-inventory for the returned checksum and absolute bag/dupe counts. Pass `sync: false` for inventory-only.
   - Cancels debounced sync and waits for any in-flight `sync()` before inventory (same safeguard as `rebuild`), so a full peek does not overlap a normal peek.
 
 ```ts
 const [hostCheck, st] = await client.reconcile("primary", {
   pull: true,
-  push: true, // default sync: true drains queues
+  push: true, // default sync: true drains queues, then re-checksums host
 });
 const localCheck = await client.msgcheck();
-// hostCheck equals localCheck ⇒ same set of msgs (at inventory time;
-// after sync, re-run msgcheck if you need post-drain local digest)
+// hostCheck equals localCheck ⇒ same set of msgs (post-drain host inventory)
 
 const h = (await client.hosts()).find((x) => x.label === "primary");
 // h.numBags, h.numDupes, h.lastSeq — durable; bags/dupes also updated on incremental peek

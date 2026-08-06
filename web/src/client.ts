@@ -671,8 +671,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * the host row; optionally enqueue downloads (`pull`, default true) and/or
    * uploads (`push`, default false). Waits out in-flight {@link sync} first
    * (same as {@link rebuild}). By default runs {@link sync} afterward so
-   * queues drain. Returns ephemeral host msg checksum (distinct msgs on host;
-   * same construction as {@link msgcheck}). Read counts via {@link hosts}.
+   * queues drain, then re-inventories so the returned host msg checksum (and
+   * bag counts) reflect post-drain host state. Read counts via {@link hosts}.
    */
   public async reconcile(
     hostLabel: string,
@@ -720,15 +720,40 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
 
     // Default: drain upload/download queues so sets actually reconcile.
-    if (opts?.sync !== false) {
-      const syncSt = await this.sync();
-      if (syncSt !== Status.Success) {
-        return err(syncSt);
-      }
-    } else {
+    if (opts?.sync === false) {
       this.emitProgress({ phase: "idle" });
+      return ok(report.msgcheck);
     }
-    return ok(report.msgcheck);
+
+    const syncSt = await this.sync();
+    if (syncSt !== Status.Success) {
+      return err(syncSt);
+    }
+
+    // Host msgcheck from the first inventory is pre-push/pull. Re-inventory
+    // after drain so the returned checksum (and absolute bag/dupe counts)
+    // match the host post-reconcile — otherwise first link+push looks like a
+    // mismatch until a second reconcile.
+    const hostAfter = await store.hosts.get(hostLabel);
+    if (!hostAfter) return err(Status.NotFound);
+    const [after, st2] = await reconcileHost({
+      conn,
+      store,
+      enclave,
+      host: hostAfter,
+      crypto,
+      maxPushBytes: this.maxPushBytes,
+      maxPullBytes: this.maxPullBytes,
+      onProgress: this.emitProgress,
+      peekProgressEvery: this.peekProgressEvery,
+    }, { pull: false, push: false });
+    this.xferState.emit();
+    this.emitProgress({ phase: "idle" });
+    if (st2 !== Status.Success) {
+      return err(st2);
+    }
+    if (!after) return err(Status.InternalError);
+    return ok(after.msgcheck);
   }
 
   /**

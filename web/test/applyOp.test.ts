@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp } from "../src/entdb/entdb";
+import { applyOp, isLiveEnt, isTombstone } from "../src/entdb/entdb";
 import { Status } from "../src/shared/consts";
 import { IOp } from "../src/shared/types";
 import libsodiumCrypto from "../src/crypto";
@@ -13,9 +13,8 @@ if (statEid !== Status.Success) {
 }
 
 describe("applyOp", () => {
-
   describe("curr is undefined", () => {
-    it("op is a delete", () => {
+    it("op is a delete → permanent tombstone", () => {
       const op: IOp = {
         off: 0,
         ctr: 1,
@@ -24,7 +23,12 @@ describe("applyOp", () => {
 
       const [result, stat] = applyOp(undefined, op);
       expect(stat).toBe(Status.Success);
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        eid,
+        updatedAt: new Date(1000),
+        ctr: 1,
+      });
+      expect(result !== undefined && isTombstone(result)).toBe(true);
     });
 
     it("op is a mutate", () => {
@@ -62,7 +66,8 @@ describe("applyOp", () => {
 
       const [result, stat] = applyOp(undefined, op);
       expect(stat).toBe(Status.Success);
-      expect(result?.tags).toEqual(["a", "b"]);
+      expect(result !== undefined && isLiveEnt(result) ? result.tags : undefined)
+        .toEqual(["a", "b"]);
     });
 
     it("op mutate with empty tags omits tags field", () => {
@@ -77,7 +82,9 @@ describe("applyOp", () => {
 
       const [result, stat] = applyOp(undefined, op);
       expect(stat).toBe(Status.Success);
-      expect(result?.tags).toBeUndefined();
+      expect(
+        result !== undefined && isLiveEnt(result) ? result.tags : undefined,
+      ).toBeUndefined();
     });
   });
 
@@ -122,7 +129,7 @@ describe("applyOp", () => {
       expect(result).toBeUndefined();
     });
 
-    it("op is more recent, delete", () => {
+    it("op is more recent, delete → tombstone", () => {
       const op: IOp = {
         off: 600, // 1000 + 600 = 1600 > 1500
         ctr: 6,
@@ -131,7 +138,12 @@ describe("applyOp", () => {
 
       const [result, stat] = applyOp(curr, op);
       expect(stat).toBe(Status.Success);
-      expect(result).toBeUndefined();
+      expect(result).toEqual({
+        eid,
+        updatedAt: new Date(1600),
+        ctr: 6,
+      });
+      expect(result !== undefined && isTombstone(result)).toBe(true);
     });
 
     it("op is more recent, mutate", () => {
@@ -154,6 +166,61 @@ describe("applyOp", () => {
         updatedAt: new Date(1600),
         ctr: 6,
         body: { data: "updated" },
+      });
+    });
+  });
+
+  describe("curr is tombstone", () => {
+    const tomb = {
+      eid,
+      updatedAt: new Date(1500),
+      ctr: 5,
+    };
+
+    it("older mutate does not resurrect", () => {
+      const op: IOp = {
+        off: 0,
+        ctr: 0,
+        eid,
+        type: "test",
+        body: { data: "old" },
+      };
+      const [result, stat] = applyOp(tomb, op);
+      expect(stat).toBe(Status.NoChange);
+      expect(result).toBeUndefined();
+    });
+
+    it("newer mutate revives over tombstone", () => {
+      const op: IOp = {
+        off: 600,
+        ctr: 6,
+        eid,
+        type: "test",
+        body: { data: "again" },
+      };
+      const [result, stat] = applyOp(tomb, op);
+      expect(stat).toBe(Status.Success);
+      expect(
+        result !== undefined && isLiveEnt(result) ? result.body : undefined,
+      ).toEqual({
+        data: "again",
+      });
+    });
+
+    it("older delete is obsolete", () => {
+      const op: IOp = { off: 400, ctr: 1, eid };
+      const [, stat] = applyOp(tomb, op);
+      expect(stat).toBe(Status.NoChange);
+    });
+
+    it("newer delete advances tombstone", () => {
+      const op: IOp = { off: 700, ctr: 6, eid };
+      const [result, stat] = applyOp(tomb, op);
+      expect(stat).toBe(Status.Success);
+      expect(result).toEqual({
+        eid,
+        updatedAt: new Date(1700),
+        ctr: 6,
       });
     });
   });

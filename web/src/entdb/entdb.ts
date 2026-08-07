@@ -14,6 +14,10 @@
 //    (e.g. impl:<btob64(eid)> for non-exclusive "implements" links).
 // These are msgpack-encoded within the DIPLOMATIC msg body.
 // The rest of the ent data lives alongside those, encoded the same way.
+//
+// Deletes leave permanent tombstones ({ eid, updatedAt, ctr }). Without them,
+// out-of-order / newest-first apply of older mutates would resurrect ents.
+// Tombstones are never pruned: partition healing can deliver old msgs anytime.
 
 import { Decoder } from "../shared/codec.ts";
 import { eidCodec } from "../shared/codecs/eid.ts";
@@ -39,6 +43,31 @@ export interface IEntity<T = unknown> extends Omit<IMsgEntBody<T>, "body"> {
   createdAt: Date;
   ctr: number;
   body: T;
+}
+
+/**
+ * Deleted eid's LWW frontier: eid + updatedAt + ctr only (no type/body/…).
+ * Permanent — pruning would allow obsolete mutates to resurrect the ent.
+ * `type?: never` is type-only so IEntity is not assignable to ITombstone.
+ */
+export interface ITombstone {
+  eid: EntityID;
+  updatedAt: Date;
+  ctr: number;
+  type?: never;
+}
+
+/** Live ent or tombstone (what the store holds per eid). */
+export type IEntRow<T = unknown> = IEntity<T> | ITombstone;
+
+/** Live ent (has `type`). */
+export function isLiveEnt<T>(row: IEntRow<T>): row is IEntity<T> {
+  return "type" in row;
+}
+
+/** Tombstone frontier (no `type`). */
+export function isTombstone(row: IEntRow): row is ITombstone {
+  return !isLiveEnt(row);
 }
 
 export interface IDateRange {
@@ -90,22 +119,30 @@ export type ApplyResult = {
 export interface IEntDB {
   apply: (ops: IOp[]) => Promise<ApplyResult>;
   clear: () => Promise<Status>;
+  /**
+   * Live ent only. Tombstones and missing eids both yield undefined.
+   * Use {@link getRow} when LWW / cache reconcile needs the frontier.
+   */
   getEnt<T>(
     eid: EntityID,
   ): Promise<ValStat<IEntity<T> | undefined>>;
+  /** Live ent or permanent tombstone. */
+  getRow<T>(
+    eid: EntityID,
+  ): Promise<ValStat<IEntRow<T> | undefined>>;
   getEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>>;
   countEntities({ type }: { type: string }): Promise<ValStat<number>>;
   /**
-   * Frontier checksum of live rows: eid + updatedAt + ctr per ent
+   * Frontier checksum of all rows (live + tombstone): eid + updatedAt + ctr
    * (see encodeEntRev / checksumEntRevs). Not a content hash of bodies.
    */
   checksum(crypto: ICrypto): Promise<ValStat<Hash>>;
 }
 
-/** Prior rev from a loaded entity (typical update/delete input). */
-export function revFromEntity(ent: IEntity): IEntRev {
+/** Prior rev from a live ent or tombstone. */
+export function revFromEntity(ent: IEntRow): IEntRev {
   return { eid: ent.eid, ctr: ent.ctr, updatedAt: ent.updatedAt };
 }
 
@@ -124,9 +161,9 @@ export function revFromHead(head: IMessageHead): ValStat<IEntRev> {
 }
 
 export function applyOp(
-  curr: IEntity | undefined,
+  curr: IEntRow | undefined,
   op: IOp,
-): ValStat<IEntity | undefined> {
+): ValStat<IEntRow | undefined> {
   // Parse op EID.
   const decOpEid = new Decoder(op.eid);
   const [opEID, statOpEID] = decOpEid.readStruct(eidCodec);
@@ -134,7 +171,7 @@ export function applyOp(
     return err(statOpEID);
   }
 
-  // Handle obsolete op (op outdated by curr).
+  // Handle obsolete op (op outdated by curr, including tombstones).
   // TODO: use order to tiebreak the comparison (unit test).
   const opUpdatedAt = new Date(opEID.ts.getTime() + op.off);
   if (curr !== undefined && opUpdatedAt <= curr.updatedAt) {
@@ -155,14 +192,29 @@ export function applyOp(
       ctr: op.ctr,
       body: op.body,
     });
-  } else {
-    // It's a deletion op.
-    return ok(undefined);
   }
+  // Deletion: permanent tombstone (never prune — out-of-order mutates).
+  return ok({
+    eid: op.eid,
+    updatedAt: opUpdatedAt,
+    ctr: op.ctr,
+  });
+}
+
+/** Types to notify when curr → next after a successful apply. */
+export function typesChanged(
+  curr: IEntRow | undefined,
+  next: IEntRow,
+): string[] {
+  const types = new Set<string>();
+  if (curr !== undefined && isLiveEnt(curr)) types.add(curr.type);
+  if (isLiveEnt(next)) types.add(next.type);
+  return [...types];
 }
 
 export const nullEntDB: IEntDB = {
   getEnt: async () => err(Status.NotImplemented),
+  getRow: async () => err(Status.NotImplemented),
   getEntities: async (_query: EntitiesQuery) => err(Status.NotImplemented),
   countEntities: async () => err(Status.NotImplemented),
   checksum: async () => err(Status.NotImplemented),

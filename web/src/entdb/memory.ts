@@ -1,7 +1,15 @@
 // In-memory implementation of EntDB.
 // EntDB "renders" a final database state from deltas encoded as IMessages.
 
-import { applyOp, IEntDB, IEntity, revFromEntity } from "./entdb";
+import {
+  applyOp,
+  IEntDB,
+  IEntity,
+  IEntRow,
+  isLiveEnt,
+  revFromEntity,
+  typesChanged,
+} from "./entdb";
 import { btob64, bytesEqual } from "../shared/binary";
 import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
@@ -32,12 +40,13 @@ export type EntDBMemoryOptions = {
 
 /**
  * eidKey → entity within one type (or one type+parent / type+group bucket).
- * Map (not array) so put/del stay O(1).
+ * Map (not array) so put/del stay O(1). Live ents only (tombstones unindexed).
  */
 type EntBucket = Map<string, IEntity>;
 
 export class EntDBMemory implements IEntDB {
-  ents: Map<string, IEntity> = new Map();
+  /** Live ents and permanent tombstones. */
+  ents: Map<string, IEntRow> = new Map();
 
   private readonly useIndex: boolean;
   /** type → eidKey → ent */
@@ -56,24 +65,28 @@ export class EntDBMemory implements IEntDB {
     }
   }
 
-  /** Install or replace an entity; keeps secondary indexes in sync. */
-  put(ent: IEntity): void {
-    const key = btob64(ent.eid);
+  /** Install or replace a row; live ents are indexed, tombstones are not. */
+  put(row: IEntRow): void {
+    const key = btob64(row.eid);
     const prev = this.ents.get(key);
-    if (prev) {
+    if (prev !== undefined && isLiveEnt(prev)) {
       this.unindex(key, prev);
     }
-    this.ents.set(key, ent);
-    this.index(key, ent);
+    this.ents.set(key, row);
+    if (isLiveEnt(row)) {
+      this.index(key, row);
+    }
   }
 
   /** Remove by eid key; keeps secondary indexes in sync. */
   del(key: string): void {
     const prev = this.ents.get(key);
-    if (!prev) {
+    if (prev === undefined) {
       return;
     }
-    this.unindex(key, prev);
+    if (isLiveEnt(prev)) {
+      this.unindex(key, prev);
+    }
     this.ents.delete(key);
   }
 
@@ -224,16 +237,14 @@ export class EntDBMemory implements IEntDB {
         results.push(stat);
         continue;
       }
-      if (next) {
-        types.add(next.type);
-      } else if (curr) {
-        types.add(curr.type);
+      if (next === undefined) {
+        results.push(Status.InternalError);
+        continue;
       }
-      if (next) {
-        this.put(next);
-      } else {
-        this.del(key);
+      for (const t of typesChanged(curr, next)) {
+        types.add(t);
       }
+      this.put(next);
       eids.push(op.eid);
       results.push(Status.Success);
     }
@@ -246,12 +257,25 @@ export class EntDBMemory implements IEntDB {
     return Status.Success;
   }
 
+  async getRow<T>(
+    eid: EntityID,
+  ): Promise<ValStat<IEntRow<T> | undefined>> {
+    const key = btob64(eid);
+    const row = this.ents.get(key);
+    return ok(row as IEntRow<T> | undefined);
+  }
+
   async getEnt<T>(
     eid: EntityID,
   ): Promise<ValStat<IEntity<T> | undefined>> {
-    const key = btob64(eid);
-    const ent = this.ents.get(key);
-    return ok(ent as IEntity<T> | undefined);
+    const [row, st] = await this.getRow<T>(eid);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (row === undefined || !isLiveEnt(row)) {
+      return ok(undefined);
+    }
+    return ok(row);
   }
 
   private async getAllEntities<T>(
@@ -286,41 +310,49 @@ export class EntDBMemory implements IEntDB {
       return ok(this.bucketList<T>(this.byType.get(type)));
     }
 
-    // Full-map scan (indexes disabled).
+    // Full-map scan (indexes disabled). Live only.
     const results: IEntity<T>[] = [];
     if (pid !== undefined) {
-      for (const ent of this.ents.values()) {
-        if (ent.type === type && ent.pid && bytesEqual(ent.pid, pid)) {
-          results.push(ent as IEntity<T>);
+      for (const row of this.ents.values()) {
+        if (
+          isLiveEnt(row) && row.type === type && row.pid &&
+          bytesEqual(row.pid, pid)
+        ) {
+          results.push(row as IEntity<T>);
         }
       }
     } else if (gid !== undefined) {
-      for (const ent of this.ents.values()) {
+      for (const row of this.ents.values()) {
         if (
-          ent.type === type && (typeof ent.gid === "string" && ent.gid === gid)
+          isLiveEnt(row) && row.type === type &&
+          (typeof row.gid === "string" && row.gid === gid)
         ) {
-          results.push(ent as IEntity<T>);
+          results.push(row as IEntity<T>);
         }
       }
     } else if (tag !== undefined) {
-      for (const ent of this.ents.values()) {
-        if (ent.type === type && ent.tags && ent.tags.includes(tag)) {
-          results.push(ent as IEntity<T>);
+      for (const row of this.ents.values()) {
+        if (
+          isLiveEnt(row) && row.type === type && row.tags &&
+          row.tags.includes(tag)
+        ) {
+          results.push(row as IEntity<T>);
         }
       }
     } else if (updatedBetween !== undefined) {
-      for (const ent of this.ents.values()) {
+      for (const row of this.ents.values()) {
         if (
-          ent.type === type && ent.updatedAt >= updatedBetween.start &&
-          ent.updatedAt <= updatedBetween.end
+          isLiveEnt(row) && row.type === type &&
+          row.updatedAt >= updatedBetween.start &&
+          row.updatedAt <= updatedBetween.end
         ) {
-          results.push(ent as IEntity<T>);
+          results.push(row as IEntity<T>);
         }
       }
     } else {
-      for (const ent of this.ents.values()) {
-        if (ent.type === type) {
-          results.push(ent as IEntity<T>);
+      for (const row of this.ents.values()) {
+        if (isLiveEnt(row) && row.type === type) {
+          results.push(row as IEntity<T>);
         }
       }
     }
@@ -342,8 +374,8 @@ export class EntDBMemory implements IEntDB {
       return ok(this.byType.get(type)?.size ?? 0);
     }
     let count = 0;
-    for (const ent of this.ents.values()) {
-      if (ent.type === type) {
+    for (const row of this.ents.values()) {
+      if (isLiveEnt(row) && row.type === type) {
         count += 1;
       }
     }
@@ -352,8 +384,8 @@ export class EntDBMemory implements IEntDB {
 
   async checksum(crypto: ICrypto): Promise<ValStat<Hash>> {
     const revs = [];
-    for (const ent of this.ents.values()) {
-      revs.push(revFromEntity(ent));
+    for (const row of this.ents.values()) {
+      revs.push(revFromEntity(row));
     }
     return checksumEntRevs(revs, crypto);
   }

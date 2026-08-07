@@ -29,7 +29,7 @@ import {
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
-import { entStateManager, revFromHead } from "../src/entdb/entdb";
+import { entStateManager, isTombstone, revFromHead } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
 
 const lpcHost = new DiplomaticLPCServer(
@@ -258,6 +258,52 @@ describe("Client", () => {
       const st = await client.rebuild({ checkHost: false });
       expect(st).toBe(Status.Success);
       expect(applyCount).toBe(2);
+    });
+
+    test("delete survives rebuild (tombstone blocks older mutate)", async () => {
+      const entDB = new EntDBMemory();
+      const stateMgr = entStateManager(entDB);
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+      const client = new SyncClient(
+        mockClock,
+        stateMgr,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+      const seed = new Uint8Array(32).fill(5) as MasterSeed;
+      await client.setSeed(seed);
+
+      const entBod: EncodedMessage = encode({
+        type: "todo",
+        body: { text: "undead?" },
+      });
+      const [head, stIns] = await client.insertRaw(entBod);
+      expect(stIns).toBe(Status.Success);
+      if (!head) throw new Error("insert head");
+
+      const [prior, stRev] = revFromHead(head);
+      expect(stRev).toBe(Status.Success);
+      if (!prior) throw new Error("prior");
+      const [delHead, stDel] = await client.delete({ prior });
+      expect(stDel).toBe(Status.Success);
+      if (!delHead) throw new Error("del head");
+
+      const [before] = await entDB.getEntities({ type: "todo" });
+      expect(before).toHaveLength(0);
+      const [row, stRow] = await entDB.getRow(prior.eid);
+      expect(stRow).toBe(Status.Success);
+      expect(row !== undefined && isTombstone(row)).toBe(true);
+
+      const st = await client.rebuild({ checkHost: false });
+      expect(st).toBe(Status.Success);
+
+      const [after] = await entDB.getEntities({ type: "todo" });
+      expect(after).toHaveLength(0);
+      const [ent] = await entDB.getEnt(prior.eid);
+      expect(ent).toBeUndefined();
+      const [row2] = await entDB.getRow(prior.eid);
+      expect(row2 !== undefined && isTombstone(row2)).toBe(true);
     });
   });
 

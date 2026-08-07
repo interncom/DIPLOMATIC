@@ -22,13 +22,13 @@ export const typeIndexName = "entity_type_created_at";
 export const typeUpdatedAtIndexName = "entity_type_updated_at";
 export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
-/** multiEntry index on tags[]; query by tag then filter by type. */
+/** multiEntry index on tgs[]; query by tag then filter by type. */
 export const tagsIndexName = "entity_tags";
 
 /** Shared by main thread and sync worker — must stay in lockstep. */
 export const ENT_IDB_NAME = "db";
-/** v12: multiEntry tags index (entity_tags). */
-export const ENT_IDB_VERSION = 12;
+/** v13: stored field tags → tgs (3-letter keys); multiEntry on tgs. */
+export const ENT_IDB_VERSION = 13;
 
 interface IStoredEntity<T = unknown> {
   bod: T;
@@ -37,7 +37,7 @@ interface IStoredEntity<T = unknown> {
   eid: string;
   gid?: string;
   pid?: string;
-  tags?: string[];
+  tgs?: string[]; // tags (API); multiEntry-indexed
   typ: string;
   upd: Date; // updatedAt
 }
@@ -70,7 +70,7 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
     eid: btob64(ent.eid),
     gid: ent.gid,
     pid: ent.pid ? btob64(ent.pid) : undefined,
-    tags: ent.tags,
+    tgs: ent.tags,
     typ: ent.type,
     upd: ent.updatedAt,
   };
@@ -81,8 +81,8 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   if (stored.pid === undefined) {
     delete stored.pid;
   }
-  if (stored.tags === undefined) {
-    delete stored.tags;
+  if (stored.tgs === undefined) {
+    delete stored.tgs;
   }
   if (stored.ctr === undefined) {
     delete stored.ctr;
@@ -114,7 +114,7 @@ function storedToEntity<T>(
     eid: b64tob(stored.eid) as EntityID,
     gid: stored.gid,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
-    ...(stored.tags !== undefined ? { tags: stored.tags } : {}),
+    ...(stored.tgs !== undefined ? { tags: stored.tgs } : {}),
   };
 }
 
@@ -555,8 +555,14 @@ function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
   }
   // multiEntry on array keyPath only (IDB forbids multiEntry + compound
   // keyPath). Lookup by tag, then filter typ in app code.
+  // v13: keyPath is tgs (was tags). Drop wrong-keyPath index if present.
+  if (store.indexNames.contains(tagsIndexName)) {
+    if (store.index(tagsIndexName).keyPath !== "tgs") {
+      store.deleteIndex(tagsIndexName);
+    }
+  }
   if (!store.indexNames.contains(tagsIndexName)) {
-    store.createIndex(tagsIndexName, "tags", {
+    store.createIndex(tagsIndexName, "tgs", {
       unique: false,
       multiEntry: true,
     });

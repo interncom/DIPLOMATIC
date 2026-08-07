@@ -29,7 +29,7 @@ interface IStoredEntity<T = unknown> {
   eid: string; // Typical EID has 8 random bytes + 6 bytes for embedded timestamp = 14 bytes. Base64-encoded in IndexedDB, which expands it to 19 bytes unpadded.
   gid?: string; // G bytes.
   pid?: string; // 19 bytes (see eid comment above).
-  tags?: string[]; // multiEntry-indexed; each tag is a separate index entry.
+  tgs?: string[]; // tags (API); multiEntry-indexed; each tag is a separate index entry.
   typ: string; // T bytes
   upd: Date; // updatedAt, 8 bytes
 }
@@ -44,9 +44,9 @@ interface IStoredTomb {
 type IStoredRow<T = unknown> = IStoredEntity<T> | IStoredTomb;
 ```
 
-An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no gid, no pid, no tags, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
+An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no gid, no pid, no tgs, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
 
-A maximum-size ent will have all attributes defined. Attribute name overhead scales with which optional fields are set; tags add the array payload plus multiEntry index entries.
+A maximum-size ent will have all attributes defined. Attribute name overhead scales with which optional fields are set; tgs add the array payload plus multiEntry index entries.
 
 EntDB provides the following indexes for efficient ent lookup:
 
@@ -54,9 +54,9 @@ EntDB provides the following indexes for efficient ent lookup:
 2. [`typ`, `upd`],
 3. [`typ`, `pid`],
 4. [`typ`, `gid`],
-5. `tags` (multiEntry) — lookup by exact tag, then filter by `typ`.
+5. `tgs` (multiEntry) — lookup by exact tag, then filter by `typ`.
 
-**Tag reverse lookup** is the multi-value analogue of `pid`: `getEntities({ type, tag })` returns ents of that type whose `tags` array includes the tag. Memory EntDB keeps a secondary map `type → tag → eid`; IndexedDB uses a multiEntry index on `tags` only (IndexedDB forbids multiEntry with a compound key path), so the type filter runs in application code after the tag index hit. Prefer unique-ish client encodings (e.g. eid-backed `impl:…` tags) so the tag bucket stays small.
+**Tag reverse lookup** is the multi-value analogue of `pid`: `getEntities({ type, tag })` returns ents of that type whose `tags` array includes the tag. Memory EntDB keeps a secondary map `type → tag → eid`; IndexedDB uses a multiEntry index on `tgs` only (IndexedDB forbids multiEntry with a compound key path), so the type filter runs in application code after the tag index hit. Prefer unique-ish client encodings (e.g. eid-backed `impl:…` tags) so the tag bucket stays small.
 
 Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }`, or `{ type, updatedBetween }`. Compound combinations (e.g. pid + tag) are not supported.
 

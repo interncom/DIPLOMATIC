@@ -10,7 +10,10 @@ import {
   EntitiesQuery,
   IEntDB,
   IEntity,
+  IEntRow,
+  isLiveEnt,
   revFromEntity,
+  typesChanged,
 } from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
 
@@ -37,6 +40,26 @@ interface IStoredEntity<T = unknown> {
   tags?: string[];
   typ: string;
   upd: Date; // updatedAt
+}
+
+/**
+ * Permanent delete tombstone: LWW frontier only.
+ * Omitting typ keeps type-compound indexes live-only (no schema bump).
+ */
+interface IStoredTomb {
+  eid: string;
+  upd: Date;
+  ctr?: number;
+  /** Type-only discriminant so live is not assignable to tomb. */
+  typ?: never;
+}
+
+/** Any row in the entities object store. */
+type IStoredRow<T = unknown> = IStoredEntity<T> | IStoredTomb;
+
+/** Live IDB row (has `typ`). Parallel to {@link isLiveEnt}; storage uses short keys. */
+function isStoredEntity<T>(s: IStoredRow<T>): s is IStoredEntity<T> {
+  return "typ" in s;
 }
 
 function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
@@ -67,6 +90,18 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
   return stored;
 }
 
+function rowToStored(row: IEntRow): IStoredRow {
+  if (!isLiveEnt(row)) {
+    const tomb: IStoredTomb = {
+      eid: btob64(row.eid),
+      upd: row.updatedAt,
+      ...(row.ctr !== 0 ? { ctr: row.ctr } : {}),
+    };
+    return tomb;
+  }
+  return entityToStored(row);
+}
+
 function storedToEntity<T>(
   stored: IStoredEntity<T>,
 ): IEntity<T> {
@@ -80,6 +115,17 @@ function storedToEntity<T>(
     gid: stored.gid,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
     ...(stored.tags !== undefined ? { tags: stored.tags } : {}),
+  };
+}
+
+function storedToRow<T>(stored: IStoredRow<T>): IEntRow<T> {
+  if (isStoredEntity(stored)) {
+    return storedToEntity(stored);
+  }
+  return {
+    eid: b64tob(stored.eid) as EntityID,
+    updatedAt: stored.upd,
+    ctr: stored.ctr ?? 0,
   };
 }
 
@@ -186,9 +232,9 @@ export class EntIDB implements IEntDB {
 
         const getReq = store.get(eidB64);
         getReq.onsuccess = () => {
-          const currStored = getReq.result;
-          let curr: IEntity | undefined = currStored
-            ? storedToEntity(currStored)
+          const currStored = getReq.result as IStoredRow | undefined;
+          let curr: IEntRow | undefined = currStored
+            ? storedToRow(currStored)
             : undefined;
 
           // Sequentially apply applyOp for each op in the group.
@@ -200,11 +246,13 @@ export class EntIDB implements IEntDB {
               results[index] = stat;
               continue;
             }
+            if (next === undefined) {
+              results[index] = Status.InternalError;
+              continue;
+            }
             groupChanged = true;
-            if (next) {
-              types.add(next.type);
-            } else if (curr) {
-              types.add(curr.type);
+            for (const t of typesChanged(curr, next)) {
+              types.add(t);
             }
             curr = next;
           }
@@ -212,20 +260,11 @@ export class EntIDB implements IEntDB {
             eids.push(group[0].op.eid);
           }
 
-          // Persist the final state of the ent if it exists, otherwise delete.
+          // Persist final row (live or permanent tombstone). Never hard-delete.
           if (curr) {
-            const storedEnt = entityToStored(curr);
-            const putReq = store.put(storedEnt);
+            const putReq = store.put(rowToStored(curr));
             putReq.onerror = (evt) => {
               evt.preventDefault();
-              for (const { index } of group) {
-                results[index] = Status.DatabaseError;
-              }
-            };
-          } else {
-            // Undefined indicates it was deleted.
-            const delReq = store.delete(eidB64);
-            delReq.onerror = () => {
               for (const { index } of group) {
                 results[index] = Status.DatabaseError;
               }
@@ -258,9 +297,9 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getEnt<T>(
+  async getRow<T>(
     eid: EntityID,
-  ): Promise<ValStat<IEntity<T> | undefined>> {
+  ): Promise<ValStat<IEntRow<T> | undefined>> {
     let db: IDBDatabase;
     try {
       db = await this.ensureDb();
@@ -273,16 +312,28 @@ export class EntIDB implements IEntDB {
     return new Promise((resolve) => {
       const req = store.get(eidHex);
       req.onsuccess = () => {
-        const stored = req.result;
+        const stored = req.result as IStoredRow<T> | undefined;
         if (!stored) {
           resolve(ok(undefined));
         } else {
-          const ent = storedToEntity<T>(stored);
-          resolve(ok(ent));
+          resolve(ok(storedToRow(stored)));
         }
       };
       req.onerror = () => resolve(err(Status.DatabaseError));
     });
+  }
+
+  async getEnt<T>(
+    eid: EntityID,
+  ): Promise<ValStat<IEntity<T> | undefined>> {
+    const [row, st] = await this.getRow<T>(eid);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (row === undefined || !isLiveEnt(row)) {
+      return ok(undefined);
+    }
+    return ok(row);
   }
 
   async getAllOfTypeUpdatedBetween<T>(
@@ -303,6 +354,7 @@ export class EntIDB implements IEntDB {
         IDBKeyRange.bound([opType, start], [opType, end]),
       );
       req.onsuccess = () => {
+        // Type indexes omit tombstones (no typ) → live IStoredEntity only.
         const storedEnts = req.result as IStoredEntity<T>[];
         resolve(ok(storedEnts.map(storedToEntity)));
       };
@@ -437,6 +489,7 @@ export class EntIDB implements IEntDB {
     const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeIndexName);
     return new Promise((resolve) => {
+      // Tombstones omit typ → not in type index → not counted.
       const range = IDBKeyRange.bound([type], [type, []]);
       const req = index.count(range);
       req.onsuccess = () => resolve(ok(req.result));
@@ -459,8 +512,9 @@ export class EntIDB implements IEntDB {
       req.onsuccess = () => {
         const cursor = req.result;
         if (cursor) {
-          const stored = cursor.value as IStoredEntity;
-          revs.push(revFromEntity(storedToEntity(stored)));
+          const stored = cursor.value as IStoredRow;
+          // Live + permanent tombstones (full LWW frontier).
+          revs.push(revFromEntity(storedToRow(stored)));
           cursor.continue();
         } else {
           void checksumEntRevs(revs, crypto).then(resolve);

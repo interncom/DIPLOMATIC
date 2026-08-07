@@ -142,6 +142,28 @@ describe("CachedEntDB", () => {
     expect(m?.[0]?.body).toEqual({ n: 3 });
   });
 
+  test("newest-first delete then older mutate stays dead", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const create = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const del: IOp = { eid: create.eid, off: 50, ctr: 1 };
+    // Newest first (rebuild / catch-up order).
+    await cache.apply([del, create]);
+
+    const [live] = await cache.getEntities({ type: "note" });
+    expect(live).toHaveLength(0);
+    const [ent] = await cache.getEnt(create.eid);
+    expect(ent).toBeUndefined();
+    const [row] = await cache.getRow(create.eid);
+    expect(row).toEqual({
+      eid: create.eid,
+      updatedAt: new Date(1050),
+      ctr: 1,
+    });
+    const [dRow] = await durable.getRow(create.eid);
+    expect(dRow).toEqual(row);
+  });
+
   test("getEnt read-through on cold eid", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);

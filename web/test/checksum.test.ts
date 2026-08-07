@@ -164,5 +164,18 @@ describe("entDB.checksum", () => {
     const [c2, st2] = await entDB.checksum(libsodiumCrypto);
     expect(st2).toBe(Status.Success);
     expect(bytesEqual(c1!, c2!)).toBe(false);
+
+    // Delete leaves a permanent tombstone in the frontier.
+    await entDB.apply([{ eid, off: 150, ctr: 2 }]);
+    const [c3, st3] = await entDB.checksum(libsodiumCrypto);
+    expect(st3).toBe(Status.Success);
+    expect(bytesEqual(c2!, c3!)).toBe(false);
+    const [expectTomb, stT] = await checksumEntRevs([{
+      eid,
+      updatedAt: new Date(1150),
+      ctr: 2,
+    }], libsodiumCrypto);
+    expect(stT).toBe(Status.Success);
+    expect(bytesEqual(c3!, expectTomb!)).toBe(true);
   });
 });

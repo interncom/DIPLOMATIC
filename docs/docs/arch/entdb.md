@@ -19,7 +19,7 @@ EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 
 These are [msgpack](https://msgpack.org)-encoded within the DIPLOMATIC msg body. The rest of the ent data lives alongside those, encoded the same way.
 
-DIPLOMATIC comes with an EntDB implementation on IndexedDB for use in web browsers. Within IndexedDB, an ent looks like this:
+DIPLOMATIC comes with an EntDB implementation on IndexedDB for use in web browsers. Within IndexedDB, a live ent looks like this:
 
 ```
 interface IStoredEntity<T = unknown> {
@@ -33,6 +33,15 @@ interface IStoredEntity<T = unknown> {
   typ: string; // T bytes
   upd: Date; // updatedAt, 8 bytes
 }
+
+// Permanent delete tombstone (same object store). Omits typ so type indexes skip it.
+interface IStoredTomb {
+  eid: string;
+  upd: Date;
+  ctr?: number;
+}
+
+type IStoredRow<T = unknown> = IStoredEntity<T> | IStoredTomb;
 ```
 
 An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no gid, no pid, no tags, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
@@ -67,7 +76,7 @@ Use `btob64` / package helpers so binary eids encode stably across platforms.
 
 ### Frontier checksum
 
-EntDB can compute a **frontier checksum** of all live rows (not bodies): for each ent, encode `eid`, `updatedAt`, and `ctr`, then hash the sorted set of those encodings (`checksumSet`). Deletes do not appear.
+EntDB can compute a **frontier checksum** of all rows — live ents and permanent delete tombstones (not bodies): for each row, encode `eid`, `updatedAt`, and `ctr`, then hash the sorted set of those encodings (`checksumSet`). Tombstones are never pruned: out-of-order message application after partition heal would otherwise resurrect deleted ents.
 
 ```ts
 const [digest, st] = await entDB.checksum(crypto);

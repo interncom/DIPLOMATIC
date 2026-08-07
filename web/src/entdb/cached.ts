@@ -19,13 +19,23 @@
 // provided via constructor init). apply / getEnt / ingest only touch
 // individual eids — they must not mark a type warm, or a write before
 // the first list would hide every other row of that type until restart.
+// Tombstones are pulled by eid (getRow) so LWW still rejects obsolete mutates
+// even when the type was never fully warm.
 
 import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat";
-import { applyOp, EntitiesQuery, IEntDB, IEntity } from "./entdb";
+import {
+  applyOp,
+  EntitiesQuery,
+  IEntDB,
+  IEntity,
+  IEntRow,
+  isLiveEnt,
+  typesChanged,
+} from "./entdb";
 import { openEntIDB } from "./idb";
 import { EntDBMemory } from "./memory";
 
@@ -112,13 +122,16 @@ export class CachedEntDB implements IEntDB {
    */
   apply(ops: IOp[]) {
     return this.run(async () => {
+      // Ensure mem has durable frontier (incl. tombstones) before LWW apply.
+      await this.pullEids(ops.map((o) => o.eid));
+
       // 1–2. Mem immediately + durable in parallel (mem is sync).
       const memResult = applyOps(this.mem, ops);
       this.emit(memResult.types);
 
       const durResult = await this.durable.apply(ops);
 
-      // 3. Authority: mem := durable for these eids.
+      // 3. Authority: mem := durable for these eids (live or tombstone).
       // Do not mark types warm here: only these eids are in mem. A later
       // list/count still needs warmType if the type was never fully loaded.
       const { changed, status } = await this.pullEids(ops.map((o) => o.eid));
@@ -165,9 +178,9 @@ export class CachedEntDB implements IEntDB {
   }
 
   /**
-   * Install durable truth for each eid into mem.
-   * Always writes mem from durable; notifies types only when the full ent
-   * identity differs from what mem had (or the row was deleted).
+   * Install durable truth for each eid into mem (live or tombstone).
+   * Always writes mem from durable; notifies types only when the full row
+   * identity differs from what mem had (or the row appeared/vanished).
    */
   private async pullEids(
     eids: Iterable<EntityID>,
@@ -180,24 +193,28 @@ export class CachedEntDB implements IEntDB {
       seen.add(key);
 
       const prev = this.mem.ents.get(key);
-      const [ent, st] = await this.durable.getEnt(eid);
+      const [row, st] = await this.durable.getRow(eid);
       if (st !== Status.Success) {
         // Do not leave mem half-reconciled on a read failure.
         return { changed, status: st };
       }
-      if (ent) {
+      if (row) {
         // Always install durable row (authority), even if we skip notify.
         // Single-eid ingest is not a full type load — leave warmed alone.
-        this.mem.put(ent);
-        if (!prev || !sameEntity(prev, ent)) {
-          changed.add(ent.type);
-          if (prev && prev.type !== ent.type) {
+        this.mem.put(row);
+        if (!prev || !sameRow(prev, row)) {
+          if (isLiveEnt(row)) {
+            changed.add(row.type);
+          }
+          if (prev !== undefined && isLiveEnt(prev)) {
             changed.add(prev.type);
           }
         }
-      } else if (prev) {
+      } else if (prev !== undefined) {
         this.mem.del(key);
-        changed.add(prev.type);
+        if (isLiveEnt(prev)) {
+          changed.add(prev.type);
+        }
       }
     }
     return { changed, status: Status.Success };
@@ -215,7 +232,7 @@ export class CachedEntDB implements IEntDB {
       for (const ent of ents) {
         const key = btob64(ent.eid);
         const curr = this.mem.ents.get(key);
-        if (!curr || entWins(ent, curr)) {
+        if (!curr || rowWins(ent, curr)) {
           this.mem.put(ent);
         }
       }
@@ -224,28 +241,39 @@ export class CachedEntDB implements IEntDB {
     return Status.Success;
   }
 
-  async getEnt<T>(
+  async getRow<T>(
     eid: EntityID,
-  ): Promise<ValStat<IEntity<T> | undefined>> {
+  ): Promise<ValStat<IEntRow<T> | undefined>> {
     const key = btob64(eid);
     if (this.mem.ents.has(key)) {
-      return this.mem.getEnt<T>(eid);
+      return this.mem.getRow<T>(eid);
     }
     return this.run(async () => {
       if (this.mem.ents.has(key)) {
-        return this.mem.getEnt<T>(eid);
+        return this.mem.getRow<T>(eid);
       }
-      const [ent, st] = await this.durable.getEnt<T>(eid);
+      const [row, st] = await this.durable.getRow<T>(eid);
       if (st !== Status.Success) {
         return err(st);
       }
-      // Point get is not a full type load — leave warmed alone so a later
-      // list still pulls the rest of the type from durable.
-      if (ent) {
-        this.mem.put(ent);
+      if (row) {
+        this.mem.put(row);
       }
-      return ok(ent);
+      return ok(row);
     });
+  }
+
+  async getEnt<T>(
+    eid: EntityID,
+  ): Promise<ValStat<IEntity<T> | undefined>> {
+    const [row, st] = await this.getRow<T>(eid);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (row === undefined || !isLiveEnt(row)) {
+      return ok(undefined);
+    }
+    return ok(row);
   }
 
   async getEntities<T>(
@@ -280,20 +308,25 @@ export class CachedEntDB implements IEntDB {
 }
 
 /**
- * Full ent identity for notify gating after installing durable truth.
+ * Full row identity for notify gating after installing durable truth.
  * Prefer over-notifying (false) to missing a UI update.
  *
  * TODO: pass msg head `hsh` (blake3 of body) into EntDB on apply and store it
- * on the ent. Then sameEntity can be (ctr, updatedAt, hsh) instead of
- * re-encoding body — deletes still compare as missing row.
+ * on the ent. Then sameRow for live can be (ctr, updatedAt, hsh) instead of
+ * re-encoding body.
  */
-function sameEntity(a: IEntity, b: IEntity): boolean {
+function sameRow(a: IEntRow, b: IEntRow): boolean {
+  if (isLiveEnt(a) !== isLiveEnt(b)) return false;
   if (a.ctr !== b.ctr) return false;
   if (a.updatedAt.getTime() !== b.updatedAt.getTime()) return false;
+  if (!bytesEqual(a.eid, b.eid)) return false;
+  if (!isLiveEnt(a) || !isLiveEnt(b)) {
+    // Both tombstones (live/tomb mismatch already rejected).
+    return true;
+  }
   if (a.createdAt.getTime() !== b.createdAt.getTime()) return false;
   if (a.type !== b.type) return false;
   if (a.gid !== b.gid) return false;
-  if (!bytesEqual(a.eid, b.eid)) return false;
   if (!optBytesEqual(a.pid, b.pid)) return false;
   if (!sameTags(a.tags, b.tags)) return false;
   return sameBody(a.body, b.body);
@@ -336,14 +369,14 @@ function sameBody(a: unknown, b: unknown): boolean {
   }
 }
 
-function entWins(a: IEntity, b: IEntity): boolean {
+function rowWins(a: IEntRow, b: IEntRow): boolean {
   const ta = a.updatedAt.getTime();
   const tb = b.updatedAt.getTime();
   if (ta !== tb) return ta > tb;
   return a.ctr > b.ctr;
 }
 
-/** Apply ops to mem (LWW per eid); uses put/del so indexes stay correct. */
+/** Apply ops to mem (LWW per eid); uses put so tombstones stay for LWW. */
 function applyOps(
   mem: EntDBMemory,
   ops: IOp[],
@@ -358,16 +391,14 @@ function applyOps(
       results.push(stat);
       continue;
     }
-    if (next) {
-      types.add(next.type);
-    } else if (curr) {
-      types.add(curr.type);
+    if (next === undefined) {
+      results.push(Status.InternalError);
+      continue;
     }
-    if (next) {
-      mem.put(next);
-    } else {
-      mem.del(key);
+    for (const t of typesChanged(curr, next)) {
+      types.add(t);
     }
+    mem.put(next);
     results.push(Status.Success);
   }
   return { stats: results, types };

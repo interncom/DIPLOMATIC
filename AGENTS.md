@@ -10,6 +10,14 @@ Write the minimum amount of code you can to achieve the task without sacrificing
 
 Do not introduce new jargon without good reason.
 
+## Change-Minimization
+
+When implementing a change, there is sometimes a refactor that looks useful to do. Resist the urge to do it all together. We value keeping changes focused so that the commits are easy to read and understand. You can do the refactor in a follow-up commit.
+
+## Terseness
+
+To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are *not* desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
+
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.

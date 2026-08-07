@@ -25,9 +25,9 @@ export function headUpdatedAtMs(head: IHlcHead): number | undefined {
  * Higher updatedAt first; tie-break higher ctr (later update at same ms).
  * Unknown/unparseable eids sort last.
  *
- * EntDB/StateManager already no-ops obsolete msgs (LWW). Sorting newest-first
- * is so app state converges to its final view early in a large apply, not to
- * save work on the later NoChange applies.
+ * EntDB LWW no-ops obsolete msgs against the current row, including permanent
+ * tombstones after delete. Newest-first is so app state converges early in a
+ * large apply, not to save work on later NoChange applies.
  */
 export function compareHeadHlcDesc(a: IHlcHead, b: IHlcHead): number {
   const ta = headUpdatedAtMs(a);

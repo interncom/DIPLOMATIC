@@ -1,12 +1,12 @@
 import libsodiumCrypto from "../../crypto";
 import { Enclave } from "../../shared/crypto/enclave";
 import { MasterSeed } from "../../shared/types";
-import { ISeedStore } from "../../types";
+import { ISeedStore, type SetSeedOpts } from "../../types";
 
 export class MemorySeedStore implements ISeedStore {
   enclave?: Enclave;
 
-  async save(seed: MasterSeed) {
+  async save(seed: MasterSeed, _opts?: SetSeedOpts) {
     this.enclave = new Enclave(seed, libsodiumCrypto);
     return this.enclave;
   }

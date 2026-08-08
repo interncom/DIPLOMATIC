@@ -107,10 +107,12 @@ function openDb(path: string): Database {
 class SqliteSeedStore implements ISeedStore {
   constructor(private db: Database, private crypto: ICrypto) {}
 
-  async save(seed: MasterSeed) {
-    this.db.prepare(
-      "INSERT INTO seed (id, seed) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seed = excluded.seed",
-    ).run(seed);
+  async save(seed: MasterSeed, opts?: { persist?: boolean }) {
+    if (opts?.persist === true) {
+      this.db.prepare(
+        "INSERT INTO seed (id, seed) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seed = excluded.seed",
+      ).run(seed);
+    }
     return new Enclave(seed, this.crypto);
   }
 
@@ -608,7 +610,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
   }
 
   async wipe() {
-    await this.seed.wipe();
+    // Match IDBStore: do not call seed.wipe (identity separate from protocol data).
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();

@@ -21,6 +21,8 @@ export const MESSAGES_APLD_INDEX = "apld";
 /** Schema version: v3 adds messages.apld index for the apply queue. */
 export const DIPLOMATIC_STORE_DB_VERSION = 3;
 
+export const DIPLOMATIC_STORE_DB_NAME = "diplomatic-store-db";
+
 export class IDBStore implements IStore<URL> {
   seed: IDBSeedStore;
   hosts: IDBHostStore;
@@ -38,16 +40,17 @@ export class IDBStore implements IStore<URL> {
     this.messages = new IDBMessageStore(db, crypto);
   }
 
+  /**
+   * Clear protocol tables only (not seed). Seed is wiped only via
+   * {@link ISeedStore.wipe} when client.wipe({ seed: true }).
+   */
   async wipe() {
-    await this.seed.wipe();
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();
     await this.messages.wipe();
   }
 }
-
-export const DIPLOMATIC_STORE_DB_NAME = "diplomatic-store-db";
 
 export async function openIDBStoreDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

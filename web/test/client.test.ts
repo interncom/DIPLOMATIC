@@ -363,11 +363,15 @@ describe("Client", () => {
 
       expect(cleared).toBe(true);
       expect(client.connections.size).toBe(0);
-      expect(await store.seed.load()).toBeUndefined();
+      // Default wipe keeps seed (identity opt-in).
+      expect(await store.seed.load()).toBeDefined();
       expect(Array.from(await store.hosts.list()).length).toBe(0);
       expect(Array.from(await store.messages.list()).length).toBe(0);
       expect(await store.uploads.count()).toBe(0);
       expect(await store.downloads.count()).toBe(0);
+
+      await client.wipe({ seed: true, msgs: false, ents: false, meta: false });
+      expect(await store.seed.load()).toBeUndefined();
     });
 
     test("clears EntDB and notifies type subscribers", async () => {
@@ -425,7 +429,7 @@ describe("Client", () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(syncSpy).not.toHaveBeenCalled();
         syncSpy.mockRestore();
-        expect(await store.seed.load()).toBeUndefined();
+        expect(await store.seed.load()).toBeDefined();
       } finally {
         vi.useRealTimers();
       }

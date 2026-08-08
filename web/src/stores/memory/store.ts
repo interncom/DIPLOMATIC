@@ -18,7 +18,7 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
   }
 
   async wipe() {
-    await this.seed.wipe();
+    // Protocol data only; seed wiped only via seed.wipe when client asks.
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();

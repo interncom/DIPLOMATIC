@@ -148,7 +148,9 @@ export class WorkerRuntime {
         return "pong";
 
       case "setSeed": {
-        await client.setSeed(toMasterSeed(cmd.seed));
+        await client.setSeed(toMasterSeed(cmd.seed), {
+          persist: cmd.persist,
+        });
         return undefined;
       }
 
@@ -221,7 +223,12 @@ export class WorkerRuntime {
       }
 
       case "wipe": {
-        await client.wipe();
+        await client.wipe({
+          msgs: cmd.msgs,
+          ents: cmd.ents,
+          meta: cmd.meta,
+          seed: cmd.seed,
+        });
         return undefined;
       }
 

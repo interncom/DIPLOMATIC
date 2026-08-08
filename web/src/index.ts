@@ -74,6 +74,7 @@ import type {
   ListMsgsOpts,
   ReconcileOpts,
   ReconcileReport,
+  SetSeedOpts,
 } from "./types";
 import {
   APLD_APPLIED,
@@ -92,6 +93,16 @@ import {
   shouldEmitItemProgress,
 } from "./progress";
 import {
+  clearLargeBlobSeed,
+  createLargeBlobCred,
+  largeBlobCapable,
+  PasskeySeedStore,
+  readLargeBlobSeed,
+  storeSeedLargeBlob,
+  writeLargeBlobSeed,
+} from "./passkey/seed";
+import type { LargeBlobRp } from "./passkey/seed";
+import {
   checksumEntRevs,
   checksumSet,
   cmpBytes,
@@ -106,6 +117,7 @@ import {
 } from "./openClient";
 import { WorkerClient } from "./worker/client";
 import type { WorkerClientOptions } from "./worker/client";
+import type { WipeOpts } from "./types";
 
 export async function genWebClient(
   stateMgr: IStateManager,
@@ -142,8 +154,10 @@ export {
   CachedEntDB,
   checksumEntRevs,
   checksumSet,
+  clearLargeBlobSeed,
   Clock,
   cmpBytes,
+  createLargeBlobCred,
   crypto,
   Decoder,
   defaultPeekProgressEvery,
@@ -170,6 +184,7 @@ export {
   isTerminalApplyFailure,
   isTombstone,
   IStore,
+  largeBlobCapable,
   MasterSeed,
   MemoryStore,
   normalizeTags,
@@ -178,6 +193,8 @@ export {
   openDiplomaticClient,
   openEntDB,
   openIDBStore,
+  PasskeySeedStore,
+  readLargeBlobSeed,
   revFromEntity,
   revFromHead,
   setApld,
@@ -185,6 +202,7 @@ export {
   SingletonStateManager,
   StateManager,
   Status,
+  storeSeedLargeBlob,
   SyncClient,
   TypedEventEmitter,
   useClient,
@@ -194,6 +212,7 @@ export {
   useStateWatcherSuspense,
   useSyncOnResume,
   WorkerClient,
+  writeLargeBlobSeed,
 };
 
 export type {
@@ -221,6 +240,7 @@ export type {
   ITombstone,
   ITransport,
   IUpdateParams,
+  LargeBlobRp,
   ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
@@ -229,6 +249,8 @@ export type {
   OpenEntDBOptions,
   ReconcileOpts,
   ReconcileReport,
+  SetSeedOpts,
   SyncProgressEvent,
+  WipeOpts,
   WorkerClientOptions,
 };

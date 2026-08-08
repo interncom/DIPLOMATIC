@@ -46,10 +46,46 @@ export type Applier = (
   ops: IOp[],
 ) => Promise<{ stats: Status[]; types: Set<string>; eids: EntityID[] }>;
 
-// ISeedStore handles persistence for a MasterSeed.
+/** Options for loading a seed into the enclave. */
+export type SetSeedOpts = {
+  /**
+   * When true, write seed to the durable store (e.g. IndexedDB).
+   * Default false (memory only) — IDB is readable by other local apps.
+   * Opt in only when the app accepts that tradeoff (or has no better store).
+   */
+  persist?: boolean;
+};
+
+/**
+ * Selective wipe for {@link IClient.wipe}.
+ *
+ * Default `client.wipe()` / `client.wipe({})` clears **everything except seed**:
+ * msgs, ents, meta = true; seed = false.
+ * That avoids passkey/largeBlob UV when the user only wants to clear app data.
+ * Pass `{ seed: true }` to also clear identity (may prompt the authenticator).
+ */
+export type WipeOpts = {
+  /** Message archive. Default true. */
+  msgs?: boolean;
+  /** Application EntDB / state manager. Default true. */
+  ents?: boolean;
+  /** Hosts + upload/download queues. Default true. */
+  meta?: boolean;
+  /**
+   * Seed / identity ({@link ISeedStore.wipe}). Default **false**.
+   * When true, passkey stores overwrite largeBlob (UV ceremony).
+   */
+  seed?: boolean;
+};
+
+// ISeedStore: session/durable access to a MasterSeed.
 export interface ISeedStore {
-  save: (seed: MasterSeed) => Promise<Enclave>;
+  save: (seed: MasterSeed, opts?: SetSeedOpts) => Promise<Enclave>;
   load: () => Promise<Enclave | void>;
+  /**
+   * Clear durable seed material for this store (IDB row, largeBlob overwrite, …)
+   * and drop the in-memory enclave. Called only when client.wipe({ seed: true }).
+   */
   wipe: () => Promise<void>;
 }
 
@@ -343,6 +379,9 @@ export interface IStore<Handle extends HostHandle> {
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
+  /**
+   * Clear protocol tables (hosts, queues, messages). Does not call seed.wipe.
+   */
   wipe(): Promise<void>;
 }
 
@@ -354,7 +393,7 @@ export interface IStateEmitter<T> {
 }
 
 export interface IClient<Handle extends HostHandle> {
-  setSeed(seed: MasterSeed): Promise<void>;
+  setSeed(seed: MasterSeed, opts?: SetSeedOpts): Promise<void>;
 
   link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;
@@ -423,7 +462,11 @@ export interface IClient<Handle extends HostHandle> {
     opts?: ReconcileOpts,
   ): Promise<ValStat<ReconcileReport>>;
 
-  wipe(): Promise<void>;
+  /**
+   * Clear local state. Defaults wipe msgs/ents/meta only; seed requires
+   * `{ seed: true }` (avoids passkey UV on ordinary EXIT / data wipe).
+   */
+  wipe(opts?: WipeOpts): Promise<void>;
 
   import(file: File): Promise<Status>;
   export(filename: string, extension?: string): Promise<Status>;

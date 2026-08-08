@@ -41,6 +41,8 @@ import type {
   ListMsgsOpts,
   ReconcileOpts,
   ReconcileReport,
+  SetSeedOpts,
+  WipeOpts,
 } from "../types";
 import {
   clientStateFromUnknown,
@@ -94,6 +96,8 @@ const logPrefix = "[DIPLOMATIC]";
 export class WorkerClient implements IClient<URL> {
   private worker: Worker;
   private state: IStateManager;
+  /** Shared protocol store (main connection). */
+  private store: IStore<URL>;
   /** Main-thread writer: msg archive + local apply for fast UI. */
   private local: SyncClient<URL>;
   private nextId = 1;
@@ -127,6 +131,7 @@ export class WorkerClient implements IClient<URL> {
   ) {
     this.worker = worker;
     this.state = state;
+    this.store = store;
     this.clientState = new StateEmitter(async () => this.cachedClientState);
     this.xferState = new StateEmitter(async () => this.cachedXferState);
     this.scheduledSync = new Debounced(syncDebounceMs, async () => {
@@ -470,13 +475,25 @@ export class WorkerClient implements IClient<URL> {
     };
   }
 
-  async setSeed(seed: MasterSeed): Promise<void> {
+  async setSeed(seed: MasterSeed, opts?: SetSeedOpts): Promise<void> {
     await this.ready;
-    // Shared IDB: main cache + worker enclave both need the seed.
-    await this.local.setSeed(seed);
+    // Shared IDB (if persist) + worker enclave both need the seed.
+    await this.local.setSeed(seed, opts);
+    // Optimistic: local already has enclave; don't wait on async worker
+    // clientState posts (void-emitted) for hasSeed to flip in the UI.
+    this.cachedClientState = {
+      ...this.cachedClientState,
+      hasSeed: true,
+    };
+    this.clientState.emit();
     const copy = seed.slice();
     await this.request(
-      { id: this.allocId(), op: "setSeed", seed: copy },
+      {
+        id: this.allocId(),
+        op: "setSeed",
+        seed: copy,
+        persist: opts?.persist,
+      },
       [copy.buffer],
     );
   }
@@ -648,9 +665,22 @@ export class WorkerClient implements IClient<URL> {
     return result as Hash;
   }
 
-  async wipe(): Promise<void> {
+  async wipe(opts?: WipeOpts): Promise<void> {
     await this.ready;
-    await this.request({ id: this.allocId(), op: "wipe" });
+    // Main first: shared IDB tables + seed.wipe (largeBlob overwrite if wired).
+    await this.local.wipe(opts);
+    // Worker: network teardown + its store/enclave + EntDB connection.
+    await this.request({
+      id: this.allocId(),
+      op: "wipe",
+      msgs: opts?.msgs,
+      ents: opts?.ents,
+      meta: opts?.meta,
+      seed: opts?.seed,
+    });
+    await this.hydrateStateFromStore(this.store);
+    this.clientState.emit();
+    this.xferState.emit();
   }
 
   async import(file: File): Promise<Status> {

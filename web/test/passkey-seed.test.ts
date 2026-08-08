@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLargeBlobCred,
+  largeBlobCapable,
   PasskeySeedStore,
   readLargeBlobSeed,
   writeLargeBlobSeed,
@@ -33,6 +34,46 @@ describe("passkey largeBlob seed", () => {
     vi.restoreAllMocks();
   });
 
+  it("largeBlobCapable is true on Safari even when caps say false", async () => {
+    vi.stubGlobal("navigator", {
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+      vendor: "Apple Computer, Inc.",
+    });
+    vi.stubGlobal("PublicKeyCredential", {
+      getClientCapabilities: vi.fn().mockResolvedValue({
+        "extension:largeBlob": false,
+      }),
+    });
+    expect(await largeBlobCapable()).toBe(true);
+  });
+
+  it("largeBlobCapable is true on Safari when largeBlob key is omitted", async () => {
+    vi.stubGlobal("navigator", {
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      vendor: "Apple Computer, Inc.",
+    });
+    vi.stubGlobal("PublicKeyCredential", {
+      getClientCapabilities: vi.fn().mockResolvedValue({}),
+    });
+    expect(await largeBlobCapable()).toBe(true);
+  });
+
+  it("largeBlobCapable respects caps on non-Safari when advertised false", async () => {
+    vi.stubGlobal("navigator", {
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      vendor: "Google Inc.",
+    });
+    vi.stubGlobal("PublicKeyCredential", {
+      getClientCapabilities: vi.fn().mockResolvedValue({
+        "extension:largeBlob": false,
+      }),
+    });
+    expect(await largeBlobCapable()).toBe(false);
+  });
+
   it("createLargeBlobCred returns rawId when supported", async () => {
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
@@ -46,6 +87,17 @@ describe("passkey largeBlob seed", () => {
     expect(create).toHaveBeenCalledOnce();
     const arg = create.mock.calls[0][0];
     expect(arg.publicKey.extensions.largeBlob.support).toBe("required");
+  });
+
+  it("createLargeBlobCred rejects when authenticator omits largeBlob", async () => {
+    const create = vi.fn().mockResolvedValue(mockCred(credId.buffer, {}));
+    vi.stubGlobal("navigator", { credentials: { create, get: vi.fn() } });
+    vi.stubGlobal("PublicKeyCredential", class {});
+    vi.stubGlobal("location", { hostname: "localhost" });
+
+    await expect(createLargeBlobCred({ rpId: "localhost" })).rejects.toThrow(
+      /largeBlob: unsupported by authenticator/,
+    );
   });
 
   it("writeLargeBlobSeed requires written:true", async () => {

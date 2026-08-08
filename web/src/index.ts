@@ -95,6 +95,7 @@ import {
 import {
   clearLargeBlobSeed,
   createLargeBlobCred,
+  defaultWebAuthnRpId,
   discoverLargeBlobSeed,
   largeBlobCapable,
   PasskeySeedStore,
@@ -163,6 +164,7 @@ export {
   crypto,
   Decoder,
   defaultPeekProgressEvery,
+  defaultWebAuthnRpId,
   discoverLargeBlobSeed,
   eidCodec,
   encodeEntRev,

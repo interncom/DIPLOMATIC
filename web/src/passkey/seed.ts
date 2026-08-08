@@ -14,6 +14,71 @@ export type LargeBlobRp = {
   rpName?: string;
 };
 
+/**
+ * Multi-part public suffixes where eTLD+1 needs three labels
+ * (e.g. foo.example.co.uk → example.co.uk). Not a full PSL.
+ */
+const MULTI_PART_SUFFIXES = new Set([
+  "co.uk",
+  "org.uk",
+  "ac.uk",
+  "gov.uk",
+  "com.au",
+  "net.au",
+  "org.au",
+  "co.nz",
+  "co.jp",
+  "com.br",
+  "com.mx",
+  "co.kr",
+  "com.sg",
+  "co.in",
+  "com.hk",
+  "github.io",
+  "pages.dev",
+  "workers.dev",
+  "web.app",
+  "firebaseapp.com",
+  "azurewebsites.net",
+]);
+
+function isIpHost(host: string): boolean {
+  // IPv4
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+  // IPv6 (with or without brackets)
+  if (host.includes(":")) return true;
+  return false;
+}
+
+/**
+ * Stable WebAuthn RP ID for a hostname: registrable domain (eTLD+1) when
+ * possible, else the hostname itself.
+ *
+ * Using the full hostname (e.g. life.example.com) scopes credentials to that
+ * host only. Safari/Apple Passwords often present the site as the apex domain;
+ * Chrome + security keys tend to store whatever rpId we pass. Defaulting to
+ * eTLD+1 keeps platform + roaming authenticators on the same RP ID across
+ * subdomains and browsers.
+ *
+ * localhost / IPs are returned unchanged (valid only for those origins).
+ */
+export function defaultWebAuthnRpId(hostname: string): string {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (host === "" || host === "localhost" || host.endsWith(".localhost")) {
+    return host || "localhost";
+  }
+  if (isIpHost(host)) return host;
+
+  const parts = host.split(".").filter(Boolean);
+  if (parts.length <= 2) return host;
+
+  const last2 = `${parts[parts.length - 2]}.${parts[parts.length - 1]}`;
+  if (MULTI_PART_SUFFIXES.has(last2) && parts.length >= 3) {
+    return parts.slice(-3).join(".");
+  }
+  return last2;
+}
+
 /** Fresh ArrayBuffer-backed view (DOM BufferSource typing). */
 function buf(n: number): Uint8Array<ArrayBuffer> {
   const b = new Uint8Array(n);
@@ -39,7 +104,7 @@ function rpIdOf(opts?: LargeBlobRp): string {
   if (typeof location === "undefined") {
     throw new Error("largeBlob: rpId required outside browser");
   }
-  return location.hostname;
+  return defaultWebAuthnRpId(location.hostname);
 }
 
 function assertWebAuthn(): void {

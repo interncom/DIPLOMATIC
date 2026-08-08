@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLargeBlobCred,
+  defaultWebAuthnRpId,
   discoverLargeBlobSeed,
   largeBlobCapable,
   PasskeySeedStore,
@@ -8,6 +9,27 @@ import {
   writeLargeBlobSeed,
 } from "../src/passkey/seed";
 import type { MasterSeed } from "../src/shared/types";
+
+describe("defaultWebAuthnRpId", () => {
+  it("uses eTLD+1 for normal multi-label hosts", () => {
+    expect(defaultWebAuthnRpId("life.interncom.org")).toBe("interncom.org");
+    expect(defaultWebAuthnRpId("app.life.interncom.org")).toBe("interncom.org");
+    expect(defaultWebAuthnRpId("interncom.org")).toBe("interncom.org");
+  });
+
+  it("keeps localhost and IPs", () => {
+    expect(defaultWebAuthnRpId("localhost")).toBe("localhost");
+    expect(defaultWebAuthnRpId("127.0.0.1")).toBe("127.0.0.1");
+  });
+
+  it("handles multi-part public suffixes", () => {
+    expect(defaultWebAuthnRpId("foo.example.co.uk")).toBe("example.co.uk");
+    expect(defaultWebAuthnRpId("my-app.workers.dev")).toBe("my-app.workers.dev");
+    expect(defaultWebAuthnRpId("preview.my-app.workers.dev")).toBe(
+      "my-app.workers.dev",
+    );
+  });
+});
 
 function seedOf(fill: number): MasterSeed {
   return new Uint8Array(32).fill(fill) as MasterSeed;
@@ -88,6 +110,19 @@ describe("passkey largeBlob seed", () => {
     expect(create).toHaveBeenCalledOnce();
     const arg = create.mock.calls[0][0];
     expect(arg.publicKey.extensions.largeBlob.support).toBe("required");
+  });
+
+  it("createLargeBlobCred defaults rpId to eTLD+1 from location.hostname", async () => {
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, { largeBlob: { supported: true } }),
+    );
+    vi.stubGlobal("navigator", { credentials: { create, get: vi.fn() } });
+    vi.stubGlobal("PublicKeyCredential", class {});
+    vi.stubGlobal("location", { hostname: "life.interncom.org" });
+
+    await createLargeBlobCred();
+    const arg = create.mock.calls[0][0];
+    expect(arg.publicKey.rp.id).toBe("interncom.org");
   });
 
   it("createLargeBlobCred rejects when authenticator omits largeBlob", async () => {

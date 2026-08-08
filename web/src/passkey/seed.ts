@@ -65,9 +65,38 @@ function asPkCred(cred: Credential | null): PublicKeyCredential {
   return cred as PublicKeyCredential;
 }
 
-/** Best-effort capability probe (not all UAs expose this). */
+/**
+ * Apple Safari / WebKit (desktop Safari, iOS Safari, Safari dock/home-screen PWAs).
+ * Chromium and other UAs embed "Safari" in the UA and must be excluded.
+ */
+function isAppleSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  // Chrome, Edge, Firefox, Opera, and their iOS wrappers all include Safari tokens.
+  if (
+    /Chrom(e|ium)|Edg\/|EdgiOS|OPR\/|Firefox|FxiOS|CriOS|Android/.test(ua)
+  ) {
+    return false;
+  }
+  if (/Safari\//.test(ua)) return true;
+  // Standalone WebKit PWAs sometimes omit "Safari/" but keep Apple vendor + WebKit.
+  return (
+    navigator.vendor === "Apple Computer, Inc." && /AppleWebKit/.test(ua)
+  );
+}
+
+/**
+ * Best-effort capability probe (not all UAs expose this accurately).
+ *
+ * Safari 17+ supports largeBlob on platform authenticators but often omits or
+ * mis-reports `extension:largeBlob` from {@link PublicKeyCredential.getClientCapabilities}.
+ * Treat Apple Safari as capable so UI can offer enroll; create still checks
+ * `largeBlob.supported` after the ceremony.
+ */
 export async function largeBlobCapable(): Promise<boolean> {
   if (typeof PublicKeyCredential === "undefined") return false;
+  // Important platform: try create even when capability advertisement is wrong.
+  if (isAppleSafari()) return true;
   const getCaps = PublicKeyCredential.getClientCapabilities;
   if (typeof getCaps !== "function") return true;
   const caps = await getCaps.call(PublicKeyCredential);
@@ -126,7 +155,16 @@ export async function createLargeBlobCred(
   const pk = asPkCred(cred);
   const ext = pk.getClientExtensionResults();
   if (ext.largeBlob?.supported !== true) {
-    throw new Error("largeBlob: unsupported by authenticator");
+    // create() often still succeeds: support:"required" is not always enforced by
+    // the client. Platform passkeys (esp. syncable iCloud / third-party managers /
+    // Chrome profile Touch ID) commonly omit largeBlob even when UV works.
+    // This leaves an OS passkey without seed storage — delete it in Passwords/OS UI.
+    throw new Error(
+      "largeBlob: unsupported by authenticator. " +
+        "Seed storage needs a largeBlob-capable authenticator (iOS platform, " +
+        "many YubiKeys). macOS/Chrome/1Password passkeys often lack largeBlob. " +
+        "An empty passkey may have been created — remove it in Passwords if listed.",
+    );
   }
   return new Uint8Array(pk.rawId);
 }

@@ -67,6 +67,8 @@ import {
   ListMsgsOpts,
   ReconcileOpts,
   ReconcileReport,
+  SetSeedOpts,
+  WipeOpts,
 } from "./types";
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -143,8 +145,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   };
 
-  public async setSeed(seed: MasterSeed) {
-    await this.store.seed.save(seed);
+  public async setSeed(seed: MasterSeed, opts?: SetSeedOpts) {
+    await this.store.seed.save(seed, opts);
     this.clientState.emit();
   }
 
@@ -863,14 +865,36 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return Status.Success;
   }
 
-  public async wipe() {
-    // Stop further scheduled work and tear down push listeners first.
+  /**
+   * Clear local app/protocol state. Default: msgs + ents + meta; **not** seed
+   * (no passkey/largeBlob interaction unless `{ seed: true }`).
+   */
+  public async wipe(opts?: WipeOpts) {
+    const msgs = opts?.msgs !== false;
+    const ents = opts?.ents !== false;
+    const meta = opts?.meta !== false;
+    const seed = opts?.seed === true;
+
     this.scheduledSync.cancel();
     await this.disconnect();
-    // Let in-flight sync finish so it cannot repopulate after clear.
     await this.syncRuns.flush();
-    await this.store.wipe();
-    await this.state.clear();
+
+    const { store } = this;
+    if (meta) {
+      await store.hosts.wipe();
+      await store.uploads.wipe();
+      await store.downloads.wipe();
+    }
+    if (msgs) {
+      await store.messages.wipe();
+    }
+    if (seed) {
+      await store.seed.wipe();
+    }
+    if (ents) {
+      await this.state.clear();
+    }
+
     this.lastProgress = idleProgress;
     this.clientState.emit();
     this.xferState.emit();

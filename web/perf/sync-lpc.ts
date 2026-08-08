@@ -157,7 +157,7 @@ async function main() {
 
   // --- uploader client (SQLite archive + queues) ---
   const upStore = new SqliteStore<IProtoHost>(clientUpDb, libsodiumCrypto);
-  await upStore.seed.save(SEED);
+  await upStore.seed.save(SEED, { persist: true });
   await upStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
@@ -223,7 +223,7 @@ async function main() {
   // --- downloader client (same seed, empty SQLite archive) ---
   console.log("\n=== 3. sync from host (peek → pull/open/exec) ===");
   const downStore = new SqliteStore<IProtoHost>(clientDownDb, libsodiumCrypto);
-  await downStore.seed.save(SEED);
+  await downStore.seed.save(SEED, { persist: true });
   await downStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,

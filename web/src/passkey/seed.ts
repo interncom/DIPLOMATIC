@@ -201,11 +201,30 @@ export async function clearLargeBlobSeed(
   await writeLargeBlobSeed(credId, zeros, opts);
 }
 
-/** Read seed from largeBlob (user verification required). */
+export type LargeBlobUnlock = {
+  seed: MasterSeed;
+  /** Authenticator credential id — app should persist for faster local unlock. */
+  credId: Uint8Array;
+};
+
+/**
+ * Read seed from largeBlob on a known credential (user verification required).
+ */
 export async function readLargeBlobSeed(
   credId: Uint8Array,
   opts?: LargeBlobRp,
 ): Promise<MasterSeed> {
+  const out = await readLargeBlobUnlock(credId, opts);
+  return out.seed;
+}
+
+/**
+ * Same as {@link readLargeBlobSeed} but also returns the credential id used.
+ */
+export async function readLargeBlobUnlock(
+  credId: Uint8Array,
+  opts?: LargeBlobRp,
+): Promise<LargeBlobUnlock> {
   assertWebAuthn();
   const cred = await navigator.credentials.get({
     publicKey: {
@@ -216,11 +235,47 @@ export async function readLargeBlobSeed(
       extensions: { largeBlob: { read: true } },
     },
   });
-  const blob = asPkCred(cred).getClientExtensionResults().largeBlob?.blob;
+  return largeBlobUnlockFromCred(asPkCred(cred));
+}
+
+/**
+ * Discoverable assertion + largeBlob read (no local credential id).
+ *
+ * Omits `allowCredentials` so the platform can offer resident keys for this
+ * rpId — including iCloud-synced passkeys. Returns seed and `credId` so the
+ * app can cache the id for later non-discoverable unlocks.
+ */
+export async function discoverLargeBlobSeed(
+  opts?: LargeBlobRp,
+): Promise<LargeBlobUnlock> {
+  assertWebAuthn();
+  const cred = await navigator.credentials.get({
+    publicKey: {
+      challenge: buf(CHAL_LEN),
+      rpId: rpIdOf(opts),
+      userVerification: "required",
+      extensions: { largeBlob: { read: true } },
+    },
+  });
+  return largeBlobUnlockFromCred(asPkCred(cred));
+}
+
+function largeBlobUnlockFromCred(pk: PublicKeyCredential): LargeBlobUnlock {
+  const blob = pk.getClientExtensionResults().largeBlob?.blob;
   if (blob === undefined) {
-    throw new Error("largeBlob: missing blob");
+    throw new Error(
+      "largeBlob: missing blob (credential has no seed storage, or largeBlob did not sync)",
+    );
   }
-  return asSeed(new Uint8Array(blob));
+  const seedBytes = new Uint8Array(blob);
+  // Wiped credentials store 32 zero bytes — treat as empty.
+  if (seedBytes.every((b) => b === 0)) {
+    throw new Error("largeBlob: seed was cleared");
+  }
+  return {
+    seed: asSeed(seedBytes),
+    credId: new Uint8Array(pk.rawId),
+  };
 }
 
 /**

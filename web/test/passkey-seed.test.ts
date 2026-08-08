@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLargeBlobCred,
+  discoverLargeBlobSeed,
   largeBlobCapable,
   PasskeySeedStore,
   readLargeBlobSeed,
@@ -126,6 +127,45 @@ describe("passkey largeBlob seed", () => {
 
     const out = await readLargeBlobSeed(credId, { rpId: "localhost" });
     expect(out).toEqual(seed);
+  });
+
+  it("discoverLargeBlobSeed omits allowCredentials and returns seed+credId", async () => {
+    const seed = seedOf(4);
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        largeBlob: {
+          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
+        },
+      }),
+    );
+    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
+    vi.stubGlobal("PublicKeyCredential", class {});
+    vi.stubGlobal("location", { hostname: "localhost" });
+
+    const out = await discoverLargeBlobSeed({ rpId: "localhost" });
+    expect(out.seed).toEqual(seed);
+    expect(out.credId).toEqual(credId);
+    const arg = get.mock.calls[0][0];
+    expect(arg.publicKey.allowCredentials).toBeUndefined();
+    expect(arg.publicKey.extensions.largeBlob.read).toBe(true);
+  });
+
+  it("discoverLargeBlobSeed rejects wiped zero seed", async () => {
+    const zeros = seedOf(0);
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        largeBlob: {
+          blob: zeros.buffer.slice(zeros.byteOffset, zeros.byteOffset + 32),
+        },
+      }),
+    );
+    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
+    vi.stubGlobal("PublicKeyCredential", class {});
+    vi.stubGlobal("location", { hostname: "localhost" });
+
+    await expect(discoverLargeBlobSeed({ rpId: "localhost" })).rejects.toThrow(
+      /seed was cleared/,
+    );
   });
 
   it("PasskeySeedStore save/unlock/load", async () => {

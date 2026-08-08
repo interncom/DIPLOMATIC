@@ -95,13 +95,15 @@ import {
 import {
   clearLargeBlobSeed,
   createLargeBlobCred,
+  discoverLargeBlobSeed,
   largeBlobCapable,
   PasskeySeedStore,
   readLargeBlobSeed,
+  readLargeBlobUnlock,
   storeSeedLargeBlob,
   writeLargeBlobSeed,
 } from "./passkey/seed";
-import type { LargeBlobRp } from "./passkey/seed";
+import type { LargeBlobRp, LargeBlobUnlock } from "./passkey/seed";
 import {
   checksumEntRevs,
   checksumSet,
@@ -161,6 +163,7 @@ export {
   crypto,
   Decoder,
   defaultPeekProgressEvery,
+  discoverLargeBlobSeed,
   eidCodec,
   encodeEntRev,
   Encoder,
@@ -195,6 +198,7 @@ export {
   openIDBStore,
   PasskeySeedStore,
   readLargeBlobSeed,
+  readLargeBlobUnlock,
   revFromEntity,
   revFromHead,
   setApld,
@@ -241,6 +245,7 @@ export type {
   ITransport,
   IUpdateParams,
   LargeBlobRp,
+  LargeBlobUnlock,
   ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,

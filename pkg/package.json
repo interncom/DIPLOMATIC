@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.11.3",
+  "version": "0.11.5",
   "type": "module",
   "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
   "files": [

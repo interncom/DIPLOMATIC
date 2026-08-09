@@ -109,7 +109,7 @@ describe("passkey largeBlob seed", () => {
     expect(id).toEqual(credId);
     expect(create).toHaveBeenCalledOnce();
     const arg = create.mock.calls[0][0];
-    expect(arg.publicKey.extensions.largeBlob.support).toBe("preferred");
+    expect(arg.publicKey.extensions.largeBlob.support).toBe("required");
   });
 
   it("createLargeBlobCred defaults rpId to eTLD+1 from location.hostname", async () => {
@@ -146,10 +146,7 @@ describe("passkey largeBlob seed", () => {
 
     await writeLargeBlobSeed(credId, seedOf(1), { rpId: "localhost" });
     const arg = get.mock.calls[0][0];
-    // write is ArrayBuffer for Safari BufferSource compatibility
-    expect(new Uint8Array(arg.publicKey.extensions.largeBlob.write)).toEqual(
-      seedOf(1),
-    );
+    expect(arg.publicKey.extensions.largeBlob.write).toEqual(seedOf(1));
   });
 
   it("readLargeBlobSeed returns seed bytes", async () => {

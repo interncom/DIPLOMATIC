@@ -92,12 +92,6 @@ function copyBuf(src: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** Prefer ArrayBuffer for WebAuthn BufferSource (Safari is picky with some views). */
-function asArrayBuffer(src: Uint8Array): ArrayBuffer {
-  const copy = copyBuf(src);
-  return copy.buffer;
-}
-
 function asSeed(bytes: Uint8Array): MasterSeed {
   if (bytes.byteLength !== SEED_LEN) {
     throw new Error(`largeBlob: seed must be ${SEED_LEN} bytes`);
@@ -187,14 +181,10 @@ export type LargeBlobCreateOpts = LargeBlobRp & {
 
 /**
  * Create a discoverable credential with largeBlob support.
- * Does **not** write the seed — call {@link writeLargeBlobSeed} from a
- * **separate user gesture** (second click). Safari / WebKit will not reliably
- * run two WebAuthn ceremonies from one button press; chaining create→write
- * leaves empty passkeys (see blobviem / nsatragno largeBlob demos).
+ * Does not write the seed — call {@link writeLargeBlobSeed} next (second gesture).
  *
- * On Apple Safari, defaults to `authenticatorAttachment: "platform"` so
- * iCloud Keychain is preferred (Apple largeBlob is platform-oriented).
- * Pass `authenticatorAttachment: "cross-platform"` for security keys.
+ * Default allows platform *and* cross-platform authenticators. Forcing
+ * `authenticatorAttachment: "platform"` excludes YubiKeys and similar.
  */
 export async function createLargeBlobCred(
   opts?: LargeBlobCreateOpts,
@@ -208,9 +198,6 @@ export async function createLargeBlobCred(
   };
   if (opts?.authenticatorAttachment !== undefined) {
     selection.authenticatorAttachment = opts.authenticatorAttachment;
-  } else if (isAppleSafari()) {
-    // iCloud Keychain largeBlob path; avoids empty non-blob roaming creates.
-    selection.authenticatorAttachment = "platform";
   }
   const cred = await navigator.credentials.create({
     publicKey: {
@@ -227,33 +214,27 @@ export async function createLargeBlobCred(
         { type: "public-key", alg: -257 },
       ],
       authenticatorSelection: selection,
-      // "preferred" matches the canonical nsatragno demo; we still reject when
-      // supported !== true so empty passkeys are not treated as success.
-      extensions: { largeBlob: { support: "preferred" } },
+      extensions: { largeBlob: { support: "required" } },
     },
   });
   const pk = asPkCred(cred);
   const ext = pk.getClientExtensionResults();
   if (ext.largeBlob?.supported !== true) {
-    // create() often still succeeds: support is not always enforced by the
-    // client. Empty OS passkey may remain — delete it in Passwords/OS UI.
+    // create() often still succeeds: support:"required" is not always enforced by
+    // the client. Platform passkeys (esp. syncable iCloud / third-party managers /
+    // Chrome profile Touch ID) commonly omit largeBlob even when UV works.
+    // This leaves an OS passkey without seed storage — delete it in Passwords/OS UI.
     throw new Error(
       "largeBlob: unsupported by authenticator. " +
-        "Use Apple Passwords / iCloud Keychain (Safari platform) or a " +
-        "largeBlob-capable security key in Chrome. " +
+        "Seed storage needs a largeBlob-capable authenticator (iOS platform, " +
+        "many YubiKeys). macOS/Chrome/1Password passkeys often lack largeBlob. " +
         "An empty passkey may have been created — remove it in Passwords if listed.",
     );
   }
   return new Uint8Array(pk.rawId);
 }
 
-/**
- * Persist seed on an existing largeBlob-capable credential.
- * Must be invoked from its **own** user gesture (not chained after create
- * in the same click handler on Safari).
- *
- * Spec: allowCredentials must contain exactly one credential for write.
- */
+/** Persist seed on an existing largeBlob-capable credential. */
 export async function writeLargeBlobSeed(
   credId: Uint8Array,
   seed: MasterSeed,
@@ -265,20 +246,14 @@ export async function writeLargeBlobSeed(
     publicKey: {
       challenge: buf(CHAL_LEN),
       rpId: rpIdOf(opts),
-      allowCredentials: [
-        { type: "public-key", id: asArrayBuffer(credId) },
-      ],
+      allowCredentials: [{ type: "public-key", id: copyBuf(credId) }],
       userVerification: "required",
-      extensions: { largeBlob: { write: asArrayBuffer(seed) } },
+      extensions: { largeBlob: { write: copyBuf(seed) } },
     },
   });
   const ext = asPkCred(cred).getClientExtensionResults();
   if (ext.largeBlob?.written !== true) {
-    throw new Error(
-      "largeBlob: write not accepted. " +
-        "On Safari, create and write must be two separate button clicks. " +
-        "Confirm the passkey is iCloud Keychain / platform, not a manager without largeBlob.",
-    );
+    throw new Error("largeBlob: write not accepted");
   }
 }
 
@@ -320,9 +295,7 @@ export async function readLargeBlobUnlock(
     publicKey: {
       challenge: buf(CHAL_LEN),
       rpId: rpIdOf(opts),
-      allowCredentials: [
-        { type: "public-key", id: asArrayBuffer(credId) },
-      ],
+      allowCredentials: [{ type: "public-key", id: copyBuf(credId) }],
       userVerification: "required",
       extensions: { largeBlob: { read: true } },
     },
@@ -371,13 +344,8 @@ function largeBlobUnlockFromCred(pk: PublicKeyCredential): LargeBlobUnlock {
 }
 
 /**
- * Create credential then write seed in one call.
- *
- * **Safari/WebKit:** prefer {@link createLargeBlobCred} + {@link writeLargeBlobSeed}
- * from **two separate clicks**. Chaining both after one gesture often creates a
- * passkey without a blob (`written` false / later `missing blob` on read).
- *
- * Returns credential id — persist it; the seed lives on the authenticator.
+ * Create credential and write seed (two user gestures).
+ * Returns credential id — persist it (e.g. IDB); the seed lives on the authenticator.
  */
 export async function storeSeedLargeBlob(
   seed: MasterSeed,

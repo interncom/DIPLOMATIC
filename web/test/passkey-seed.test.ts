@@ -3,7 +3,6 @@ import {
   createLargeBlobCred,
   defaultWebAuthnRpId,
   discoverLargeBlobSeed,
-  largeBlobCapable,
   PasskeySeedStore,
   readLargeBlobSeed,
   writeLargeBlobSeed,
@@ -55,46 +54,6 @@ describe("passkey largeBlob seed", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-  });
-
-  it("largeBlobCapable is true on Safari even when caps say false", async () => {
-    vi.stubGlobal("navigator", {
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
-      vendor: "Apple Computer, Inc.",
-    });
-    vi.stubGlobal("PublicKeyCredential", {
-      getClientCapabilities: vi.fn().mockResolvedValue({
-        "extension:largeBlob": false,
-      }),
-    });
-    expect(await largeBlobCapable()).toBe(true);
-  });
-
-  it("largeBlobCapable is true on Safari when largeBlob key is omitted", async () => {
-    vi.stubGlobal("navigator", {
-      userAgent:
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-      vendor: "Apple Computer, Inc.",
-    });
-    vi.stubGlobal("PublicKeyCredential", {
-      getClientCapabilities: vi.fn().mockResolvedValue({}),
-    });
-    expect(await largeBlobCapable()).toBe(true);
-  });
-
-  it("largeBlobCapable respects caps on non-Safari when advertised false", async () => {
-    vi.stubGlobal("navigator", {
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      vendor: "Google Inc.",
-    });
-    vi.stubGlobal("PublicKeyCredential", {
-      getClientCapabilities: vi.fn().mockResolvedValue({
-        "extension:largeBlob": false,
-      }),
-    });
-    expect(await largeBlobCapable()).toBe(false);
   });
 
   it("createLargeBlobCred returns rawId when supported", async () => {

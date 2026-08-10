@@ -22,7 +22,8 @@ import { Encoder } from "../../shared/codec.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { HTTPTransport } from "../../shared/http.ts";
-import { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
+import { MasterSeed } from "../../shared/seed.ts";
+import { IHostConnectionInfo } from "../../shared/types.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 
 // Server config.

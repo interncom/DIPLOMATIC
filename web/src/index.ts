@@ -33,13 +33,28 @@ import {
 import useStateWatcher, {
   useStateWatcherSuspense,
 } from "./react/useStateWatcher";
-import { b64tob, btob64, btoh, htob } from "./shared/binary";
+import {
+  b64tob,
+  b64urltob,
+  btob64,
+  btob64url,
+  btoh,
+  htob,
+} from "./shared/binary";
 import { Clock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, genSingletonEID } from "./shared/codecs/eid";
 import { Status } from "./shared/consts";
 import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { TypedEventEmitter } from "./shared/events";
+import {
+  asMasterSeed,
+  asSealedMasterKey,
+  MASTER_SEED_LEN,
+  type MasterSeed,
+  SEALED_MASTER_KEY_LEN,
+  type SealedMasterKey,
+} from "./shared/seed";
 import {
   EntityID,
   GroupID,
@@ -54,7 +69,6 @@ import {
   IStateManager,
   ITransport,
   IUpdateParams,
-  MasterSeed,
 } from "./shared/types";
 import { nullStateManager, StateManager } from "./state";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -93,18 +107,52 @@ import {
   shouldEmitItemProgress,
 } from "./progress";
 import {
-  clearLargeBlobSeed,
-  createLargeBlobCred,
   defaultWebAuthnRpId,
-  discoverLargeBlobSeed,
-  largeBlobCapable,
+  LargeBlob,
   PasskeySeedStore,
-  readLargeBlobSeed,
-  readLargeBlobUnlock,
-  storeSeedLargeBlob,
-  writeLargeBlobSeed,
 } from "./passkey/seed";
-import type { LargeBlobRp, LargeBlobUnlock } from "./passkey/seed";
+import type {
+  LargeBlobCreateOpts,
+  LargeBlobRp,
+  LargeBlobUnlock,
+} from "./passkey/seed";
+import {
+  createPrfCred,
+  DEFAULT_PRF_SALT,
+  evalPrf,
+  prfCapable,
+} from "./passkey/prf";
+import type { PrfCreateOpts, PrfEvalResult, PrfRp } from "./passkey/prf";
+import {
+  sealKeyFromPrf,
+  sealMaster,
+  unsealMaster,
+} from "./passkey/secret-split";
+import { PrfSeedStore } from "./passkey/prf-store";
+import type {
+  PersistPrfSeedMeta,
+  PrfSeedMeta,
+  PrfSeedStoreOpts,
+} from "./passkey/prf-store";
+import type { PasskeySeedStoreOpts } from "./passkey/seed";
+import { type BundleHost, bundleHostCodec } from "./shared/codecs/bundleHost";
+import {
+  createIdentityBundle,
+  IDENTITY_BUNDLE_VERSION,
+  identityBundleCodec,
+} from "./shared/codecs/identityBundle";
+import type { IdentityBundle } from "./shared/codecs/identityBundle";
+import {
+  PAIR_PACKAGE_VERSION,
+  PairPackage,
+  pairPackageEnvelopeCodec,
+  pairPackagePlainCodec,
+} from "./identity/pairPackage";
+import type {
+  OpenedPairPackage,
+  PairPackageEnvelope,
+  PairPackagePlain,
+} from "./identity/pairPackage";
 import {
   checksumEntRevs,
   checksumSet,
@@ -151,21 +199,26 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
+  asMasterSeed,
+  asSealedMasterKey,
   b64tob,
+  b64urltob,
   btob64,
+  btob64url,
   btoh,
+  bundleHostCodec,
   CachedEntDB,
   checksumEntRevs,
   checksumSet,
-  clearLargeBlobSeed,
   Clock,
   cmpBytes,
-  createLargeBlobCred,
+  createIdentityBundle,
+  createPrfCred,
   crypto,
   Decoder,
+  DEFAULT_PRF_SALT,
   defaultPeekProgressEvery,
   defaultWebAuthnRpId,
-  discoverLargeBlobSeed,
   eidCodec,
   encodeEntRev,
   Encoder,
@@ -174,12 +227,15 @@ export {
   EntitiesQuery,
   EntityID,
   entStateManager,
+  evalPrf,
   genSingletonEID,
   GroupID,
   hostHTTPTransport,
   htob,
   HTTPTransport,
   IDBStore,
+  IDENTITY_BUNDLE_VERSION,
+  identityBundleCodec,
   idleProgress,
   IEntDB,
   IEntity,
@@ -189,7 +245,8 @@ export {
   isTerminalApplyFailure,
   isTombstone,
   IStore,
-  largeBlobCapable,
+  LargeBlob,
+  MASTER_SEED_LEN,
   MasterSeed,
   MemoryStore,
   normalizeTags,
@@ -198,19 +255,26 @@ export {
   openDiplomaticClient,
   openEntDB,
   openIDBStore,
+  PAIR_PACKAGE_VERSION,
+  PairPackage,
+  pairPackageEnvelopeCodec,
+  pairPackagePlainCodec,
   PasskeySeedStore,
-  readLargeBlobSeed,
-  readLargeBlobUnlock,
+  prfCapable,
+  PrfSeedStore,
   revFromEntity,
   revFromHead,
+  SEALED_MASTER_KEY_LEN,
   setApld,
   shouldEmitItemProgress,
   SingletonStateManager,
   StateManager,
   Status,
-  storeSeedLargeBlob,
   SyncClient,
   TypedEventEmitter,
+  sealKeyFromPrf,
+  sealMaster,
+  unsealMaster,
   useClient,
   useClientState,
   useClientXferState,
@@ -218,12 +282,12 @@ export {
   useStateWatcherSuspense,
   useSyncOnResume,
   WorkerClient,
-  writeLargeBlobSeed,
 };
 
 export type {
   ApldState,
   Applier,
+  BundleHost,
   CachedEntDBOptions,
   EntDBMemoryOptions,
   HostHandle,
@@ -231,6 +295,7 @@ export type {
   IClient,
   ICrypto,
   IDeleteParams,
+  IdentityBundle,
   IDiplomaticClientState,
   IEntRev,
   IEntRow,
@@ -246,6 +311,7 @@ export type {
   ITombstone,
   ITransport,
   IUpdateParams,
+  LargeBlobCreateOpts,
   LargeBlobRp,
   LargeBlobUnlock,
   ListMsgsOpts,
@@ -253,9 +319,20 @@ export type {
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
+  OpenedPairPackage,
   OpenEntDBOptions,
+  PairPackageEnvelope,
+  PairPackagePlain,
+  PasskeySeedStoreOpts,
+  PersistPrfSeedMeta,
+  PrfCreateOpts,
+  PrfEvalResult,
+  PrfRp,
+  PrfSeedMeta,
+  PrfSeedStoreOpts,
   ReconcileOpts,
   ReconcileReport,
+  SealedMasterKey,
   SetSeedOpts,
   SyncProgressEvent,
   WipeOpts,

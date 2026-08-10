@@ -44,6 +44,23 @@ if (typeof Uint8Array.fromBase64 === "function") {
   b64tob = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
+/** Bytes → base64url (no padding). For string transport (pair packages, QR payloads). */
+export function btob64url(bytes: Uint8Array): string {
+  return btob64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/,
+    "",
+  );
+}
+
+/** Base64url (padding optional) → bytes. */
+export function b64urltob(b64url: string): Uint8Array {
+  const pad = b64url.length % 4 === 0
+    ? ""
+    : "=".repeat(4 - (b64url.length % 4));
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + pad;
+  return b64tob(b64);
+}
+
 export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   const res = new Uint8Array(a.length + b.length);
   res.set(a, 0);

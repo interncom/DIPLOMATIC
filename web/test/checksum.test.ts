@@ -5,7 +5,8 @@ import type { Hash, IEntRev } from "../src/shared/types";
 import { bytesEqual } from "../src/shared/binary";
 import { MemoryStore } from "../src/stores/memory/store";
 import { SyncClient } from "../src/client";
-import type { IStateManager, MasterSeed } from "../src/shared/types";
+import type { MasterSeed } from "../src/shared/seed";
+import type { IStateManager } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { APLD_APPLIED } from "../src/types";
 import { EntDBMemory } from "../src/entdb/memory";
@@ -72,8 +73,7 @@ describe("client.msgcheck", () => {
       notify() {},
       async refresh() {},
       on() {},
-      off() {},
-    };
+      off() {} };
     const client = new SyncClient(
       { now: () => new Date(0) },
       state,
@@ -96,16 +96,12 @@ describe("client.msgcheck", () => {
         key: k1,
         data: {
           eid: new Uint8Array(16).fill(1),
-          apld: APLD_APPLIED,
-        },
-      },
+          apld: APLD_APPLIED } },
       {
         key: k2,
         data: {
           eid: new Uint8Array(16).fill(2),
-          apld: APLD_APPLIED,
-        },
-      },
+          apld: APLD_APPLIED } },
     ]);
 
     const c = await client.msgcheck();
@@ -129,8 +125,7 @@ describe("entDB.checksum", () => {
 
     const [eid, stEid] = makeEID({
       id: new Uint8Array(8).fill(9),
-      ts: new Date(1000),
-    });
+      ts: new Date(1000) });
     expect(stEid).toBe(Status.Success);
     if (!eid) return;
 
@@ -139,16 +134,14 @@ describe("entDB.checksum", () => {
       off: 50,
       ctr: 0,
       type: "todo",
-      body: { t: "a" },
-    }]);
+      body: { t: "a" } }]);
 
     const [c1, st1] = await entDB.checksum(libsodiumCrypto);
     expect(st1).toBe(Status.Success);
     const rev: IEntRev = {
       eid,
       updatedAt: new Date(1050),
-      ctr: 0,
-    };
+      ctr: 0 };
     const [expect1, stE1] = await checksumEntRevs([rev], libsodiumCrypto);
     expect(stE1).toBe(Status.Success);
     expect(bytesEqual(c1!, expect1!)).toBe(true);
@@ -159,8 +152,7 @@ describe("entDB.checksum", () => {
       off: 100,
       ctr: 1,
       type: "todo",
-      body: { t: "b" },
-    }]);
+      body: { t: "b" } }]);
     const [c2, st2] = await entDB.checksum(libsodiumCrypto);
     expect(st2).toBe(Status.Success);
     expect(bytesEqual(c1!, c2!)).toBe(false);
@@ -173,8 +165,7 @@ describe("entDB.checksum", () => {
     const [expectTomb, stT] = await checksumEntRevs([{
       eid,
       updatedAt: new Date(1150),
-      ctr: 2,
-    }], libsodiumCrypto);
+      ctr: 2 }], libsodiumCrypto);
     expect(stT).toBe(Status.Success);
     expect(bytesEqual(c3!, expectTomb!)).toBe(true);
   });

@@ -11,14 +11,8 @@ import { Enclave } from "../shared/crypto/enclave.ts";
 import { hostHTTPTransport } from "../shared/http.ts";
 import { genSingletonUpsert } from "../shared/singleton.ts";
 import { decryptPeekItem } from "../shared/sync.ts";
-import {
-  HostHandle,
-  IBag,
-  IHostConnectionInfo,
-  IMessage,
-  ITransport,
-  MasterSeed,
-} from "../shared/types.ts";
+import { MasterSeed } from "../shared/seed.ts";
+import { HostHandle, IBag, IHostConnectionInfo, IMessage, ITransport } from "../shared/types.ts";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 
 // A CLIClient maintains no state.
@@ -180,8 +174,7 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
   }
   return {
     handle: new URL(hostURL),
-    label: "host",
-  };
+    label: "host" };
 }
 
 // Re-exports for convenience in demos

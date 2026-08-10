@@ -6,6 +6,7 @@ import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
 import type {
   DerivationSeed,
   EntityID,
@@ -13,7 +14,6 @@ import type {
   ICrypto,
   IMessageHead,
   KeyPair,
-  MasterSeed,
   PrivateKey,
   PublicKey,
 } from "../../shared/types.ts";

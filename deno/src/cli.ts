@@ -9,13 +9,13 @@ import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { genSingletonUpsert } from "../../shared/singleton.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
+import { MasterSeed } from "../../shared/seed.ts";
 import {
   HostHandle,
   IBag,
   IHostConnectionInfo,
   IMessage,
   ITransport,
-  MasterSeed,
 } from "../../shared/types.ts";
 import { err, ok, ValStat } from "../../shared/valstat.ts";
 import crypto from "./crypto.ts";

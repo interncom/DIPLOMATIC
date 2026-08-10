@@ -2,15 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import { encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
-import type {
-  Hash,
-  IHostConnectionInfo,
-  IProtoHost,
-  MasterSeed,
-  IMessage,
-  IMessageHead,
-  IStateManager,
-} from "../src/shared/types";
+import type { MasterSeed } from "../src/shared/seed";
+import type { Hash, IHostConnectionInfo, IProtoHost, IMessage, IMessageHead, IStateManager } from "../src/shared/types";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from "../src/shared/storage/memory";
 import libsodiumCrypto from "../src/crypto";
@@ -24,8 +17,7 @@ import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import {
   APLD_APPLIED,
   IDownloadMessage,
-  IStoredMessageData,
-} from "../src/types";
+  IStoredMessageData } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
@@ -45,8 +37,7 @@ const mockClock = { now: () => new Date() };
 const testHost: IHostConnectionInfo<IProtoHost> = {
   handle: lpcHost,
   label: "test",
-  idx: 1,
-};
+  idx: 1 };
 
 const createClient = async (clock = mockClock) => {
   const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
@@ -60,8 +51,7 @@ const createClient = async (clock = mockClock) => {
     notify() {},
     async refresh() {},
     on(_type, _listener) { },
-    off(_type, _listener) { },
-  };
+    off(_type, _listener) { } };
   const client = new SyncClient<IProtoHost>(
     clock,
     state,
@@ -123,8 +113,7 @@ describe("Client", () => {
       expect(xferState).toEqual({
         numDownloads: 0,
         numUploads: 0,
-        progress: { phase: "idle" },
-      });
+        progress: { phase: "idle" } });
     });
 
     test("with non-zero counts", async () => {
@@ -139,18 +128,15 @@ describe("Client", () => {
           eid: new Uint8Array(16).fill(3),
           ctr: 0,
           len: 0,
-          off: 0,
-        },
-        host: "label",
-      };
+          off: 0 },
+        host: "label" };
       await store.uploads.enq("label", [hash1, hash2]);
       await store.downloads.enq([dl]);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({
         numDownloads: 1,
         numUploads: 2,
-        progress: { phase: "idle" },
-      });
+        progress: { phase: "idle" } });
     });
 
     test("includes idle progress in snapshot by default", async () => {
@@ -199,8 +185,7 @@ describe("Client", () => {
       // No host link: local-only archive.
       const entBod: EncodedMessage = encode({
         type: "todo",
-        body: { text: "rebuild-me" },
-      });
+        body: { text: "rebuild-me" } });
       await client.insertRaw(entBod);
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
@@ -239,8 +224,7 @@ describe("Client", () => {
         notify() {},
         async refresh() {},
         on() {},
-        off() {},
-      };
+        off() {} };
       const client = new SyncClient(
         mockClock,
         state,
@@ -276,8 +260,7 @@ describe("Client", () => {
 
       const entBod: EncodedMessage = encode({
         type: "todo",
-        body: { text: "undead?" },
-      });
+        body: { text: "undead?" } });
       const [head, stIns] = await client.insertRaw(entBod);
       expect(stIns).toBe(Status.Success);
       if (!head) throw new Error("insert head");
@@ -322,8 +305,7 @@ describe("Client", () => {
         notify() {},
         async refresh() {},
         on(_type, _listener) { },
-        off(_type, _listener) { },
-      };
+        off(_type, _listener) { } };
       const client = new SyncClient(
         mockClock,
         state,
@@ -347,10 +329,8 @@ describe("Client", () => {
           eid: new Uint8Array(16).fill(3),
           ctr: 0,
           len: 0,
-          off: 0,
-        },
-        host: "test",
-      };
+          off: 0 },
+        host: "test" };
       await store.downloads.enq([dl]);
 
       expect(await store.seed.load()).toBeDefined();
@@ -392,8 +372,7 @@ describe("Client", () => {
 
       const entBod: EncodedMessage = encode({
         type: "todo",
-        body: { text: "hi" },
-      });
+        body: { text: "hi" } });
       await client.insertRaw(entBod);
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
@@ -439,8 +418,7 @@ describe("Client", () => {
   describe("insert", () => {
     test("stores an insert message", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000),
-      });
+        now: () => new Date(1234567890000) });
       await client.link(testHost);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       const [_head, statHead] = await client.insertRaw(body);
@@ -466,8 +444,7 @@ describe("Client", () => {
   describe("update", () => {
     test("stores update message and increments counter", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000),
-      });
+        now: () => new Date(1234567890000) });
       await client.link(testHost);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
@@ -533,8 +510,7 @@ describe("Client", () => {
           off: 1000,
           ctr: 5,
           len: 0,
-          hsh: undefined,
-        };
+          hsh: undefined };
         const enc = new Encoder();
         enc.writeStruct(messageHeadCodec, head);
         const headEnc = enc.result();
@@ -544,15 +520,13 @@ describe("Client", () => {
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined,
-          apld: APLD_APPLIED,
-        };
+          apld: APLD_APPLIED };
         await store.messages.add([{ key: hash, data }]);
 
         const prior = {
           eid,
           ctr: 5,
-          updatedAt: new Date(1000),
-        };
+          updatedAt: new Date(1000) };
         const [newMsg, stat] = await client.updateRaw(prior, body, true);
         if (stat !== Status.Success) {
           expect(stat).toBe(Status.Success);
@@ -569,8 +543,7 @@ describe("Client", () => {
   describe("delete", () => {
     test("stores delete message and increments counter", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000),
-      });
+        now: () => new Date(1234567890000) });
       await client.link(testHost);
 
       const [h1, st1] = await client.insertRaw(new Uint8Array([10, 11]));
@@ -610,8 +583,7 @@ describe("Client", () => {
         off: 1000,
         ctr: 0,
         len: 2,
-        hsh: undefined,
-      };
+        hsh: undefined };
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
@@ -621,15 +593,13 @@ describe("Client", () => {
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
-        apld: APLD_APPLIED,
-      };
+        apld: APLD_APPLIED };
       await store.messages.add([{ key: hash, data }]);
 
       const prior = {
         eid,
         ctr: 0,
-        updatedAt: new Date(1000),
-      };
+        updatedAt: new Date(1000) };
       const [respHead, statDel] = await client.delete({ prior, force: true });
       if (statDel !== Status.Success) {
         expect(statDel).toBe(Status.Success);
@@ -704,8 +674,7 @@ describe("Client", () => {
         off: 0,
         ctr: 0,
         len: body.length,
-        bod: body,
-      };
+        bod: body };
       const [bag, statBag] = await sealBag(
         msg,
         hostIdnt,

@@ -6,6 +6,7 @@ import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
+import type { MasterSeed } from "../src/shared/seed";
 import type {
   EntityID,
   Hash,
@@ -14,7 +15,6 @@ import type {
   IHostConnectionInfo,
   IHostMetadata,
   IMessageHead,
-  MasterSeed,
 } from "../src/shared/types";
 import type {
   ApldState,

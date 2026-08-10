@@ -6,14 +6,8 @@ import libsodiumCrypto from "../src/crypto";
 import { Status } from "../src/shared/consts";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
-import type {
-  EntityID,
-  Hash,
-  IMessage,
-  IProtoHost,
-  IStateManager,
-  MasterSeed,
-} from "../src/shared/types";
+import type { MasterSeed } from "../src/shared/seed";
+import type { EntityID, Hash, IMessage, IProtoHost, IStateManager } from "../src/shared/types";
 import {
   APLD_APPLIED,
   APLD_ERROR,
@@ -22,8 +16,7 @@ import {
   isApldState,
   isPendingApply,
   isTerminalApplyFailure,
-  setApld,
-} from "../src/types";
+  setApld } from "../src/types";
 import { msg2StoredMsgData } from "../src/sync";
 import { MockClock } from "../src/shared/clock";
 import { makeEID } from "../src/shared/codecs/eid";
@@ -52,9 +45,7 @@ async function storePending(
     data: {
       eid: opts.eid,
       body: opts.body ?? new Uint8Array([1]),
-      apld: APLD_PENDING,
-    },
-  }]);
+      apld: APLD_PENDING } }]);
 }
 
 function mockState(
@@ -76,8 +67,7 @@ function mockState(
     notify() {},
     async refresh() {},
     on() {},
-    off() {},
-  };
+    off() {} };
 }
 
 function makeClient(
@@ -136,8 +126,7 @@ describe("apld helpers", () => {
       eid: eidOf(1),
       body: new Uint8Array([1]),
       apld: APLD_PENDING,
-      err: Status.InvalidMessage,
-    };
+      err: Status.InvalidMessage };
     setApld(row, APLD_APPLIED);
     expect(row.apld).toBe(APLD_APPLIED);
     expect(row.err).toBeUndefined();
@@ -162,8 +151,7 @@ describe("msg2StoredMsgData", () => {
     const eid = eidOf(2);
     const data = msg2StoredMsgData({
       head: { eid, off: 0, ctr: 0, len: 0 },
-      body: new Uint8Array([9]),
-    });
+      body: new Uint8Array([9]) });
     expect(data.apld).toBe(APLD_PENDING);
     expect(isPendingApply(data)).toBe(true);
   });
@@ -175,21 +163,17 @@ describe("MemoryMessageStore apply queue", () => {
     await store.messages.add([
       {
         key: hashOf(1),
-        data: { eid: eidOf(1), body: new Uint8Array([1]), apld: APLD_PENDING },
-      },
+        data: { eid: eidOf(1), body: new Uint8Array([1]), apld: APLD_PENDING } },
       {
         key: hashOf(2),
-        data: { eid: eidOf(2), body: new Uint8Array([2]), apld: APLD_APPLIED },
-      },
+        data: { eid: eidOf(2), body: new Uint8Array([2]), apld: APLD_APPLIED } },
       {
         key: hashOf(4),
         data: {
           eid: eidOf(4),
           body: new Uint8Array([4]),
           apld: APLD_ERROR,
-          err: Status.InvalidMessage,
-        },
-      },
+          err: Status.InvalidMessage } },
     ]);
     // Simulate legacy row without apld (bypass write type by writing map directly).
     store.messages.messages.set(
@@ -206,8 +190,7 @@ describe("MemoryMessageStore apply queue", () => {
     expect(pending[0].head.len).toBe(1);
     const noBody = await store.messages.list({
       apld: APLD_PENDING,
-      body: false,
-    });
+      body: false });
     expect(noBody[0].body).toBeUndefined();
     expect(noBody[0].head.hsh).toBeUndefined();
     expect(noBody[0].head.len).toBe(1);
@@ -338,8 +321,7 @@ describe("SyncClient apply queue", () => {
     const host: IHostConnectionInfo<IProtoHost> = {
       handle: lpcHost,
       label: "h",
-      idx: 0,
-    };
+      idx: 0 };
     const client = makeClient(
       store,
       state,
@@ -477,8 +459,7 @@ describe("SyncClient apply queue", () => {
 
     const [eid, eidStat] = makeEID({
       id: new Uint8Array(8).fill(1),
-      ts: new Date(0),
-    });
+      ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 0, ctr: 0, len: 3 };
     const enc = new Encoder();
@@ -486,8 +467,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, body: new Uint8Array([1, 2, 3]), apld: APLD_PENDING },
-    }]);
+      data: { eid, body: new Uint8Array([1, 2, 3]), apld: APLD_PENDING } }]);
 
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(1);
     const stats = await client.drainApplyQueue();
@@ -515,8 +495,7 @@ describe("SyncClient apply queue", () => {
 
     const [eid, eidStat] = makeEID({
       id: new Uint8Array(8).fill(2),
-      ts: new Date(0),
-    });
+      ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 0, ctr: 0, len: 1 };
     const enc = new Encoder();
@@ -524,8 +503,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, body: new Uint8Array([9]), apld: APLD_PENDING },
-    }]);
+      data: { eid, body: new Uint8Array([9]), apld: APLD_PENDING } }]);
     await store.hosts.add({ handle: lpcHost, label: "h", idx: 0 });
 
     expect(state.applied).toHaveLength(0);
@@ -562,8 +540,7 @@ describe("SyncClient apply queue", () => {
 
     const [eid, eidStat] = makeEID({
       id: new Uint8Array(8).fill(3),
-      ts: new Date(0),
-    });
+      ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 1, ctr: 0, len: 1 };
     const enc = new Encoder();
@@ -571,8 +548,7 @@ describe("SyncClient apply queue", () => {
     const hash = await libsodiumCrypto.blake3(enc.result());
     await store.messages.add([{
       key: hash,
-      data: { eid, off: 1, body: new Uint8Array([8]), apld: APLD_PENDING },
-    }]);
+      data: { eid, off: 1, body: new Uint8Array([8]), apld: APLD_PENDING } }]);
     order.length = 0;
 
     const st = await client.sync();

@@ -1,5 +1,6 @@
 import { initCLI } from "../../deno/src/cli.ts";
-import type { IHostConnectionInfo, IMessage, MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
+import type { IHostConnectionInfo, IMessage } from "../../shared/types.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { htob } from "../../shared/binary.ts";
@@ -27,8 +28,7 @@ const hostURL = new URL(dipHost);
 const host: IHostConnectionInfo<URL> = {
   handle: hostURL,
   label: "host",
-  idx: 0,
-};
+  idx: 0 };
 const transport = new HTTPTransport(hostURL);
 
 const [client, stat] = await initCLI(seed, host, transport);
@@ -51,8 +51,7 @@ const content = new Uint8Array(arrayBuffer);
 
 const [eid, statEID] = makeEID({
   id: await libsodiumCrypto.genRandomBytes(16),
-  ts: new Date(),
-});
+  ts: new Date() });
 if (statEID !== Status.Success) {
   console.error(`Failed to make EID: ${statEID}`);
   Deno.exit(1);
@@ -62,8 +61,7 @@ const msg: IMessage = {
   off: 0,
   ctr: 0,
   len: content.length,
-  bod: content,
-};
+  bod: content };
 
 const [items, statPush] = await client.push([msg]);
 if (statPush !== Status.Success) {

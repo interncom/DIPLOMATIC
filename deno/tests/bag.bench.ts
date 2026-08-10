@@ -6,7 +6,7 @@ import type { IMessage } from "../../shared/types.ts";
 
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
-import type { MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 // Setup crypto and host identity

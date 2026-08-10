@@ -8,7 +8,7 @@ import type { IEntDB } from "../entdb/entdb";
 import { Clock } from "../shared/clock";
 import { Status } from "../shared/consts";
 import { hostHTTPTransport } from "../shared/http";
-import type { MasterSeed } from "../shared/types";
+import type { MasterSeed } from "../shared/seed";
 import { StateManager } from "../state";
 import { openIDBStore } from "../stores/idb/store";
 import type { SerializedHost, WorkerCmd, WorkerEvent } from "./protocol";

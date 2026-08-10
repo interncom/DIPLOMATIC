@@ -15,6 +15,7 @@ import { idleProgress } from "../progress";
 import { saveBlob } from "../saveBlob";
 import { Clock, IClock } from "../shared/clock";
 import { Status } from "../shared/consts";
+import type { MasterSeed } from "../shared/seed";
 import type {
   EntityID,
   Hash,
@@ -25,7 +26,6 @@ import type {
   IMessageHead,
   IStateManager,
   IUpdateParams,
-  MasterSeed,
   SerializedContent,
 } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";

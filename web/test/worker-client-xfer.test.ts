@@ -2,11 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import { WorkerClient } from "../src/worker/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
-import type {
-  IHostConnectionInfo,
-  IStateManager,
-  MasterSeed,
-} from "../src/shared/types";
+import type { MasterSeed } from "../src/shared/seed";
+import type { IHostConnectionInfo, IStateManager } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { EncodedMessage } from "../src/shared/message";
 
@@ -43,8 +40,7 @@ function mockWorkerRpcOnly(): Worker {
         if (!handler) return;
         if (op === "ping") {
           handler({
-            data: { kind: "reply", id, ok: true, result: "pong" },
-          } as MessageEvent<unknown>);
+            data: { kind: "reply", id, ok: true, result: "pong" } } as MessageEvent<unknown>);
           return;
         }
         if (op === "getClientState") {
@@ -56,10 +52,7 @@ function mockWorkerRpcOnly(): Worker {
               result: {
                 hasSeed: true,
                 hasHost: true,
-                connected: false,
-              },
-            },
-          } as MessageEvent<unknown>);
+                connected: false } } } as MessageEvent<unknown>);
           return;
         }
         if (op === "getXferState") {
@@ -72,16 +65,12 @@ function mockWorkerRpcOnly(): Worker {
               result: {
                 numUploads: 0,
                 numDownloads: 0,
-                progress: { phase: "idle" },
-              },
-            },
-          } as MessageEvent<unknown>);
+                progress: { phase: "idle" } } } } as MessageEvent<unknown>);
           return;
         }
         // link / setSeed / sync / etc. — ack without posting xferState
         handler({
-          data: { kind: "reply", id, ok: true, result: Status.Success },
-        } as MessageEvent<unknown>);
+          data: { kind: "reply", id, ok: true, result: Status.Success } } as MessageEvent<unknown>);
       });
     },
     terminate: vi.fn(),
@@ -90,8 +79,7 @@ function mockWorkerRpcOnly(): Worker {
     onmessageerror: null,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    dispatchEvent: () => true,
-  };
+    dispatchEvent: () => true };
   return w as unknown as Worker;
 }
 
@@ -134,13 +122,11 @@ describe("WorkerClient xferState", () => {
       notify() {},
       async refresh() {},
       on() {},
-      off() {},
-    };
+      off() {} };
 
     const client = await WorkerClient.connect(state, store, {
       worker: mockWorkerRpcOnly(),
-      syncDebounceMs: 0,
-    });
+      syncDebounceMs: 0 });
 
     try {
       const seed = new Uint8Array(32).fill(1) as MasterSeed;
@@ -148,8 +134,7 @@ describe("WorkerClient xferState", () => {
       const host: IHostConnectionInfo<URL> = {
         handle: new URL("http://localhost"),
         label: "host",
-        idx: 0,
-      };
+        idx: 0 };
       // connect=false so we only link in shared store (worker still gets RPC).
       await client.link(host, false);
 

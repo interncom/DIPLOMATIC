@@ -3,11 +3,8 @@ import { openEntDB } from "../entdb/cached";
 import { entStateManager, IEntDB } from "../entdb/entdb";
 import { openDiplomaticClient } from "../openClient";
 import { Clock, IClock } from "../shared/clock";
-import {
-  IHostConnectionInfo,
-  IStateManager,
-  MasterSeed,
-} from "../shared/types";
+import { MasterSeed } from "../shared/seed";
+import { IHostConnectionInfo, IStateManager } from "../shared/types";
 import { nullStateManager } from "../state";
 import type {
   IClient,

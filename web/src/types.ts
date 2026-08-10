@@ -2,6 +2,7 @@ import type { SyncProgressEvent } from "./progress";
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/crypto/enclave";
 import type { EncodedMessage } from "./shared/message";
+import type { MasterSeed } from "./shared/seed";
 import type {
   EntityID,
   Hash,
@@ -14,7 +15,6 @@ import type {
   IMessageHead,
   IOp,
   IUpdateParams,
-  MasterSeed,
   SerializedContent,
 } from "./shared/types";
 import { ValStat } from "./shared/valstat";

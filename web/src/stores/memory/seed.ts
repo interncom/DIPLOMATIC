@@ -1,6 +1,6 @@
 import libsodiumCrypto from "../../crypto";
 import { Enclave } from "../../shared/crypto/enclave";
-import { MasterSeed } from "../../shared/types";
+import { MasterSeed } from "../../shared/seed";
 import { ISeedStore, type SetSeedOpts } from "../../types";
 
 export class MemorySeedStore implements ISeedStore {

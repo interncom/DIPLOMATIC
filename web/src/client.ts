@@ -11,6 +11,7 @@ import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
 import { decodeFile, encodeFile } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
+import { MasterSeed } from "./shared/seed";
 import {
   EntityID,
   Hash,
@@ -26,7 +27,6 @@ import {
   IStateManager,
   ITransport,
   IUpdateParams,
-  MasterSeed,
 } from "./shared/types";
 import { btob64 } from "./shared/binary";
 import { checksumSet } from "./shared/checksum";

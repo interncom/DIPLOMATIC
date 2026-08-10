@@ -29,12 +29,8 @@ import { Status } from "../src/shared/consts";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { createMemoryStorage } from "../src/shared/storage/memory";
-import type {
-  Hash,
-  IMessage,
-  IProtoHost,
-  MasterSeed,
-} from "../src/shared/types";
+import type { MasterSeed } from "../src/shared/seed";
+import type { Hash, IMessage, IProtoHost } from "../src/shared/types";
 import { sortByHlcDesc } from "../src/hlc";
 import { SqliteStore } from "./sqlite-store";
 import { syncPeek, syncPull, syncPush } from "../src/sync";

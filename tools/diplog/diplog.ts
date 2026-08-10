@@ -1,5 +1,6 @@
 import { initCLI } from "../../deno/src/cli.ts";
-import type { IHostConnectionInfo, MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
+import type { IHostConnectionInfo } from "../../shared/types.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
@@ -25,8 +26,7 @@ const hostURL = new URL(dipHost);
 const host: IHostConnectionInfo<URL> = {
   handle: hostURL,
   label: "host",
-  idx: 0,
-};
+  idx: 0 };
 const transport = new HTTPTransport(hostURL);
 
 const [client, stat] = await initCLI(seed, host, transport);

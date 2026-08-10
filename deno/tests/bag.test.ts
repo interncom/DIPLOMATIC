@@ -5,7 +5,8 @@ import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
-import type { IBag, IMessage, MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
+import type { IBag, IMessage } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 Deno.test("bag", async (t) => {

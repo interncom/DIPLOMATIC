@@ -2,7 +2,7 @@ import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
-import type { MasterSeed } from "../../shared/types.ts";
+import type { MasterSeed } from "../../shared/seed.ts";
 import crypto from "../../bun/src/crypto.ts";
 
 const [oldKeyFile, newKeyFile, inputFile, outputFile] = process.argv.slice(2);

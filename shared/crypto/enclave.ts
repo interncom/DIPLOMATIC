@@ -9,13 +9,8 @@
 
 import { concat } from "../binary.ts";
 import { kdmBytes } from "../consts.ts";
-import type {
-  DerivationSeed,
-  ICrypto,
-  KeyPair,
-  MasterSeed,
-  PublicKey,
-} from "../types.ts";
+import type { MasterSeed } from "../seed.ts";
+import type { DerivationSeed, ICrypto, KeyPair, PublicKey } from "../types.ts";
 
 export type EncryptCipher = {
   encrypt: (data: Uint8Array) => Promise<Uint8Array>;

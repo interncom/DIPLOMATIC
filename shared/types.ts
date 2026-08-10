@@ -4,7 +4,16 @@ import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
 import { IUsageQuota } from "./codecs/usageQuota.ts";
 import { APICallName, Status } from "./consts.ts";
-import { ValStat } from "./valstat.ts";
+import type { ValStat } from "./valstat.ts";
+
+/** Identity seed brands — defined in seed.ts; re-exported for convenience. */
+export type { MasterSeed, SealedMasterKey } from "./seed.ts";
+export {
+  asMasterSeed,
+  asSealedMasterKey,
+  MASTER_SEED_LEN,
+  SEALED_MASTER_KEY_LEN,
+} from "./seed.ts";
 
 export type GroupID = string;
 
@@ -146,17 +155,16 @@ export interface KeyPair {
   publicKey: PublicKey;
 }
 
-const masterSeedSymbol = Symbol("MasterSeed");
 const derivationSeedSymbol = Symbol("DerivationSeed");
 const publicKeySymbol = Symbol("PublicKey");
 const privateKeySymbol = Symbol("PrivateKey");
 const hostSpecificKeyPairSymbol = Symbol("HostSpecificKeyPair");
 const hashSymbol = Symbol("Hash");
 
-export type MasterSeed = Uint8Array & { readonly [masterSeedSymbol]: true };
 export type DerivationSeed = Uint8Array & {
   readonly [derivationSeedSymbol]: true;
 };
+
 export type PublicKey = Uint8Array & { readonly [publicKeySymbol]: true };
 export type PrivateKey = Uint8Array & { readonly [privateKeySymbol]: true };
 export type HostSpecificKeyPair = KeyPair & {

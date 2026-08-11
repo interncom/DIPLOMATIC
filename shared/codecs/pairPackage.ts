@@ -36,9 +36,8 @@ export const pairPackagePlainCodec: ICodecStruct<PairPackagePlain> = {
     if (s0 !== Status.Success) return err(s0);
     if (raw === undefined) return err(Status.InvalidMessage);
     const [masterSeed, seedSt] = asMasterSeed(raw);
-    if (seedSt !== Status.Success || masterSeed === undefined) {
-      return err(seedSt);
-    }
+    if (seedSt !== Status.Success) return err(seedSt);
+    if (masterSeed === undefined) return err(Status.InvalidMessage);
     const [n, s1] = dec.readVarInt();
     if (s1 !== Status.Success) return err(s1);
     if (n === undefined || n < 0) return err(Status.InvalidParam);

@@ -6,7 +6,6 @@ import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
-import type { MasterSeed } from "../../shared/seed.ts";
 import type {
   DerivationSeed,
   EntityID,
@@ -78,11 +77,12 @@ class MockCrypto implements ICrypto {
 }
 
 const lbl = "test-label";
-const testSeed = new Uint8Array(32).fill(0x11) as MasterSeed;
+const testSeed = new Uint8Array(32).fill(0x11) ;
 
 Deno.test("encodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const enclave = new Enclave(testSeed, crypto);
+  const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
+if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
 
   await t.step("empty messages", async () => {
     const msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }> = [];
@@ -253,7 +253,8 @@ Deno.test("encodeFile", async (t) => {
 
 Deno.test("decodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const enclave = new Enclave(testSeed, crypto);
+  const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
+if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
 
   await t.step("round-trip empty messages", async () => {
     const [file, statEnc] = await encodeFile(lbl, 0, [], crypto, enclave);

@@ -6,7 +6,7 @@ import libsodiumCrypto from "../src/crypto";
 import { Status } from "../src/shared/consts";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
-import type { MasterSeed } from "../src/shared/seed";
+import { Enclave } from "../src/shared/crypto/enclave";
 import type { EntityID, Hash, IMessage, IProtoHost, IStateManager } from "../src/shared/types";
 import {
   APLD_APPLIED,
@@ -26,7 +26,11 @@ import memStorage from "../src/shared/storage/memory";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import type { IHostConnectionInfo } from "../src/shared/types";
 
-const seed = new Uint8Array(32).fill(7) as MasterSeed;
+function testEnclave(): Enclave {
+  const [e, st] = Enclave.fromBytes(libsodiumCrypto, new Uint8Array(32).fill(7));
+  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  return e;
+}
 
 function hashOf(n: number): Hash {
   return new Uint8Array(32).fill(n) as Hash;
@@ -264,7 +268,7 @@ describe("SyncClient apply queue", () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state = mockState();
     const client = makeClient(store, state);
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     const [head, st] = await client.insertRaw(
       encode({ type: "note", body: { t: "hi" } }),
     );
@@ -281,7 +285,7 @@ describe("SyncClient apply queue", () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const state = mockState();
     const client = makeClient(store, state);
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     const [ins, stIns] = await client.insertRaw(
       encode({ type: "t", body: 1 }),
     );
@@ -327,7 +331,7 @@ describe("SyncClient apply queue", () => {
       state,
       () => new LPCTransport(lpcHost),
     );
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.link(host, false);
     expect(await store.uploads.count()).toBe(0);
     await client.insertRaw(encode({ type: "t", body: "x" }));
@@ -351,7 +355,7 @@ describe("SyncClient apply queue", () => {
       state,
       () => new LPCTransport(lpcHost),
     );
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.link(
       { handle: lpcHost, label: "h", idx: 0 },
       false,
@@ -382,7 +386,7 @@ describe("SyncClient apply queue", () => {
       state,
       () => new LPCTransport(lpcHost),
     );
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.link(
       { handle: lpcHost, label: "h", idx: 0 },
       false,
@@ -491,7 +495,7 @@ describe("SyncClient apply queue", () => {
       () => new LPCTransport(lpcHost),
       new MockClock(new Date(0)),
     );
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
 
     const [eid, eidStat] = makeEID({
       id: new Uint8Array(8).fill(2),
@@ -531,7 +535,7 @@ describe("SyncClient apply queue", () => {
       () => new LPCTransport(lpcHost),
       new MockClock(new Date(0)),
     );
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.link(
       { handle: lpcHost, label: "h", idx: 0 },
       false,
@@ -569,7 +573,7 @@ describe("SyncClient apply queue", () => {
       return msgs.map(() => Status.Success);
     });
     const client = makeClient(store, state);
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
 
     const h = hashOf(50);
     await storePending(store, { hash: h, eid: eidOf(50) });
@@ -588,7 +592,7 @@ describe("SyncClient apply queue", () => {
       msgs.map(() => Status.DatabaseError)
     );
     const client = makeClient(store, state);
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.insertRaw(encode({ type: "t", body: 1 }));
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(1);
     // Retry drain still fails and stays pending (non-terminal)
@@ -603,7 +607,7 @@ describe("SyncClient apply queue", () => {
       msgs.map(() => Status.InvalidMessage)
     );
     const client = makeClient(store, state);
-    await client.setSeed(seed);
+    await client.setSeed(testEnclave());
     await client.insertRaw(encode({ type: "t", body: 1 }));
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
     const listed = Array.from(await store.messages.list());

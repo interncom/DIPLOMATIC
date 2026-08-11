@@ -9,7 +9,6 @@ import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { genSingletonUpsert } from "../../shared/singleton.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
-import { MasterSeed } from "../../shared/seed.ts";
 import {
   HostHandle,
   IBag,
@@ -20,16 +19,16 @@ import {
 import { err, ok, ValStat } from "../../shared/valstat.ts";
 import crypto from "./crypto.ts";
 
-// A CLIClient maintains no state.
+// A CLIClient maintains no state. Master seed lives only inside the Enclave.
 export class CLIClient<Handle extends HostHandle> {
   private enclave: Enclave;
   private conn?: DiplomaticClientAPI<Handle>;
   private clock: IClock;
 
   constructor(
-    { seed, clock = new Clock() }: { seed: MasterSeed; clock?: IClock },
+    { enclave, clock = new Clock() }: { enclave: Enclave; clock?: IClock },
   ) {
-    this.enclave = new Enclave(seed, crypto);
+    this.enclave = enclave;
     this.clock = clock;
   }
 
@@ -116,13 +115,23 @@ export class CLIClient<Handle extends HostHandle> {
   }
 }
 
+export async function initCLI<Handle extends HostHandle>(
+  enclave: Enclave,
+  host: IHostConnectionInfo<Handle>,
+  transport: ITransport | ((host: IHostConnectionInfo<Handle>) => ITransport),
+): Promise<[CLIClient<Handle>, Status]> {
+  const cli = new CLIClient<Handle>({ enclave });
+  const t = typeof transport === "function" ? transport(host) : transport;
+  const stat = await cli.connect(host, t);
+  return [cli, stat];
+}
+
 export async function initCLIOrPanic<Handle extends HostHandle>(
-  seed: MasterSeed,
+  enclave: Enclave,
   host: IHostConnectionInfo<Handle>,
   transport: (host: IHostConnectionInfo<Handle>) => ITransport,
 ): Promise<CLIClient<Handle>> {
-  const cli = new CLIClient<Handle>({ seed });
-  const stat = await cli.connect(host, transport(host));
+  const [cli, stat] = await initCLI(enclave, host, transport);
   if (stat !== Status.Success) panic("Failed to initialize CLI");
   return cli;
 }
@@ -132,12 +141,17 @@ export function panic(msg: string) {
   Deno.exit(1);
 }
 
-export function loadSeedOrPanic(envVar: string): MasterSeed {
+/** Load master seed hex from env and construct an Enclave immediately. */
+export function loadEnclaveOrPanic(envVar: string): Enclave {
   const seedHex = Deno.env.get(`${envVar}`);
   if (!seedHex) panic(`${envVar} env var missing`);
-  const seed = htob(seedHex);
-  if (seed.length !== 32) panic(`${envVar} must be 64 hex chars (32 bytes)`);
-  return seed as MasterSeed;
+  const bytes = htob(seedHex);
+  const [enclave, st] = Enclave.fromBytes(crypto, bytes);
+  bytes.fill(0);
+  if (st !== Status.Success || enclave === undefined) {
+    panic(`${envVar} must be 64 hex chars (32-byte master seed)`);
+  }
+  return enclave;
 }
 
 export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {

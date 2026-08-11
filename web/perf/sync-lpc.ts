@@ -26,10 +26,10 @@ import { MockClock } from "../src/shared/clock";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Status } from "../src/shared/consts";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { createMemoryStorage } from "../src/shared/storage/memory";
-import type { MasterSeed } from "../src/shared/seed";
 import type { Hash, IMessage, IProtoHost } from "../src/shared/types";
 import { sortByHlcDesc } from "../src/hlc";
 import { SqliteStore } from "./sqlite-store";
@@ -53,7 +53,12 @@ const defaultClientDownDb = join(
   "../../fixtures/productivity/client-down-perf.db",
 );
 
-const SEED = new Uint8Array(32).fill(0x42) as MasterSeed;
+const SEED_BYTES = new Uint8Array(32).fill(0x42);
+function SEED(): Enclave {
+  const [e, st] = Enclave.fromBytes(libsodiumCrypto, SEED_BYTES);
+  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  return e;
+}
 const HOST_LABEL = "lpc";
 const HOST_IDX = 1;
 
@@ -153,7 +158,7 @@ async function main() {
 
   // --- uploader client (SQLite archive + queues) ---
   const upStore = new SqliteStore<IProtoHost>(clientUpDb, libsodiumCrypto);
-  await upStore.seed.save(SEED, { persist: true });
+  await upStore.seed.save(SEED(), { persist: true });
   await upStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
@@ -219,7 +224,7 @@ async function main() {
   // --- downloader client (same seed, empty SQLite archive) ---
   console.log("\n=== 3. sync from host (peek → pull/open/exec) ===");
   const downStore = new SqliteStore<IProtoHost>(clientDownDb, libsodiumCrypto);
-  await downStore.seed.save(SEED, { persist: true });
+  await downStore.seed.save(SEED(), { persist: true });
   await downStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,

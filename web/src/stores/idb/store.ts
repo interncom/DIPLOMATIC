@@ -33,7 +33,7 @@ export class IDBStore implements IStore<URL> {
 
   constructor(db: IDBDatabase, crypto: ICrypto) {
     this.db = db;
-    this.seed = new IDBSeedStore(db);
+    this.seed = new IDBSeedStore(db, crypto);
     this.hosts = new IDBHostStore(db);
     this.uploads = new IDBUploadQueue(db);
     this.downloads = new IDBDownloadQueue(db);

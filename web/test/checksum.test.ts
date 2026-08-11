@@ -5,7 +5,7 @@ import type { Hash, IEntRev } from "../src/shared/types";
 import { bytesEqual } from "../src/shared/binary";
 import { MemoryStore } from "../src/stores/memory/store";
 import { SyncClient } from "../src/client";
-import type { MasterSeed } from "../src/shared/seed";
+import { Enclave } from "../src/shared/crypto/enclave";
 import type { IStateManager } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { APLD_APPLIED } from "../src/types";
@@ -83,7 +83,9 @@ describe("client.msgcheck", () => {
       },
       libsodiumCrypto,
     );
-    await client.setSeed(new Uint8Array(32).fill(7) as MasterSeed);
+    const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, new Uint8Array(32).fill(7));
+    if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+    await client.setSeed(enclave);
 
     const empty = await client.msgcheck();
     expect(bytesEqual(empty, await libsodiumCrypto.blake3(new Uint8Array(0))))

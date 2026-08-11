@@ -2,7 +2,6 @@ import { decodeFile, encodeFile } from "../../shared/exim.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
-import type { MasterSeed } from "../../shared/seed.ts";
 import crypto from "../../bun/src/crypto.ts";
 
 const [oldKeyFile, newKeyFile, inputFile, outputFile] = process.argv.slice(2);
@@ -69,12 +68,11 @@ if (input.length === 0) {
 console.error(`Read ${input.length} bytes from ${inputFile}.`);
 
 const oldBytes = htob(oldHex);
-const oldSeed = oldBytes as MasterSeed;
 const newBytes = htob(newHex);
-const newSeed = newBytes as MasterSeed;
 
 console.error("Decrypting with old master key...");
-const oldEnclave = new Enclave(oldSeed, crypto);
+const [oldEnclave, oest] = Enclave.fromBytes(crypto, oldBytes);
+if (oest !== Status.Success || oldEnclave === undefined) throw new Error(`old enclave ${oest}`);
 const [msgs, statDec] = await decodeFile(input, crypto, oldEnclave);
 if (statDec !== Status.Success) {
   console.error(`Failed to decode: ${Status[statDec]}`);
@@ -83,7 +81,8 @@ if (statDec !== Status.Success) {
 console.error(`Decoded ${msgs.length} message(s).`);
 
 console.error("Re-encrypting with new master key...");
-const newEnclave = new Enclave(newSeed, crypto);
+const [newEnclave, nest] = Enclave.fromBytes(crypto, newBytes);
+if (nest !== Status.Success || newEnclave === undefined) throw new Error(`new enclave ${nest}`);
 const [outBytes, statEnc] = await encodeFile(
   "export",
   0,

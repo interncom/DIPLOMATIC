@@ -2,7 +2,6 @@ import type { SyncProgressEvent } from "./progress";
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/crypto/enclave";
 import type { EncodedMessage } from "./shared/message";
-import type { MasterSeed } from "./shared/seed";
 import type {
   EntityID,
   Hash,
@@ -46,12 +45,17 @@ export type Applier = (
   ops: IOp[],
 ) => Promise<{ stats: Status[]; types: Set<string>; eids: EntityID[] }>;
 
-/** Options for loading a seed into the enclave. */
+/** Options when installing a session {@link Enclave}. */
 export type SetSeedOpts = {
   /**
-   * When true, write seed to the durable store (e.g. IndexedDB).
-   * Default false (memory only) — IDB is readable by other local apps.
-   * Opt in only when the app accepts that tradeoff (or has no better store).
+   * When true, request durable storage **if the store supports a non-plaintext
+   * durable form** (e.g. passkey largeBlob as IdentityBundle wire).
+   * IDB holds the enclave in memory only — durable identity is PRF-sealed meta
+   * via {@link IDBSeedStore.openPrfStore}, never plain seed.
+   * Default false (session enclave only).
+   *
+   * Future: when PRF is unavailable, durable path is passphrase-sealed meta
+   * (KDF + AEAD inside Enclave), not plain seed on disk.
    */
   persist?: boolean;
 };
@@ -78,9 +82,9 @@ export type WipeOpts = {
   seed?: boolean;
 };
 
-// ISeedStore: session/durable access to a MasterSeed.
+// ISeedStore: session/durable access via Enclave (master seed never leaves enclave.ts).
 export interface ISeedStore {
-  save: (seed: MasterSeed, opts?: SetSeedOpts) => Promise<Enclave>;
+  save: (enclave: Enclave, opts?: SetSeedOpts) => Promise<Enclave>;
   load: () => Promise<Enclave | void>;
   /**
    * Clear durable seed material for this store (IDB row, largeBlob overwrite, …)
@@ -393,7 +397,8 @@ export interface IStateEmitter<T> {
 }
 
 export interface IClient<Handle extends HostHandle> {
-  setSeed(seed: MasterSeed, opts?: SetSeedOpts): Promise<void>;
+  /** Install session enclave (master seed stays inside enclave). */
+  setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void>;
 
   link(host: IHostConnectionInfo<Handle>): Promise<void>;
   unlink(label: string): Promise<void>;

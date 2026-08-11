@@ -48,9 +48,8 @@ export const identityBundleCodec: ICodecStruct<IdentityBundle> = {
     if (s1 !== Status.Success) return err(s1);
     if (raw === undefined) return err(Status.InvalidMessage);
     const [masterSeed, seedSt] = asMasterSeed(raw);
-    if (seedSt !== Status.Success || masterSeed === undefined) {
-      return err(seedSt);
-    }
+    if (seedSt !== Status.Success) return err(seedSt);
+    if (masterSeed === undefined) return err(Status.InvalidMessage);
     const [n, s2] = dec.readVarInt();
     if (s2 !== Status.Success) return err(s2);
     if (n === undefined || n < 0) return err(Status.InvalidParam);
@@ -69,15 +68,21 @@ export const identityBundleCodec: ICodecStruct<IdentityBundle> = {
   },
 };
 
-/** Build an in-memory bundle; rejects seeds that are not 32 bytes. */
+/**
+ * Build a wire-format identity bundle from a branded {@link MasterSeed} + hosts.
+ * Codec/tests only. Runtime seed I/O must go through Enclave.persistToLargeBlob
+ * — never encode then hand seed-bearing bytes to outer layers.
+ */
 export function createIdentityBundle(
   masterSeed: MasterSeed,
   hosts: BundleHost[],
 ): ValStat<IdentityBundle> {
   const [seed, seedSt] = asMasterSeed(masterSeed);
-  if (seedSt !== Status.Success || seed === undefined) return err(seedSt);
+  if (seedSt !== Status.Success) return err(seedSt);
+  if (seed === undefined) return err(Status.InvalidParam);
   const [copy, copySt] = asMasterSeed(seed.slice());
-  if (copySt !== Status.Success || copy === undefined) return err(copySt);
+  if (copySt !== Status.Success) return err(copySt);
+  if (copy === undefined) return err(Status.InvalidParam);
   return ok({
     v: IDENTITY_BUNDLE_VERSION,
     masterSeed: copy,

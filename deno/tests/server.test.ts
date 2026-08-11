@@ -22,7 +22,6 @@ import { Encoder } from "../../shared/codec.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { HTTPTransport } from "../../shared/http.ts";
-import { MasterSeed } from "../../shared/seed.ts";
 import { IHostConnectionInfo } from "../../shared/types.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 
@@ -30,8 +29,9 @@ import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 const port = 3331;
 
 // Client config.
-const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) as MasterSeed;
-const enclave = new Enclave(seed, libsodiumCrypto);
+const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) ;
+const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
+if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
 
 class MockPushNotifier implements IWebSocketPushNotifier {
   handle(_host: IProtoHost, _request: Request): Promise<Response> {

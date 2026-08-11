@@ -14,7 +14,6 @@ import { Encoder } from "../src/shared/codec";
 import { makeEID } from "../src/shared/codecs/eid";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { checksumSet } from "../src/shared/checksum";
-import { MasterSeed } from "../src/shared/seed";
 import { EntityID, Hash, HostHandle, IMessage } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import {
@@ -24,7 +23,12 @@ import {
 import { bytesEqual } from "../src/shared/binary";
 
 // Fixed seed for deterministic key derivation
-const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
+const testSeedBytes = new Uint8Array(32).fill(0x42);
+function testEnclave(): Enclave {
+  const [e, st] = Enclave.fromBytes(libsodiumCrypto, testSeedBytes);
+  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  return e;
+}
 
 async function createTestBag(message: IMessage, enclave: Enclave) {
   const hostIdnt = await enclave.deriveIdentity("test", 1);
@@ -64,7 +68,7 @@ describe("syncPeek", () => {
 
   beforeEach(async () => {
     store = new MemoryStore(libsodiumCrypto);
-    enclave = new Enclave(testSeed, libsodiumCrypto);
+    enclave = testEnclave();
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1, lastSyncedAt: new Date(0), lastSeq: 0 };
     // Create fresh storage and host per test
@@ -234,7 +238,7 @@ describe("syncPeek download de-dupe", () => {
 
   beforeEach(async () => {
     store = new MemoryStore(libsodiumCrypto);
-    enclave = new Enclave(testSeed, libsodiumCrypto);
+    enclave = testEnclave();
     clock = new MockClock(new Date(0));
     hostRow = { label: "test", idx: 1, lastSeq: 0 };
     const storage = createMemoryStorage();
@@ -312,7 +316,7 @@ describe("reconcileHost", () => {
 
   beforeEach(async () => {
     store = new MemoryStore(libsodiumCrypto);
-    enclave = new Enclave(testSeed, libsodiumCrypto);
+    enclave = testEnclave();
     clock = new MockClock(new Date(0));
     host = {
       label: "test",
@@ -503,7 +507,7 @@ describe("syncPush", () => {
 
   beforeEach(async () => {
     store = new MemoryStore(libsodiumCrypto);
-    enclave = new Enclave(testSeed, libsodiumCrypto);
+    enclave = testEnclave();
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };
     // Create fresh storage and host per test
@@ -597,7 +601,7 @@ describe("syncPull", () => {
 
   beforeEach(async () => {
     store = new MemoryStore(libsodiumCrypto);
-    enclave = new Enclave(testSeed, libsodiumCrypto);
+    enclave = testEnclave();
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };
     // Create fresh storage and host per test

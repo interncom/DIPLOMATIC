@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import './App.css'
 import {
+  crypto,
+  Enclave,
   htob,
   IEntDB,
-  MasterSeed,
   IStateManager,
   Status,
   useClient,
@@ -11,7 +12,11 @@ import {
 } from "@interncom/diplomatic";
 import { diplomaticSyncWorker } from "./diplomaticWorker";
 
-const seed = htob("0123456789ABCDEF".repeat(4)) as MasterSeed;
+const seedBytes = htob("0123456789ABCDEF".repeat(4));
+const [seed, seedSt] = Enclave.fromBytes(crypto, seedBytes);
+if (seedSt !== Status.Success || seed === undefined) {
+  throw new Error(`invalid demo seed (${seedSt})`);
+}
 const entType = "status";
 const host = { handle: new URL("http://localhost:31337"), label: "host" };
 

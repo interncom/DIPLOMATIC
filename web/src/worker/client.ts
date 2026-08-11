@@ -15,7 +15,7 @@ import { idleProgress } from "../progress";
 import { saveBlob } from "../saveBlob";
 import { Clock, IClock } from "../shared/clock";
 import { Status } from "../shared/consts";
-import type { MasterSeed } from "../shared/seed";
+import type { Enclave } from "../shared/crypto/enclave";
 import type {
   EntityID,
   Hash,
@@ -475,27 +475,29 @@ export class WorkerClient implements IClient<URL> {
     };
   }
 
-  async setSeed(seed: MasterSeed, opts?: SetSeedOpts): Promise<void> {
+  async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void> {
     await this.ready;
-    // Shared IDB (if persist) + worker enclave both need the seed.
-    await this.local.setSeed(seed, opts);
-    // Optimistic: local already has enclave; don't wait on async worker
-    // clientState posts (void-emitted) for hasSeed to flip in the UI.
+    // Shared IDB (if persist) + worker enclave (IPC handoff owned by Enclave).
+    await this.local.setSeed(enclave, opts);
     this.cachedClientState = {
       ...this.cachedClientState,
       hasSeed: true,
     };
     this.clientState.emit();
-    const copy = seed.slice();
-    await this.request(
-      {
-        id: this.allocId(),
-        op: "setSeed",
-        seed: copy,
-        persist: opts?.persist,
-      },
-      [copy.buffer],
-    );
+    // Enclave posts setSeed + transfers seed; we only wait for the reply.
+    const id = this.allocId();
+    await new Promise<unknown>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      try {
+        enclave.postSetSeedToWorker(this.worker, {
+          id,
+          persist: opts?.persist,
+        });
+      } catch (e) {
+        this.pending.delete(id);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
   }
 
   async link(

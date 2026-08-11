@@ -11,7 +11,7 @@ import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
 import { decodeFile, encodeFile } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
-import { MasterSeed } from "./shared/seed";
+import type { Enclave } from "./shared/crypto/enclave";
 import {
   EntityID,
   Hash,
@@ -145,8 +145,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   };
 
-  public async setSeed(seed: MasterSeed, opts?: SetSeedOpts) {
-    await this.store.seed.save(seed, opts);
+  public async setSeed(enclave: Enclave, opts?: SetSeedOpts) {
+    await this.store.seed.save(enclave, opts);
     this.clientState.emit();
   }
 

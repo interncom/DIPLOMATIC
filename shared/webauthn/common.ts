@@ -39,11 +39,24 @@ export function defaultWebAuthnRpId(hostname: string): string {
   return host || "localhost";
 }
 
-/** Copy into a fresh ArrayBuffer-backed view (DOM BufferSource typing). */
-export function copyToArrayBuffer(src: Uint8Array): Uint8Array {
+/**
+ * Fresh standalone {@link ArrayBuffer} copy of `src`.
+ * Safari (and some Chromium paths) are picky about BufferSource for
+ * largeBlob write / allowCredentials id — pass a real ArrayBuffer, not a
+ * view into a larger pooled buffer.
+ */
+export function copyToArrayBuffer(src: Uint8Array): ArrayBuffer {
   const out = new Uint8Array(src.byteLength);
   out.set(src);
-  return out;
+  return out.buffer;
+}
+
+/** Copy WebAuthn blob / BufferSource into an owned Uint8Array. */
+export function bufferSourceToUint8(src: BufferSource): Uint8Array {
+  if (src instanceof ArrayBuffer) {
+    return new Uint8Array(src).slice();
+  }
+  return new Uint8Array(src.buffer, src.byteOffset, src.byteLength).slice();
 }
 
 /** Resolve RP id from opts or `location.hostname`. */

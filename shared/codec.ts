@@ -192,11 +192,16 @@ export class Encoder {
   }
 
   prependBytes(bytes: Uint8Array): void {
-    this.parts.unshift(bytes);
+    this.parts.unshift(bytes.slice());
   }
 
+  /**
+   * Append a copy of `bytes`. Parts must not alias caller buffers — callers
+   * often zero sensitive material after encode (seed, PRF, etc.); holding a
+   * live reference would corrupt the eventual {@link result}.
+   */
   writeBytes(bytes: Uint8Array): void {
-    this.parts.push(bytes);
+    this.parts.push(bytes.slice());
   }
 
   writeVarBytes(bytes: Uint8Array): Status {

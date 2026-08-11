@@ -10,6 +10,7 @@ import { randomBytesArrayBuffer } from "../crypto/entropy.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import {
   asPublicKeyCredential,
+  bufferSourceToUint8,
   checkWebAuthn,
   copyToArrayBuffer,
   resolveWebAuthnRpId,
@@ -31,7 +32,12 @@ type ExtIn = AuthenticationExtensionsClientInputs & {
   largeBlob?: { support?: string; write?: BufferSource; read?: boolean };
 };
 type ExtOut = AuthenticationExtensionsClientOutputs & {
-  largeBlob?: { supported?: boolean; written?: boolean; blob?: ArrayBuffer };
+  largeBlob?: {
+    supported?: boolean;
+    written?: boolean;
+    /** Spec: ArrayBuffer; some UAs return a view. */
+    blob?: BufferSource;
+  };
 };
 
 /** Best-effort capability probe. */
@@ -170,10 +176,16 @@ export async function largeBlobRead(
   if (pst !== Status.Success) return err(pst);
   if (pk === undefined) return err(Status.InvalidResponse);
   const ext = pk.getClientExtensionResults() as ExtOut;
-  const blob = ext.largeBlob?.blob;
-  if (blob === undefined) return err(Status.MissingBody);
+  const lb = ext.largeBlob;
+  // Assertion can succeed without the extension (wrong cred / no largeBlob
+  // support on this path) — that is MissingBody, not InvalidResponse.
+  if (lb === undefined || lb.blob === undefined) {
+    return err(Status.MissingBody);
+  }
+  const blob = bufferSourceToUint8(lb.blob);
+  if (blob.byteLength === 0) return err(Status.MissingBody);
   return ok({
-    blob: new Uint8Array(blob),
+    blob,
     credId: new Uint8Array(pk.rawId),
   });
 }

@@ -514,20 +514,18 @@ export class Enclave {
     if (sst !== Status.Success) return err(sst);
     if (snap === undefined) return err(Status.InvalidParam);
     const [bundle, bst] = createIdentityBundle(snap, hosts);
-    if (bst !== Status.Success) {
-      snap.fill(0);
-      return err(bst);
-    }
-    if (bundle === undefined) {
-      snap.fill(0);
-      return err(Status.InternalError);
-    }
     snap.fill(0);
-    const enc = new Encoder();
-    const st = enc.writeStruct(identityBundleCodec, bundle);
-    bundle.masterSeed.fill(0);
-    if (st !== Status.Success) return err(st);
-    return ok(enc.result());
+    if (bst !== Status.Success) return err(bst);
+    if (bundle === undefined) return err(Status.InternalError);
+    try {
+      const enc = new Encoder();
+      const st = enc.writeStruct(identityBundleCodec, bundle);
+      if (st !== Status.Success) return err(st);
+      // Encoder.writeBytes copies; still take result before clearing seed.
+      return ok(enc.result());
+    } finally {
+      bundle.masterSeed.fill(0);
+    }
   }
 
   /**
@@ -543,6 +541,7 @@ export class Enclave {
     }
     // Legacy format: bare master seed.
     if (seedBytes.byteLength === MASTER_SEED_LEN) {
+      if (seedBytes.every((b) => b === 0)) return err(Status.MissingSeed);
       const [enclave, est] = Enclave.fromBytes(crypto, seedBytes);
       if (est !== Status.Success) return err(est);
       if (enclave === undefined) return err(Status.InternalError);
@@ -552,15 +551,22 @@ export class Enclave {
     const [bundle, bst] = dec.readStruct(identityBundleCodec);
     if (bst !== Status.Success) return err(bst);
     if (bundle === undefined) return err(Status.InvalidMessage);
-    const [enclave, est] = Enclave.fromBytes(crypto, bundle.masterSeed);
-    bundle.masterSeed.fill(0);
-    if (est !== Status.Success) return err(est);
-    if (enclave === undefined) return err(Status.InternalError);
-    return ok({
-      enclave,
-      hosts: bundle.hosts.map((h) => ({ ...h })),
-      credId,
-    });
+    try {
+      // All-zero master (e.g. pre-fix write that zeroed seed while encoding).
+      if (bundle.masterSeed.every((b) => b === 0)) {
+        return err(Status.MissingSeed);
+      }
+      const [enclave, est] = Enclave.fromBytes(crypto, bundle.masterSeed);
+      if (est !== Status.Success) return err(est);
+      if (enclave === undefined) return err(Status.InternalError);
+      return ok({
+        enclave,
+        hosts: bundle.hosts.map((h) => ({ ...h })),
+        credId,
+      });
+    } finally {
+      bundle.masterSeed.fill(0);
+    }
   }
 
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {

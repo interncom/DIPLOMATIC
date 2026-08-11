@@ -75,6 +75,8 @@ describe("IdentityBundle codec", () => {
     if (bundle === undefined) return;
     const enc = new Encoder();
     expect(enc.writeStruct(identityBundleCodec, bundle)).toBe(Status.Success);
+    // Simulate Enclave zeroing seed after encode (must not corrupt wire).
+    bundle.masterSeed.fill(0);
     const dec = new Decoder(enc.result());
     const [out, st] = dec.readStruct(identityBundleCodec);
     expect(st).toBe(Status.Success);
@@ -82,7 +84,10 @@ describe("IdentityBundle codec", () => {
     if (out === undefined) return;
     expect(out.v).toBe(IDENTITY_BUNDLE_VERSION);
     expect(out.masterSeed).toEqual(seed);
-    expect(out.hosts).toEqual(bundle.hosts);
+    expect(out.hosts).toEqual([
+      { handle: "https://sync.example.com", label: "host", idx: 0 },
+      { handle: "https://b.example.com", label: "backup", idx: 1 },
+    ]);
   });
 
   it("round-trips empty hosts", () => {

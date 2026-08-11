@@ -128,9 +128,15 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(id).toEqual(credId);
     expect(get).toHaveBeenCalledOnce();
     const arg = get.mock.calls[0][0];
-    // Opaque wire longer than bare seed; callers never get this buffer back.
-    const written = new Uint8Array(arg.publicKey.extensions.largeBlob.write);
+    // write must be a real ArrayBuffer (Safari / some Chromium paths).
+    const writeRaw = arg.publicKey.extensions.largeBlob.write;
+    expect(writeRaw).toBeInstanceOf(ArrayBuffer);
+    // Opaque wire longer than bare seed; seed bytes must not be all-zero
+    // (regression: Encoder held a ref that Enclave zeroed before result()).
+    const written = new Uint8Array(writeRaw);
     expect(written.byteLength).toBeGreaterThan(32);
+    expect(written.slice(1, 33).every((b: number) => b === 0)).toBe(false);
+    expect(written.slice(1, 33).every((b: number) => b === 1)).toBe(true);
   });
 
   it("fromLargeBlob absorbs legacy 32-byte payload into enclave", async () => {

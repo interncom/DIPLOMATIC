@@ -29,6 +29,7 @@ To be useful this software must be trusted. To be trusted it must be understood.
 - `shared` holds common code. It's written in TypeScript, targeting deno.
 - `shared/api` implements the fundamental API calls of the protocol (client- and server-side).
 - `shared/codecs` hold binary encoders and decoders (codecs) for data structures.
+- `shared/crypto` holds all sensitive cryptographic operations code. Including the Enclave, which is the only piece of code allowed to touch unencrypted master keys.
 - `shared/http` holds code implementing the HTTP transport for the protocol.
 - `shared/lpc` holds code implementing the LPC (local procedure call) transport.
 - `shared/types.ts` defines TypeScript types used.
@@ -55,3 +56,6 @@ To be useful this software must be trusted. To be trusted it must be understood.
 
 - Run the benchmarks before and after as well, to check for meaningful regressions.
   - `deno bench` from `deno` dir.
+
+- Ensure that changes have not introduced new sensitive cryptographic operations outside the `shared/crypto` folder.
+- Ensure that changes have not resulted in the unencrypted master seed (key) being accessible outside of the Enclave in `shared/crypto`.

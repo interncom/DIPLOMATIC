@@ -42,10 +42,21 @@ export class IDBHostStore implements IHostStore<URL> {
     this.db = db;
   }
 
+  /**
+   * Upsert connection info. Same label + same handle/idx keeps lastSeq and
+   * host meta (safe re-link). Changing handle/idx resets the peek cursor.
+   */
   async add(info: IHostConnectionInfo<URL>) {
+    const prev = await this.get(info.label);
+    const same =
+      prev !== undefined &&
+      prev.handle.href === info.handle.href &&
+      (prev.idx ?? 0) === (info.idx ?? 0);
     return this.put({
       ...info,
-      lastSeq: 0,
+      lastSeq: same ? prev.lastSeq : 0,
+      clockOffset: same ? prev.clockOffset : undefined,
+      subscription: same ? prev.subscription : undefined,
     });
   }
 

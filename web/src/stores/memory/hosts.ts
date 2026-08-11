@@ -21,10 +21,21 @@ export class MemoryHostStore<Handle extends HostHandle>
   implements IHostStore<Handle> {
   hosts = new Map<string, IHostRow<Handle>>();
 
+  /**
+   * Upsert connection info. Same label + same handle/idx keeps lastSeq and
+   * host meta (safe re-link). Changing handle/idx resets the peek cursor.
+   */
   async add(info: IHostConnectionInfo<Handle>) {
+    const prev = this.hosts.get(info.label);
+    const same =
+      prev !== undefined &&
+      prev.handle === info.handle &&
+      (prev.idx ?? 0) === (info.idx ?? 0);
     const host: IHostRow<Handle> = {
       ...info,
-      lastSeq: 0,
+      lastSeq: same ? prev.lastSeq : 0,
+      clockOffset: same ? prev.clockOffset : undefined,
+      subscription: same ? prev.subscription : undefined,
     };
     this.hosts.set(info.label, host);
   }

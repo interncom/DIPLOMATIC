@@ -5,8 +5,8 @@ import {
   PasskeySeedStore,
 } from "../src/passkey/seed";
 import crypto from "../src/crypto";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
-import type { MasterSeed } from "../src/shared/seed";
 
 describe("defaultWebAuthnRpId", () => {
   it("uses the full hostname (no eTLD+1 collapse)", () => {
@@ -29,8 +29,16 @@ describe("defaultWebAuthnRpId", () => {
   });
 });
 
-function seedOf(fill: number): MasterSeed {
-  return new Uint8Array(32).fill(fill) as MasterSeed;
+function seedBytes(fill: number): Uint8Array {
+  return new Uint8Array(32).fill(fill);
+}
+
+function enclaveOf(fill: number): Enclave {
+  const [e, st] = Enclave.fromBytes(crypto, seedBytes(fill));
+  if (st !== Status.Success || e === undefined) {
+    throw new Error(`enclaveOf failed ${st}`);
+  }
+  return e;
 }
 
 function mockCred(
@@ -43,14 +51,14 @@ function mockCred(
     rawId,
     response: {} as AuthenticatorAttestationResponse,
     authenticatorAttachment: "platform",
-    getClientExtensionResults: () => ext } as PublicKeyCredential;
+    getClientExtensionResults: () => ext,
+  } as PublicKeyCredential;
 }
 
-describe("LargeBlob", () => {
+describe("LargeBlob (WebAuthn I/O only)", () => {
   const credId = new Uint8Array(16).fill(7);
 
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -58,9 +66,9 @@ describe("LargeBlob", () => {
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
     );
-    vi.stubGlobal("navigator", { credentials: { create, get: vi.fn() } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
     const [id, st] = await LargeBlob.createCred({ rpId: "localhost" });
     expect(st).toBe(Status.Success);
@@ -74,9 +82,9 @@ describe("LargeBlob", () => {
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
     );
-    vi.stubGlobal("navigator", { credentials: { create, get: vi.fn() } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "life.interncom.org" });
+    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "life.interncom.org" };
 
     const [, st] = await LargeBlob.createCred();
     expect(st).toBe(Status.Success);
@@ -86,82 +94,128 @@ describe("LargeBlob", () => {
 
   it("createCred fails when authenticator omits largeBlob", async () => {
     const create = vi.fn().mockResolvedValue(mockCred(credId.buffer, {}));
-    vi.stubGlobal("navigator", { credentials: { create, get: vi.fn() } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
     const [, st] = await LargeBlob.createCred({ rpId: "localhost" });
     expect(st).toBe(Status.HostError);
   });
+});
 
-  it("writeSeed requires written:true", async () => {
+describe("Enclave largeBlob seed boundary", () => {
+  const credId = new Uint8Array(16).fill(7);
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("persistToLargeBlob UV-writes without returning seed", async () => {
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { written: true } }),
     );
-    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = {
+      credentials: { create: vi.fn(), get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
-    const st = await LargeBlob.writeSeed(credId, seedOf(1), {
-      rpId: "localhost" });
+    const [id, st] = await enclaveOf(1).persistToLargeBlob([], {
+      rpId: "localhost",
+      credId,
+    });
     expect(st).toBe(Status.Success);
+    expect(id).toEqual(credId);
+    expect(get).toHaveBeenCalledOnce();
     const arg = get.mock.calls[0][0];
-    expect(arg.publicKey.extensions.largeBlob.write).toEqual(seedOf(1));
+    // Opaque wire longer than bare seed; callers never get this buffer back.
+    const written = new Uint8Array(arg.publicKey.extensions.largeBlob.write);
+    expect(written.byteLength).toBeGreaterThan(32);
   });
 
-  it("readSeed returns seed bytes", async () => {
-    const seed = seedOf(9);
+  it("fromLargeBlob absorbs legacy 32-byte payload into enclave", async () => {
+    const seed = seedBytes(9);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
         largeBlob: {
-          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32) } }),
+          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
+        },
+      }),
     );
-    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = {
+      credentials: { create: vi.fn(), get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
-    const [out, st] = await LargeBlob.readSeed(credId, { rpId: "localhost" });
+    const [out, st] = await Enclave.fromLargeBlob(crypto, {
+      rpId: "localhost",
+      credId,
+    });
     expect(st).toBe(Status.Success);
-    expect(out).toEqual(seed);
+    expect(out).toBeDefined();
+    if (out === undefined) return;
+    expect(out.credId).toEqual(credId);
+    // Round-trip identity: same seed as enclaveOf(9) would derive.
+    const expected = await enclaveOf(9).deriveIdentity("test", 0);
+    const got = await out.enclave.deriveIdentity("test", 0);
+    expect(got.publicKey).toEqual(expected.publicKey);
   });
 
-  it("discover omits allowCredentials and returns seed+credId", async () => {
-    const seed = seedOf(4);
+  it("fromLargeBlob without credId is discoverable", async () => {
+    const seed = seedBytes(4);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
         largeBlob: {
-          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32) } }),
+          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
+        },
+      }),
     );
-    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = {
+      credentials: { create: vi.fn(), get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
-    const [out, st] = await LargeBlob.discover({ rpId: "localhost" });
+    const [out, st] = await Enclave.fromLargeBlob(crypto, {
+      rpId: "localhost",
+    });
     expect(st).toBe(Status.Success);
-    expect(out!.seed).toEqual(seed);
-    expect(out!.credId).toEqual(credId);
+    expect(out).toBeDefined();
+    if (out === undefined) return;
+    expect(out.credId).toEqual(credId);
+    const expected = await enclaveOf(4).deriveIdentity("test", 0);
+    const got = await out.enclave.deriveIdentity("test", 0);
+    expect(got.publicKey).toEqual(expected.publicKey);
     const arg = get.mock.calls[0][0];
     expect(arg.publicKey.allowCredentials).toBeUndefined();
     expect(arg.publicKey.extensions.largeBlob.read).toBe(true);
   });
 
-  it("discover fails on wiped zero seed", async () => {
-    const zeros = seedOf(0);
+  it("fromLargeBlob fails on wiped zero seed", async () => {
+    const zeros = seedBytes(0);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
         largeBlob: {
-          blob: zeros.buffer.slice(zeros.byteOffset, zeros.byteOffset + 32) } }),
+          blob: zeros.buffer.slice(zeros.byteOffset, zeros.byteOffset + 32),
+        },
+      }),
     );
-    vi.stubGlobal("navigator", { credentials: { create: vi.fn(), get } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = {
+      credentials: { create: vi.fn(), get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
-    const [, st] = await LargeBlob.discover({ rpId: "localhost" });
+    const [, st] = await Enclave.fromLargeBlob(crypto, {
+      rpId: "localhost",
+    });
     expect(st).toBe(Status.MissingSeed);
   });
 
   it("PasskeySeedStore save/unlock/load", async () => {
-    const seed = seedOf(3);
+    const seed = seedBytes(3);
+    const enc0 = enclaveOf(3);
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
     );
@@ -176,14 +230,16 @@ describe("LargeBlob", () => {
       .mockResolvedValueOnce(
         mockCred(credId.buffer, {
           largeBlob: {
-            blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32) } }),
+            blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
+          },
+        }),
       );
-    vi.stubGlobal("navigator", { credentials: { create, get } });
-    vi.stubGlobal("PublicKeyCredential", class {});
-    vi.stubGlobal("location", { hostname: "localhost" });
+    (globalThis as any).navigator = { credentials: { create, get } };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
 
     const store = new PasskeySeedStore({ crypto, rpId: "localhost" });
-    const enc1 = await store.save(seed, { persist: true });
+    const enc1 = await store.save(enc0, { persist: true });
     expect(enc1).toBeDefined();
     expect(store.credId).toEqual(credId);
     expect(await store.load()).toBe(enc1);

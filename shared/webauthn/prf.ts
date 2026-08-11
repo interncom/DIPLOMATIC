@@ -1,9 +1,10 @@
-// WebAuthn PRF extension helpers (platform passkeys: iOS 18+ / macOS 15+ Safari/Chrome).
-// Not a confidentiality boundary vs the OS — only vs hosts / casual disk.
+// WebAuthn PRF extension I/O (platform passkeys). Not crypto of the master seed —
+// that stays in Enclave. Fixed module (not pluggable). PRF output must not be
+// returned to app code; only Enclave consumes it for seal/unseal.
 
-import { Status } from "../shared/consts";
-import { err, ok, type ValStat } from "../shared/valstat";
-import { randomBytesArrayBuffer } from "../shared/crypto/entropy";
+import { Status } from "../consts.ts";
+import { randomBytesArrayBuffer } from "../crypto/entropy.ts";
+import { err, ok, type ValStat } from "../valstat.ts";
 import {
   asPublicKeyCredential,
   checkWebAuthn,
@@ -13,20 +14,17 @@ import {
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnExtensionCapable,
   type WebAuthnRp,
-} from "./webauthn";
+} from "./common.ts";
 
-/** RP options for PRF ceremonies ({@link WebAuthnRp}). */
 export type PrfRp = WebAuthnRp;
 
 export type PrfCreateOpts = PrfRp & {
   userName?: string;
-  authenticatorAttachment?: AuthenticatorAttachment;
+  authenticatorAttachment?: string;
 };
 
 /** Default salt for DIPLOMATIC PRF eval (UTF-8). */
-export const DEFAULT_PRF_SALT = new TextEncoder().encode(
-  "diplomatic.prf.v1",
-);
+export const DEFAULT_PRF_SALT = new TextEncoder().encode("diplomatic.prf.v1");
 
 /** Bytes of PRF output we consume (first N of `results.first`). */
 export const PRF_OUTPUT_LEN = 32;
@@ -36,10 +34,15 @@ export type PrfCreateResult = {
   prfEnabled: boolean;
 };
 
+/** Internal: PRF output + cred id. For Enclave only — do not re-export to apps. */
 export type PrfEvalResult = {
-  /** First {@link PRF_OUTPUT_LEN} bytes of PRF output. */
   prf: Uint8Array;
   credId: Uint8Array;
+};
+
+export type PrfEvalOpts = PrfRp & {
+  credId?: Uint8Array;
+  salt?: Uint8Array;
 };
 
 /** Best-effort: client advertises PRF extension. */
@@ -47,24 +50,23 @@ export async function prfCapable(): Promise<boolean> {
   return webAuthnExtensionCapable("extension:prf");
 }
 
-/**
- * Create a discoverable platform-oriented credential that enables PRF.
- * Prefer platform attachment for Apple PRF (iCloud Keychain).
- */
+/** Create a discoverable credential that enables PRF. */
 export async function createPrfCred(
   opts?: PrfCreateOpts,
 ): Promise<ValStat<PrfCreateResult>> {
   const wst = checkWebAuthn();
   if (wst !== Status.Success) return err(wst);
   const [rpId, rst] = resolveWebAuthnRpId(opts);
-  if (rst !== Status.Success || rpId === undefined) return err(rst);
+  if (rst !== Status.Success) return err(rst);
+  if (rpId === undefined) return err(Status.MissingParam);
 
   const name = opts?.userName ?? "diplomatic-prf";
   const selection: AuthenticatorSelectionCriteria = {
     residentKey: "required",
     requireResidentKey: true,
     userVerification: "required",
-    authenticatorAttachment: opts?.authenticatorAttachment ?? "platform",
+    authenticatorAttachment: (opts?.authenticatorAttachment ??
+      "platform") as AuthenticatorAttachment,
   };
 
   let cred: Credential | null;
@@ -80,9 +82,7 @@ export async function createPrfCred(
         },
         pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
         authenticatorSelection: selection,
-        extensions: {
-          prf: {},
-        },
+        extensions: { prf: {} },
       },
     });
   } catch {
@@ -90,8 +90,11 @@ export async function createPrfCred(
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
-  if (pst !== Status.Success || pk === undefined) return err(pst);
-  const ext = pk.getClientExtensionResults();
+  if (pst !== Status.Success) return err(pst);
+  if (pk === undefined) return err(Status.InvalidResponse);
+  const ext = pk.getClientExtensionResults() as {
+    prf?: { enabled?: boolean };
+  };
   return ok({
     credId: new Uint8Array(pk.rawId),
     prfEnabled: ext.prf?.enabled === true,
@@ -99,20 +102,17 @@ export async function createPrfCred(
 }
 
 /**
- * Evaluate PRF on an existing (or discoverable) credential.
- * Pass `credId` when known; omit for discoverable assertion.
+ * Evaluate PRF (UV). Returns PRF bytes — only Enclave should call this and must
+ * zero/drop PRF after seal/unseal. Apps must not hold PRF alongside sealed meta.
  */
 export async function evalPrf(
-  opts?: PrfRp & {
-    credId?: Uint8Array;
-    /** Salt for PRF first input; default {@link DEFAULT_PRF_SALT}. */
-    salt?: Uint8Array;
-  },
+  opts?: PrfEvalOpts,
 ): Promise<ValStat<PrfEvalResult>> {
   const wst = checkWebAuthn();
   if (wst !== Status.Success) return err(wst);
   const [rpId, rst] = resolveWebAuthnRpId(opts);
-  if (rst !== Status.Success || rpId === undefined) return err(rst);
+  if (rst !== Status.Success) return err(rst);
+  if (rpId === undefined) return err(Status.MissingParam);
 
   const salt = opts?.salt ?? DEFAULT_PRF_SALT;
   const saltBuf = copyToArrayBuffer(salt);
@@ -140,22 +140,25 @@ export async function evalPrf(
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
-  if (pst !== Status.Success || pk === undefined) return err(pst);
-  const results = pk.getClientExtensionResults().prf?.results;
+  if (pst !== Status.Success) return err(pst);
+  if (pk === undefined) return err(Status.InvalidResponse);
+  const results = (
+    pk.getClientExtensionResults() as {
+      prf?: { results?: { first?: BufferSource } };
+    }
+  ).prf?.results;
   if (results?.first === undefined) return err(Status.MissingBody);
 
   const first = results.first;
   const raw = first instanceof ArrayBuffer
     ? new Uint8Array(first)
     : new Uint8Array(
-      first.buffer,
-      first.byteOffset,
-      first.byteLength,
+      (first as ArrayBufferView).buffer,
+      (first as ArrayBufferView).byteOffset,
+      (first as ArrayBufferView).byteLength,
     );
   const prf =
-    raw.byteLength >= PRF_OUTPUT_LEN
-      ? raw.slice(0, PRF_OUTPUT_LEN)
-      : raw;
+    raw.byteLength >= PRF_OUTPUT_LEN ? raw.slice(0, PRF_OUTPUT_LEN) : raw;
   if (prf.byteLength !== PRF_OUTPUT_LEN) return err(Status.InvalidResponse);
   return ok({
     prf,

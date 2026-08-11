@@ -1,17 +1,16 @@
-// Seed store: durable sealed master in memory + app-owned meta persistence; unlock via PRF.
+// Seed store: durable sealed master in protocol IDB + unlock via PRF ceremony.
+// Session handle is always an Enclave. PRF bytes never leave Enclave methods.
 
 import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
 import {
   asSealedMasterKey,
-  type MasterSeed,
   type SealedMasterKey,
 } from "../shared/seed";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
-import { DEFAULT_PRF_SALT, evalPrf, type PrfRp } from "./prf";
-import { sealMaster, unsealMaster } from "./secret-split";
+import type { PrfRp } from "../shared/webauthn/prf";
 
 export type PrfSeedMeta = {
   /** AEAD-sealed master under KDF(PRF). */
@@ -23,7 +22,7 @@ export type PrfSeedMeta = {
 };
 
 /**
- * Persist sealed-master metadata for cold start (e.g. write/clear IDB).
+ * Persist sealed-master metadata for cold start (e.g. protocol IDB seedMeta).
  * Called with `undefined` when the store is wiped.
  */
 export type PersistPrfSeedMeta = (
@@ -31,11 +30,10 @@ export type PersistPrfSeedMeta = (
 ) => void | Promise<void>;
 
 export type PrfSeedStoreOpts = PrfRp & {
-  /** Crypto backend for wrap/unwrap and enclave (noble, libsodium, …). */
   crypto: ICrypto;
   /**
    * Required durable write path for sealed master + salt + credId.
-   * App typically stores this in IndexedDB; cold start reloads via `meta`.
+   * Protocol IDB implements this via {@link IDBSeedStore.persistPrfMeta}.
    */
   persistMeta: PersistPrfSeedMeta;
   /** Previously persisted meta (cold start). Does not re-call persistMeta. */
@@ -43,16 +41,14 @@ export type PrfSeedStoreOpts = PrfRp & {
 };
 
 /**
- * Session + durable PRF-wrapped seed.
+ * Session + durable PRF-wrapped seed. Session secret is always {@link Enclave}.
  *
- * Persistence is split by design:
- * - **In-memory**: enclave after save / unlock.
- * - **Durable sealed blob**: {@link wrapAndSave} / unlock / wipe → {@link PersistPrfSeedMeta}.
- * - **PRF key material**: WebAuthn only (not stored by this class).
+ * - {@link save} is memory-only (holds enclave).
+ * - {@link wrapAndSave} runs PRF UV inside Enclave and persists sealed meta.
+ * - {@link unlock} runs PRF UV inside Enclave and returns a new enclave.
  *
- * - {@link save} is memory-only; use {@link wrapAndSave} to seal under PRF.
- * - {@link load} returns the in-memory enclave only.
- * - {@link unlock} runs the PRF ceremony and unwraps {@link PrfSeedMeta.sealedMaster}.
+ * Fallback when PRF is unavailable (not implemented yet): passphrase-sealed
+ * meta with the same layout — no plain seed on disk either way.
  */
 export class PrfSeedStore implements ISeedStore {
   #crypto: ICrypto;
@@ -74,45 +70,46 @@ export class PrfSeedStore implements ISeedStore {
     return this.#meta === undefined ? undefined : cloneMeta(this.#meta);
   }
 
-  /**
-   * Replace in-memory meta without writing durable storage
-   * (e.g. after loading from IDB outside the constructor).
-   */
   setMeta(meta: PrfSeedMeta | undefined): void {
     this.#meta = meta === undefined ? undefined : cloneMeta(meta);
   }
 
-  async save(seed: MasterSeed, opts?: SetSeedOpts): Promise<Enclave> {
-    // Memory-only by default; durable wrap requires wrapAndSave(prf).
+  async save(enclave: Enclave, opts?: SetSeedOpts): Promise<Enclave> {
     if (opts?.persist === true) {
       return Promise.reject(
         new Error(
-          "prf-store: use wrapAndSave(seed, prf) to persist sealed master",
+          "prf-store: use wrapAndSave(enclave) to persist sealed master",
         ),
       );
     }
-    this.#enclave = new Enclave(seed, this.#crypto);
+    this.#enclave = enclave;
     return this.#enclave;
   }
 
   /**
-   * Wrap master under PRF, update meta, and persist via {@link PersistPrfSeedMeta}.
+   * PRF UV inside Enclave, seal master, persist meta (no PRF leaves Enclave).
    */
   async wrapAndSave(
-    seed: MasterSeed,
-    prf: Uint8Array,
-    opts?: { salt?: Uint8Array; credId?: Uint8Array },
+    enclave: Enclave,
+    opts?: { salt?: Uint8Array; credId?: Uint8Array; createCredIfNeeded?: boolean },
   ): Promise<ValStat<Enclave>> {
-    const salt = opts?.salt ?? DEFAULT_PRF_SALT;
-    const [sealedMaster, wst] = await sealMaster(this.#crypto, seed, prf);
-    if (wst !== Status.Success || sealedMaster === undefined) return err(wst);
+    const [sealed, sst] = await enclave.sealWithPasskey({
+      ...this.#rp,
+      salt: opts?.salt,
+      credId: opts?.credId ?? this.#meta?.credId,
+      createCredIfNeeded: opts?.createCredIfNeeded ?? opts?.credId === undefined,
+      userName: "diplomatic-prf",
+    });
+    if (sst !== Status.Success) return err(sst);
+    if (sealed === undefined) return err(Status.InternalError);
+
     const meta: PrfSeedMeta = {
-      sealedMaster,
-      salt: salt.slice(),
-      credId: opts?.credId?.slice(),
+      sealedMaster: sealed.sealedMaster,
+      salt: sealed.salt,
+      credId: sealed.credId,
     };
     this.#meta = meta;
-    this.#enclave = new Enclave(seed, this.#crypto);
+    this.#enclave = enclave;
     await this.#persistMeta(cloneMeta(meta));
     return ok(this.#enclave);
   }
@@ -121,30 +118,35 @@ export class PrfSeedStore implements ISeedStore {
     return this.#enclave;
   }
 
-  /** Passkey UV → PRF → unwrap sealed master from meta. */
+  /** Passkey UV inside Enclave → new session enclave. */
   async unlock(): Promise<ValStat<Enclave>> {
     const meta = this.#meta;
     if (meta === undefined) return err(Status.MissingSeed);
-    const [ev, est] = await evalPrf({
-      rpId: this.#rp.rpId,
-      rpName: this.#rp.rpName,
-      credId: meta.credId,
-      salt: meta.salt,
-    });
-    if (est !== Status.Success || ev === undefined) return err(est);
-    // Refresh cred id if discoverable returned one.
-    if (meta.credId === undefined) {
-      meta.credId = ev.credId;
-      this.#meta = cloneMeta(meta);
-      await this.#persistMeta(cloneMeta(meta));
-    }
-    const [seed, ust] = await unsealMaster(
+    const [enclave, ust] = await Enclave.unsealWithPasskey(
       this.#crypto,
       meta.sealedMaster,
-      ev.prf,
+      {
+        ...this.#rp,
+        salt: meta.salt,
+        credId: meta.credId,
+      },
     );
-    if (ust !== Status.Success || seed === undefined) return err(ust);
-    this.#enclave = new Enclave(seed, this.#crypto);
+    if (ust !== Status.Success) return err(ust);
+    if (enclave === undefined) return err(Status.InternalError);
+    this.#enclave = enclave;
+    return ok(enclave);
+  }
+
+  /**
+   * Install sealed meta + session enclave (e.g. after pair-package open) and persist.
+   */
+  async adoptSealed(
+    enclave: Enclave,
+    meta: PrfSeedMeta,
+  ): Promise<ValStat<Enclave>> {
+    this.#meta = cloneMeta(meta);
+    this.#enclave = enclave;
+    await this.#persistMeta(cloneMeta(meta));
     return ok(this.#enclave);
   }
 

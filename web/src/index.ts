@@ -70,7 +70,9 @@ import {
   ITransport,
   IUpdateParams,
 } from "./shared/types";
+import { Enclave, sealKeyFromPrf } from "./shared/crypto/enclave";
 import { nullStateManager, StateManager } from "./state";
+import { IDBSeedStore } from "./stores/idb/seed";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
@@ -114,20 +116,16 @@ import {
 import type {
   LargeBlobCreateOpts,
   LargeBlobRp,
-  LargeBlobUnlock,
 } from "./passkey/seed";
 import {
   createPrfCred,
   DEFAULT_PRF_SALT,
   evalPrf,
   prfCapable,
-} from "./passkey/prf";
-import type { PrfCreateOpts, PrfEvalResult, PrfRp } from "./passkey/prf";
-import {
-  sealKeyFromPrf,
-  sealMaster,
-  unsealMaster,
-} from "./passkey/secret-split";
+  type PrfCreateOpts,
+  type PrfEvalResult,
+  type PrfRp,
+} from "./shared/webauthn/prf";
 import { PrfSeedStore } from "./passkey/prf-store";
 import type {
   PersistPrfSeedMeta,
@@ -186,8 +184,11 @@ export async function genWebClient(
   );
 
   const setSeed = async (seedHex: string) => {
-    const seed = htob(seedHex) as MasterSeed;
-    await idbStore.seed.save(seed);
+    const [enclave, st] = Enclave.fromBytes(crypto, htob(seedHex));
+    if (st !== Status.Success || enclave === undefined) {
+      throw new Error(`invalid seed (${st})`);
+    }
+    await idbStore.seed.save(enclave);
     await idbStore.hosts.add({ handle: url, label: "host", idx: 0 });
     await client.connect();
   };
@@ -222,6 +223,7 @@ export {
   eidCodec,
   encodeEntRev,
   Encoder,
+  Enclave,
   EntDBMemory,
   EntIDB,
   EntitiesQuery,
@@ -233,6 +235,7 @@ export {
   hostHTTPTransport,
   htob,
   HTTPTransport,
+  IDBSeedStore,
   IDBStore,
   IDENTITY_BUNDLE_VERSION,
   identityBundleCodec,
@@ -273,8 +276,6 @@ export {
   SyncClient,
   TypedEventEmitter,
   sealKeyFromPrf,
-  sealMaster,
-  unsealMaster,
   useClient,
   useClientState,
   useClientXferState,
@@ -313,7 +314,6 @@ export type {
   IUpdateParams,
   LargeBlobCreateOpts,
   LargeBlobRp,
-  LargeBlobUnlock,
   ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,

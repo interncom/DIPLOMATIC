@@ -17,12 +17,12 @@
 
 import * as Diplomatic from "../cli/src/index.ts";
 
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
 
 console.log("Testing live WS notifications against:", host.handle.toString());
 
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 
 let receivedNotif = false;
 let notifBytes: Uint8Array | null = null;

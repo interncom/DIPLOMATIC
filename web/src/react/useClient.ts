@@ -3,7 +3,7 @@ import { openEntDB } from "../entdb/cached";
 import { entStateManager, IEntDB } from "../entdb/entdb";
 import { openDiplomaticClient } from "../openClient";
 import { Clock, IClock } from "../shared/clock";
-import { MasterSeed } from "../shared/seed";
+import type { Enclave } from "../shared/crypto/enclave";
 import { IHostConnectionInfo, IStateManager } from "../shared/types";
 import { nullStateManager } from "../state";
 import type {
@@ -102,7 +102,8 @@ export function useSyncOnResume(
 
 type UseClientBase = {
   clock?: IClock;
-  seed?: MasterSeed;
+  /** Session enclave (master seed stays inside Enclave). */
+  seed?: Enclave;
   host?: IHostConnectionInfo<URL>;
   readyTimeoutMs?: number;
 };

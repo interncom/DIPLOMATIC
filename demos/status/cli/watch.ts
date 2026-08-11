@@ -7,9 +7,9 @@ function panic(msg: string) {
   process.exit(1);
 }
 
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 
 async function handleNotif(item: IBagNotifItem): Promise<Status> {
   if (!item.bodyCph) return Status.MissingBody;

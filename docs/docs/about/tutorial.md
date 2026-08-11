@@ -29,9 +29,9 @@ First, we write the message to the host.
 ```ts
 import * as Diplomatic from "@interncom/diplomatic/cli";
 
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 
 const text = process.argv[2];
 if (!text) {
@@ -63,12 +63,12 @@ Import DIPLOMATIC.
 
 
 ```ts
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 ```
 
-Load the cryptographic seed and host URL from environment variables.
+Load master seed hex from the environment into an Enclave, and load the host URL.
 
 ```ts
 const text = process.argv[2];
@@ -113,9 +113,9 @@ function panic(msg: string) {
   process.exit(1);
 }
 
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 
 const [peekItems, statPeek] = await client.peek(0);
 if (statPeek !== Status.Success) panic(`Failed to peek: ${statPeek}`);
@@ -162,12 +162,12 @@ function panic(msg: string) {
 Make a helper function to exit if there's a problem.
 
 ```ts
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 ```
 
-Load the cryptographic seed and host URL from environment variables.
+Load master seed hex from the environment into an Enclave, and load the host URL.
 
 ```ts
 const [peekItems, statPeek] = await client.peek(0);
@@ -235,9 +235,9 @@ function panic(msg: string) {
   process.exit(1);
 }
 
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 
 async function handleNotif(item: IBagNotifItem): Promise<Status> {
   if (!item.bodyCph) return Status.MissingBody;
@@ -319,12 +319,12 @@ function panic(msg: string) {
 Make a helper function to exit if there's a problem.
 
 ```ts
-const seed = Diplomatic.loadSeedOrPanic("DIP_SEED");
+const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
 const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ seed, host });
+const client = await Diplomatic.initCLIOrPanic({ enclave, host });
 ```
 
-Load the cryptographic seed and host URL from environment variables, then initialize a client.
+Load master seed hex into an Enclave and the host URL, then initialize a client.
 
 ```ts
 async function handleNotif(item: IBagNotifItem): Promise<Status> {

@@ -2,8 +2,16 @@ import { describe, expect, test, vi } from "vitest";
 import { encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
-import type { MasterSeed } from "../src/shared/seed";
-import type { Hash, IHostConnectionInfo, IProtoHost, IMessage, IMessageHead, IStateManager } from "../src/shared/types";
+import { Enclave } from "../src/shared/crypto/enclave";
+import { Status } from "../src/shared/consts";
+import type {
+  Hash,
+  IHostConnectionInfo,
+  IProtoHost,
+  IMessage,
+  IMessageHead,
+  IStateManager,
+} from "../src/shared/types";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import memStorage from "../src/shared/storage/memory";
 import libsodiumCrypto from "../src/crypto";
@@ -13,16 +21,23 @@ import { EncodedMessage } from "../src/shared/message";
 import { bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
-
 import {
   APLD_APPLIED,
   IDownloadMessage,
-  IStoredMessageData } from "../src/types";
+  IStoredMessageData,
+} from "../src/types";
 import { sealBag } from "../src/shared/bag";
-import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
 import { entStateManager, isTombstone, revFromHead } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
+
+function enclaveFrom(bytes: Uint8Array, crypto: typeof libsodiumCrypto): Enclave {
+  const [e, st] = Enclave.fromBytes(crypto, bytes);
+  if (st !== Status.Success || e === undefined) {
+    throw new Error(`enclave ${st}`);
+  }
+  return e;
+}
 
 const lpcHost = new DiplomaticLPCServer(
   memStorage,
@@ -149,8 +164,7 @@ describe("Client", () => {
   describe("disconnect", () => {
     test("closes listeners and clears connections", async () => {
       const { client } = await createClient();
-      const seed = new Uint8Array(32).fill(1) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(1), libsodiumCrypto));
       // Avoid auto-sync side effects; still open the push listener.
       await client.link(testHost, false);
       await client.connect(true, false);
@@ -180,8 +194,7 @@ describe("Client", () => {
         libsodiumCrypto,
       );
 
-      const seed = new Uint8Array(32).fill(3) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(3), libsodiumCrypto));
       // No host link: local-only archive.
       const entBod: EncodedMessage = encode({
         type: "todo",
@@ -232,8 +245,7 @@ describe("Client", () => {
         transport,
         libsodiumCrypto,
       );
-      const seed = new Uint8Array(32).fill(4) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(4), libsodiumCrypto));
       await client.insertRaw(new Uint8Array([1]));
       await client.insertRaw(new Uint8Array([2]));
       expect(applyCount).toBe(2);
@@ -255,8 +267,7 @@ describe("Client", () => {
         transport,
         libsodiumCrypto,
       );
-      const seed = new Uint8Array(32).fill(5) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(5), libsodiumCrypto));
 
       const entBod: EncodedMessage = encode({
         type: "todo",
@@ -314,8 +325,7 @@ describe("Client", () => {
         libsodiumCrypto,
       );
 
-      const seed = new Uint8Array(32).fill(9) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(9), libsodiumCrypto));
       await client.link(testHost, false);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       await client.insertRaw(body);
@@ -366,8 +376,7 @@ describe("Client", () => {
         libsodiumCrypto,
       );
 
-      const seed = new Uint8Array(32).fill(7) as MasterSeed;
-      await client.setSeed(seed);
+      await client.setSeed(enclaveFrom(new Uint8Array(32).fill(7), libsodiumCrypto));
       await client.link(testHost, false);
 
       const entBod: EncodedMessage = encode({
@@ -397,8 +406,7 @@ describe("Client", () => {
       vi.useFakeTimers();
       try {
         const { store, client } = await createClient();
-        const seed = new Uint8Array(32).fill(5) as MasterSeed;
-        await client.setSeed(seed);
+        await client.setSeed(enclaveFrom(new Uint8Array(32).fill(5), libsodiumCrypto));
         await client.link(testHost, false);
         // scheduleSync is private; trigger via insert (debounces sync).
         const body: EncodedMessage = new Uint8Array([1]);
@@ -622,8 +630,8 @@ describe("Client", () => {
     test("pushes message to host", async () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
-        .gen256BitSecureRandomSeed() as MasterSeed;
-      await store.seed.save(masterSeed);
+        .gen256BitSecureRandomSeed();
+      await store.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
       await client.link(testHost);
       await client.connect();
 
@@ -648,8 +656,8 @@ describe("Client", () => {
     test("pulls message from host if one is present", async () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
-        .gen256BitSecureRandomSeed() as MasterSeed;
-      await store.seed.save(masterSeed);
+        .gen256BitSecureRandomSeed();
+      await store.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
       await client.link(testHost);
       await client.connect();
 
@@ -705,13 +713,13 @@ describe("Client", () => {
     test("syncs between two clients", async () => {
       // Generate shared seed for both clients (single-user system)
       const masterSeed = await libsodiumCrypto
-        .gen256BitSecureRandomSeed() as MasterSeed;
+        .gen256BitSecureRandomSeed();
 
       // Create clientA (pusher)
       const { store: storeA, client: clientA } = await createClient(
         lpcHost.clock,
       );
-      await storeA.seed.save(masterSeed);
+      await storeA.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
       await clientA.link(testHost);
       await clientA.connect(false); // no listen
 
@@ -719,7 +727,7 @@ describe("Client", () => {
       const { store: storeB, client: clientB } = await createClient(
         lpcHost.clock,
       );
-      await storeB.seed.save(masterSeed);
+      await storeB.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
       await clientB.link(testHost);
       await clientB.connect(false); // no listen
 
@@ -749,13 +757,13 @@ describe("Client", () => {
 describe("push notifications", () => {
   test("end-to-end: push notification triggers sync", async () => {
     // Generate shared seed for both clients (single-user system)
-    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed() as MasterSeed;
+    const masterSeed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 
     // Create clientA (pusher)
     const { store: storeA, client: clientA } = await createClient(
       lpcHost.clock,
     );
-    await storeA.seed.save(masterSeed);
+    await storeA.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
     await clientA.link(testHost);
     const hostA = await storeA.hosts.get("test");
     if (hostA) {
@@ -766,7 +774,7 @@ describe("push notifications", () => {
     const { store: storeB, client: clientB } = await createClient(
       lpcHost.clock,
     );
-    await storeB.seed.save(masterSeed);
+    await storeB.seed.save(enclaveFrom(masterSeed, libsodiumCrypto));
     await clientB.link(testHost);
 
     // Set clientB's host to old sync time so it will peek for new messages

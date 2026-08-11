@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { WorkerClient } from "../src/worker/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
-import type { MasterSeed } from "../src/shared/seed";
+import { Enclave } from "../src/shared/crypto/enclave";
 import type { IHostConnectionInfo, IStateManager } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { EncodedMessage } from "../src/shared/message";
@@ -129,8 +129,9 @@ describe("WorkerClient xferState", () => {
       syncDebounceMs: 0 });
 
     try {
-      const seed = new Uint8Array(32).fill(1) as MasterSeed;
-      await client.setSeed(seed);
+      const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, new Uint8Array(32).fill(1));
+      if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+      await client.setSeed(enclave);
       const host: IHostConnectionInfo<URL> = {
         handle: new URL("http://localhost"),
         label: "host",

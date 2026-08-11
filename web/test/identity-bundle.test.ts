@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Decoder, Encoder } from "../src/shared/codec";
 import {
   createIdentityBundle,
@@ -6,13 +6,61 @@ import {
   identityBundleCodec,
 } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { PairPackage } from "../src/identity/pairPackage";
-import { sealMaster, unsealMaster } from "../src/passkey/secret-split";
 import crypto from "../src/crypto";
-import type { MasterSeed } from "../src/shared/seed";
+import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
+import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
 function seedOf(fill: number): MasterSeed {
-  return new Uint8Array(32).fill(fill) as MasterSeed;
+  const [seed, st] = asMasterSeed(new Uint8Array(32).fill(fill));
+  if (st !== Status.Success || seed === undefined) {
+    throw new Error(`seedOf ${st}`);
+  }
+  return seed;
+}
+
+function enclaveOf(fill: number): Enclave {
+  const [e, st] = Enclave.fromBytes(crypto, seedOf(fill));
+  if (st !== Status.Success || e === undefined) {
+    throw new Error(`enclaveOf ${st}`);
+  }
+  return e;
+}
+
+function mockCred(
+  rawId: ArrayBuffer,
+  ext: AuthenticationExtensionsClientOutputs,
+): PublicKeyCredential {
+  return {
+    type: "public-key",
+    id: "x",
+    rawId,
+    response: {} as AuthenticatorAssertionResponse,
+    authenticatorAttachment: "platform",
+    getClientExtensionResults: () => ext,
+  } as PublicKeyCredential;
+}
+
+/** Stub WebAuthn get to return a fixed PRF (works under bun test without vi.stubGlobal). */
+function stubPrfGet(prfFill: number, credFill = 7) {
+  const credId = new Uint8Array(16).fill(credFill);
+  const prf = new Uint8Array(32).fill(prfFill);
+  const get = vi.fn().mockResolvedValue(
+    mockCred(credId.buffer, {
+      prf: {
+        results: {
+          first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+        },
+      },
+    } as AuthenticationExtensionsClientOutputs),
+  );
+  (globalThis as any).navigator = {
+    credentials: { create: vi.fn(), get },
+  };
+  (globalThis as any).PublicKeyCredential = class {};
+  (globalThis as any).location = { hostname: "localhost" };
+  return { get, credId, prf };
 }
 
 describe("IdentityBundle codec", () => {
@@ -63,73 +111,145 @@ describe("IdentityBundle codec", () => {
     const st = enc.writeStruct(identityBundleCodec, {
       v: IDENTITY_BUNDLE_VERSION,
       masterSeed: new Uint8Array(16) as MasterSeed,
-      hosts: [] });
+      hosts: [],
+    });
     expect(st).toBe(Status.InvalidParam);
   });
 });
 
-describe("secret-split seal/unseal", () => {
-  it("round-trips master under PRF", async () => {
-    const seed = seedOf(9);
-    const prf = seedOf(3);
-    const [sealed, sst] = await sealMaster(crypto, seed, prf);
+describe("enclave seal/unseal via passkey PRF ceremony", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("round-trips master under PRF ceremony", async () => {
+    stubPrfGet(3);
+    const enc = enclaveOf(9);
+    const [sealed, sst] = await enc.sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: false,
+      credId: new Uint8Array(16).fill(7),
+    });
     expect(sst).toBe(Status.Success);
     expect(sealed).toBeDefined();
     if (sealed === undefined) return;
-    expect(sealed.byteLength).toBe(72);
-    const [opened, ust] = await unsealMaster(crypto, sealed, prf);
+    expect(sealed.sealedMaster.byteLength).toBe(72);
+
+    stubPrfGet(3);
+    const [opened, ust] = await Enclave.unsealWithPasskey(
+      crypto,
+      sealed.sealedMaster,
+      {
+        rpId: "localhost",
+        salt: sealed.salt,
+        credId: sealed.credId,
+      },
+    );
     expect(ust).toBe(Status.Success);
-    expect(opened).toEqual(seed);
+    expect(opened).toBeDefined();
+    if (opened === undefined) return;
+    // Same seed → same derived public key (no seed bytes leave Enclave).
+    const a = await enc.deriveIdentity("test", 0);
+    const b = await opened.deriveIdentity("test", 0);
+    expect(b.publicKey).toEqual(a.publicKey);
   });
 
   it("fails closed on wrong PRF", async () => {
-    const [sealed, sst] = await sealMaster(crypto, seedOf(1), seedOf(2));
+    stubPrfGet(2);
+    const [sealed, sst] = await enclaveOf(1).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      credId: new Uint8Array(16).fill(7),
+    });
     expect(sst).toBe(Status.Success);
     expect(sealed).toBeDefined();
     if (sealed === undefined) return;
-    const [, ust] = await unsealMaster(crypto, sealed, seedOf(3));
+
+    stubPrfGet(3); // different PRF
+    const [, ust] = await Enclave.unsealWithPasskey(
+      crypto,
+      sealed.sealedMaster,
+      {
+        rpId: "localhost",
+        salt: sealed.salt,
+        credId: sealed.credId,
+      },
+    );
     expect(ust).toBe(Status.DecryptionError);
   });
 });
 
 describe("PairPackage", () => {
-  it("round-trips under PRF", async () => {
-    const seed = seedOf(8);
-    const prf = seedOf(6);
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("round-trips under PRF ceremony", async () => {
+    stubPrfGet(6);
+    const enc = enclaveOf(8);
     const hosts = [
       { handle: "https://sync.interncom.org", label: "host", idx: 0 },
     ];
-    const [pairPkg, pst] = await PairPackage.seal(crypto, seed, hosts, prf);
+    const [pairPkg, pst] = await PairPackage.seal(crypto, enc, hosts, {
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      credId: new Uint8Array(16).fill(7),
+    });
     expect(pst).toBe(Status.Success);
     expect(pairPkg).toBeDefined();
     if (pairPkg === undefined) return;
     expect(pairPkg.startsWith(PairPackage.PREFIX)).toBe(true);
-    const [opened, ost] = await PairPackage.open(crypto, pairPkg, prf);
+
+    stubPrfGet(6);
+    const [opened, ost] = await PairPackage.open(crypto, pairPkg, {
+      rpId: "localhost",
+    });
     expect(ost).toBe(Status.Success);
     expect(opened).toBeDefined();
     if (opened === undefined) return;
-    expect(opened.masterSeed).toEqual(seed);
     expect(opened.hosts).toEqual(hosts);
-    const [again, ust] = await unsealMaster(
+    const origId = await enc.deriveIdentity("test", 0);
+    const openId = await opened.enclave.deriveIdentity("test", 0);
+    expect(openId.publicKey).toEqual(origId.publicKey);
+
+    stubPrfGet(6);
+    const [again, ust] = await Enclave.unsealWithPasskey(
       crypto,
       opened.sealedMaster,
-      prf,
+      {
+        rpId: "localhost",
+        salt: opened.salt,
+        credId: opened.credId,
+      },
     );
     expect(ust).toBe(Status.Success);
-    expect(again).toEqual(seed);
+    expect(again).toBeDefined();
+    if (again === undefined) return;
+    const againId = await again.deriveIdentity("test", 0);
+    expect(againId.publicKey).toEqual(origId.publicKey);
   });
 
   it("fails with wrong PRF", async () => {
+    stubPrfGet(2);
     const [pairPkg, pst] = await PairPackage.seal(
       crypto,
-      seedOf(1),
+      enclaveOf(1),
       [],
-      seedOf(2),
+      {
+        rpId: "localhost",
+        salt: DEFAULT_PRF_SALT,
+        credId: new Uint8Array(16).fill(7),
+      },
     );
     expect(pst).toBe(Status.Success);
     expect(pairPkg).toBeDefined();
     if (pairPkg === undefined) return;
-    const [, ost] = await PairPackage.open(crypto, pairPkg, seedOf(9));
+
+    stubPrfGet(9);
+    const [, ost] = await PairPackage.open(crypto, pairPkg, {
+      rpId: "localhost",
+    });
     expect(ost).toBe(Status.DecryptionError);
   });
 });

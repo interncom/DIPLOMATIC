@@ -11,20 +11,19 @@ import { Enclave } from "../shared/crypto/enclave.ts";
 import { hostHTTPTransport } from "../shared/http.ts";
 import { genSingletonUpsert } from "../shared/singleton.ts";
 import { decryptPeekItem } from "../shared/sync.ts";
-import { MasterSeed } from "../shared/seed.ts";
 import { HostHandle, IBag, IHostConnectionInfo, IMessage, ITransport } from "../shared/types.ts";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 
-// A CLIClient maintains no state.
+// A CLIClient maintains no state. Master seed lives only inside the Enclave.
 export class CLIClient<Handle extends HostHandle> {
   private enclave: Enclave;
   private conn?: DiplomaticClientAPI<Handle>;
   private clock: IClock;
 
   constructor(
-    { seed, clock = new Clock() }: { seed: MasterSeed; clock?: IClock },
+    { enclave, clock = new Clock() }: { enclave: Enclave; clock?: IClock },
   ) {
-    this.enclave = new Enclave(seed, crypto);
+    this.enclave = enclave;
     this.clock = clock;
   }
 
@@ -125,26 +124,26 @@ export class CLIClient<Handle extends HostHandle> {
 }
 
 export async function initCLI<Handle extends URL>(
-  { seed, host, transport }: {
-    seed: MasterSeed;
+  { enclave, host, transport }: {
+    enclave: Enclave;
     host: IHostConnectionInfo<Handle>;
     transport: ITransport;
   },
 ): Promise<[CLIClient<Handle>, Status]> {
-  const cli = new CLIClient<Handle>({ seed });
+  const cli = new CLIClient<Handle>({ enclave });
   const stat = await cli.connect(host, transport);
   return [cli, stat];
 }
 
 export async function initCLIOrPanic<Handle extends URL>(
-  { seed, host, transport }: {
-    seed: MasterSeed;
+  { enclave, host, transport }: {
+    enclave: Enclave;
     host: IHostConnectionInfo<Handle>;
     transport?: ITransport;
   },
 ): Promise<CLIClient<Handle>> {
   const trans = transport ?? hostHTTPTransport(host);
-  const [cli, stat] = await initCLI({ seed, host, transport: trans });
+  const [cli, stat] = await initCLI({ enclave, host, transport: trans });
   if (stat !== Status.Success) {
     console.error(`Failed to initialize CLI: ${Status[stat]}`);
     process.exit(1);
@@ -152,18 +151,21 @@ export async function initCLIOrPanic<Handle extends URL>(
   return cli;
 }
 
-export function loadSeedOrPanic(envVar: string): MasterSeed {
+/** Load master seed hex from env and construct an Enclave immediately. */
+export function loadEnclaveOrPanic(envVar: string): Enclave {
   const seedHex = process.env[envVar];
   if (!seedHex) {
     console.error(`${envVar} env var missing`);
     process.exit(1);
   }
-  const seed = htob(seedHex);
-  if (seed.length !== 32) {
-    console.error(`${envVar} must be 64 hex chars (32 bytes)`);
+  const bytes = htob(seedHex);
+  const [enclave, st] = Enclave.fromBytes(crypto, bytes);
+  bytes.fill(0);
+  if (st !== Status.Success || enclave === undefined) {
+    console.error(`${envVar} must be 64 hex chars (32-byte master seed)`);
     process.exit(1);
   }
-  return seed as MasterSeed;
+  return enclave;
 }
 
 export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {

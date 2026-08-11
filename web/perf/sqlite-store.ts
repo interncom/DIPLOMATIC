@@ -6,7 +6,6 @@ import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
-import type { MasterSeed } from "../src/shared/seed";
 import type {
   EntityID,
   Hash,
@@ -104,28 +103,27 @@ function openDb(path: string): Database {
   return db;
 }
 
+/**
+ * Session-only seed handle for perf harness. Does not write raw seed to SQLite
+ * (Enclave is a one-way door). Durable identity in production uses PRF seal.
+ */
 class SqliteSeedStore implements ISeedStore {
+  #enclave?: Enclave;
+
   constructor(private db: Database, private crypto: ICrypto) {}
 
-  async save(seed: MasterSeed, opts?: { persist?: boolean }) {
-    if (opts?.persist === true) {
-      this.db.prepare(
-        "INSERT INTO seed (id, seed) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seed = excluded.seed",
-      ).run(seed);
-    }
-    return new Enclave(seed, this.crypto);
+  async save(enclave: Enclave, _opts?: { persist?: boolean }) {
+    this.#enclave = enclave;
+    return enclave;
   }
 
   async load() {
-    const row = this.db.prepare("SELECT seed FROM seed WHERE id = 1").get() as
-      | { seed: Uint8Array }
-      | null;
-    if (!row) return undefined;
-    const seed = new Uint8Array(row.seed) as MasterSeed;
-    return new Enclave(seed, this.crypto);
+    return this.#enclave;
   }
 
   async wipe() {
+    this.#enclave = undefined;
+    // Drop any legacy seed rows from older harness builds.
     this.db.exec("DELETE FROM seed");
   }
 }

@@ -5,14 +5,18 @@ import libsodiumCrypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
 import type { Hash, HostHandle, IBag } from "../src/shared/types";
-import type { MasterSeed } from "../src/shared/seed";
 import { ok, err } from "../src/shared/valstat";
 import { APLD_PENDING } from "../src/types";
 import type { IDownloadMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import type { IMessage } from "../src/shared/types";
 
-const testSeed = new Uint8Array(32).fill(0x42) as MasterSeed;
+const testSeedBytes = new Uint8Array(32).fill(0x42);
+function testEnclave(): Enclave {
+  const [e, st] = Enclave.fromBytes(libsodiumCrypto, testSeedBytes);
+  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  return e;
+}
 
 function hash(n: number): Hash {
   return new Uint8Array(32).fill(n) as Hash;
@@ -125,7 +129,7 @@ describe("pushBatch", () => {
 describe("pullBodies + openPulled", () => {
   test("pull then open archives msg and deqs download", async () => {
     const store = new MemoryStore<HostHandle>(libsodiumCrypto);
-    const enclave = new Enclave(testSeed, libsodiumCrypto);
+    const enclave = testEnclave();
     const hostIdnt = await enclave.deriveIdentity("test", 1);
 
     const body = new Uint8Array([1, 2, 3, 4]);

@@ -1,8 +1,8 @@
 // ISeedStore backed by WebAuthn largeBlob (OS-held passkey storage).
+// Seed encode/decode/UV write-read is owned by Enclave — never handled here.
 
 import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
-import type { MasterSeed } from "../shared/seed";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
@@ -13,26 +13,16 @@ export {
   LargeBlob,
   type LargeBlobCreateOpts,
   type LargeBlobRp,
-  type LargeBlobUnlock,
 } from "./largeBlob";
 
 export type PasskeySeedStoreOpts = LargeBlobRp & {
-  /** Crypto backend for enclave ops (noble, libsodium, …). */
   crypto: ICrypto;
   credId?: Uint8Array;
 };
 
 /**
- * ISeedStore backed by largeBlob.
- * - {@link save} creates (or reuses) cred + writes seed (gestures).
- * - {@link load} returns in-memory enclave only; call {@link unlock} after restart.
- * - Local {@link credId} must be persisted by the app across sessions.
- * - {@link wipe} overwrites largeBlob with zeros (UV), then drops memory + credId.
- *   Does not delete the WebAuthn credential from the authenticator.
- *
- * {@link ISeedStore.save} / {@link wipe} keep Promise shapes required by the
- * store interface; failures surface as rejected promises with a Status message.
- * Prefer {@link unlock} which returns ValStat.
+ * ISeedStore backed by largeBlob. Session secret is always {@link Enclave}.
+ * Persist uses {@link Enclave.persistToLargeBlob} / {@link Enclave.fromLargeBlob}.
  */
 export class PasskeySeedStore implements ISeedStore {
   #crypto: ICrypto;
@@ -59,27 +49,21 @@ export class PasskeySeedStore implements ISeedStore {
     this.#credId = credId === undefined ? undefined : credId.slice();
   }
 
-  async save(seed: MasterSeed, opts?: SetSeedOpts): Promise<Enclave> {
-    // Default memory-only; persist:true writes largeBlob (this store's durable path).
+  async save(enclave: Enclave, opts?: SetSeedOpts): Promise<Enclave> {
     if (opts?.persist !== true) {
-      this.#enclave = new Enclave(seed, this.#crypto);
+      this.#enclave = enclave;
       return this.#enclave;
     }
-    const rp = { rpId: this.#rpId, rpName: this.#rpName };
-    let id = this.#credId;
-    if (id === undefined) {
-      const [created, cst] = await LargeBlob.createCred(rp);
-      if (cst !== Status.Success || created === undefined) {
-        return Promise.reject(new Error(`largeBlob createCred status ${cst}`));
-      }
-      id = created;
-      this.#credId = id;
+    const [id, st] = await enclave.persistToLargeBlob([], {
+      rpId: this.#rpId,
+      rpName: this.#rpName,
+      credId: this.#credId,
+    });
+    if (st !== Status.Success || id === undefined) {
+      return Promise.reject(new Error(`persistToLargeBlob status ${st}`));
     }
-    const wst = await LargeBlob.writeSeed(id, seed, rp);
-    if (wst !== Status.Success) {
-      return Promise.reject(new Error(`largeBlob writeSeed status ${wst}`));
-    }
-    this.#enclave = new Enclave(seed, this.#crypto);
+    this.#credId = id;
+    this.#enclave = enclave;
     return this.#enclave;
   }
 
@@ -87,22 +71,25 @@ export class PasskeySeedStore implements ISeedStore {
     return this.#enclave;
   }
 
-  /** User-gesture unlock after cold start (needs {@link credId}). */
   async unlock(): Promise<ValStat<Enclave>> {
     const id = this.#credId;
     if (id === undefined) return err(Status.MissingSeed);
-    const [seed, st] = await LargeBlob.readSeed(id, { rpId: this.#rpId });
-    if (st !== Status.Success || seed === undefined) return err(st);
-    this.#enclave = new Enclave(seed, this.#crypto);
-    return ok(this.#enclave);
+    const [out, st] = await Enclave.fromLargeBlob(this.#crypto, {
+      rpId: this.#rpId,
+      rpName: this.#rpName,
+      credId: id,
+    });
+    if (st !== Status.Success || out === undefined) return err(st);
+    this.#enclave = out.enclave;
+    return ok(out.enclave);
   }
 
   async wipe(): Promise<void> {
     const id = this.#credId;
     if (id !== undefined) {
-      const st = await LargeBlob.clearSeed(id, { rpId: this.#rpId });
+      const st = await Enclave.clearLargeBlob(id, { rpId: this.#rpId });
       if (st !== Status.Success) {
-        return Promise.reject(new Error(`largeBlob clearSeed status ${st}`));
+        return Promise.reject(new Error(`clearLargeBlob status ${st}`));
       }
     }
     this.#enclave = undefined;

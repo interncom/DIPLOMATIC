@@ -7,8 +7,8 @@ import { openEntDB } from "../entdb/cached";
 import type { IEntDB } from "../entdb/entdb";
 import { Clock } from "../shared/clock";
 import { Status } from "../shared/consts";
+import { Enclave } from "../shared/crypto/enclave";
 import { hostHTTPTransport } from "../shared/http";
-import type { MasterSeed } from "../shared/seed";
 import { StateManager } from "../state";
 import { openIDBStore } from "../stores/idb/store";
 import type { SerializedHost, WorkerCmd, WorkerEvent } from "./protocol";
@@ -148,7 +148,11 @@ export class WorkerRuntime {
         return "pong";
 
       case "setSeed": {
-        await client.setSeed(toMasterSeed(cmd.seed), {
+        const [enclave, st] = Enclave.fromBytes(crypto, cmd.seed);
+        if (st !== Status.Success || enclave === undefined) {
+          throw new WorkerStatusError(st);
+        }
+        await client.setSeed(enclave, {
           persist: cmd.persist,
         });
         return undefined;
@@ -283,9 +287,4 @@ export function replyErr(id: number, status: Status): WorkerEvent {
   return { kind: "reply", id, ok: false, status };
 }
 
-function toMasterSeed(bytes: Uint8Array): MasterSeed {
-  if (bytes.length !== 32) {
-    throw new WorkerStatusError(Status.InvalidParam);
-  }
-  return bytes as MasterSeed;
-}
+

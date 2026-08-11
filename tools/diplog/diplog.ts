@@ -1,5 +1,5 @@
 import { initCLI } from "../../deno/src/cli.ts";
-import type { MasterSeed } from "../../shared/seed.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import type { IHostConnectionInfo } from "../../shared/types.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { htob } from "../../shared/binary.ts";
@@ -11,11 +11,12 @@ if (!dipSeed) {
   Deno.exit(1);
 }
 const seedBytes = htob(dipSeed);
-if (seedBytes.length !== 32) {
-  console.error("DIP_SEED must be 64 hex chars (32 bytes)");
+const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seedBytes);
+seedBytes.fill(0);
+if (est !== Status.Success || enclave === undefined) {
+  console.error("DIP_SEED must be 64 hex chars (32-byte master seed)");
   Deno.exit(1);
 }
-const seed = seedBytes as MasterSeed;
 
 const dipHost = Deno.env.get("DIP_HOST");
 if (!dipHost) {
@@ -29,7 +30,7 @@ const host: IHostConnectionInfo<URL> = {
   idx: 0 };
 const transport = new HTTPTransport(hostURL);
 
-const [client, stat] = await initCLI(seed, host, transport);
+const [client, stat] = await initCLI(enclave, host, transport);
 if (stat !== Status.Success) {
   console.error(`Failed to init CLI: ${stat}`);
   Deno.exit(1);

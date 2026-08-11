@@ -6,7 +6,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { EncodedMessage } from "../src/shared/message";
 import memStorage from "../src/shared/storage/memory";
-import type { MasterSeed } from "../src/shared/seed";
+import { Enclave } from "../src/shared/crypto/enclave";
 import type { HostHandle, IHostCrypto, IStateManager, IStorage } from "../src/shared/types";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Status } from "../src/shared/consts";
@@ -53,7 +53,11 @@ const createClient = async (seed: Uint8Array) => {
     transport,
     libsodiumCrypto,
   );
-  await store.seed.save(seed as MasterSeed);
+  const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
+  if (est !== Status.Success || enclave === undefined) {
+    throw new Error(`enclave ${est}`);
+  }
+  await store.seed.save(enclave);
   return { store, client };
 };
 

@@ -7,13 +7,14 @@ import { MemorySeedStore } from "./seed";
 import { MemoryUploadQueue } from "./uplds";
 
 export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
-  seed = new MemorySeedStore();
+  seed: MemorySeedStore;
   hosts = new MemoryHostStore<Handle>();
   uploads = new MemoryUploadQueue();
   downloads = new MemoryDownloadQueue();
   messages: MemoryMessageStore;
 
   constructor(crypto: ICrypto) {
+    this.seed = new MemorySeedStore(crypto);
     this.messages = new MemoryMessageStore(crypto);
   }
 

@@ -157,8 +157,9 @@ export async function evalPrf(
       (first as ArrayBufferView).byteOffset,
       (first as ArrayBufferView).byteLength,
     );
-  const prf =
-    raw.byteLength >= PRF_OUTPUT_LEN ? raw.slice(0, PRF_OUTPUT_LEN) : raw;
+  const prf = raw.byteLength >= PRF_OUTPUT_LEN
+    ? raw.slice(0, PRF_OUTPUT_LEN)
+    : raw;
   if (prf.byteLength !== PRF_OUTPUT_LEN) return err(Status.InvalidResponse);
   return ok({
     prf,

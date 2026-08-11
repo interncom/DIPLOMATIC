@@ -6,7 +6,9 @@ import { Status } from "../../shared/consts.ts";
 Deno.test("crypto", async () => {
   const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
   const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
-  if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+  if (est !== Status.Success || enclave === undefined) {
+    throw new Error(`enclave ${est}`);
+  }
 
   // Key stays inside the enclave; cipher is an opaque handle.
   const kdm = new Uint8Array(8).fill(0x42);

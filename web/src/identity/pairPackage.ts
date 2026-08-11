@@ -9,10 +9,7 @@ import {
   pairPackageEnvelopeCodec,
 } from "../shared/codecs/pairPackageEnvelope";
 import { Status } from "../shared/consts";
-import {
-  Enclave,
-  type PasskeyPrfOpts,
-} from "../shared/crypto/enclave";
+import { Enclave, type PasskeyPrfOpts } from "../shared/crypto/enclave";
 import type { SealedMasterKey } from "../shared/seed";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";

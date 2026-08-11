@@ -50,11 +50,14 @@ export function useClientXferState(
 }
 
 export function useSyncOnResume(
-  client: Pick<IClient<URL>, "connect" | "sync">,
+  client: Pick<IClient<URL>, "connect" | "sync" | "clientState">,
 ) {
   useEffect(() => {
     async function reconnectAndSync() {
       try {
+        // Worker path: no sync Worker until setSeed — skip quietly.
+        const st = await client.clientState.get();
+        if (!st.hasSeed) return;
         await client.connect();
         await client.sync();
       } catch (err) {

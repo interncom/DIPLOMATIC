@@ -29,9 +29,11 @@ import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 const port = 3331;
 
 // Client config.
-const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) ;
+const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
-if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+if (est !== Status.Success || enclave === undefined) {
+  throw new Error(`enclave ${est}`);
+}
 
 class MockPushNotifier implements IWebSocketPushNotifier {
   handle(_host: IProtoHost, _request: Request): Promise<Response> {

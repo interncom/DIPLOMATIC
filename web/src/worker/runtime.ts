@@ -286,5 +286,3 @@ export function replyOk(id: number, result?: unknown): WorkerEvent {
 export function replyErr(id: number, status: Status): WorkerEvent {
   return { kind: "reply", id, ok: false, status };
 }
-
-

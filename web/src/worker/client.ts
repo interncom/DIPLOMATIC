@@ -481,6 +481,8 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async connect(listen = true, sync = true): Promise<void> {
+    // No worker until setSeed — same as SyncClient.connect with no enclave.
+    if (!this.worker) return;
     await this.request({
       id: this.allocId(),
       op: "connect",
@@ -528,6 +530,7 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async sync(): Promise<Status> {
+    if (!this.worker) return Status.Success;
     return this.requestStatus({ id: this.allocId(), op: "sync" });
   }
 

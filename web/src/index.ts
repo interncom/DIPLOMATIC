@@ -113,10 +113,7 @@ import {
   LargeBlob,
   PasskeySeedStore,
 } from "./passkey/seed";
-import type {
-  LargeBlobCreateOpts,
-  LargeBlobRp,
-} from "./passkey/seed";
+import type { LargeBlobCreateOpts, LargeBlobRp } from "./passkey/seed";
 import {
   createPrfCred,
   DEFAULT_PRF_SALT,
@@ -221,9 +218,9 @@ export {
   defaultPeekProgressEvery,
   defaultWebAuthnRpId,
   eidCodec,
+  Enclave,
   encodeEntRev,
   Encoder,
-  Enclave,
   EntDBMemory,
   EntIDB,
   EntitiesQuery,
@@ -268,6 +265,7 @@ export {
   revFromEntity,
   revFromHead,
   SEALED_MASTER_KEY_LEN,
+  sealKeyFromPrf,
   setApld,
   shouldEmitItemProgress,
   SingletonStateManager,
@@ -275,7 +273,6 @@ export {
   Status,
   SyncClient,
   TypedEventEmitter,
-  sealKeyFromPrf,
   useClient,
   useClientState,
   useClientXferState,

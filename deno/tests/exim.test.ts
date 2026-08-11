@@ -77,12 +77,14 @@ class MockCrypto implements ICrypto {
 }
 
 const lbl = "test-label";
-const testSeed = new Uint8Array(32).fill(0x11) ;
+const testSeed = new Uint8Array(32).fill(0x11);
 
 Deno.test("encodeFile", async (t) => {
   const crypto = new MockCrypto();
   const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
-if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+  if (est !== Status.Success || enclave === undefined) {
+    throw new Error(`enclave ${est}`);
+  }
 
   await t.step("empty messages", async () => {
     const msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }> = [];
@@ -254,7 +256,9 @@ if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${
 Deno.test("decodeFile", async (t) => {
   const crypto = new MockCrypto();
   const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
-if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+  if (est !== Status.Success || enclave === undefined) {
+    throw new Error(`enclave ${est}`);
+  }
 
   await t.step("round-trip empty messages", async () => {
     const [file, statEnc] = await encodeFile(lbl, 0, [], crypto, enclave);

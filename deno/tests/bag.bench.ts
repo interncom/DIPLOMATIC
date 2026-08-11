@@ -10,9 +10,11 @@ import libsodiumCrypto from "../src/crypto.ts";
 
 // Setup crypto and host identity
 const crypto = libsodiumCrypto;
-const seed = (await libsodiumCrypto.gen256BitSecureRandomSeed()) ;
+const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
-if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
+if (est !== Status.Success || enclave === undefined) {
+  throw new Error(`enclave ${est}`);
+}
 const hostIdnt = await enclave.deriveIdentity("benchmark-host", 0);
 
 function createBod(size: number): Uint8Array {

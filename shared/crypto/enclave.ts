@@ -39,10 +39,10 @@ import type { DerivationSeed, ICrypto, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import {
   largeBlobCreateCred,
-  largeBlobRead,
-  largeBlobWrite,
   type LargeBlobCreateOpts,
+  largeBlobRead,
   type LargeBlobRp,
+  largeBlobWrite,
 } from "../webauthn/largeBlob.ts";
 import {
   createPrfCred,
@@ -258,7 +258,9 @@ export class Enclave {
   static async fromLargeBlob(
     crypto: ICrypto,
     opts?: LargeBlobRp & { credId?: Uint8Array },
-  ): Promise<ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }>> {
+  ): Promise<
+    ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }>
+  > {
     const [raw, rst] = await largeBlobRead(opts?.credId, opts);
     if (rst !== Status.Success) return err(rst);
     if (raw === undefined) return err(Status.MissingBody);

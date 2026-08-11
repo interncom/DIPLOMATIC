@@ -3,10 +3,7 @@
 
 import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
-import {
-  asSealedMasterKey,
-  type SealedMasterKey,
-} from "../shared/seed";
+import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
@@ -91,13 +88,18 @@ export class PrfSeedStore implements ISeedStore {
    */
   async wrapAndSave(
     enclave: Enclave,
-    opts?: { salt?: Uint8Array; credId?: Uint8Array; createCredIfNeeded?: boolean },
+    opts?: {
+      salt?: Uint8Array;
+      credId?: Uint8Array;
+      createCredIfNeeded?: boolean;
+    },
   ): Promise<ValStat<Enclave>> {
     const [sealed, sst] = await enclave.sealWithPasskey({
       ...this.#rp,
       salt: opts?.salt,
       credId: opts?.credId ?? this.#meta?.credId,
-      createCredIfNeeded: opts?.createCredIfNeeded ?? opts?.credId === undefined,
+      createCredIfNeeded: opts?.createCredIfNeeded ??
+        opts?.credId === undefined,
       userName: "diplomatic-prf",
     });
     if (sst !== Status.Success) return err(sst);
@@ -160,10 +162,9 @@ export class PrfSeedStore implements ISeedStore {
 function cloneMeta(m: PrfSeedMeta): PrfSeedMeta {
   const [sealedMaster, st] = asSealedMasterKey(m.sealedMaster.slice());
   return {
-    sealedMaster:
-      st === Status.Success && sealedMaster !== undefined
-        ? sealedMaster
-        : m.sealedMaster,
+    sealedMaster: st === Status.Success && sealedMaster !== undefined
+      ? sealedMaster
+      : m.sealedMaster,
     salt: m.salt.slice(),
     credId: m.credId === undefined ? undefined : m.credId.slice(),
   };

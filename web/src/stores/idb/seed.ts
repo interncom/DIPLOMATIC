@@ -14,8 +14,8 @@ import type { ICrypto } from "../../shared/types";
 import { htob } from "../../shared/binary";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
-  PrfSeedStore,
   type PrfSeedMeta,
+  PrfSeedStore,
   type PrfSeedStoreOpts,
 } from "../../passkey/prf-store";
 import { SEED_META_TABLE } from "./store";
@@ -175,7 +175,9 @@ function decodeStoredPrfMeta(raw: unknown): PrfSeedMeta | undefined {
     return undefined;
   }
   const o = raw as Partial<StoredPrfMeta>;
-  if (!(o.sealedMaster instanceof Uint8Array) || !(o.salt instanceof Uint8Array)) {
+  if (
+    !(o.sealedMaster instanceof Uint8Array) || !(o.salt instanceof Uint8Array)
+  ) {
     return undefined;
   }
   const [sealedMaster, st] = asSealedMasterKey(o.sealedMaster);

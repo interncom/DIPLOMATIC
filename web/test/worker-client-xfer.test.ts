@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { WorkerClient } from "../src/worker/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
@@ -110,6 +110,10 @@ function waitFor(
 }
 
 describe("WorkerClient xferState", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test("local offline write updates numUploads without worker xfer events", async () => {
     const store = new MemoryStore<URL>(libsodiumCrypto);
     const state: IStateManager = {
@@ -124,8 +128,27 @@ describe("WorkerClient xferState", () => {
       on() {},
       off() {} };
 
-    const client = await WorkerClient.connect(state, store, {
-      worker: mockWorkerRpcOnly(),
+    const mock = mockWorkerRpcOnly();
+    // Production setSeed uses Enclave.spawnSyncWorker (spawn+seed). Tests stub
+    // that factory so we keep the mock RPC worker without a real blob bundle.
+    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
+      (opts) => {
+        queueMicrotask(() => {
+          const handler = mock.onmessage;
+          if (!handler) return;
+          handler({
+            data: {
+              kind: "reply",
+              id: opts.id,
+              ok: true,
+              result: Status.Success,
+            },
+          } as MessageEvent<unknown>);
+        });
+        return mock;
+      },
+    );
+    const client = await WorkerClient.open(state, store, {
       syncDebounceMs: 0 });
 
     try {

@@ -1,11 +1,11 @@
-// Main-thread façade over an app-owned sync worker.
+// Main-thread façade over an Enclave-spawned sync worker.
 //
 // - Local msg create/apply (UI): main thread, shared message IDB + IStateManager
 //   (e.g. EntDB) for fast UI. Upload queue is shared; push is handed to worker.
 // - Network sync (peek/push/pull/notif): worker writes EntDB in-place and posts
 //   dirty/wiped signals so main re-reads shared IDB (no bulk msg transfer).
 //
-// The app must construct the Worker (bundler-aware).
+// No worker until setSeed → Enclave.spawnSyncWorker (only spawn path).
 
 import { SyncClient } from "../client";
 import { Debounced, defaultSyncDebounceMs } from "../coalesce";
@@ -60,27 +60,14 @@ type Pending = {
 };
 
 /**
- * Options for attaching to an app-owned sync Worker.
- *
- * Provide a live `Worker` — the library never constructs one. See
- * `openDiplomaticClient` for bundler/CDN instantiation recipes.
- *
- * Handshake is race-safe: the worker posts unsolicited `{ kind: "ready" }`, but
- * connect also probes with `ping`. Early construction (module scope) is fine even
- * if `ready` fired before `onmessage` was set — the ping still succeeds once the
- * worker has finished init (cmds are held until then on the worker side).
- *
- * After the ready barrier, connect hydrates `clientState` / `xferState` from the
- * shared main-thread store (and recovers via getClientState/getXferState if the
- * unsolicited events were dropped). Without that, the façade defaults to
- * `hasSeed: false` and apps flash the unauthenticated UI until a later event.
+ * Options for the worker-mode façade.
+ * Prefer {@link openDiplomaticClient} with `worker: true`.
+ * The sync Worker is created only inside {@link WorkerClient.setSeed}
+ * via {@link Enclave.spawnSyncWorker}.
  */
 export type WorkerClientOptions = {
-  /** Already-constructed module Worker running `@interncom/diplomatic/worker`. */
-  worker: Worker;
   /**
-   * Max wait for handshake (`ready` event or probe ping; default 15s).
-   * Failures throw; no fallback.
+   * Max wait for Enclave.spawnSyncWorker handshake (setSeed reply; default 15s).
    */
   readyTimeoutMs?: number;
   clock?: IClock;
@@ -94,7 +81,8 @@ export type WorkerClientOptions = {
 const logPrefix = "[DIPLOMATIC]";
 
 export class WorkerClient implements IClient<URL> {
-  private worker: Worker;
+  /** Set only by setSeed → Enclave.spawnSyncWorker. */
+  private worker: Worker | undefined;
   private state: IStateManager;
   /** Shared protocol store (main connection). */
   private store: IStore<URL>;
@@ -102,9 +90,8 @@ export class WorkerClient implements IClient<URL> {
   private local: SyncClient<URL>;
   private nextId = 1;
   private pending = new Map<number, Pending>();
-  private ready: Promise<void>;
-  private resolveReady: (() => void) | undefined;
-  private rejectReady: ((e: Error) => void) | undefined;
+  /** Max wait for setSeed worker handshake. */
+  private readyTimeoutMs: number;
   /** Debounced local write → worker upload/sync. */
   private scheduledSync: Debounced;
 
@@ -123,18 +110,19 @@ export class WorkerClient implements IClient<URL> {
   public xferState: IStateEmitter<IDiplomaticClientXferState>;
 
   private constructor(
-    worker: Worker,
     state: IStateManager,
     store: IStore<URL>,
     clock: IClock,
     syncDebounceMs: number,
+    readyTimeoutMs: number,
   ) {
-    this.worker = worker;
     this.state = state;
     this.store = store;
+    this.readyTimeoutMs = readyTimeoutMs;
     this.clientState = new StateEmitter(async () => this.cachedClientState);
     this.xferState = new StateEmitter(async () => this.cachedXferState);
     this.scheduledSync = new Debounced(syncDebounceMs, async () => {
+      if (!this.worker) return;
       try {
         await this.request({ id: this.allocId(), op: "sync" });
       } catch (e) {
@@ -174,31 +162,40 @@ export class WorkerClient implements IClient<URL> {
       };
       this.xferState.emit();
     });
+  }
 
-    this.ready = new Promise<void>((resolve, reject) => {
-      this.resolveReady = resolve;
-      this.rejectReady = reject;
-    });
-
-    this.worker.onmessage = (ev: MessageEvent<unknown>) => {
+  /** Wire handlers; terminate any previous worker. */
+  private bindWorker(next: Worker) {
+    const prev = this.worker;
+    if (prev) {
+      prev.onmessage = null;
+      prev.onerror = null;
+      prev.onmessageerror = null;
+      try {
+        prev.terminate();
+      } catch {
+        // ignore
+      }
+    }
+    this.worker = next;
+    next.onmessage = (ev: MessageEvent<unknown>) => {
       this.onMessage(ev.data);
     };
-    this.worker.onerror = (ev) => {
+    next.onerror = (ev) => {
       console.error(`${logPrefix} worker error`, ev);
-      this.failReady(new Error(`${logPrefix} worker failed to load`));
+      this.failPending(new Error(`${logPrefix} worker failed to load`));
     };
-    this.worker.onmessageerror = () => {
-      this.failReady(new Error(`${logPrefix} worker message error`));
+    next.onmessageerror = () => {
+      this.failPending(new Error(`${logPrefix} worker message error`));
     };
   }
 
-  private failReady(err: Error) {
-    const rej = this.rejectReady;
-    this.rejectReady = undefined;
-    this.resolveReady = undefined;
-    if (rej) {
-      rej(err);
+  /** Reject all in-flight RPC (worker death / init failure). */
+  private failPending(err: Error) {
+    for (const [, p] of this.pending) {
+      p.reject(err);
     }
+    this.pending.clear();
   }
 
   /**
@@ -210,70 +207,19 @@ export class WorkerClient implements IClient<URL> {
   }
 
   /**
-   * Attach to an app-provided Worker. `store` is the shared protocol IDB (main
-   * connection) used for local msg writes; worker opens its own connection.
-   * Throws if the worker never becomes ready — does not fall back to main thread.
-   *
-   * Handshake: wait for unsolicited `ready` **or** a successful probe `ping`.
-   * The probe covers the common case where the app started the Worker early and
-   * `ready` was dropped before this thread set `onmessage`.
-   *
-   * Then hydrate client/xfer state from the shared store (and RPC) so
-   * `clientState.get()` is correct before connect returns — unsolicited
-   * `clientState` events are often lost when the Worker starts before
-   * `onmessage` is attached.
+   * Open the worker-mode façade without spawning a Worker.
+   * Shared store hydrates client/xfer state; network starts after setSeed.
    */
-  static async connect(
+  static async open(
     state: IStateManager,
     store: IStore<URL>,
-    opts: WorkerClientOptions,
+    opts: WorkerClientOptions = {},
   ): Promise<WorkerClient> {
     const clock = opts.clock ?? new Clock();
     const debounce = opts.syncDebounceMs ?? defaultSyncDebounceMs;
-    const client = new WorkerClient(opts.worker, state, store, clock, debounce);
     const timeoutMs = opts.readyTimeoutMs ?? 15_000;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      // Probe immediately after attaching the listener. Worker holds cmds until
-      // init completes, so this also works while the worker is still booting.
-      const probe = client.probeReady();
-      await Promise.race([
-        client.ready,
-        probe,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            reject(
-              new Error(
-                `${logPrefix} worker ready timeout after ${timeoutMs}ms`,
-              ),
-            );
-          }, timeoutMs);
-        }),
-      ]);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      // If the unsolicited ready won the race, still surface probe failures
-      // (e.g. broken postMessage) rather than returning a half-dead client.
-      // Probe resolves when pong arrives; if ready already marked us live, the
-      // pending pong is harmless.
-      void probe.catch(() => {
-        // Terminated / timed out paths reject pending; ignore after race.
-      });
-      // Seed/host live in shared IDB — correct hasSeed even if worker events
-      // were dropped. Then RPC for authoritative connected/xfer (also recovers
-      // missed unsolicited pushes).
-      await client.hydrateStateFromStore(store);
-      await client.pullRemoteState();
-    } catch (e) {
-      client.terminate();
-      throw e;
-    } finally {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
-    }
+    const client = new WorkerClient(state, store, clock, debounce, timeoutMs);
+    await client.hydrateStateFromStore(store);
     return client;
   }
 
@@ -299,8 +245,7 @@ export class WorkerClient implements IClient<URL> {
   }
 
   /**
-   * Request current client/xfer state from the worker. Recovers when unsolicited
-   * `clientState` / `xferState` events fired before `onmessage` was set.
+   * Request current client/xfer state from the worker (after setSeed).
    */
   private async pullRemoteState(): Promise<void> {
     const clientRaw = await this.request({
@@ -321,53 +266,34 @@ export class WorkerClient implements IClient<URL> {
     }
   }
 
-  /** Resolve the ready barrier (idempotent). */
-  private markReady() {
-    const done = this.resolveReady;
-    this.resolveReady = undefined;
-    this.rejectReady = undefined;
-    if (done) done();
+  private requireWorker(): Worker {
+    if (!this.worker) {
+      throw new Error(`${logPrefix} no sync worker; call setSeed first`);
+    }
+    return this.worker;
   }
 
-  /**
-   * Active handshake: post ping without waiting for the ready event.
-   * On pong, mark ready so connect can proceed even if `ready` was missed.
-   */
-  private probeReady(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const id = this.allocId();
-      this.pending.set(id, {
-        resolve: (v) => {
-          if (v === "pong") {
-            this.markReady();
-            resolve();
-            return;
-          }
-          reject(new Error(`${logPrefix} worker probe ping failed`));
-        },
-        reject,
-      });
-      this.worker.postMessage({ id, op: "ping" } satisfies WorkerCmd);
-    });
-  }
-
-  /** Lightweight RPC check after connect. */
+  /** Lightweight RPC check after setSeed. */
   async ping(): Promise<void> {
-    await this.ready;
     const result = await this.request({ id: this.allocId(), op: "ping" });
     if (result !== "pong") {
       throw new Error(`${logPrefix} worker ping failed`);
     }
   }
 
-  /** Terminate the worker (drops protocol DB connection in that thread). */
+  /** Terminate the worker if any (drops protocol DB connection in that thread). */
   terminate() {
     this.scheduledSync.cancel();
-    this.worker.terminate();
-    for (const [, p] of this.pending) {
-      p.reject(new Error(`${logPrefix} worker terminated`));
+    const w = this.worker;
+    this.worker = undefined;
+    if (w) {
+      try {
+        w.terminate();
+      } catch {
+        // ignore
+      }
     }
-    this.pending.clear();
+    this.failPending(new Error(`${logPrefix} worker terminated`));
   }
 
   private onMessage(data: unknown) {
@@ -378,11 +304,11 @@ export class WorkerClient implements IClient<URL> {
 
     switch (msg.kind) {
       case "ready": {
-        this.markReady();
+        // Init complete; setSeed (and other cmds) run after worker whenReady.
         return;
       }
       case "initError": {
-        this.failReady(
+        this.failPending(
           new Error(`${logPrefix} worker init failed: ${msg.message}`),
         );
         return;
@@ -436,12 +362,13 @@ export class WorkerClient implements IClient<URL> {
     cmd: WorkerCmd,
     transfer?: Transferable[],
   ): Promise<unknown> {
+    const worker = this.requireWorker();
     return new Promise((resolve, reject) => {
       this.pending.set(cmd.id, { resolve, reject });
       if (transfer && transfer.length > 0) {
-        this.worker.postMessage(cmd, transfer);
+        worker.postMessage(cmd, transfer);
       } else {
-        this.worker.postMessage(cmd);
+        worker.postMessage(cmd);
       }
     });
   }
@@ -475,36 +402,63 @@ export class WorkerClient implements IClient<URL> {
     };
   }
 
+  /**
+   * Persist seed on main, then Enclave.spawnSyncWorker (only worker spawn path).
+   * Awaits the worker's setSeed reply (worker boots, then applies seed).
+   */
   async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void> {
-    await this.ready;
-    // Shared IDB (if persist) + worker enclave (IPC handoff owned by Enclave).
+    // Shared IDB (if persist); worker gets seed only via Enclave factory.
     await this.local.setSeed(enclave, opts);
     this.cachedClientState = {
       ...this.cachedClientState,
       hasSeed: true,
     };
     this.clientState.emit();
-    // Enclave posts setSeed + transfers seed; we only wait for the reply.
+
     const id = this.allocId();
+    const timeoutMs = this.readyTimeoutMs;
     await new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const settle = (fn: () => void) => {
+        if (timer !== undefined) clearTimeout(timer);
+        fn();
+      };
+      this.pending.set(id, {
+        resolve: (v) => settle(() => resolve(v)),
+        reject: (e) => settle(() => reject(e)),
+      });
+      timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(
+          new Error(
+            `${logPrefix} setSeed worker timeout after ${timeoutMs}ms`,
+          ),
+        );
+      }, timeoutMs);
       try {
-        enclave.postSetSeedToWorker(this.worker, {
+        const seeded = enclave.spawnSyncWorker({
           id,
           persist: opts?.persist,
         });
+        this.bindWorker(seeded);
       } catch (e) {
         this.pending.delete(id);
+        if (timer !== undefined) clearTimeout(timer);
         reject(e instanceof Error ? e : new Error(String(e)));
       }
     });
+    // Authoritative worker state after seed install.
+    try {
+      await this.pullRemoteState();
+    } catch {
+      // Offline / mock workers may not implement get*; store hydrate is enough.
+    }
   }
 
   async link(
     host: IHostConnectionInfo<URL>,
     connect = true,
   ): Promise<void> {
-    await this.ready;
     // Hosts live in shared IDB; worker owns network registration.
     await this.local.link(host, false);
     await this.request({
@@ -516,19 +470,17 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async unlink(label: string): Promise<void> {
-    await this.ready;
     await this.local.unlink(label);
+    if (!this.worker) return;
     await this.request({ id: this.allocId(), op: "unlink", label });
   }
 
   /** Hosts live in shared main IDB (same as local writer). */
   async hosts(): Promise<IHostRow<URL>[]> {
-    await this.ready;
     return this.local.hosts();
   }
 
   async connect(listen = true, sync = true): Promise<void> {
-    await this.ready;
     await this.request({
       id: this.allocId(),
       op: "connect",
@@ -538,13 +490,12 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async disconnect(): Promise<void> {
-    await this.ready;
+    if (!this.worker) return;
     await this.request({ id: this.allocId(), op: "disconnect" });
   }
 
   /** Local UI write: archive + apply on main (cache notifies UI); sync via worker. */
   async insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>> {
-    await this.ready;
     return this.local.insertRaw(content);
   }
 
@@ -553,41 +504,34 @@ export class WorkerClient implements IClient<URL> {
     content: SerializedContent | undefined,
     force?: boolean,
   ): Promise<ValStat<IMessageHead>> {
-    await this.ready;
     return this.local.updateRaw(prior, content, force);
   }
 
   async insert<T = unknown>(
     op: IInsertParams<T>,
   ): Promise<ValStat<IMessageHead>> {
-    await this.ready;
     return this.local.insert(op);
   }
 
   async update<T = unknown>(
     op: IUpdateParams<T>,
   ): Promise<ValStat<IMessageHead>> {
-    await this.ready;
     return this.local.update(op);
   }
 
   async delete(op: IDeleteParams): Promise<ValStat<IMessageHead>> {
-    await this.ready;
     return this.local.delete(op);
   }
 
   async genEID(id?: Uint8Array): Promise<ValStat<EntityID>> {
-    await this.ready;
     return this.local.genEID(id);
   }
 
   async sync(): Promise<Status> {
-    await this.ready;
     return this.requestStatus({ id: this.allocId(), op: "sync" });
   }
 
   async rebuild(options?: { checkHost?: boolean }): Promise<Status> {
-    await this.ready;
     this.scheduledSync.cancel();
     await this.scheduledSync.flush();
     return this.requestStatus({
@@ -599,12 +543,10 @@ export class WorkerClient implements IClient<URL> {
 
   /** Shared message IDB on main — no worker RPC. */
   async listMsgs(opts?: ListMsgsOpts): Promise<IStoredMessage[]> {
-    await this.ready;
     return this.local.listMsgs(opts);
   }
 
   async countMsgs(apld?: ApldState): Promise<number> {
-    await this.ready;
     return this.local.countMsgs(apld);
   }
 
@@ -616,7 +558,6 @@ export class WorkerClient implements IClient<URL> {
     hostLabel: string,
     opts?: ReconcileOpts,
   ): Promise<ValStat<ReconcileReport>> {
-    await this.ready;
     try {
       const result = await this.request({
         id: this.allocId(),
@@ -640,7 +581,6 @@ export class WorkerClient implements IClient<URL> {
 
   /** Archive checksum via worker (listKeys + sort + blake3 off main). */
   async msgcheck(): Promise<Hash> {
-    await this.ready;
     const result = await this.request({
       id: this.allocId(),
       op: "msgcheck",
@@ -656,7 +596,6 @@ export class WorkerClient implements IClient<URL> {
    * SyncClient has no EntDB; use entDB.checksum(crypto) on the main path.
    */
   async entcheck(): Promise<Hash> {
-    await this.ready;
     const result = await this.request({
       id: this.allocId(),
       op: "entcheck",
@@ -668,25 +607,25 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async wipe(opts?: WipeOpts): Promise<void> {
-    await this.ready;
     // Main first: shared IDB tables + seed.wipe (largeBlob overwrite if wired).
     await this.local.wipe(opts);
-    // Worker: network teardown + its store/enclave + EntDB connection.
-    await this.request({
-      id: this.allocId(),
-      op: "wipe",
-      msgs: opts?.msgs,
-      ents: opts?.ents,
-      meta: opts?.meta,
-      seed: opts?.seed,
-    });
+    if (this.worker) {
+      // Worker: network teardown + its store/enclave + EntDB connection.
+      await this.request({
+        id: this.allocId(),
+        op: "wipe",
+        msgs: opts?.msgs,
+        ents: opts?.ents,
+        meta: opts?.meta,
+        seed: opts?.seed,
+      });
+    }
     await this.hydrateStateFromStore(this.store);
     this.clientState.emit();
     this.xferState.emit();
   }
 
   async import(file: File): Promise<Status> {
-    await this.ready;
     const bytes = new Uint8Array(await file.arrayBuffer());
     return this.requestStatus(
       { id: this.allocId(), op: "import", bytes },
@@ -695,7 +634,6 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async export(filename: string, _extension?: string): Promise<Status> {
-    await this.ready;
     try {
       const result = await this.request({
         id: this.allocId(),

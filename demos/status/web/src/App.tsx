@@ -10,7 +10,6 @@ import {
   useClient,
   useStateWatcher,
 } from "@interncom/diplomatic";
-import { diplomaticSyncWorker } from "./diplomaticWorker";
 
 const seedBytes = htob("0123456789ABCDEF".repeat(4));
 const [seed, seedSt] = Enclave.fromBytes(crypto, seedBytes);
@@ -38,7 +37,7 @@ export default function App() {
   const { client, entDB, stateMgr, error, mode } = useClient({
     host,
     seed,
-    worker: diplomaticSyncWorker,
+    worker: true,
   });
   const status = useLatestOfType<string>(entType, stateMgr, entDB) ?? "";
 
@@ -54,7 +53,7 @@ export default function App() {
     return (
       <div style={{ width: "100vw", textAlign: "center", color: "crimson" }}>
         <h1>STATUS</h1>
-        <p>DIPLOMATIC failed to start (check worker setup): {error.message}</p>
+        <p>DIPLOMATIC failed to start: {error.message}</p>
       </div>
     );
   }

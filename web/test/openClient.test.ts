@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import crypto from "../src/crypto";
 import {
   openDiplomaticClient,
@@ -6,7 +6,9 @@ import {
 } from "../src/openClient";
 import { nullStateManager } from "../src/state";
 import { Status } from "../src/shared/consts";
+import { Enclave } from "../src/shared/crypto/enclave";
 import { MemoryStore } from "../src/stores/memory/store";
+import { WorkerClient } from "../src/worker/client";
 
 function mockWorker(): Worker {
   return {
@@ -21,11 +23,7 @@ function mockWorker(): Worker {
   } as unknown as Worker;
 }
 
-/**
- * Worker that answers RPC but posts no unsolicited `ready` / `clientState`.
- * Simulates early Worker construction where those events were dropped before
- * `onmessage` was attached.
- */
+/** Worker that acks RPC (setSeed, getClientState, …). */
 function mockWorkerRpcOnly(opts?: {
   hasSeed?: boolean;
   hasHost?: boolean;
@@ -39,7 +37,7 @@ function mockWorkerRpcOnly(opts?: {
     terminate: ReturnType<typeof vi.fn>;
     onmessage: ((ev: MessageEvent<unknown>) => void) | null;
     onerror: ((ev: ErrorEvent) => void) | null;
-    onmessageerror: ((ev: MessageEvent) => void) | null;
+    onmessageerror: ((ev: MessageEvent<unknown>) => void) | null;
     addEventListener: ReturnType<typeof vi.fn>;
     removeEventListener: ReturnType<typeof vi.fn>;
     dispatchEvent: () => boolean;
@@ -87,11 +85,19 @@ function mockWorkerRpcOnly(opts?: {
               result: {
                 numUploads: 0,
                 numDownloads: 0,
-                progress: { phase: "idle" },
+                progress: {
+                  phase: "idle",
+                  startedAt: 0,
+                  updatedAt: 0,
+                },
               },
             },
           } as MessageEvent<unknown>);
+          return;
         }
+        handler({
+          data: { kind: "reply", id, ok: true, result: undefined },
+        } as MessageEvent<unknown>);
       });
     },
     terminate: vi.fn(),
@@ -103,6 +109,14 @@ function mockWorkerRpcOnly(opts?: {
     dispatchEvent: () => true,
   };
   return w as unknown as Worker;
+}
+
+function enclaveOrThrow(): Enclave {
+  const [enclave, st] = Enclave.fromBytes(crypto, new Uint8Array(32).fill(1));
+  if (st !== Status.Success || enclave === undefined) {
+    throw new Error(`enclave ${st}`);
+  }
+  return enclave;
 }
 
 describe("openDiplomaticClient", () => {
@@ -131,10 +145,9 @@ describe("openDiplomaticClient", () => {
   });
 
   test("throws when worker is paired with a custom store (runtime belt)", async () => {
-    // Type system rejects this; cast exercises the runtime guard for JS callers.
     const bad = {
       state: nullStateManager,
-      worker: mockWorker(),
+      worker: true,
       store: new MemoryStore(crypto),
     } as unknown as OpenDiplomaticClientOptions;
     await expect(openDiplomaticClient(bad)).rejects.toThrow(
@@ -142,7 +155,7 @@ describe("openDiplomaticClient", () => {
     );
   });
 
-  test("throws when worker given but Worker API missing", async () => {
+  test("throws when worker: true but Worker API missing", async () => {
     const prev = globalThis.Worker;
     // @ts-expect-error test override
     globalThis.Worker = undefined;
@@ -150,90 +163,83 @@ describe("openDiplomaticClient", () => {
       await expect(
         openDiplomaticClient({
           state: nullStateManager,
-          worker: mockWorker(),
+          worker: true,
         }),
       ).rejects.toThrow(/Worker API is unavailable/);
     } finally {
       globalThis.Worker = prev;
     }
   });
+});
 
-  test("throws when worker never becomes ready (no silent fallback)", async () => {
-    if (typeof indexedDB === "undefined") {
-      // Worker path always opens IDB; without it we fail earlier (covered above).
-      return;
-    }
-    if (typeof Worker === "undefined") {
-      // @ts-expect-error minimal stub
-      globalThis.Worker = class {};
-    }
-    await expect(
-      openDiplomaticClient({
-        state: {
-          apply: async (msgs) => msgs.map(() => Status.Success),
-          clear: async () => Status.Success,
-          notify() {},
-          async refresh() {},
-          on() {},
-          off() {},
-        },
-        readyTimeoutMs: 50,
-        worker: mockWorker(),
-      }),
-    ).rejects.toThrow(/ready timeout/);
+describe("WorkerClient open / setSeed", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  test("connects when ready was missed but probe ping replies", async () => {
-    if (typeof indexedDB === "undefined") {
-      return;
-    }
-    if (typeof Worker === "undefined") {
-      // @ts-expect-error minimal stub
-      globalThis.Worker = class {};
-    }
-    const opened = await openDiplomaticClient({
-      state: {
-        apply: async (msgs) => msgs.map(() => Status.Success),
-        clear: async () => Status.Success,
-        notify() {},
-        async refresh() {},
-        on() {},
-        off() {},
-      },
-      readyTimeoutMs: 2_000,
-      worker: mockWorkerRpcOnly(),
+  test("open hydrates from store without spawning a worker", async () => {
+    const store = new MemoryStore(crypto);
+    const client = await WorkerClient.open(nullStateManager, store, {
+      syncDebounceMs: 0,
     });
-    expect(opened.mode).toBe("worker");
-    opened.dispose();
+    try {
+      const state = await client.clientState.get();
+      expect(state.hasSeed).toBe(false);
+      expect(state.hasHost).toBe(false);
+      await expect(client.ping()).rejects.toThrow(/no sync worker/);
+    } finally {
+      client.terminate();
+    }
   });
 
-  test("hydrates hasSeed after missed ready/clientState events", async () => {
-    if (typeof indexedDB === "undefined") {
-      return;
-    }
-    if (typeof Worker === "undefined") {
-      // @ts-expect-error minimal stub
-      globalThis.Worker = class {};
-    }
-    // Worker reports seed present via getClientState only (no unsolicited push).
-    // Without post-ready hydration, clientState would stay hasSeed:false and
-    // authenticated apps would flash the init UI.
-    const opened = await openDiplomaticClient({
-      state: {
-        apply: async (msgs) => msgs.map(() => Status.Success),
-        clear: async () => Status.Success,
-        notify() {},
-        async refresh() {},
-        on() {},
-        off() {},
-      },
-      readyTimeoutMs: 2_000,
-      worker: mockWorkerRpcOnly({ hasSeed: true, hasHost: true }),
+  test("setSeed times out when spawned worker never replies", async () => {
+    const store = new MemoryStore(crypto);
+    const w = mockWorker();
+    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockReturnValue(w);
+    const client = await WorkerClient.open(nullStateManager, store, {
+      readyTimeoutMs: 50,
+      syncDebounceMs: 0,
     });
-    expect(opened.mode).toBe("worker");
-    const state = await opened.client.clientState.get();
-    expect(state.hasSeed).toBe(true);
-    expect(state.hasHost).toBe(true);
-    opened.dispose();
+    try {
+      await expect(client.setSeed(enclaveOrThrow())).rejects.toThrow(
+        /setSeed worker timeout/,
+      );
+    } finally {
+      client.terminate();
+    }
+  });
+
+  test("setSeed binds Enclave-spawned worker and hydrates remote state", async () => {
+    const store = new MemoryStore(crypto);
+    const w = mockWorkerRpcOnly({ hasSeed: true, hasHost: true });
+    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
+      (opts) => {
+        queueMicrotask(() => {
+          const handler = w.onmessage;
+          if (!handler) return;
+          handler({
+            data: {
+              kind: "reply",
+              id: opts.id,
+              ok: true,
+              result: undefined,
+            },
+          } as MessageEvent<unknown>);
+        });
+        return w;
+      },
+    );
+    const client = await WorkerClient.open(nullStateManager, store, {
+      syncDebounceMs: 0,
+    });
+    try {
+      await client.setSeed(enclaveOrThrow());
+      const state = await client.clientState.get();
+      expect(state.hasSeed).toBe(true);
+      expect(state.hasHost).toBe(true);
+      await client.ping();
+    } finally {
+      client.terminate();
+    }
   });
 });

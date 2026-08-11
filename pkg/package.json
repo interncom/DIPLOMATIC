@@ -19,10 +19,6 @@
       "import": "./dist/web/index.mjs",
       "types": "./dist/web/index.d.ts"
     },
-    "./worker": {
-      "import": "./dist/web/worker.mjs",
-      "default": "./dist/web/worker.mjs"
-    },
     "./cli": {
       "import": "./dist/cli/index.mjs",
       "types": "./dist/cli/index.d.ts"

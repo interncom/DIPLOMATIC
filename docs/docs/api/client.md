@@ -12,7 +12,8 @@ import {
 const entDB = await openEntDB(); // cache on by default
 // const entDB = await openEntDB({ cache: false }); // durable IDB only
 const state = entStateManager(entDB);
-const { client, dispose } = await openDiplomaticClient({ state, worker });
+// worker: true → library spawns embedded sync Worker (only supported path)
+const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 ```
 
 ## Client State

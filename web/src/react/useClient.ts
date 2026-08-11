@@ -109,25 +109,16 @@ type UseClientBase = {
 };
 
 /**
- * Worker path: always IndexedDB on main + worker. Custom `store` is forbidden
- * (type + runtime) so durable state cannot diverge.
+ * Worker path: IndexedDB on main; sync Worker appears on setSeed via Enclave.
+ * Custom `store` is forbidden so durable state cannot diverge.
  *
- * Vite:
- *   import DiplomaticWorker from "@interncom/diplomatic/worker?worker";
- *   const syncWorker = new DiplomaticWorker();
- *   useClient({ worker: syncWorker, seed, host });
- *
- * Handshake is race-safe (ready event and/or probe ping). See
- * `openDiplomaticClient` for bundler recipes and handshake notes.
+ * ```ts
+ * useClient({ worker: true, seed, host });
+ * ```
  */
 export type UseClientWorkerOptions = UseClientBase & {
-  /**
-   * App-constructed sync Worker. Create once (module scope or useMemo/useRef),
-   * not each render. Early construction before `useClient` opens IDB is OK —
-   * the library does not require catching the unsolicited `ready` event.
-   * See `openDiplomaticClient` for instantiation recipes.
-   */
-  worker: Worker;
+  /** Worker-mode client; Enclave.spawnSyncWorker runs inside setSeed. */
+  worker: true;
   store?: never;
 };
 
@@ -135,10 +126,10 @@ export type UseClientWorkerOptions = UseClientBase & {
  * Main-thread path. Optional custom store; default IndexedDB.
  */
 export type UseClientMainOptions = UseClientBase & {
-  worker?: undefined;
+  worker?: undefined | false;
   /**
    * Protocol store override. Default: IndexedDB. Pass explicitly for
-   * MemoryStore or other backends. Incompatible with `worker`.
+   * MemoryStore or other backends. Incompatible with `worker: true`.
    */
   store?: IStore<URL>;
 };
@@ -148,7 +139,7 @@ export type UseClientOptions = UseClientWorkerOptions | UseClientMainOptions;
 export function useClient(opts: UseClientOptions = {}) {
   const clock = opts.clock ?? new Clock();
   const { seed, host, readyTimeoutMs } = opts;
-  const worker = opts.worker;
+  const useWorker = opts.worker === true;
   const store = "store" in opts ? opts.store : undefined;
 
   const [diplomaticState, setDiplomaticState] = useState<{
@@ -170,11 +161,11 @@ export function useClient(opts: UseClientOptions = {}) {
       const entMgr = entStateManager(entDB);
 
       // Narrow so worker+store cannot be passed together (mirrors options union).
-      const opened = worker !== undefined
+      const opened = useWorker
         ? await openDiplomaticClient({
           state: entMgr,
           clock,
-          worker,
+          worker: true,
           readyTimeoutMs,
         })
         : await openDiplomaticClient({
@@ -223,7 +214,7 @@ export function useClient(opts: UseClientOptions = {}) {
       cancelled = true;
       dispose?.();
     };
-  }, [clock, seed, host, worker, store, readyTimeoutMs]);
+  }, [clock, seed, host, useWorker, store, readyTimeoutMs]);
 
   return diplomaticState;
 }

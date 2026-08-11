@@ -52,6 +52,7 @@ import {
   type PrfEvalOpts,
   type PrfRp,
 } from "../webauthn/prf.ts";
+import { spawnDiplomaticSyncWorker } from "../worker/spawn.ts";
 
 export type { LargeBlobCreateOpts, LargeBlobRp };
 export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
@@ -411,22 +412,17 @@ export class Enclave {
   }
 
   /**
-   * Bootstrap a sync worker with this enclave's master seed.
+   * Spawn a new sync Worker from the embedded bundle and inject this enclave's
+   * master seed into it (transfer). Seed never goes to a caller-supplied port —
+   * only to a worker this method just created.
    *
-   * Posts `{ id, op: "setSeed", seed, persist? }` via structured clone and
-   * **transfers** the seed's ArrayBuffer so this side does not keep a second
-   * live copy after the post. The worker must call {@link Enclave.fromBytes}
-   * immediately (see worker/runtime). Seed is never returned to the caller.
-   *
-   * Caller is responsible for request/reply correlation (`id` + pending map)
-   * before/after this post — Enclave only owns the secret handoff.
+   * Returns the Worker. Caller (WorkerClient) should adopt it and await the
+   * `setSeed` reply for `opts.id`.
    */
-  postSetSeedToWorker(
-    port: WorkerSeedPort,
-    opts: { id: number; persist?: boolean },
-  ): void {
+  spawnSyncWorker(opts: { id: number; persist?: boolean }): Worker {
+    const worker = spawnDiplomaticSyncWorker();
     const seed = this.#seed.slice();
-    port.postMessage(
+    worker.postMessage(
       {
         id: opts.id,
         op: "setSeed",
@@ -435,6 +431,7 @@ export class Enclave {
       },
       [seed.buffer],
     );
+    return worker;
   }
 
   /**
@@ -611,14 +608,6 @@ export class Enclave {
     return kdmHash.slice(0, kdmBytes);
   }
 }
-
-/**
- * Minimal port for {@link Enclave.postSetSeedToWorker} (Worker, MessagePort, …).
- * Second arg is the transferable list (seed ArrayBuffer).
- */
-export type WorkerSeedPort = {
-  postMessage(message: unknown, transfer?: Transferable[]): void;
-};
 
 /** Derive seal key from PRF output (domain-separated). Used by enclave seal/unseal. */
 export async function sealKeyFromPrf(

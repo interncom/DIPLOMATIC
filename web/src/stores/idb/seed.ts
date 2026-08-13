@@ -23,9 +23,9 @@ import {
 import {
   cloneIdPin,
   decodeIdPin,
+  type IdPin,
   idPinMatches,
   makeIdPin,
-  type IdPin,
 } from "../identityPin";
 import { SEED_META_TABLE } from "./store";
 
@@ -147,6 +147,12 @@ export class IDBSeedStore implements ISeedStore {
   async hasPrfMeta(): Promise<boolean> {
     const m = await this.loadPrfMeta();
     return m !== undefined;
+  }
+
+  /** Last PRF passkey id, if this device has a sealed PRF identity. */
+  async lastPrfCredId(): Promise<Uint8Array | undefined> {
+    const m = await this.loadPrfMeta();
+    return m?.credId === undefined ? undefined : m.credId.slice();
   }
 
   async openPrfStore(

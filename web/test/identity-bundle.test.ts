@@ -154,9 +154,10 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(ust).toBe(Status.Success);
     expect(opened).toBeDefined();
     if (opened === undefined) return;
+    expect(opened.credId).toEqual(sealed.credId);
     // Same seed → same derived public key (no seed bytes leave Enclave).
     const a = await enc.deriveIdentity("test", 0);
-    const b = await opened.deriveIdentity("test", 0);
+    const b = await opened.enclave.deriveIdentity("test", 0);
     expect(b.publicKey).toEqual(a.publicKey);
   });
 
@@ -231,7 +232,7 @@ describe("PairPackage", () => {
     expect(ust).toBe(Status.Success);
     expect(again).toBeDefined();
     if (again === undefined) return;
-    const againId = await again.deriveIdentity("test", 0);
+    const againId = await again.enclave.deriveIdentity("test", 0);
     expect(againId.publicKey).toEqual(origId.publicKey);
   });
 

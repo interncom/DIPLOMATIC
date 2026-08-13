@@ -3,6 +3,7 @@
 
 import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
+import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
@@ -14,7 +15,10 @@ export type PrfSeedMeta = {
   sealedMaster: SealedMasterKey;
   /** PRF salt used at wrap time. */
   salt: Uint8Array;
-  /** Optional allowCredentials id. */
+  /**
+   * Last PRF passkey id (allowCredentials). The sealed-meta row itself is
+   * the breadcrumb that this device enrolled PRF unlock.
+   */
   credId?: Uint8Array;
 };
 
@@ -124,7 +128,7 @@ export class PrfSeedStore implements ISeedStore {
   async unlock(): Promise<ValStat<Enclave>> {
     const meta = this.#meta;
     if (meta === undefined) return err(Status.MissingSeed);
-    const [enclave, ust] = await Enclave.unsealWithPasskey(
+    const [out, ust] = await Enclave.unsealWithPasskey(
       this.#crypto,
       meta.sealedMaster,
       {
@@ -134,9 +138,21 @@ export class PrfSeedStore implements ISeedStore {
       },
     );
     if (ust !== Status.Success) return err(ust);
-    if (enclave === undefined) return err(Status.InternalError);
-    this.#enclave = enclave;
-    return ok(enclave);
+    this.#enclave = out.enclave;
+    // Record credId after a discoverable unlock so the next get() is targeted.
+    if (
+      out.credId.byteLength > 0 &&
+      (meta.credId === undefined || !bytesEqual(meta.credId, out.credId))
+    ) {
+      const next: PrfSeedMeta = {
+        sealedMaster: meta.sealedMaster,
+        salt: meta.salt,
+        credId: out.credId.slice(),
+      };
+      this.#meta = next;
+      await this.#persistMeta(cloneMeta(next));
+    }
+    return ok(out.enclave);
   }
 
   /**

@@ -194,12 +194,13 @@ export class Enclave {
   /**
    * UV + PRF ceremony, then unseal durable master into a new Enclave.
    * Callers never supply PRF bytes — only sealed meta + RP/salt/credId.
+   * Returns the credential id used so stores can persist it (skip picker next time).
    */
   static async unsealWithPasskey(
     crypto: ICrypto,
     sealedMaster: SealedMasterKey,
     opts: PasskeyPrfOpts & { salt: Uint8Array },
-  ): Promise<ValStat<Enclave>> {
+  ): Promise<ValStat<{ enclave: Enclave; credId: Uint8Array }>> {
     const [ev, est] = await evalPrf({
       rpId: opts.rpId,
       rpName: opts.rpName,
@@ -209,7 +210,14 @@ export class Enclave {
     if (est !== Status.Success) return err(est);
     if (ev === undefined) return err(Status.MissingBody);
     try {
-      return await Enclave.#unsealUnderPrf(crypto, sealedMaster, ev.prf);
+      const [enclave, ust] = await Enclave.#unsealUnderPrf(
+        crypto,
+        sealedMaster,
+        ev.prf,
+      );
+      if (ust !== Status.Success) return err(ust);
+      if (enclave === undefined) return err(Status.InternalError);
+      return ok({ enclave, credId: ev.credId.slice() });
     } finally {
       ev.prf.fill(0);
     }

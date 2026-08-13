@@ -48,8 +48,7 @@ export class IDBHostStore implements IHostStore<URL> {
    */
   async add(info: IHostConnectionInfo<URL>) {
     const prev = await this.get(info.label);
-    const same =
-      prev !== undefined &&
+    const same = prev !== undefined &&
       prev.handle.href === info.handle.href &&
       (prev.idx ?? 0) === (info.idx ?? 0);
     return this.put({

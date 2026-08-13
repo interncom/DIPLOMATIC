@@ -27,8 +27,7 @@ export class MemoryHostStore<Handle extends HostHandle>
    */
   async add(info: IHostConnectionInfo<Handle>) {
     const prev = this.hosts.get(info.label);
-    const same =
-      prev !== undefined &&
+    const same = prev !== undefined &&
       prev.handle === info.handle &&
       (prev.idx ?? 0) === (info.idx ?? 0);
     const host: IHostRow<Handle> = {

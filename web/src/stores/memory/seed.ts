@@ -3,9 +3,9 @@ import type { ICrypto } from "../../shared/types";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
   cloneIdPin,
+  type IdPin,
   idPinMatches,
   makeIdPin,
-  type IdPin,
 } from "../identityPin";
 
 export class MemorySeedStore implements ISeedStore {

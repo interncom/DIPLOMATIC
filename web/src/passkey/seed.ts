@@ -6,7 +6,7 @@ import { Status } from "../shared/consts";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
-import { LargeBlob, type LargeBlobRp } from "./largeBlob";
+import { type LargeBlobRp } from "./largeBlob";
 
 export { defaultWebAuthnRpId } from "./webauthn";
 export {

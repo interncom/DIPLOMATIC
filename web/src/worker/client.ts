@@ -418,7 +418,7 @@ export class WorkerClient implements IClient<URL> {
     const id = this.allocId();
     const timeoutMs = this.readyTimeoutMs;
     await new Promise<unknown>((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined;
       const settle = (fn: () => void) => {
         if (timer !== undefined) clearTimeout(timer);
         fn();

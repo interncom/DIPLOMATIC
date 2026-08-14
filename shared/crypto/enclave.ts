@@ -15,6 +15,10 @@
 // encodes/decodes seed and calls those fixed modules. PRF bytes never leave
 // Enclave methods — sealed ciphertext on disk is not secret without a ceremony
 // Enclave itself initiates.
+//
+// Transient secrets (PRF, wrap/pair KEK, derivation seed, Ed25519 priv) are
+// fill(0)'d before return. JS cannot OPENSSL_cleanse, but an uncleared buffer
+// is a standing copy a heap dump can steal without another UV.
 
 import { concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
@@ -191,6 +195,7 @@ export class Enclave {
         credId: ev.credId.slice(),
       });
     } finally {
+      // hmac-secret output is IKM; must not sit next to sealedMaster in the heap.
       ev.prf.fill(0);
     }
   }
@@ -324,43 +329,49 @@ export class Enclave {
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
 
-      const [snap, sst] = asMasterSeed(this.#seed.slice());
-      if (sst !== Status.Success) return err(sst);
-      if (snap === undefined) return err(Status.InvalidParam);
-
-      const plain: PairPackagePlain = {
-        masterSeed: snap,
-        hosts: hosts.map((h) => ({
-          handle: h.handle,
-          label: h.label,
-          idx: h.idx ?? 0,
-        })),
-      };
-      const enc = new Encoder();
-      const wst = enc.writeStruct(pairPackagePlainCodec, plain);
-      if (wst !== Status.Success) {
-        snap.fill(0);
-        return err(wst);
-      }
-      const plainBytes = enc.result();
-      snap.fill(0);
-
-      let body: Uint8Array;
+      // Inner finally wipes KEK even if encode/encrypt returns early.
       try {
-        body = await this.#crypto.encryptXSalsa20Poly1305Combined(
-          plainBytes,
-          key,
-        );
-      } catch {
+        const [snap, sst] = asMasterSeed(this.#seed.slice());
+        if (sst !== Status.Success) return err(sst);
+        if (snap === undefined) return err(Status.InvalidParam);
+
+        const plain: PairPackagePlain = {
+          masterSeed: snap,
+          hosts: hosts.map((h) => ({
+            handle: h.handle,
+            label: h.label,
+            idx: h.idx ?? 0,
+          })),
+        };
+        const enc = new Encoder();
+        const wst = enc.writeStruct(pairPackagePlainCodec, plain);
+        if (wst !== Status.Success) {
+          snap.fill(0);
+          return err(wst);
+        }
+        const plainBytes = enc.result();
+        snap.fill(0);
+
+        let body: Uint8Array;
+        try {
+          body = await this.#crypto.encryptXSalsa20Poly1305Combined(
+            plainBytes,
+            key,
+          );
+        } catch {
+          plainBytes.fill(0);
+          return err(Status.InternalError);
+        }
         plainBytes.fill(0);
-        return err(Status.InternalError);
+        return ok({
+          body,
+          salt: salt.slice(),
+          credId: ev.credId.slice(),
+        });
+      } finally {
+        // Pair KEK is purpose-bound; leftover bytes must not open a later wrap.
+        key.fill(0);
       }
-      plainBytes.fill(0);
-      return ok({
-        body,
-        salt: salt.slice(),
-        credId: ev.credId.slice(),
-      });
     } finally {
       ev.prf.fill(0);
     }
@@ -400,34 +411,40 @@ export class Enclave {
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
 
-      let plain: Uint8Array;
+      // Inner finally wipes KEK even if decrypt/decode returns early.
       try {
-        plain = await crypto.decryptXSalsa20Poly1305Combined(body, key);
-      } catch {
-        return err(Status.DecryptionError);
+        let plain: Uint8Array;
+        try {
+          plain = await crypto.decryptXSalsa20Poly1305Combined(body, key);
+        } catch {
+          return err(Status.DecryptionError);
+        }
+
+        const pdec = new Decoder(plain);
+        const [inner, is] = pdec.readStruct(pairPackagePlainCodec);
+        plain.fill(0);
+        if (is !== Status.Success) return err(is);
+        if (inner === undefined) return err(Status.InvalidMessage);
+
+        const [enclave, ens] = Enclave.fromBytes(crypto, inner.masterSeed);
+        inner.masterSeed.fill(0);
+        if (ens !== Status.Success) return err(ens);
+        if (enclave === undefined) return err(Status.InternalError);
+
+        const [sealedMaster, sst] = await enclave.#sealUnderPrf(ev.prf);
+        if (sst !== Status.Success) return err(sst);
+        if (sealedMaster === undefined) return err(Status.InternalError);
+
+        return ok({
+          enclave,
+          hosts: inner.hosts.map((h) => ({ ...h })),
+          sealedMaster,
+          credId: ev.credId.slice(),
+        });
+      } finally {
+        // Drop pair KEK before PRF wipe; one leaked purpose-key is enough.
+        key.fill(0);
       }
-
-      const pdec = new Decoder(plain);
-      const [inner, is] = pdec.readStruct(pairPackagePlainCodec);
-      plain.fill(0);
-      if (is !== Status.Success) return err(is);
-      if (inner === undefined) return err(Status.InvalidMessage);
-
-      const [enclave, ens] = Enclave.fromBytes(crypto, inner.masterSeed);
-      inner.masterSeed.fill(0);
-      if (ens !== Status.Success) return err(ens);
-      if (enclave === undefined) return err(Status.InternalError);
-
-      const [sealedMaster, sst] = await enclave.#sealUnderPrf(ev.prf);
-      if (sst !== Status.Success) return err(sst);
-      if (sealedMaster === undefined) return err(Status.InternalError);
-
-      return ok({
-        enclave,
-        hosts: inner.hosts.map((h) => ({ ...h })),
-        sealedMaster,
-        credId: ev.credId.slice(),
-      });
     } finally {
       ev.prf.fill(0);
     }
@@ -485,8 +502,11 @@ export class Enclave {
     const path = keyPath;
     const index = idx;
     const keys = await this.#deriveSubkeys(path, index);
+    const publicKey = keys.publicKey;
+    // Handle only needs the pub; priv would outlive this call on the Identity.
+    keys.privateKey.fill(0);
     return Object.freeze({
-      publicKey: keys.publicKey,
+      publicKey,
       sign: (message: Uint8Array | string) => this.#sign(path, index, message),
       kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(path, index, msgHeadEnc),
     });
@@ -505,6 +525,9 @@ export class Enclave {
       return asSealedMasterKey(sealed);
     } catch {
       return err(Status.InternalError);
+    } finally {
+      // Wrap KEK decrypts durable master; do not leave it after seal.
+      key.fill(0);
     }
   }
 
@@ -518,11 +541,18 @@ export class Enclave {
     const [key, kst] = await sealKeyFromPrf(crypto, prf);
     if (kst !== Status.Success) return err(kst);
     if (key === undefined) return err(Status.InternalError);
+    let plain: Uint8Array | undefined;
     try {
-      const plain = await crypto.decryptXSalsa20Poly1305Combined(sealed, key);
+      try {
+        plain = await crypto.decryptXSalsa20Poly1305Combined(sealed, key);
+      } catch {
+        return err(Status.DecryptionError);
+      }
+      // fromBytes copies; wipe the decrypt buffer so two seed copies do not remain.
       return Enclave.fromBytes(crypto, plain);
-    } catch {
-      return err(Status.DecryptionError);
+    } finally {
+      key.fill(0);
+      plain?.fill(0);
     }
   }
 
@@ -614,7 +644,12 @@ export class Enclave {
 
   async #deriveSubkeys(keyPath: string, idx: number): Promise<KeyPair> {
     const seed = await this.#deriveSeed(keyPath, idx);
-    return this.#crypto.deriveEd25519KeyPair(seed);
+    try {
+      return await this.#crypto.deriveEd25519KeyPair(seed);
+    } finally {
+      // Pair already holds seed‖pub; this 32-byte deriv must not linger.
+      seed.fill(0);
+    }
   }
 
   async #sign(
@@ -623,7 +658,12 @@ export class Enclave {
     message: Uint8Array | string,
   ): Promise<Uint8Array> {
     const keys = await this.#deriveSubkeys(keyPath, idx);
-    return this.#crypto.signEd25519(message, keys.privateKey);
+    try {
+      return await this.#crypto.signEd25519(message, keys.privateKey);
+    } finally {
+      // Re-derived per sign so the caller never holds a long-lived priv.
+      keys.privateKey.fill(0);
+    }
   }
 
   async #kdmFor(
@@ -633,8 +673,14 @@ export class Enclave {
   ): Promise<Uint8Array> {
     const keys = await this.#deriveSubkeys(keyPath, idx);
     const kdmSource = concat(keys.privateKey, msgHeadEnc);
-    const kdmHash = await this.#crypto.blake3(kdmSource);
-    return kdmHash.slice(0, kdmBytes);
+    // concat copied priv; wipe the source first so only kdmSource remains.
+    keys.privateKey.fill(0);
+    try {
+      const kdmHash = await this.#crypto.blake3(kdmSource);
+      return kdmHash.slice(0, kdmBytes);
+    } finally {
+      kdmSource.fill(0);
+    }
   }
 }
 

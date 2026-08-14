@@ -6,6 +6,15 @@
 
 import { DIPLOMATIC_WORKER_SOURCE_B64 } from "./embeddedWorkerSource.ts";
 
+// Capture at load so a later page-realm wrap of Worker / postMessage
+// misses setSeed. Does not beat a wrap that ran first.
+const NativeWorker = typeof globalThis.Worker === "function"
+  ? globalThis.Worker
+  : undefined;
+const post = NativeWorker === undefined
+  ? undefined
+  : NativeWorker.prototype.postMessage;
+
 let blobUrl: string | undefined;
 
 function workerSource(): string {
@@ -35,10 +44,28 @@ function workerBlobUrl(): string {
  * Does not inject seed — use {@link Enclave.spawnSyncWorker} for that.
  */
 export function spawnDiplomaticSyncWorker(): Worker {
-  if (typeof Worker === "undefined") {
+  if (NativeWorker === undefined) {
     throw new Error(
       "[DIPLOMATIC] Worker API unavailable; cannot spawn sync worker",
     );
   }
-  return new Worker(workerBlobUrl(), { type: "module" });
+  return new NativeWorker(workerBlobUrl(), { type: "module" });
+}
+
+/** postMessage via the load-time snapshot (not the live prototype). */
+export function postToDiplomaticWorker(
+  worker: Worker,
+  data: unknown,
+  transfer?: Transferable[],
+): void {
+  if (post === undefined) {
+    throw new Error(
+      "[DIPLOMATIC] Worker API unavailable; cannot post to sync worker",
+    );
+  }
+  if (transfer !== undefined && transfer.length > 0) {
+    post.call(worker, data, { transfer });
+  } else {
+    post.call(worker, data);
+  }
 }

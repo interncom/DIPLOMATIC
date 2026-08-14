@@ -53,7 +53,7 @@ const createClient = async (seed: Uint8Array) => {
     transport,
     libsodiumCrypto,
   );
-  const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
+  const [enclave, est] = Enclave.fromBytes(seed);
   if (est !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${est}`);
   }

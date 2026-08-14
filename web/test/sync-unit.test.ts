@@ -25,7 +25,7 @@ import { bytesEqual } from "../src/shared/binary";
 // Fixed seed for deterministic key derivation
 const testSeedBytes = new Uint8Array(32).fill(0x42);
 function testEnclave(): Enclave {
-  const [e, st] = Enclave.fromBytes(libsodiumCrypto, testSeedBytes);
+  const [e, st] = Enclave.fromBytes(testSeedBytes);
   if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
   return e;
 }

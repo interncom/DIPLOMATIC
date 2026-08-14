@@ -134,13 +134,10 @@ export class IDBSeedStore implements ISeedStore {
   }
 
   async openPrfStore(
-    opts: Omit<PrfSeedStoreOpts, "crypto" | "persistMeta" | "meta"> & {
-      crypto?: ICrypto;
-    },
+    opts: Omit<PrfSeedStoreOpts, "persistMeta" | "meta">,
   ): Promise<PrfSeedStore> {
     const meta = await this.loadPrfMeta();
     return new PrfSeedStore({
-      crypto: opts.crypto ?? this.#crypto,
       rpId: opts.rpId,
       rpName: opts.rpName,
       meta,

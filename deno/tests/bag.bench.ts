@@ -11,7 +11,7 @@ import libsodiumCrypto from "../src/crypto.ts";
 // Setup crypto and host identity
 const crypto = libsodiumCrypto;
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
-const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seed);
+const [enclave, est] = Enclave.fromBytes(seed);
 if (est !== Status.Success || enclave === undefined) {
   throw new Error(`enclave ${est}`);
 }

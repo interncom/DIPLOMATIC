@@ -146,7 +146,7 @@ export function loadEnclaveOrPanic(envVar: string): Enclave {
   const seedHex = Deno.env.get(`${envVar}`);
   if (!seedHex) panic(`${envVar} env var missing`);
   const bytes = htob(seedHex);
-  const [enclave, st] = Enclave.fromBytes(crypto, bytes);
+  const [enclave, st] = Enclave.fromBytes(bytes);
   bytes.fill(0);
   if (st !== Status.Success || enclave === undefined) {
     panic(`${envVar} must be 64 hex chars (32-byte master seed)`);

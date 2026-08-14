@@ -22,7 +22,7 @@ WebAuthn `largeBlob` stores an **IdentityBundle** (seed + host rows) or a legacy
 
 Create requires `largeBlob.support = "required"`. Attachment is not defaulted — pass `cross-platform` for a security key. Platform authenticators generally do not implement largeBlob.
 
-App API: `Enclave.persistToLargeBlob` / `fromLargeBlob` / `clearLargeBlob`. Opaque non-seed I/O: `LargeBlob`. Probe: `LargeBlob.capable()`.
+App API: `Enclave.persistToLargeBlob` / `fromLargeBlob` / `clearLargeBlob`. Probe: `largeBlobCapable()`.
 
 ### Pair package
 

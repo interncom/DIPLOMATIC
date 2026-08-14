@@ -25,7 +25,7 @@ function seedOf(fill: number): MasterSeed {
 }
 
 function enclaveOf(fill: number): Enclave {
-  const [e, st] = Enclave.fromBytes(crypto, seedOf(fill));
+  const [e, st] = Enclave.fromBytes(seedOf(fill));
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclaveOf ${st}`);
   }
@@ -146,9 +146,7 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(sealed.sealedMaster.byteLength).toBe(72);
 
     stubPrfGet(3);
-    const [opened, ust] = await Enclave.unsealWithPasskey(
-      crypto,
-      sealed.sealedMaster,
+    const [opened, ust] = await Enclave.unsealWithPasskey(sealed.sealedMaster,
       {
         rpId: "localhost",
         salt: sealed.salt,
@@ -177,9 +175,7 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     if (sealed === undefined) return;
 
     stubPrfGet(3); // different PRF
-    const [, ust] = await Enclave.unsealWithPasskey(
-      crypto,
-      sealed.sealedMaster,
+    const [, ust] = await Enclave.unsealWithPasskey(sealed.sealedMaster,
       {
         rpId: "localhost",
         salt: sealed.salt,
@@ -201,7 +197,7 @@ describe("PairPackage", () => {
     const hosts = [
       { handle: "https://sync.interncom.org", label: "host", idx: 0 },
     ];
-    const [pairPkg, pst] = await PairPackage.seal(crypto, enc, hosts, {
+    const [pairPkg, pst] = await PairPackage.seal(enc, hosts, {
       rpId: "localhost",
       salt: DEFAULT_PRF_SALT,
       credId: new Uint8Array(16).fill(7),
@@ -212,7 +208,7 @@ describe("PairPackage", () => {
     expect(pairPkg.startsWith(PairPackage.PREFIX)).toBe(true);
 
     stubPrfGet(6);
-    const [opened, ost] = await PairPackage.open(crypto, pairPkg, {
+    const [opened, ost] = await PairPackage.open(pairPkg, {
       rpId: "localhost",
     });
     expect(ost).toBe(Status.Success);
@@ -224,9 +220,7 @@ describe("PairPackage", () => {
     expect(openId.publicKey).toEqual(origId.publicKey);
 
     stubPrfGet(6);
-    const [again, ust] = await Enclave.unsealWithPasskey(
-      crypto,
-      opened.sealedMaster,
+    const [again, ust] = await Enclave.unsealWithPasskey(opened.sealedMaster,
       {
         rpId: "localhost",
         salt: opened.salt,
@@ -243,7 +237,6 @@ describe("PairPackage", () => {
   it("fails with wrong PRF", async () => {
     stubPrfGet(2);
     const [pairPkg, pst] = await PairPackage.seal(
-      crypto,
       enclaveOf(1),
       [],
       {
@@ -257,7 +250,7 @@ describe("PairPackage", () => {
     if (pairPkg === undefined) return;
 
     stubPrfGet(9);
-    const [, ost] = await PairPackage.open(crypto, pairPkg, {
+    const [, ost] = await PairPackage.open(pairPkg, {
       rpId: "localhost",
     });
     expect(ost).toBe(Status.DecryptionError);

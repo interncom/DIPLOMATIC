@@ -11,7 +11,6 @@ import {
 import { Status } from "../shared/consts";
 import { Enclave, type PasskeyPrfOpts } from "../shared/crypto/enclave";
 import type { SealedMasterKey } from "../shared/seed";
-import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { BundleHost } from "../shared/codecs/bundleHost";
 import type { PrfRp } from "../shared/webauthn/prf";
@@ -46,7 +45,6 @@ export const PairPackage = {
    * Seal enclave seed + hosts: Enclave runs PRF UV, then AEAD → `dip1:` string.
    */
   async seal(
-    _crypto: ICrypto,
     enclave: Enclave,
     hosts: BundleHost[],
     opts?: PasskeyPrfOpts,
@@ -70,7 +68,6 @@ export const PairPackage = {
    * Open pair package: decode envelope, Enclave runs PRF UV + decrypt + enclave.
    */
   async open(
-    crypto: ICrypto,
     pairPkg: string,
     rp: PrfRp,
   ): Promise<ValStat<OpenedPairPackage>> {
@@ -91,7 +88,7 @@ export const PairPackage = {
     if (env === undefined) return err(Status.InvalidMessage);
     if (env.v !== PAIR_PACKAGE_VERSION) return err(Status.InvalidMessage);
 
-    const [opened, ost] = await Enclave.openPairPackageBody(crypto, env.body, {
+    const [opened, ost] = await Enclave.openPairPackageBody(env.body, {
       ...rp,
       salt: env.salt,
       credId: env.credId.byteLength > 0 ? env.credId : undefined,

@@ -71,7 +71,7 @@ const oldBytes = htob(oldHex);
 const newBytes = htob(newHex);
 
 console.error("Decrypting with old master key...");
-const [oldEnclave, oest] = Enclave.fromBytes(crypto, oldBytes);
+const [oldEnclave, oest] = Enclave.fromBytes(oldBytes);
 if (oest !== Status.Success || oldEnclave === undefined) throw new Error(`old enclave ${oest}`);
 const [msgs, statDec] = await decodeFile(input, crypto, oldEnclave);
 if (statDec !== Status.Success) {
@@ -81,7 +81,7 @@ if (statDec !== Status.Success) {
 console.error(`Decoded ${msgs.length} message(s).`);
 
 console.error("Re-encrypting with new master key...");
-const [newEnclave, nest] = Enclave.fromBytes(crypto, newBytes);
+const [newEnclave, nest] = Enclave.fromBytes(newBytes);
 if (nest !== Status.Success || newEnclave === undefined) throw new Error(`new enclave ${nest}`);
 const [outBytes, statEnc] = await encodeFile(
   "export",

@@ -3,7 +3,6 @@
 
 import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
-import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
 import { type LargeBlobRp } from "./largeBlob";
@@ -16,7 +15,6 @@ export {
 } from "./largeBlob";
 
 export type PasskeySeedStoreOpts = LargeBlobRp & {
-  crypto: ICrypto;
   credId?: Uint8Array;
 };
 
@@ -25,14 +23,12 @@ export type PasskeySeedStoreOpts = LargeBlobRp & {
  * Persist uses {@link Enclave.persistToLargeBlob} / {@link Enclave.fromLargeBlob}.
  */
 export class PasskeySeedStore implements ISeedStore {
-  #crypto: ICrypto;
   #enclave: Enclave | undefined;
   #credId: Uint8Array | undefined;
   #rpId: string | undefined;
   #rpName: string | undefined;
 
   constructor(opts: PasskeySeedStoreOpts) {
-    this.#crypto = opts.crypto;
     this.#rpId = opts.rpId;
     this.#rpName = opts.rpName;
     if (opts.credId !== undefined) {
@@ -74,7 +70,7 @@ export class PasskeySeedStore implements ISeedStore {
   async unlock(): Promise<ValStat<Enclave>> {
     const id = this.#credId;
     if (id === undefined) return err(Status.MissingSeed);
-    const [out, st] = await Enclave.fromLargeBlob(this.#crypto, {
+    const [out, st] = await Enclave.fromLargeBlob({
       rpId: this.#rpId,
       rpName: this.#rpName,
       credId: id,

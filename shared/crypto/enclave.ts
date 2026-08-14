@@ -41,6 +41,7 @@ import {
 } from "../seed.ts";
 import type { DerivationSeed, ICrypto, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
+import { NobleCrypto } from "./noble.ts";
 import {
   largeBlobCreateCred,
   type LargeBlobCreateOpts,
@@ -117,23 +118,24 @@ const SEAL_PAIR_DOMAIN = new TextEncoder().encode("diplomatic.pair.v1");
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
 
+// Bound at load — not an Enclave constructor argument (no caller ICrypto).
+const noble = new NobleCrypto();
+
 export class Enclave {
   #seed: MasterSeed;
-  #crypto: ICrypto;
 
-  private constructor(seed: MasterSeed, crypto: ICrypto) {
+  private constructor(seed: MasterSeed) {
     this.#seed = seed;
-    this.#crypto = crypto;
   }
 
   /** New enclave with a fresh 32-byte master seed. */
-  static async fromRandom(crypto: ICrypto): Promise<Enclave> {
-    const bytes = await crypto.gen256BitSecureRandomSeed();
+  static async fromRandom(): Promise<Enclave> {
+    const bytes = await noble.gen256BitSecureRandomSeed();
     const [seed, st] = asMasterSeed(bytes);
     if (st !== Status.Success || seed === undefined) {
       throw new Error(`enclave: invalid random seed (${st})`);
     }
-    return new Enclave(seed, crypto);
+    return new Enclave(seed);
   }
 
   /**
@@ -141,14 +143,14 @@ export class Enclave {
    * Copies the seed so callers may zero their buffer after success.
    * Prefer {@link fromRandom} or {@link unsealWithPasskey} for normal flows.
    */
-  static fromBytes(crypto: ICrypto, bytes: Uint8Array): ValStat<Enclave> {
+  static fromBytes(bytes: Uint8Array): ValStat<Enclave> {
     const [seed, st] = asMasterSeed(bytes);
     if (st !== Status.Success) return err(st);
     if (seed === undefined) return err(Status.InvalidParam);
     const [owned, ost] = asMasterSeed(seed.slice());
     if (ost !== Status.Success) return err(ost);
     if (owned === undefined) return err(Status.InvalidParam);
-    return ok(new Enclave(owned, crypto));
+    return ok(new Enclave(owned));
   }
 
   /**
@@ -206,7 +208,6 @@ export class Enclave {
    * Returns the credential id used so stores can persist it (skip picker next time).
    */
   static async unsealWithPasskey(
-    crypto: ICrypto,
     sealedMaster: SealedMasterKey,
     opts: PasskeyPrfOpts & { salt: Uint8Array },
   ): Promise<ValStat<{ enclave: Enclave; credId: Uint8Array }>> {
@@ -220,7 +221,6 @@ export class Enclave {
     if (ev === undefined) return err(Status.MissingBody);
     try {
       const [enclave, ust] = await Enclave.#unsealUnderPrf(
-        crypto,
         sealedMaster,
         ev.prf,
       );
@@ -273,7 +273,6 @@ export class Enclave {
    * Returns the credential id used (useful after discover).
    */
   static async fromLargeBlob(
-    crypto: ICrypto,
     opts?: LargeBlobRp & { credId?: Uint8Array },
   ): Promise<
     ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }>
@@ -283,7 +282,6 @@ export class Enclave {
     if (raw === undefined) return err(Status.MissingBody);
     try {
       return Enclave.#enclaveFromLargeBlobPayload(
-        crypto,
         raw.blob,
         raw.credId,
       );
@@ -322,7 +320,7 @@ export class Enclave {
 
     try {
       const [key, kst] = await sealKeyFromPrf(
-        this.#crypto,
+        noble,
         ev.prf,
         SEAL_PAIR_DOMAIN,
       );
@@ -354,7 +352,7 @@ export class Enclave {
 
         let body: Uint8Array;
         try {
-          body = await this.#crypto.encryptXSalsa20Poly1305Combined(
+          body = await noble.encryptXSalsa20Poly1305Combined(
             plainBytes,
             key,
           );
@@ -382,7 +380,6 @@ export class Enclave {
    * Also seals master under the same PRF for durable IDB (single ceremony).
    */
   static async openPairPackageBody(
-    crypto: ICrypto,
     body: Uint8Array,
     opts: PasskeyPrfOpts & { salt: Uint8Array },
   ): Promise<
@@ -404,7 +401,7 @@ export class Enclave {
 
     try {
       const [key, kst] = await sealKeyFromPrf(
-        crypto,
+        noble,
         ev.prf,
         SEAL_PAIR_DOMAIN,
       );
@@ -415,7 +412,7 @@ export class Enclave {
       try {
         let plain: Uint8Array;
         try {
-          plain = await crypto.decryptXSalsa20Poly1305Combined(body, key);
+          plain = await noble.decryptXSalsa20Poly1305Combined(body, key);
         } catch {
           return err(Status.DecryptionError);
         }
@@ -426,7 +423,7 @@ export class Enclave {
         if (is !== Status.Success) return err(is);
         if (inner === undefined) return err(Status.InvalidMessage);
 
-        const [enclave, ens] = Enclave.fromBytes(crypto, inner.masterSeed);
+        const [enclave, ens] = Enclave.fromBytes(inner.masterSeed);
         inner.masterSeed.fill(0);
         if (ens !== Status.Success) return err(ens);
         if (enclave === undefined) return err(Status.InternalError);
@@ -514,11 +511,11 @@ export class Enclave {
 
   /** AEAD-seal master under KDF(PRF). PRF must stay inside Enclave methods. */
   async #sealUnderPrf(prf: Uint8Array): Promise<ValStat<SealedMasterKey>> {
-    const [key, kst] = await sealKeyFromPrf(this.#crypto, prf);
+    const [key, kst] = await sealKeyFromPrf(noble, prf);
     if (kst !== Status.Success) return err(kst);
     if (key === undefined) return err(Status.InternalError);
     try {
-      const sealed = await this.#crypto.encryptXSalsa20Poly1305Combined(
+      const sealed = await noble.encryptXSalsa20Poly1305Combined(
         this.#seed,
         key,
       );
@@ -532,24 +529,23 @@ export class Enclave {
   }
 
   static async #unsealUnderPrf(
-    crypto: ICrypto,
     sealed: SealedMasterKey,
     prf: Uint8Array,
   ): Promise<ValStat<Enclave>> {
     const [, sst] = asSealedMasterKey(sealed);
     if (sst !== Status.Success) return err(sst);
-    const [key, kst] = await sealKeyFromPrf(crypto, prf);
+    const [key, kst] = await sealKeyFromPrf(noble, prf);
     if (kst !== Status.Success) return err(kst);
     if (key === undefined) return err(Status.InternalError);
     let plain: Uint8Array | undefined;
     try {
       try {
-        plain = await crypto.decryptXSalsa20Poly1305Combined(sealed, key);
+        plain = await noble.decryptXSalsa20Poly1305Combined(sealed, key);
       } catch {
         return err(Status.DecryptionError);
       }
       // fromBytes copies; wipe the decrypt buffer so two seed copies do not remain.
-      return Enclave.fromBytes(crypto, plain);
+      return Enclave.fromBytes(plain);
     } finally {
       key.fill(0);
       plain?.fill(0);
@@ -583,7 +579,6 @@ export class Enclave {
    * Private: absorb largeBlob payload (legacy 32-byte seed or IdentityBundle).
    */
   static #enclaveFromLargeBlobPayload(
-    crypto: ICrypto,
     seedBytes: Uint8Array,
     credId: Uint8Array,
   ): ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }> {
@@ -593,7 +588,7 @@ export class Enclave {
     // Legacy format: bare master seed.
     if (seedBytes.byteLength === MASTER_SEED_LEN) {
       if (seedBytes.every((b) => b === 0)) return err(Status.MissingSeed);
-      const [enclave, est] = Enclave.fromBytes(crypto, seedBytes);
+      const [enclave, est] = Enclave.fromBytes(seedBytes);
       if (est !== Status.Success) return err(est);
       if (enclave === undefined) return err(Status.InternalError);
       return ok({ enclave, hosts: [], credId });
@@ -607,7 +602,7 @@ export class Enclave {
       if (bundle.masterSeed.every((b) => b === 0)) {
         return err(Status.MissingSeed);
       }
-      const [enclave, est] = Enclave.fromBytes(crypto, bundle.masterSeed);
+      const [enclave, est] = Enclave.fromBytes(bundle.masterSeed);
       if (est !== Status.Success) return err(est);
       if (enclave === undefined) return err(Status.InternalError);
       return ok({
@@ -623,7 +618,7 @@ export class Enclave {
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
     const key = await this.#keyFromKDM(kdm);
     try {
-      return await this.#crypto.encryptXSalsa20Poly1305Combined(data, key);
+      return await noble.encryptXSalsa20Poly1305Combined(data, key);
     } finally {
       key.fill(0);
     }
@@ -632,14 +627,14 @@ export class Enclave {
   async #decrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
     const key = await this.#keyFromKDM(kdm);
     try {
-      return await this.#crypto.decryptXSalsa20Poly1305Combined(data, key);
+      return await noble.decryptXSalsa20Poly1305Combined(data, key);
     } finally {
       key.fill(0);
     }
   }
 
   async #keyFromKDM(kdm: Uint8Array): Promise<Uint8Array> {
-    return this.#crypto.blake3(concat(this.#seed, kdm));
+    return noble.blake3(concat(this.#seed, kdm));
   }
 
   async #deriveSeed(keyPath: string, idx: number): Promise<DerivationSeed> {
@@ -653,7 +648,7 @@ export class Enclave {
   async #deriveSubkeys(keyPath: string, idx: number): Promise<KeyPair> {
     const seed = await this.#deriveSeed(keyPath, idx);
     try {
-      return await this.#crypto.deriveEd25519KeyPair(seed);
+      return await noble.deriveEd25519KeyPair(seed);
     } finally {
       // Pair already holds seed‖pub; this 32-byte deriv must not linger.
       seed.fill(0);
@@ -667,7 +662,7 @@ export class Enclave {
   ): Promise<Uint8Array> {
     const keys = await this.#deriveSubkeys(keyPath, idx);
     try {
-      return await this.#crypto.signEd25519(message, keys.privateKey);
+      return await noble.signEd25519(message, keys.privateKey);
     } finally {
       // Re-derived per sign so the caller never holds a long-lived priv.
       keys.privateKey.fill(0);
@@ -684,7 +679,7 @@ export class Enclave {
     // concat copied priv; wipe the source first so only kdmSource remains.
     keys.privateKey.fill(0);
     try {
-      const kdmHash = await this.#crypto.blake3(kdmSource);
+      const kdmHash = await noble.blake3(kdmSource);
       return kdmHash.slice(0, kdmBytes);
     } finally {
       kdmSource.fill(0);

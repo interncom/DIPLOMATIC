@@ -55,7 +55,7 @@ const defaultClientDownDb = join(
 
 const SEED_BYTES = new Uint8Array(32).fill(0x42);
 function SEED(): Enclave {
-  const [e, st] = Enclave.fromBytes(libsodiumCrypto, SEED_BYTES);
+  const [e, st] = Enclave.fromBytes(SEED_BYTES);
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclave ${st}`);
   }

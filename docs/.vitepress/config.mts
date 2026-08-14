@@ -36,6 +36,7 @@ export default withMermaid({
           { text: 'EntDB', link: '/docs/arch/entdb' },
           { text: 'Sync', link: '/docs/arch/sync' },
           { text: 'Authentication', link: '/docs/arch/auth' },
+          { text: 'Key Management', link: '/docs/arch/keys' },
         ],
         collapsed: false,
       },

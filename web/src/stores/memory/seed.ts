@@ -9,7 +9,7 @@ import {
 } from "../identityPin";
 
 export class MemorySeedStore implements ISeedStore {
-  enclave?: Enclave;
+  #enclave?: Enclave;
   #crypto: ICrypto;
   #pin?: IdPin;
 
@@ -28,16 +28,16 @@ export class MemorySeedStore implements ISeedStore {
     } else {
       this.#pin = await makeIdPin(this.#crypto, enclave);
     }
-    this.enclave = enclave;
-    return this.enclave;
+    this.#enclave = enclave;
+    return this.#enclave;
   }
 
   async load() {
-    return this.enclave;
+    return this.#enclave;
   }
 
   async wipe() {
-    this.enclave = undefined;
+    this.#enclave = undefined;
     this.#pin = undefined;
   }
 

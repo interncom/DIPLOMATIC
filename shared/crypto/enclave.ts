@@ -622,12 +622,20 @@ export class Enclave {
 
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
     const key = await this.#keyFromKDM(kdm);
-    return this.#crypto.encryptXSalsa20Poly1305Combined(data, key);
+    try {
+      return await this.#crypto.encryptXSalsa20Poly1305Combined(data, key);
+    } finally {
+      key.fill(0);
+    }
   }
 
   async #decrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
     const key = await this.#keyFromKDM(kdm);
-    return this.#crypto.decryptXSalsa20Poly1305Combined(data, key);
+    try {
+      return await this.#crypto.decryptXSalsa20Poly1305Combined(data, key);
+    } finally {
+      key.fill(0);
+    }
   }
 
   async #keyFromKDM(kdm: Uint8Array): Promise<Uint8Array> {

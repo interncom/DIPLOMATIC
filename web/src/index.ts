@@ -70,7 +70,7 @@ import {
   ITransport,
   IUpdateParams,
 } from "./shared/types";
-import { Enclave, sealKeyFromPrf } from "./shared/crypto/enclave";
+import { Enclave } from "./shared/crypto/enclave";
 import { nullStateManager, StateManager } from "./state";
 import { IDBSeedStore } from "./stores/idb/seed";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -117,10 +117,8 @@ import type { LargeBlobCreateOpts, LargeBlobRp } from "./passkey/seed";
 import {
   createPrfCred,
   DEFAULT_PRF_SALT,
-  evalPrf,
   prfCapable,
   type PrfCreateOpts,
-  type PrfEvalResult,
   type PrfRp,
 } from "./shared/webauthn/prf";
 import { PrfSeedStore } from "./passkey/prf-store";
@@ -226,7 +224,6 @@ export {
   EntitiesQuery,
   EntityID,
   entStateManager,
-  evalPrf,
   genSingletonEID,
   GroupID,
   hostHTTPTransport,
@@ -265,7 +262,6 @@ export {
   revFromEntity,
   revFromHead,
   SEALED_MASTER_KEY_LEN,
-  sealKeyFromPrf,
   setApld,
   shouldEmitItemProgress,
   SingletonStateManager,
@@ -323,7 +319,6 @@ export type {
   PasskeySeedStoreOpts,
   PersistPrfSeedMeta,
   PrfCreateOpts,
-  PrfEvalResult,
   PrfRp,
   PrfSeedMeta,
   PrfSeedStoreOpts,

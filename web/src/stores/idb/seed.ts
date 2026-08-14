@@ -1,6 +1,5 @@
 // Protocol IDB seed meta: session Enclave (memory) + sealed durable meta.
-// Never stores raw master seed / plain hex. Legacy "seed" hex rows are absorbed
-// once into an Enclave on load, then deleted (migration).
+// Never stores raw master seed.
 //
 // Durable forms today: PRF-sealed master (K_PRF_META via openPrfStore).
 // Identity pin (K_ID_PIN): nonce + blake3(nonce ‖ pinPub) so setSeed / largeBlob
@@ -13,7 +12,6 @@ import { Enclave } from "../../shared/crypto/enclave";
 import { Status } from "../../shared/consts";
 import { asSealedMasterKey } from "../../shared/seed";
 import type { ICrypto } from "../../shared/types";
-import { htob } from "../../shared/binary";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
   type PrfSeedMeta,
@@ -29,8 +27,6 @@ import {
 } from "../identityPin";
 import { SEED_META_TABLE } from "./store";
 
-/** @deprecated legacy plain-hex key — read once for migration, never written. */
-const K_SEED_HEX = "seed";
 const K_PRF_META = "prfMeta";
 /** Nonce + hash pin — see {@link IdPin}. */
 const K_ID_PIN = "idPin";
@@ -44,7 +40,7 @@ type StoredPrfMeta = {
 };
 
 export class IDBSeedStore implements ISeedStore {
-  enclave?: Enclave;
+  #enclave?: Enclave;
   db: IDBDatabase;
   #crypto: ICrypto;
 
@@ -57,7 +53,7 @@ export class IDBSeedStore implements ISeedStore {
    * Hold enclave in memory only. Durable identity is sealed meta
    * ({@link openPrfStore} / {@link persistPrfMeta}), never plain seed.
    * Pins identity (nonce+hash) on first save; later saves must match
-   * (largeBlob / hex / PRF unlock cannot switch masters under this DB).
+   * (largeBlob / PRF unlock cannot switch masters under this DB).
    * `opts.persist` is ignored (kept for API compatibility).
    *
    * TODO(passphrase): when PRF is missing, `persist: true` (or a dedicated
@@ -66,47 +62,29 @@ export class IDBSeedStore implements ISeedStore {
    */
   async save(enclave: Enclave, _opts?: SetSeedOpts) {
     await this.#assertAndPinIdentity(enclave);
-    this.enclave = enclave;
-    return this.enclave;
+    this.#enclave = enclave;
+    return this.#enclave;
   }
 
   async load() {
-    if (this.enclave) {
-      return this.enclave;
-    }
-    // One-time migration: absorb legacy plain-hex row into enclave, then scrub.
-    const hex = await this.#loadLegacyHex();
-    if (hex === undefined || hex === "") {
-      return undefined;
-    }
-    const bytes = htob(hex);
-    const [enclave, st] = Enclave.fromBytes(this.#crypto, bytes);
-    bytes.fill(0);
-    await this.#deleteLegacyHex();
-    if (st !== Status.Success || enclave === undefined) {
-      return undefined;
-    }
-    this.enclave = enclave;
-    return this.enclave;
+    return this.#enclave;
   }
 
   /**
-   * Drop in-memory enclave and any leftover legacy hex. Keeps {@link K_PRF_META}
-   * and {@link K_ID_PIN} so unlock / largeBlob restore still match this device.
+   * Drop in-memory enclave. Keeps {@link K_PRF_META} and {@link K_ID_PIN}
+   * so unlock / largeBlob restore still match this device.
    */
   async clearSession() {
-    this.enclave = undefined;
-    await this.#deleteLegacyHex();
+    this.#enclave = undefined;
   }
 
   async wipe() {
-    this.enclave = undefined;
+    this.#enclave = undefined;
     const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-      store.delete(K_SEED_HEX);
       store.delete(K_PRF_META);
       store.delete(K_ID_PIN);
       store.delete(K_ID_PUB_LEGACY);
@@ -167,29 +145,6 @@ export class IDBSeedStore implements ISeedStore {
       rpName: opts.rpName,
       meta,
       persistMeta: (m) => this.persistPrfMeta(m),
-    });
-  }
-
-  #loadLegacyHex(): Promise<string | undefined> {
-    const tx = this.db.transaction(SEED_META_TABLE, "readonly");
-    const store = tx.objectStore(SEED_META_TABLE);
-    return new Promise((resolve, reject) => {
-      const req = store.get(K_SEED_HEX);
-      req.onsuccess = () => {
-        const v = req.result;
-        resolve(typeof v === "string" && v.length > 0 ? v : undefined);
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  #deleteLegacyHex(): Promise<void> {
-    const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
-    const store = tx.objectStore(SEED_META_TABLE);
-    return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      store.delete(K_SEED_HEX);
     });
   }
 

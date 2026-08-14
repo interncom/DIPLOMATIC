@@ -6,6 +6,7 @@
 //   dirty/wiped signals so main re-reads shared IDB (no bulk msg transfer).
 //
 // No worker until setSeed → Enclave.spawnSyncWorker (only spawn path).
+// Session hasSeed/hasHost are the main store; the worker only reports connected.
 
 import { SyncClient } from "../client";
 import { Debounced, defaultSyncDebounceMs } from "../coalesce";
@@ -45,7 +46,6 @@ import type {
   WipeOpts,
 } from "../types";
 import {
-  clientStateFromUnknown,
   isWorkerEvent,
   SerializedHost,
   statusFromUnknown,
@@ -228,13 +228,7 @@ export class WorkerClient implements IClient<URL> {
    * `connected` stays false until the worker reports otherwise.
    */
   private async hydrateStateFromStore(store: IStore<URL>): Promise<void> {
-    const enclave = await store.seed.load();
-    const hosts = await store.hosts.list();
-    this.cachedClientState = {
-      hasSeed: enclave !== undefined,
-      hasHost: Array.from(hosts).length > 0,
-      connected: false,
-    };
+    await this.loadSession(false);
     const numUploads = await store.uploads.count();
     const numDownloads = await store.downloads.count();
     this.cachedXferState = {
@@ -244,18 +238,19 @@ export class WorkerClient implements IClient<URL> {
     };
   }
 
-  /**
-   * Request current client/xfer state from the worker (after setSeed).
-   */
-  private async pullRemoteState(): Promise<void> {
-    const clientRaw = await this.request({
-      id: this.allocId(),
-      op: "getClientState",
-    });
-    const clientState = clientStateFromUnknown(clientRaw);
-    if (clientState !== undefined) {
-      this.cachedClientState = clientState;
-    }
+  /** Seed + host from the local store. Worker never owns these. */
+  private async loadSession(connected: boolean): Promise<void> {
+    const enclave = await this.store.seed.load();
+    const hosts = await this.store.hosts.list();
+    this.cachedClientState = {
+      hasSeed: enclave !== undefined,
+      hasHost: Array.from(hosts).length > 0,
+      connected,
+    };
+  }
+
+  /** Queue depths + progress from the worker (after setSeed). */
+  private async pullRemoteXfer(): Promise<void> {
     const xferRaw = await this.request({
       id: this.allocId(),
       op: "getXferState",
@@ -314,7 +309,13 @@ export class WorkerClient implements IClient<URL> {
         return;
       }
       case "clientState": {
-        this.cachedClientState = msg.state;
+        if (this.cachedClientState.connected === msg.connected) {
+          return;
+        }
+        this.cachedClientState = {
+          ...this.cachedClientState,
+          connected: msg.connected,
+        };
         this.clientState.emit();
         return;
       }
@@ -409,10 +410,8 @@ export class WorkerClient implements IClient<URL> {
   async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void> {
     // Shared IDB (if persist); worker gets seed only via Enclave factory.
     await this.local.setSeed(enclave, opts);
-    this.cachedClientState = {
-      ...this.cachedClientState,
-      hasSeed: true,
-    };
+    // New worker is not connected; hasSeed/hasHost come from the local store.
+    await this.loadSession(false);
     this.clientState.emit();
 
     const id = this.allocId();
@@ -447,11 +446,10 @@ export class WorkerClient implements IClient<URL> {
         reject(e instanceof Error ? e : new Error(String(e)));
       }
     });
-    // Authoritative worker state after seed install.
     try {
-      await this.pullRemoteState();
+      await this.pullRemoteXfer();
     } catch {
-      // Offline / mock workers may not implement get*; store hydrate is enough.
+      // Offline / mock workers may not implement getXferState.
     }
   }
 
@@ -461,6 +459,8 @@ export class WorkerClient implements IClient<URL> {
   ): Promise<void> {
     // Hosts live in shared IDB; worker owns network registration.
     await this.local.link(host, false);
+    await this.loadSession(this.cachedClientState.connected);
+    this.clientState.emit();
     await this.request({
       id: this.allocId(),
       op: "link",
@@ -471,6 +471,8 @@ export class WorkerClient implements IClient<URL> {
 
   async unlink(label: string): Promise<void> {
     await this.local.unlink(label);
+    await this.loadSession(this.cachedClientState.connected);
+    this.clientState.emit();
     if (!this.worker) return;
     await this.request({ id: this.allocId(), op: "unlink", label });
   }

@@ -23,15 +23,8 @@ function mockWorker(): Worker {
   } as unknown as Worker;
 }
 
-/** Worker that acks RPC (setSeed, getClientState, …). */
-function mockWorkerRpcOnly(opts?: {
-  hasSeed?: boolean;
-  hasHost?: boolean;
-  connected?: boolean;
-}): Worker {
-  const hasSeed = opts?.hasSeed ?? false;
-  const hasHost = opts?.hasHost ?? false;
-  const connected = opts?.connected ?? false;
+/** Worker that acks RPC (setSeed, getXferState, …). */
+function mockWorkerRpcOnly(): Worker {
   const w: {
     postMessage: (data: unknown) => void;
     terminate: ReturnType<typeof vi.fn>;
@@ -62,17 +55,6 @@ function mockWorkerRpcOnly(opts?: {
         if (op === "ping") {
           handler({
             data: { kind: "reply", id, ok: true, result: "pong" },
-          } as MessageEvent<unknown>);
-          return;
-        }
-        if (op === "getClientState") {
-          handler({
-            data: {
-              kind: "reply",
-              id,
-              ok: true,
-              result: { hasSeed, hasHost, connected },
-            },
           } as MessageEvent<unknown>);
           return;
         }
@@ -209,9 +191,9 @@ describe("WorkerClient open / setSeed", () => {
     }
   });
 
-  test("setSeed binds Enclave-spawned worker and hydrates remote state", async () => {
+  test("setSeed binds Enclave-spawned worker; seed/host stay local", async () => {
     const store = new MemoryStore(crypto);
-    const w = mockWorkerRpcOnly({ hasSeed: true, hasHost: true });
+    const w = mockWorkerRpcOnly();
     vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
       (opts) => {
         queueMicrotask(() => {
@@ -234,11 +216,69 @@ describe("WorkerClient open / setSeed", () => {
     });
     try {
       await client.setSeed(enclaveOrThrow());
-      const state = await client.clientState.get();
+      let state = await client.clientState.get();
       expect(state.hasSeed).toBe(true);
+      expect(state.hasHost).toBe(false);
+      expect(state.connected).toBe(false);
+      await client.link({
+        handle: new URL("http://localhost"),
+        label: "host",
+        idx: 0,
+      }, false);
+      state = await client.clientState.get();
       expect(state.hasHost).toBe(true);
+      expect(state.hasSeed).toBe(true);
       await client.ping();
     } finally {
+      client.terminate();
+    }
+  });
+
+  test("worker connected events do not clear hasSeed", async () => {
+    const store = new MemoryStore(crypto);
+    const w = mockWorkerRpcOnly();
+    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
+      (opts) => {
+        queueMicrotask(() => {
+          const handler = w.onmessage;
+          if (!handler) return;
+          handler({
+            data: { kind: "clientState", connected: false },
+          } as MessageEvent<unknown>);
+          handler({
+            data: {
+              kind: "reply",
+              id: opts.id,
+              ok: true,
+              result: undefined,
+            },
+          } as MessageEvent<unknown>);
+        });
+        return w;
+      },
+    );
+    const client = await WorkerClient.open(nullStateManager, store, {
+      syncDebounceMs: 0,
+    });
+    const seen: boolean[] = [];
+    const stop = client.clientState.listen((s) => {
+      seen.push(s.hasSeed);
+    });
+    try {
+      await client.setSeed(enclaveOrThrow());
+      const handler = w.onmessage;
+      if (handler) {
+        handler({
+          data: { kind: "clientState", connected: true },
+        } as MessageEvent<unknown>);
+      }
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((v) => v === true)).toBe(true);
+      const state = await client.clientState.get();
+      expect(state.hasSeed).toBe(true);
+      expect(state.connected).toBe(true);
+    } finally {
+      stop();
       client.terminate();
     }
   });

@@ -24,6 +24,7 @@ export interface IMsgParts {
   body?: EncodedMessage;
 }
 
+/** Seed/host from the local store; `connected` from the sync worker (if any). */
 export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;

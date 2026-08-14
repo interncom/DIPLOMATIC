@@ -3,10 +3,7 @@
 
 import type { Status } from "../shared/consts";
 import type { SyncProgressEvent } from "../progress";
-import type {
-  IDiplomaticClientState,
-  IDiplomaticClientXferState,
-} from "../types";
+import type { IDiplomaticClientXferState } from "../types";
 
 /** Host identity as plain data (URL → string for structured clone). */
 export interface SerializedHost {
@@ -54,7 +51,6 @@ export type WorkerCmd =
   }
   | { id: number; op: "import"; bytes: Uint8Array }
   | { id: number; op: "export" }
-  | { id: number; op: "getClientState" }
   | { id: number; op: "getXferState" };
 
 export type WorkerReply =
@@ -65,7 +61,8 @@ export type WorkerEvent =
   | { kind: "ready" }
   /** Worker init failed (e.g. IDB open); main should fail handshake, not hang. */
   | { kind: "initError"; message: string }
-  | { kind: "clientState"; state: IDiplomaticClientState }
+  /** Socket state only. Seed/host stay on the main-thread store. */
+  | { kind: "clientState"; connected: boolean }
   /** Queues + sync phase progress (see IDiplomaticClientXferState.progress). */
   | { kind: "xferState"; state: IDiplomaticClientXferState }
   /**
@@ -102,31 +99,6 @@ export function statusFromUnknown(v: unknown): Status | undefined {
     return undefined;
   }
   return v;
-}
-
-export function clientStateFromUnknown(
-  v: unknown,
-): IDiplomaticClientState | undefined {
-  if (!v || typeof v !== "object") {
-    return undefined;
-  }
-  if (
-    !("hasSeed" in v) || !("hasHost" in v) || !("connected" in v)
-  ) {
-    return undefined;
-  }
-  if (
-    typeof v.hasSeed !== "boolean" ||
-    typeof v.hasHost !== "boolean" ||
-    typeof v.connected !== "boolean"
-  ) {
-    return undefined;
-  }
-  return {
-    hasSeed: v.hasSeed,
-    hasHost: v.hasHost,
-    connected: v.connected,
-  };
 }
 
 export function progressFromUnknown(

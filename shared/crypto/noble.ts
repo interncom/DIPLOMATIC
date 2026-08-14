@@ -59,7 +59,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  */
 export class NobleCrypto implements ICrypto {
   private verifyKeys = new Map<string, CryptoKey>();
-  private signKeys = new Map<string, CryptoKey>();
 
   async genRandomBytes(bytes: number): Promise<Uint8Array> {
     return randomBytes(bytes);
@@ -92,22 +91,34 @@ export class NobleCrypto implements ICrypto {
 
   async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
     const seed = derivationSeed; // 32-byte seed
-    // Extractable import so we can export the public key (JWK x / raw).
+    // Extractable CryptoKey only to read JWK x. Never cache it — that was a
+    // process-wide copy of the signing key, often keyed by hex(seed).
     const pkcs8 = ed25519Pkcs8FromSeed(seed);
-    const priv = await globalThis.crypto.subtle.importKey(
-      "pkcs8",
-      toArrayBuffer(pkcs8),
-      { name: "Ed25519" },
-      true,
-      ["sign"],
-    );
-    const jwk = await globalThis.crypto.subtle.exportKey("jwk", priv);
+    const pkcs8Ab = toArrayBuffer(pkcs8);
+    let jwk: JsonWebKey;
+    try {
+      const priv = await globalThis.crypto.subtle.importKey(
+        "pkcs8",
+        pkcs8Ab,
+        { name: "Ed25519" },
+        true,
+        ["sign"],
+      );
+      jwk = await globalThis.crypto.subtle.exportKey("jwk", priv);
+    } finally {
+      // PKCS#8 is seed in a wrapper; wipe both views (toArrayBuffer copies).
+      pkcs8.fill(0);
+      new Uint8Array(pkcs8Ab).fill(0);
+    }
     if (typeof jwk.x !== "string") {
       throw new Error("Ed25519 JWK missing x");
     }
+    const x = jwk.x;
+    // Drop d so we do not keep a handle to the private scalar (string still GC).
+    jwk.d = undefined;
     const pubCryptoKey = await globalThis.crypto.subtle.importKey(
       "jwk",
-      { kty: "OKP", crv: "Ed25519", x: jwk.x },
+      { kty: "OKP", crv: "Ed25519", x },
       { name: "Ed25519" },
       true,
       ["verify"],
@@ -115,13 +126,11 @@ export class NobleCrypto implements ICrypto {
     const publicKey = new Uint8Array(
       await globalThis.crypto.subtle.exportKey("raw", pubCryptoKey),
     );
+    this.verifyKeys.set(btoh(publicKey), pubCryptoKey);
     // Libsodium format: privateKey = seed + publicKey (64 bytes total)
     const privateKey = new Uint8Array(64);
     privateKey.set(seed, 0);
     privateKey.set(publicKey, 32);
-    // Cache for sign/verify (extractable keys are fine for our use).
-    this.signKeys.set(btoh(seed), priv);
-    this.verifyKeys.set(btoh(publicKey), pubCryptoKey);
     return {
       keyType: "ed25519",
       privateKey: privateKey as PrivateKey,
@@ -131,20 +140,22 @@ export class NobleCrypto implements ICrypto {
 
   private async importSignKey(secKey: Uint8Array): Promise<CryptoKey> {
     // Libsodium-format secret key: first 32 bytes are the seed.
+    // Non-extractable, not cached: no hex-seed Map and no exportable CryptoKey.
     const seed = secKey.subarray(0, 32);
-    const cacheKey = btoh(seed);
-    const cached = this.signKeys.get(cacheKey);
-    if (cached) return cached;
     const pkcs8 = ed25519Pkcs8FromSeed(seed);
-    const key = await globalThis.crypto.subtle.importKey(
-      "pkcs8",
-      toArrayBuffer(pkcs8),
-      { name: "Ed25519" },
-      false,
-      ["sign"],
-    );
-    this.signKeys.set(cacheKey, key);
-    return key;
+    const pkcs8Ab = toArrayBuffer(pkcs8);
+    try {
+      return await globalThis.crypto.subtle.importKey(
+        "pkcs8",
+        pkcs8Ab,
+        { name: "Ed25519" },
+        false,
+        ["sign"],
+      );
+    } finally {
+      pkcs8.fill(0);
+      new Uint8Array(pkcs8Ab).fill(0);
+    }
   }
 
   private async importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {

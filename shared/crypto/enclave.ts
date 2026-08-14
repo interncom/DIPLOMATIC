@@ -108,7 +108,8 @@ export type Identity = {
   kdmFor: (msgHeadEnc: Uint8Array) => Promise<Uint8Array>;
 };
 
-const SEAL_DOMAIN = new TextEncoder().encode("diplomatic.wrap.v1");
+const SEAL_WRAP_DOMAIN = new TextEncoder().encode("diplomatic.wrap.v1");
+const SEAL_PAIR_DOMAIN = new TextEncoder().encode("diplomatic.pair.v1");
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
 
@@ -315,7 +316,11 @@ export class Enclave {
     if (ev === undefined) return err(Status.MissingBody);
 
     try {
-      const [key, kst] = await sealKeyFromPrf(this.#crypto, ev.prf);
+      const [key, kst] = await sealKeyFromPrf(
+        this.#crypto,
+        ev.prf,
+        SEAL_PAIR_DOMAIN,
+      );
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
 
@@ -387,7 +392,11 @@ export class Enclave {
     if (ev === undefined) return err(Status.MissingBody);
 
     try {
-      const [key, kst] = await sealKeyFromPrf(crypto, ev.prf);
+      const [key, kst] = await sealKeyFromPrf(
+        crypto,
+        ev.prf,
+        SEAL_PAIR_DOMAIN,
+      );
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
 
@@ -633,10 +642,17 @@ export class Enclave {
 export async function sealKeyFromPrf(
   crypto: ICrypto,
   prf: Uint8Array,
+  domain: Uint8Array = SEAL_WRAP_DOMAIN,
 ): Promise<ValStat<Uint8Array>> {
   if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
-  const hash = await crypto.blake3(concat(prf, SEAL_DOMAIN));
+  const hash = await crypto.blake3(concat(prf, domain));
   return ok(hash.slice(0, SEAL_KEY_LEN));
 }
 
-export { MASTER_SEED_LEN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN };
+export {
+  MASTER_SEED_LEN,
+  SEAL_KEY_LEN,
+  SEAL_PAIR_DOMAIN,
+  SEAL_PRF_MIN_LEN,
+  SEAL_WRAP_DOMAIN,
+};

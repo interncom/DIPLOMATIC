@@ -6,7 +6,11 @@ import {
   identityBundleCodec,
 } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
-import { Enclave } from "../src/shared/crypto/enclave";
+import {
+  Enclave,
+  sealKeyFromPrf,
+  SEAL_PAIR_DOMAIN,
+} from "../src/shared/crypto/enclave";
 import { PairPackage } from "../src/identity/pairPackage";
 import crypto from "../src/crypto";
 import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
@@ -257,5 +261,29 @@ describe("PairPackage", () => {
       rpId: "localhost",
     });
     expect(ost).toBe(Status.DecryptionError);
+  });
+});
+
+describe("sealKeyFromPrf domains", () => {
+  it("wrap and pair KEKs differ; wrap cannot open pair ciphertext", async () => {
+    const prf = new Uint8Array(32).fill(3);
+    const [wrapKey, wst] = await sealKeyFromPrf(crypto, prf);
+    const [pairKey, pst] = await sealKeyFromPrf(crypto, prf, SEAL_PAIR_DOMAIN);
+    expect(wst).toBe(Status.Success);
+    expect(pst).toBe(Status.Success);
+    expect(wrapKey).toBeDefined();
+    expect(pairKey).toBeDefined();
+    if (wrapKey === undefined || pairKey === undefined) return;
+    expect(wrapKey).not.toEqual(pairKey);
+
+    const body = await crypto.encryptXSalsa20Poly1305Combined(
+      new Uint8Array([1, 2, 3, 4]),
+      pairKey,
+    );
+    await expect(
+      crypto.decryptXSalsa20Poly1305Combined(body, wrapKey),
+    ).rejects.toThrow();
+    const plain = await crypto.decryptXSalsa20Poly1305Combined(body, pairKey);
+    expect(plain).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 });

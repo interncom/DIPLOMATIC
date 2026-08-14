@@ -8,7 +8,7 @@ Credentials are scoped to the page hostname (`rpId`). Every wrap, unwrap, and la
 
 ### PRF wrap (daily unlock)
 
-WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.wrap.v1`) and AEAD-seals the master under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless.
+WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.wrap.v1` for durable IDB, `diplomatic.pair.v1` for pair packages) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless.
 
 `createPrfCred` defaults to a **platform** authenticator (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
@@ -26,7 +26,7 @@ App API: `Enclave.persistToLargeBlob` / `fromLargeBlob` / `clearLargeBlob`. Opaq
 
 ### Pair package
 
-`PairPackage.seal` / `open` AEAD-seals seed + hosts under the same PRF KDF and encodes a `dip1:` string (paste / QR). Opening needs a PRF ceremony for that credential — typically the same platform passkey, including a device that has synced it. Both ends need working `prf`.
+`PairPackage.seal` / `open` AEAD-seals seed + hosts under `diplomatic.pair.v1` and encodes a `dip1:` string (paste / QR). Opening needs a PRF ceremony for that credential — typically the same platform passkey, including a device that has synced it. Both ends need working `prf`. A wrap-domain KEK cannot open a pair body.
 
 ### Raw import
 

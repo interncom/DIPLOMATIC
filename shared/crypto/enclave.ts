@@ -52,7 +52,10 @@ import {
   type PrfEvalOpts,
   type PrfRp,
 } from "../webauthn/prf.ts";
-import { spawnDiplomaticSyncWorker } from "../worker/spawn.ts";
+import {
+  postToDiplomaticWorker,
+  spawnDiplomaticSyncWorker,
+} from "../worker/spawn.ts";
 
 export type { LargeBlobCreateOpts, LargeBlobRp };
 export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
@@ -432,7 +435,8 @@ export class Enclave {
   spawnSyncWorker(opts: { id: number; persist?: boolean }): Worker {
     const worker = spawnDiplomaticSyncWorker();
     const seed = this.#seed.slice();
-    worker.postMessage(
+    postToDiplomaticWorker(
+      worker,
       {
         id: opts.id,
         op: "setSeed",

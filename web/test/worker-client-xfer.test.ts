@@ -43,18 +43,6 @@ function mockWorkerRpcOnly(): Worker {
             data: { kind: "reply", id, ok: true, result: "pong" } } as MessageEvent<unknown>);
           return;
         }
-        if (op === "getClientState") {
-          handler({
-            data: {
-              kind: "reply",
-              id,
-              ok: true,
-              result: {
-                hasSeed: true,
-                hasHost: true,
-                connected: false } } } as MessageEvent<unknown>);
-          return;
-        }
         if (op === "getXferState") {
           // Stale worker snapshot (offline / events dropped): still 0.
           handler({

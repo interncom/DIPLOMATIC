@@ -48,10 +48,8 @@ import { Status } from "./shared/consts";
 import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { TypedEventEmitter } from "./shared/events";
 import {
-  asMasterSeed,
   asSealedMasterKey,
   MASTER_SEED_LEN,
-  type MasterSeed,
   SEALED_MASTER_KEY_LEN,
   type SealedMasterKey,
 } from "./shared/seed";
@@ -115,10 +113,8 @@ import {
 } from "./passkey/seed";
 import type { LargeBlobCreateOpts, LargeBlobRp } from "./passkey/seed";
 import {
-  createPrfCred,
   DEFAULT_PRF_SALT,
   prfCapable,
-  type PrfCreateOpts,
   type PrfRp,
 } from "./shared/webauthn/prf";
 import { PrfSeedStore } from "./passkey/prf-store";
@@ -128,23 +124,11 @@ import type {
   PrfSeedStoreOpts,
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
-import { type BundleHost, bundleHostCodec } from "./shared/codecs/bundleHost";
-import {
-  createIdentityBundle,
-  IDENTITY_BUNDLE_VERSION,
-  identityBundleCodec,
-} from "./shared/codecs/identityBundle";
-import type { IdentityBundle } from "./shared/codecs/identityBundle";
-import {
-  PAIR_PACKAGE_VERSION,
-  PairPackage,
-  pairPackageEnvelopeCodec,
-  pairPackagePlainCodec,
-} from "./identity/pairPackage";
+import { type BundleHost } from "./shared/codecs/bundleHost";
+import { PairPackage } from "./identity/pairPackage";
 import type {
   OpenedPairPackage,
   PairPackageEnvelope,
-  PairPackagePlain,
 } from "./identity/pairPackage";
 import {
   checksumEntRevs,
@@ -195,21 +179,17 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
-  asMasterSeed,
   asSealedMasterKey,
   b64tob,
   b64urltob,
   btob64,
   btob64url,
   btoh,
-  bundleHostCodec,
   CachedEntDB,
   checksumEntRevs,
   checksumSet,
   Clock,
   cmpBytes,
-  createIdentityBundle,
-  createPrfCred,
   crypto,
   Decoder,
   DEFAULT_PRF_SALT,
@@ -231,8 +211,6 @@ export {
   HTTPTransport,
   IDBSeedStore,
   IDBStore,
-  IDENTITY_BUNDLE_VERSION,
-  identityBundleCodec,
   idleProgress,
   IEntDB,
   IEntity,
@@ -244,7 +222,6 @@ export {
   IStore,
   LargeBlob,
   MASTER_SEED_LEN,
-  MasterSeed,
   MemoryStore,
   normalizeTags,
   nullEntDB,
@@ -252,10 +229,7 @@ export {
   openDiplomaticClient,
   openEntDB,
   openIDBStore,
-  PAIR_PACKAGE_VERSION,
   PairPackage,
-  pairPackageEnvelopeCodec,
-  pairPackagePlainCodec,
   PasskeySeedStore,
   prfCapable,
   PrfSeedStore,
@@ -289,7 +263,6 @@ export type {
   IClient,
   ICrypto,
   IDeleteParams,
-  IdentityBundle,
   IDiplomaticClientState,
   IEntRev,
   IEntRow,
@@ -315,10 +288,8 @@ export type {
   OpenedPairPackage,
   OpenEntDBOptions,
   PairPackageEnvelope,
-  PairPackagePlain,
   PasskeySeedStoreOpts,
   PersistPrfSeedMeta,
-  PrfCreateOpts,
   PrfRp,
   PrfSeedMeta,
   PrfSeedStoreOpts,

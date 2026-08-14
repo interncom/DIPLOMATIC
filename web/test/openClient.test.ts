@@ -94,7 +94,7 @@ function mockWorkerRpcOnly(): Worker {
 }
 
 function enclaveOrThrow(): Enclave {
-  const [enclave, st] = Enclave.fromBytes(crypto, new Uint8Array(32).fill(1));
+  const [enclave, st] = Enclave.fromBytes(new Uint8Array(32).fill(1));
   if (st !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${st}`);
   }

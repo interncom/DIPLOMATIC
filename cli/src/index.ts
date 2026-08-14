@@ -159,7 +159,7 @@ export function loadEnclaveOrPanic(envVar: string): Enclave {
     process.exit(1);
   }
   const bytes = htob(seedHex);
-  const [enclave, st] = Enclave.fromBytes(crypto, bytes);
+  const [enclave, st] = Enclave.fromBytes(bytes);
   bytes.fill(0);
   if (st !== Status.Success || enclave === undefined) {
     console.error(`${envVar} must be 64 hex chars (32-byte master seed)`);

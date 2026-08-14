@@ -83,7 +83,7 @@ describe("client.msgcheck", () => {
       },
       libsodiumCrypto,
     );
-    const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, new Uint8Array(32).fill(7));
+    const [enclave, est] = Enclave.fromBytes(new Uint8Array(32).fill(7));
     if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
     await client.setSeed(enclave);
 

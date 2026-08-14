@@ -143,7 +143,8 @@ export class WorkerRuntime {
         return "pong";
 
       case "setSeed": {
-        const [enclave, st] = Enclave.fromBytes(crypto, cmd.seed);
+        const [enclave, st] = Enclave.fromBytes(cmd.seed);
+        cmd.seed.fill(0);
         if (st !== Status.Success || enclave === undefined) {
           throw new WorkerStatusError(st);
         }

@@ -24,8 +24,18 @@ export async function register(): Promise<void> {
       statusDiv.textContent = bodyStr
     })
 
-    const { setSeed } = await Diplomatic.genWebClient(stateMgr, new URL(hostURL));
-    await setSeed(seedHex);
+    const [enclave, st] = Diplomatic.Enclave.fromBytes(
+      Diplomatic.htob(seedHex),
+    );
+    if (st !== Diplomatic.Status.Success || enclave === undefined) {
+      throw new Error(`invalid seed (${st})`);
+    }
+    const { client } = await Diplomatic.openDiplomaticClient({
+      state: stateMgr,
+    });
+    await client.setSeed(enclave);
+    await client.link({ handle: new URL(hostURL), label: "host" });
+    await client.connect();
   } catch (e) {
     statusDiv.textContent = `Error: ${(e as Error).message}`
   }

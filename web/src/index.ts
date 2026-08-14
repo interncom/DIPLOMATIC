@@ -111,7 +111,6 @@ import {
   LargeBlob,
   PasskeySeedStore,
 } from "./passkey/seed";
-import type { LargeBlobCreateOpts, LargeBlobRp } from "./passkey/seed";
 import {
   DEFAULT_PRF_SALT,
   prfCapable,
@@ -147,31 +146,9 @@ import { WorkerClient } from "./worker/client";
 import type { WorkerClientOptions } from "./worker/client";
 import type { WipeOpts } from "./types";
 
-export async function genWebClient(
-  stateMgr: IStateManager,
-  url: URL,
-): Promise<
-  { client: SyncClient<URL>; setSeed: (seedHex: string) => Promise<void> }
-> {
-  const idbStore = await openIDBStore(crypto);
-  const client = new SyncClient<URL>(
-    new Clock(),
-    stateMgr,
-    idbStore,
-    hostHTTPTransport,
-    crypto,
-  );
-
-  const setSeed = async (seedHex: string) => {
-    const [enclave, st] = Enclave.fromBytes(crypto, htob(seedHex));
-    if (st !== Status.Success || enclave === undefined) {
-      throw new Error(`invalid seed (${st})`);
-    }
-    await idbStore.seed.save(enclave);
-    await idbStore.hosts.add({ handle: url, label: "host", idx: 0 });
-    await client.connect();
-  };
-  return { client, setSeed };
+/** Platform advertises largeBlob (not a guarantee the authenticator has it). */
+export function largeBlobCapable(): Promise<boolean> {
+  return LargeBlob.capable();
 }
 
 export {
@@ -220,7 +197,6 @@ export {
   isTerminalApplyFailure,
   isTombstone,
   IStore,
-  LargeBlob,
   MASTER_SEED_LEN,
   MemoryStore,
   normalizeTags,
@@ -278,8 +254,6 @@ export type {
   ITombstone,
   ITransport,
   IUpdateParams,
-  LargeBlobCreateOpts,
-  LargeBlobRp,
   ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,

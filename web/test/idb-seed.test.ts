@@ -6,7 +6,7 @@ import { IDBSeedStore } from "../src/stores/idb/seed";
 import { MemorySeedStore } from "../src/stores/memory/seed";
 
 function enclaveOf(fill: number): Enclave {
-  const [e, st] = Enclave.fromBytes(crypto, new Uint8Array(32).fill(fill));
+  const [e, st] = Enclave.fromBytes(new Uint8Array(32).fill(fill));
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclaveOf ${st}`);
   }

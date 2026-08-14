@@ -11,7 +11,7 @@ if (!dipSeed) {
   Deno.exit(1);
 }
 const seedBytes = htob(dipSeed);
-const [enclave, est] = Enclave.fromBytes(libsodiumCrypto, seedBytes);
+const [enclave, est] = Enclave.fromBytes(seedBytes);
 seedBytes.fill(0);
 if (est !== Status.Success || enclave === undefined) {
   console.error("DIP_SEED must be 64 hex chars (32-byte master seed)");

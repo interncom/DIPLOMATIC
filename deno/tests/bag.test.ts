@@ -72,7 +72,7 @@ Deno.test("bag", async (t) => {
   await t.step("seal and open round trip", async () => {
     // Setup enclave and keypair
     const seed = await crypto.gen256BitSecureRandomSeed();
-    const [enclave, est] = Enclave.fromBytes(crypto, seed);
+    const [enclave, est] = Enclave.fromBytes(seed);
     if (est !== Status.Success || enclave === undefined) {
       throw new Error(`enclave ${est}`);
     }

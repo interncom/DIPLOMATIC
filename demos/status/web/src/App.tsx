@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import './App.css'
 import {
-  crypto,
   Enclave,
   htob,
   IEntDB,
@@ -12,7 +11,7 @@ import {
 } from "@interncom/diplomatic";
 
 const seedBytes = htob("0123456789ABCDEF".repeat(4));
-const [seed, seedSt] = Enclave.fromBytes(crypto, seedBytes);
+const [seed, seedSt] = Enclave.fromBytes(seedBytes);
 if (seedSt !== Status.Success || seed === undefined) {
   throw new Error(`invalid demo seed (${seedSt})`);
 }

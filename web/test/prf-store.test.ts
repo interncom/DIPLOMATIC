@@ -9,7 +9,7 @@ import {
 } from "../src/passkey/prf-store";
 
 function enclaveOf(fill: number): Enclave {
-  const [e, st] = Enclave.fromBytes(crypto, new Uint8Array(32).fill(fill));
+  const [e, st] = Enclave.fromBytes(new Uint8Array(32).fill(fill));
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclaveOf ${st}`);
   }
@@ -60,7 +60,6 @@ describe("PrfSeedStore", () => {
     const { credId } = stubPrfGet(3);
     let saved: PrfSeedMeta | undefined;
     const store = new PrfSeedStore({
-      crypto,
       rpId: "localhost",
       persistMeta: (m) => {
         saved = m;
@@ -93,7 +92,6 @@ describe("PrfSeedStore", () => {
     stubPrfGet(4);
     let saved: PrfSeedMeta | undefined;
     const store = new PrfSeedStore({
-      crypto,
       rpId: "localhost",
       persistMeta: (m) => {
         saved = m;

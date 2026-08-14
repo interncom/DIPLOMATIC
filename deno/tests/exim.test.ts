@@ -81,7 +81,7 @@ const testSeed = new Uint8Array(32).fill(0x11);
 
 Deno.test("encodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
+  const [enclave, est] = Enclave.fromBytes(testSeed);
   if (est !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${est}`);
   }
@@ -255,7 +255,7 @@ Deno.test("encodeFile", async (t) => {
 
 Deno.test("decodeFile", async (t) => {
   const crypto = new MockCrypto();
-  const [enclave, est] = Enclave.fromBytes(crypto, testSeed);
+  const [enclave, est] = Enclave.fromBytes(testSeed);
   if (est !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${est}`);
   }

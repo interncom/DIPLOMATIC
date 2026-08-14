@@ -34,7 +34,7 @@ function seedBytes(fill: number): Uint8Array {
 }
 
 function enclaveOf(fill: number): Enclave {
-  const [e, st] = Enclave.fromBytes(crypto, seedBytes(fill));
+  const [e, st] = Enclave.fromBytes(seedBytes(fill));
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclaveOf failed ${st}`);
   }
@@ -154,7 +154,7 @@ describe("Enclave largeBlob seed boundary", () => {
     (globalThis as any).PublicKeyCredential = class {};
     (globalThis as any).location = { hostname: "localhost" };
 
-    const [out, st] = await Enclave.fromLargeBlob(crypto, {
+    const [out, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
       credId,
     });
@@ -183,7 +183,7 @@ describe("Enclave largeBlob seed boundary", () => {
     (globalThis as any).PublicKeyCredential = class {};
     (globalThis as any).location = { hostname: "localhost" };
 
-    const [out, st] = await Enclave.fromLargeBlob(crypto, {
+    const [out, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
     });
     expect(st).toBe(Status.Success);
@@ -213,7 +213,7 @@ describe("Enclave largeBlob seed boundary", () => {
     (globalThis as any).PublicKeyCredential = class {};
     (globalThis as any).location = { hostname: "localhost" };
 
-    const [, st] = await Enclave.fromLargeBlob(crypto, {
+    const [, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
     });
     expect(st).toBe(Status.MissingSeed);
@@ -244,7 +244,7 @@ describe("Enclave largeBlob seed boundary", () => {
     (globalThis as any).PublicKeyCredential = class {};
     (globalThis as any).location = { hostname: "localhost" };
 
-    const store = new PasskeySeedStore({ crypto, rpId: "localhost" });
+    const store = new PasskeySeedStore({ rpId: "localhost" });
     const enc1 = await store.save(enc0, { persist: true });
     expect(enc1).toBeDefined();
     expect(store.credId).toEqual(credId);

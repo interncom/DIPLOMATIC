@@ -5,7 +5,6 @@ import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
-import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
 import type { PrfRp } from "../shared/webauthn/prf";
@@ -31,7 +30,6 @@ export type PersistPrfSeedMeta = (
 ) => void | Promise<void>;
 
 export type PrfSeedStoreOpts = PrfRp & {
-  crypto: ICrypto;
   /**
    * Required durable write path for sealed master + salt + credId.
    * Protocol IDB implements this via {@link IDBSeedStore.persistPrfMeta}.
@@ -52,14 +50,12 @@ export type PrfSeedStoreOpts = PrfRp & {
  * meta with the same layout — no plain seed on disk either way.
  */
 export class PrfSeedStore implements ISeedStore {
-  #crypto: ICrypto;
   #enclave: Enclave | undefined;
   #meta: PrfSeedMeta | undefined;
   #rp: PrfRp;
   #persistMeta: PersistPrfSeedMeta;
 
   constructor(opts: PrfSeedStoreOpts) {
-    this.#crypto = opts.crypto;
     this.#persistMeta = opts.persistMeta;
     this.#rp = { rpId: opts.rpId, rpName: opts.rpName };
     if (opts.meta !== undefined) {
@@ -128,15 +124,11 @@ export class PrfSeedStore implements ISeedStore {
   async unlock(): Promise<ValStat<Enclave>> {
     const meta = this.#meta;
     if (meta === undefined) return err(Status.MissingSeed);
-    const [out, ust] = await Enclave.unsealWithPasskey(
-      this.#crypto,
-      meta.sealedMaster,
-      {
-        ...this.#rp,
-        salt: meta.salt,
-        credId: meta.credId,
-      },
-    );
+    const [out, ust] = await Enclave.unsealWithPasskey(meta.sealedMaster, {
+      ...this.#rp,
+      salt: meta.salt,
+      credId: meta.credId,
+    });
     if (ust !== Status.Success) return err(ust);
     this.#enclave = out.enclave;
     // Record credId after a discoverable unlock so the next get() is targeted.

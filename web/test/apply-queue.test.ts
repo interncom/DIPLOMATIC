@@ -27,7 +27,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import type { IHostConnectionInfo } from "../src/shared/types";
 
 function testEnclave(): Enclave {
-  const [e, st] = Enclave.fromBytes(libsodiumCrypto, new Uint8Array(32).fill(7));
+  const [e, st] = Enclave.fromBytes(new Uint8Array(32).fill(7));
   if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
   return e;
 }

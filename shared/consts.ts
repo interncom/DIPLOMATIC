@@ -45,6 +45,7 @@ export enum Status {
   VarLimitExceeded = 26,
   InvalidResponse = 27,
   ConnectionClosed = 28,
+  CryptoError = 29,
 }
 
 export enum APICallName {

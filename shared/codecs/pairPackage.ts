@@ -12,8 +12,7 @@ export type PairPackagePlain = {
 };
 
 /**
- * Inner plaintext body (not sealed here — AEAD is applied by the pairing
- * ceremony, then carried as `body` in {@link pairPackageEnvelopeCodec}):
+ * Inner plaintext (AEAD is applied by QR pairing: X25519 + blake3 + XSalsa20):
  *   masterSeed: 32 fixed bytes
  *   hostsLen: varint
  *   hosts: hostsLen × BundleHost

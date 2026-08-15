@@ -6,12 +6,15 @@ import {
   identityBundleCodec,
 } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
+import { Enclave, sealKeyFromPrf } from "../src/shared/crypto/enclave";
 import {
-  Enclave,
-  sealKeyFromPrf,
-  SEAL_PAIR_DOMAIN,
-} from "../src/shared/crypto/enclave";
-import { PairPackage } from "../src/identity/pairPackage";
+  asDHKEReq,
+  asDHKEResp,
+  DHKE_RESP_MIN,
+  pairKey,
+  PairRequest,
+} from "../src/shared/crypto/pairing";
+import { NobleCrypto } from "../src/shared/crypto/noble";
 import crypto from "../src/crypto";
 import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
@@ -186,31 +189,30 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
   });
 });
 
-describe("PairPackage", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+async function mustReq(): Promise<PairRequest> {
+  const [req, st] = await Enclave.pairRequest();
+  if (st !== Status.Success || req === undefined) {
+    throw new Error(`pairRequest ${st}`);
+  }
+  return req;
+}
 
-  it("round-trips under PRF ceremony", async () => {
-    stubPrfGet(6);
+describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
+  it("round-trips seed and hosts", async () => {
     const enc = enclaveOf(8);
     const hosts = [
       { handle: "https://sync.interncom.org", label: "host", idx: 0 },
     ];
-    const [pairPkg, pst] = await PairPackage.seal(enc, hosts, {
-      rpId: "localhost",
-      salt: DEFAULT_PRF_SALT,
-      credId: new Uint8Array(16).fill(7),
-    });
-    expect(pst).toBe(Status.Success);
-    expect(pairPkg).toBeDefined();
-    if (pairPkg === undefined) return;
-    expect(pairPkg.startsWith(PairPackage.PREFIX)).toBe(true);
+    const req = await mustReq();
+    expect(req.dhkeReq.byteLength).toBe(32);
 
-    stubPrfGet(6);
-    const [opened, ost] = await PairPackage.open(pairPkg, {
-      rpId: "localhost",
-    });
+    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, hosts);
+    expect(ast).toBe(Status.Success);
+    expect(dhkeResp).toBeDefined();
+    if (dhkeResp === undefined) return;
+    expect(dhkeResp.byteLength).toBeGreaterThan(32 + 24 + 16);
+
+    const [opened, ost] = await req.finish(dhkeResp);
     expect(ost).toBe(Status.Success);
     expect(opened).toBeDefined();
     if (opened === undefined) return;
@@ -218,65 +220,121 @@ describe("PairPackage", () => {
     const origId = await enc.deriveIdentity("test", 0);
     const openId = await opened.enclave.deriveIdentity("test", 0);
     expect(openId.publicKey).toEqual(origId.publicKey);
-
-    stubPrfGet(6);
-    const [again, ust] = await Enclave.unsealWithPasskey(opened.sealedMaster,
-      {
-        rpId: "localhost",
-        salt: opened.salt,
-        credId: opened.credId,
-      },
-    );
-    expect(ust).toBe(Status.Success);
-    expect(again).toBeDefined();
-    if (again === undefined) return;
-    const againId = await again.enclave.deriveIdentity("test", 0);
-    expect(againId.publicKey).toEqual(origId.publicKey);
   });
 
-  it("fails with wrong PRF", async () => {
-    stubPrfGet(2);
-    const [pairPkg, pst] = await PairPackage.seal(
-      enclaveOf(1),
-      [],
-      {
-        rpId: "localhost",
-        salt: DEFAULT_PRF_SALT,
-        credId: new Uint8Array(16).fill(7),
-      },
-    );
-    expect(pst).toBe(Status.Success);
-    expect(pairPkg).toBeDefined();
-    if (pairPkg === undefined) return;
+  it("round-trips empty hosts", async () => {
+    const enc = enclaveOf(3);
+    const [req, cst] = await PairRequest.create();
+    expect(cst).toBe(Status.Success);
+    if (req === undefined) return;
+    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, []);
+    expect(ast).toBe(Status.Success);
+    if (dhkeResp === undefined) return;
+    const [opened, ost] = await req.finish(dhkeResp);
+    expect(ost).toBe(Status.Success);
+    expect(opened?.hosts).toEqual([]);
+    const a = await enc.deriveIdentity("t", 0);
+    const b = await opened?.enclave.deriveIdentity("t", 0);
+    expect(b?.publicKey).toEqual(a.publicKey);
+  });
 
-    stubPrfGet(9);
-    const [, ost] = await PairPackage.open(pairPkg, {
-      rpId: "localhost",
-    });
+  it("rejects the wrong request", async () => {
+    const [dhkeResp, ast] = await enclaveOf(1).pairAccept(
+      (await mustReq()).dhkeReq,
+      [],
+    );
+    expect(ast).toBe(Status.Success);
+    if (dhkeResp === undefined) return;
+    const other = await mustReq();
+    const [, ost] = await other.finish(dhkeResp);
     expect(ost).toBe(Status.DecryptionError);
+  });
+
+  it("rejects truncated dhkeResp", async () => {
+    const [, st] = asDHKEResp(new Uint8Array(DHKE_RESP_MIN - 1));
+    expect(st).toBe(Status.InvalidParam);
+  });
+
+  it("brands a min-length dhkeResp", () => {
+    const [q, st] = asDHKEResp(new Uint8Array(DHKE_RESP_MIN));
+    expect(st).toBe(Status.Success);
+    expect(q?.byteLength).toBe(DHKE_RESP_MIN);
+  });
+
+  it("rejects bad enrollee pub length", async () => {
+    const [, st] = asDHKEReq(new Uint8Array(16));
+    expect(st).toBe(Status.InvalidParam);
+  });
+
+  it("dhkeReq getter returns an independent copy", async () => {
+    const req = await mustReq();
+    const a = req.dhkeReq;
+    const b = req.dhkeReq;
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+    a.fill(0);
+    expect(req.dhkeReq).toEqual(b);
+    const [dhkeResp, ast] = await enclaveOf(4).pairAccept(b, []);
+    expect(ast).toBe(Status.Success);
+    if (dhkeResp === undefined) return;
+    const [opened, ost] = await req.finish(dhkeResp);
+    expect(ost).toBe(Status.Success);
+    expect(opened).toBeDefined();
+  });
+
+  it("pairKey agrees and binds both pubs", async () => {
+    const n = new NobleCrypto();
+    const e = await n.genX25519();
+    const r = await n.genX25519();
+    const [k1, s1] = await pairKey(e.priv, r.pub, e.pub, r.pub);
+    const [k2, s2] = await pairKey(r.priv, e.pub, e.pub, r.pub);
+    expect(s1).toBe(Status.Success);
+    expect(s2).toBe(Status.Success);
+    expect(k1).toEqual(k2);
+    const [swapped, sst] = await pairKey(e.priv, r.pub, r.pub, e.pub);
+    expect(sst).toBe(Status.Success);
+    expect(swapped).toBeDefined();
+    expect(k1).not.toEqual(swapped);
+  });
+
+  it("tampered resp body fails closed", async () => {
+    const req = await mustReq();
+    const [dhkeResp, ast] = await enclaveOf(2).pairAccept(req.dhkeReq, []);
+    expect(ast).toBe(Status.Success);
+    if (dhkeResp === undefined) return;
+    const dirty = dhkeResp.slice();
+    dirty[dirty.byteLength - 1] ^= 1;
+    const [branded, bst] = asDHKEResp(dirty);
+    expect(bst).toBe(Status.Success);
+    if (branded === undefined) return;
+    const [, ost] = await req.finish(branded);
+    expect(ost).toBe(Status.DecryptionError);
+  });
+
+  it("second finish fails after wipe", async () => {
+    const req = await mustReq();
+    const [dhkeResp, ast] = await enclaveOf(6).pairAccept(req.dhkeReq, []);
+    expect(ast).toBe(Status.Success);
+    if (dhkeResp === undefined) return;
+    const [opened, ost] = await req.finish(dhkeResp);
+    expect(ost).toBe(Status.Success);
+    expect(opened).toBeDefined();
+    const [, ost2] = await req.finish(dhkeResp);
+    expect(ost2).toBe(Status.DecryptionError);
   });
 });
 
 describe("sealKeyFromPrf domains", () => {
-  it("wrap and pair KEKs differ; wrap cannot open pair ciphertext", async () => {
+  it("wrap KEK is domain-separated from a different domain", async () => {
     const prf = new Uint8Array(32).fill(3);
+    const other = new TextEncoder().encode("diplomatic.other.v1");
     const [wrapKey, wst] = await sealKeyFromPrf(crypto, prf);
-    const [pairKey, pst] = await sealKeyFromPrf(crypto, prf, SEAL_PAIR_DOMAIN);
+    const [otherKey, ost] = await sealKeyFromPrf(crypto, prf, other);
     expect(wst).toBe(Status.Success);
-    expect(pst).toBe(Status.Success);
+    expect(ost).toBe(Status.Success);
     expect(wrapKey).toBeDefined();
-    expect(pairKey).toBeDefined();
-    if (wrapKey === undefined || pairKey === undefined) return;
-    expect(wrapKey).not.toEqual(pairKey);
-
-    const body = await crypto.encryptXSalsa20Poly1305Combined(
-      new Uint8Array([1, 2, 3, 4]),
-      pairKey,
-    );
-    await expect(
-      crypto.decryptXSalsa20Poly1305Combined(body, wrapKey),
-    ).rejects.toThrow();
-    const plain = await crypto.decryptXSalsa20Poly1305Combined(body, pairKey);
-    expect(plain).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(otherKey).toBeDefined();
+    if (wrapKey === undefined || otherKey === undefined) return;
+    expect(wrapKey).not.toEqual(otherKey);
   });
 });

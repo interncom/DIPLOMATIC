@@ -22,3 +22,7 @@ DIPLOMATIC keeps a full copy of the data needed to reconstruct the latest applic
 ### Mitigations
 
 DIPLOMATIC encrypts application data before it leaves a user's device, so hosts do not hold any sensitive information.
+
+## Device pairing
+
+Moving the master seed to a new device is a separate threat (photograph the QRs; compelled browser X25519 keygen). That model and the countermeasures live under [Pairing](/docs/arch/pairing). An owned client (malware in the page) can already steal the unlocked seed; pairing crypto does not address that.

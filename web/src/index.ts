@@ -124,11 +124,9 @@ import type {
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
-import { PairPackage } from "./identity/pairPackage";
-import type {
-  OpenedPairPackage,
-  PairPackageEnvelope,
-} from "./identity/pairPackage";
+import { asDHKEReq, asDHKEResp, PairRequest } from "./shared/crypto/pairing";
+import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
+import type { PairPackagePlain } from "./shared/codecs/pairPackage";
 import {
   checksumEntRevs,
   checksumSet,
@@ -156,6 +154,8 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
+  asDHKEReq,
+  asDHKEResp,
   asSealedMasterKey,
   b64tob,
   b64urltob,
@@ -205,7 +205,7 @@ export {
   openDiplomaticClient,
   openEntDB,
   openIDBStore,
-  PairPackage,
+  PairRequest,
   PasskeySeedStore,
   prfCapable,
   PrfSeedStore,
@@ -233,6 +233,8 @@ export type {
   Applier,
   BundleHost,
   CachedEntDBOptions,
+  DHKEReq,
+  DHKEResp,
   EntDBMemoryOptions,
   HostHandle,
   HostStatsUpdate,
@@ -259,9 +261,8 @@ export type {
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
-  OpenedPairPackage,
   OpenEntDBOptions,
-  PairPackageEnvelope,
+  PairPackagePlain,
   PasskeySeedStoreOpts,
   PersistPrfSeedMeta,
   PrfRp,

@@ -8,7 +8,7 @@ Credentials are scoped to the page hostname (`rpId`). Every wrap, unwrap, and la
 
 ### PRF wrap (daily unlock)
 
-WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.wrap.v1` for durable IDB, `diplomatic.pair.v1` for pair packages) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless.
+WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.wrap.v1`) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless. Pairing uses a different KDF (`diplomatic.qrpair.v1`); see [Pairing](./pairing).
 
 `createPrfCred` defaults to a **platform** authenticator (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
@@ -24,9 +24,11 @@ Create requires `largeBlob.support = "required"`. Attachment is not defaulted �
 
 App API: `Enclave.persistToLargeBlob` / `fromLargeBlob` / `clearLargeBlob`. Probe: `largeBlobCapable()`.
 
-### Pair package
+### Pairing (QR)
 
-`PairPackage.seal` / `open` AEAD-seals seed + hosts under `diplomatic.pair.v1` and encodes a `dip1:` string (paste / QR). Opening needs a PRF ceremony for that credential — typically the same platform passkey, including a device that has synced it. Both ends need working `prf`. A wrap-domain KEK cannot open a pair body.
+In-person seed transfer to a device that does not share a passkey. See [Pairing](./pairing) for the request/response flow, threat model, and why the X25519 scalar is ours (`getRandomValues`) rather than `subtle.generateKey`.
+
+App API: `Enclave.pairRequest` / `PairRequest`, `enclave.pairAccept`, then `sealWithPasskey` on the enrollee.
 
 ### Raw import
 
@@ -78,8 +80,8 @@ Other CTAP2.1 keys with hmac-secret and/or largeBlob work the same way when the 
 | Goal | Use |
 | --- | --- |
 | Unlock this browser next visit | PRF wrap → protocol IDB |
-| Move identity to another browser that shares the passkey | Pair package, or PRF unlock after passkey sync |
+| Move identity to another device in person | QR pair (`pairRequest` / `pairAccept`), then PRF wrap on the new device |
 | Survive a wiped profile / new machine without cloud passkeys | largeBlob on a YubiKey (desktop), then optional PRF bind |
 | CLI / tests | Raw seed |
 
-A typical app (see LIFE): platform PRF for daily unlock; optional `cross-platform` largeBlob write as a YubiKey backup; pair package for a second desktop. On iPhone, only the platform PRF path is available.
+A typical app (see LIFE): platform PRF for daily unlock; optional `cross-platform` largeBlob write as a YubiKey backup; QR pair for a second device. On iPhone, only the platform PRF path is available after the pair.

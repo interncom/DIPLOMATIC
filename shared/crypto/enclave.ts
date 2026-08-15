@@ -43,6 +43,14 @@ import type { DerivationSeed, ICrypto, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import { NobleCrypto } from "./noble.ts";
 import {
+  asDHKEResp,
+  type DHKEReq,
+  type DHKEResp,
+  pairKey,
+  PairRequest,
+} from "./pairing.ts";
+import type { X25519Sk } from "./x25519.ts";
+import {
   largeBlobCreateCred,
   type LargeBlobCreateOpts,
   largeBlobRead,
@@ -114,7 +122,6 @@ export type Identity = {
 };
 
 const SEAL_WRAP_DOMAIN = new TextEncoder().encode("diplomatic.wrap.v1");
-const SEAL_PAIR_DOMAIN = new TextEncoder().encode("diplomatic.pair.v1");
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
 
@@ -298,152 +305,73 @@ export class Enclave {
     return largeBlobWrite(credId, new Uint8Array(MASTER_SEED_LEN), opts);
   }
 
-  /**
-   * UV + PRF, then AEAD-seal pair-package plaintext (seed + hosts).
-   * Returns ciphertext body + public ceremony meta (no PRF).
-   */
-  async sealPairPackageBody(
-    hosts: BundleHost[],
-    opts?: PasskeyPrfOpts,
-  ): Promise<
-    ValStat<{ body: Uint8Array; salt: Uint8Array; credId: Uint8Array }>
-  > {
-    const salt = opts?.salt ?? DEFAULT_PRF_SALT;
-    const [ev, est] = await evalPrf({
-      rpId: opts?.rpId,
-      rpName: opts?.rpName,
-      credId: opts?.credId,
-      salt,
-    });
-    if (est !== Status.Success) return err(est);
-    if (ev === undefined) return err(Status.MissingBody);
+  // Starts an enrollee pairing session (same as PairRequest.create).
+  static pairRequest(): Promise<ValStat<PairRequest>> {
+    return PairRequest.create();
+  }
 
+  // Seals this enclave's seed + hosts for the enrollee's DHKE request.
+  // Returns dhkeResp to send back.
+  async pairAccept(
+    dhkeReq: DHKEReq,
+    hosts: BundleHost[],
+  ): Promise<ValStat<DHKEResp>> {
+    let eph: { priv: X25519Sk; pub: Uint8Array }; // ephemeral X25519 pair
     try {
-      const [key, kst] = await sealKeyFromPrf(
-        noble,
-        ev.prf,
-        SEAL_PAIR_DOMAIN,
-      );
+      eph = await noble.genX25519();
+    } catch {
+      return err(Status.CryptoError);
+    }
+    try {
+      const [key, kst] = await pairKey(eph.priv, dhkeReq, dhkeReq, eph.pub);
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
-
-      // Inner finally wipes KEK even if encode/encrypt returns early.
       try {
-        const [snap, sst] = asMasterSeed(this.#seed.slice());
-        if (sst !== Status.Success) return err(sst);
-        if (snap === undefined) return err(Status.InvalidParam);
-
-        const plain: PairPackagePlain = {
-          masterSeed: snap,
-          hosts: hosts.map((h) => ({
-            handle: h.handle,
-            label: h.label,
-            idx: h.idx ?? 0,
-          })),
-        };
-        const enc = new Encoder();
-        const wst = enc.writeStruct(pairPackagePlainCodec, plain);
-        if (wst !== Status.Success) {
-          snap.fill(0);
-          return err(wst);
-        }
-        const plainBytes = enc.result();
-        snap.fill(0);
-
-        let body: Uint8Array;
+        const [plainBytes, pst] = this.#encodePairPlain(hosts);
+        if (pst !== Status.Success) return err(pst);
+        if (plainBytes === undefined) return err(Status.InternalError);
         try {
-          body = await noble.encryptXSalsa20Poly1305Combined(
+          const body = await noble.encryptXSalsa20Poly1305Combined(
             plainBytes,
             key,
           );
+          return asDHKEResp(concat(eph.pub, body));
         } catch {
-          plainBytes.fill(0);
           return err(Status.InternalError);
+        } finally {
+          plainBytes.fill(0);
         }
-        plainBytes.fill(0);
-        return ok({
-          body,
-          salt: salt.slice(),
-          credId: ev.credId.slice(),
-        });
       } finally {
-        // Pair KEK is purpose-bound; leftover bytes must not open a later wrap.
         key.fill(0);
       }
     } finally {
-      ev.prf.fill(0);
+      eph.priv.fill(0);
     }
   }
 
-  /**
-   * UV + PRF (using envelope salt/credId), decrypt pair body, build Enclave.
-   * Also seals master under the same PRF for durable IDB (single ceremony).
-   */
-  static async openPairPackageBody(
-    body: Uint8Array,
-    opts: PasskeyPrfOpts & { salt: Uint8Array },
-  ): Promise<
-    ValStat<{
-      enclave: Enclave;
-      hosts: BundleHost[];
-      sealedMaster: SealedMasterKey;
-      credId: Uint8Array;
-    }>
-  > {
-    const [ev, est] = await evalPrf({
-      rpId: opts.rpId,
-      rpName: opts.rpName,
-      credId: opts.credId,
-      salt: opts.salt,
-    });
-    if (est !== Status.Success) return err(est);
-    if (ev === undefined) return err(Status.MissingBody);
-
+  // Encodes seed + hosts as pairing AEAD plaintext.
+  #encodePairPlain(hosts: BundleHost[]): ValStat<Uint8Array> {
+    const raw = this.#seed.slice();
+    const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
+    if (snap === undefined) {
+      raw.fill(0);
+      return err(sst);
+    }
     try {
-      const [key, kst] = await sealKeyFromPrf(
-        noble,
-        ev.prf,
-        SEAL_PAIR_DOMAIN,
-      );
-      if (kst !== Status.Success) return err(kst);
-      if (key === undefined) return err(Status.InternalError);
-
-      // Inner finally wipes KEK even if decrypt/decode returns early.
-      try {
-        let plain: Uint8Array;
-        try {
-          plain = await noble.decryptXSalsa20Poly1305Combined(body, key);
-        } catch {
-          return err(Status.DecryptionError);
-        }
-
-        const pdec = new Decoder(plain);
-        const [inner, is] = pdec.readStruct(pairPackagePlainCodec);
-        plain.fill(0);
-        if (is !== Status.Success) return err(is);
-        if (inner === undefined) return err(Status.InvalidMessage);
-
-        const [enclave, ens] = Enclave.fromBytes(inner.masterSeed);
-        inner.masterSeed.fill(0);
-        if (ens !== Status.Success) return err(ens);
-        if (enclave === undefined) return err(Status.InternalError);
-
-        const [sealedMaster, sst] = await enclave.#sealUnderPrf(ev.prf);
-        if (sst !== Status.Success) return err(sst);
-        if (sealedMaster === undefined) return err(Status.InternalError);
-
-        return ok({
-          enclave,
-          hosts: inner.hosts.map((h) => ({ ...h })),
-          sealedMaster,
-          credId: ev.credId.slice(),
-        });
-      } finally {
-        // Drop pair KEK before PRF wipe; one leaked purpose-key is enough.
-        key.fill(0);
-      }
+      const plain: PairPackagePlain = {
+        masterSeed: snap,
+        hosts: hosts.map((h) => ({
+          handle: h.handle,
+          label: h.label,
+          idx: h.idx ?? 0,
+        })),
+      };
+      const enc = new Encoder();
+      const wst = enc.writeStruct(pairPackagePlainCodec, plain);
+      if (wst !== Status.Success) return err(wst);
+      return ok(enc.result());
     } finally {
-      ev.prf.fill(0);
+      snap.fill(0);
     }
   }
 
@@ -557,21 +485,26 @@ export class Enclave {
    * Never expose this buffer outside Enclave methods.
    */
   #encodeIdentityBundleWire(hosts: BundleHost[]): ValStat<Uint8Array> {
-    const [snap, sst] = asMasterSeed(this.#seed.slice());
-    if (sst !== Status.Success) return err(sst);
-    if (snap === undefined) return err(Status.InvalidParam);
-    const [bundle, bst] = createIdentityBundle(snap, hosts);
-    snap.fill(0);
-    if (bst !== Status.Success) return err(bst);
-    if (bundle === undefined) return err(Status.InternalError);
+    const raw = this.#seed.slice();
+    const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
+    if (snap === undefined) {
+      raw.fill(0);
+      return err(sst);
+    }
     try {
-      const enc = new Encoder();
-      const st = enc.writeStruct(identityBundleCodec, bundle);
-      if (st !== Status.Success) return err(st);
-      // Encoder.writeBytes copies; still take result before clearing seed.
-      return ok(enc.result());
+      const [bundle, bst] = createIdentityBundle(snap, hosts);
+      if (bst !== Status.Success) return err(bst);
+      if (bundle === undefined) return err(Status.InternalError);
+      try {
+        const enc = new Encoder();
+        const st = enc.writeStruct(identityBundleCodec, bundle);
+        if (st !== Status.Success) return err(st);
+        return ok(enc.result());
+      } finally {
+        bundle.masterSeed.fill(0);
+      }
     } finally {
-      bundle.masterSeed.fill(0);
+      snap.fill(0);
     }
   }
 
@@ -698,10 +631,4 @@ export async function sealKeyFromPrf(
   return ok(hash.slice(0, SEAL_KEY_LEN));
 }
 
-export {
-  MASTER_SEED_LEN,
-  SEAL_KEY_LEN,
-  SEAL_PAIR_DOMAIN,
-  SEAL_PRF_MIN_LEN,
-  SEAL_WRAP_DOMAIN,
-};
+export { MASTER_SEED_LEN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN, SEAL_WRAP_DOMAIN };

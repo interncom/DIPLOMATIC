@@ -1,7 +1,9 @@
 import { randomBytes } from "@noble/ciphers/webcrypto";
 import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 import { blake3 } from "@noble/hashes/blake3";
-import { btoh } from "../binary.ts";
+import { b64urltob, btoh, bytesEqual } from "../binary.ts";
+import { Status } from "../consts.ts";
+import { asX25519Sk, x25519Pub, type X25519Sk } from "./x25519.ts";
 import type {
   DerivationSeed,
   Hash,
@@ -41,6 +43,37 @@ function ed25519Pkcs8FromSeed(seed: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * PKCS#8 wrapper for a 32-byte X25519 scalar (RFC 8410).
+ * Same as Ed25519 except OID 1.3.101.110 (2b 65 6e).
+ */
+const X25519_PKCS8_PREFIX = new Uint8Array([
+  0x30,
+  0x2e,
+  0x02,
+  0x01,
+  0x00,
+  0x30,
+  0x05,
+  0x06,
+  0x03,
+  0x2b,
+  0x65,
+  0x6e,
+  0x04,
+  0x22,
+  0x04,
+  0x20,
+]);
+
+// Wraps an X25519 scalar as PKCS#8 so WebCrypto can importKey (not generateKey).
+function x25519Pkcs8FromSk(sk: X25519Sk): Uint8Array {
+  const out = new Uint8Array(X25519_PKCS8_PREFIX.length + 32);
+  out.set(X25519_PKCS8_PREFIX);
+  out.set(sk.subarray(0, 32), X25519_PKCS8_PREFIX.length);
+  return out;
+}
+
 function toBytes(message: Uint8Array | string): Uint8Array {
   return typeof message === "string"
     ? new TextEncoder().encode(message)
@@ -55,7 +88,8 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
- * ICrypto: noble for XSalsa20 + blake3; native WebCrypto for all Ed25519.
+ * ICrypto: noble for XSalsa20 + blake3; WebCrypto Ed25519 + X25519
+ * (our scalar; RFC 7748 check before trusting pub/DH).
  */
 export class NobleCrypto implements ICrypto {
   private verifyKeys = new Map<string, CryptoKey>();
@@ -209,5 +243,78 @@ export class NobleCrypto implements ICrypto {
 
   async blake3(data: Uint8Array): Promise<Hash> {
     return blake3(data) as Hash;
+  }
+
+  // Makes an ephemeral X25519 pair from random entropy (not generateKey).
+  // Throws if WebCrypto's exported pub disagrees with RFC 7748.
+  async genX25519(): Promise<{ priv: X25519Sk; pub: Uint8Array }> {
+    const raw = await randomBytes(32);
+    raw[0] &= 248;
+    raw[31] &= 127;
+    raw[31] |= 64;
+    const [priv, pst] = asX25519Sk(raw);
+    if (pst !== Status.Success || priv === undefined) {
+      raw.fill(0);
+      throw new Error("X25519 scalar brand failed");
+    }
+    const want = x25519Pub(priv);
+    const pkcs8 = x25519Pkcs8FromSk(priv);
+    try {
+      const key = await globalThis.crypto.subtle.importKey(
+        "pkcs8",
+        toArrayBuffer(pkcs8),
+        { name: "X25519" },
+        true,
+        ["deriveBits"],
+      );
+      const jwk = await globalThis.crypto.subtle.exportKey("jwk", key);
+      if (typeof jwk.x !== "string") {
+        throw new Error("X25519 JWK missing x");
+      }
+      const got = b64urltob(jwk.x);
+      jwk.d = undefined;
+      if (!bytesEqual(got, want)) {
+        throw new Error("X25519 WebCrypto pub != RFC 7748");
+      }
+      return { priv, pub: want };
+    } catch (e) {
+      priv.fill(0);
+      throw e;
+    } finally {
+      pkcs8.fill(0);
+    }
+  }
+
+  // Computes ECDH via WebCrypto deriveBits on our imported scalar.
+  // Does not re-check against RFC 7748; pub was checked in genX25519.
+  async x25519Shared(
+    priv: X25519Sk,
+    peerPub: Uint8Array,
+  ): Promise<Uint8Array> {
+    const pkcs8 = x25519Pkcs8FromSk(priv);
+    try {
+      const key = await globalThis.crypto.subtle.importKey(
+        "pkcs8",
+        toArrayBuffer(pkcs8),
+        { name: "X25519" },
+        false,
+        ["deriveBits"],
+      );
+      const pubKey = await globalThis.crypto.subtle.importKey(
+        "raw",
+        toArrayBuffer(peerPub),
+        { name: "X25519" },
+        false,
+        [],
+      );
+      const bits = await globalThis.crypto.subtle.deriveBits(
+        { name: "X25519", public: pubKey },
+        key,
+        256,
+      );
+      return new Uint8Array(bits);
+    } finally {
+      pkcs8.fill(0);
+    }
   }
 }

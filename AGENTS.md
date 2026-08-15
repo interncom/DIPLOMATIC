@@ -18,6 +18,19 @@ When implementing a change, there is sometimes a refactor that looks useful to d
 
 To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are *not* desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
 
+## Function Documentation
+Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. You can explain special cases on a follow-up line. For instance:
+
+// Finds the greatest common divisor of two numbers.
+// Returns undefined if a or b is not a number.
+function gcd(a, b) {
+  // ... implementation
+}
+
+## Types
+
+Prefer branded types over raw Uint8Array bytes. Those bytes will need some explanation of their purpose so we might as well make it explicit with a branded type rather than relying on comments.
+
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.

@@ -31,6 +31,10 @@ function gcd(a, b) {
 
 Prefer branded types over raw Uint8Array bytes. Those bytes will need some explanation of their purpose so we might as well make it explicit with a branded type rather than relying on comments.
 
+## Security
+
+When handling security-critical data like private keys, always ensure that they are zero-ed out ASAP to minimize the time window in which they can be caught by inspecting memory.
+
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.

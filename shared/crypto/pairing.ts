@@ -100,6 +100,11 @@ export class PairRequest {
     }
   }
 
+  // Drops the ephemeral scalar. Call if the user abandons pairing.
+  wipe(): void {
+    this.#priv.fill(0);
+  }
+
   // Returns a copy of the enrollee X25519 pub to send as the DHKE request.
   get dhkeReq(): DHKEReq {
     const [q, st] = asDHKEReq(this.#dhkeReq.slice());
@@ -137,7 +142,7 @@ export class PairRequest {
         const [enclave, ens] = Enclave.fromBytes(inner.masterSeed);
         if (ens !== Status.Success) return err(ens);
         if (enclave === undefined) return err(Status.InternalError);
-        this.#priv.fill(0);
+        this.wipe();
         return ok({
           enclave,
           hosts: inner.hosts.map((h) => ({ ...h })),

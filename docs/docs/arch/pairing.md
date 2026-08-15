@@ -67,5 +67,6 @@ Same-vendor backdoor-to-backdoor is ignored.
 | Enrollee | `Enclave.pairRequest()` / `PairRequest.create()` → show `dhkeReq` |
 | Enroller | `enclave.pairAccept(dhkeReq, hosts)` → `dhkeResp` |
 | Enrollee | `req.finish(dhkeResp)` → `{ enclave, hosts }`, then `sealWithPasskey` |
+| Enrollee | `req.wipe()` if the user abandons before finish |
 
 `sk` never leaves `PairRequest` / `pairAccept`. Failed `genX25519` (RNG) is `Status.CryptoError`, not `HostError`.

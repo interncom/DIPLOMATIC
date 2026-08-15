@@ -201,6 +201,17 @@ Deno.test("finish wipes priv (second finish fails)", async () => {
   assertEquals(ost2, Status.DecryptionError);
 });
 
+Deno.test("wipe abandons the session", async () => {
+  const req = await reqOf();
+  const [resp, ast] = await encOf(8).pairAccept(req.dhkeReq, []);
+  assertEquals(ast, Status.Success);
+  assert(resp !== undefined);
+  req.wipe();
+  req.wipe();
+  const [, ost] = await req.finish(resp);
+  assertEquals(ost, Status.DecryptionError);
+});
+
 Deno.test("pairAccept rejects an all-zero enrollee pub", async () => {
   const [, ast] = await encOf(7).pairAccept(brandReq(new Uint8Array(32)), []);
   assert(ast !== Status.Success);

@@ -259,10 +259,11 @@ export class NobleCrypto implements ICrypto {
     }
     const want = x25519Pub(priv);
     const pkcs8 = x25519Pkcs8FromSk(priv);
+    const pkcs8Ab = toArrayBuffer(pkcs8);
     try {
       const key = await globalThis.crypto.subtle.importKey(
         "pkcs8",
-        toArrayBuffer(pkcs8),
+        pkcs8Ab,
         { name: "X25519" },
         true,
         ["deriveBits"],
@@ -282,6 +283,7 @@ export class NobleCrypto implements ICrypto {
       throw e;
     } finally {
       pkcs8.fill(0);
+      new Uint8Array(pkcs8Ab).fill(0);
     }
   }
 
@@ -292,10 +294,11 @@ export class NobleCrypto implements ICrypto {
     peerPub: Uint8Array,
   ): Promise<Uint8Array> {
     const pkcs8 = x25519Pkcs8FromSk(priv);
+    const pkcs8Ab = toArrayBuffer(pkcs8);
     try {
       const key = await globalThis.crypto.subtle.importKey(
         "pkcs8",
-        toArrayBuffer(pkcs8),
+        pkcs8Ab,
         { name: "X25519" },
         false,
         ["deriveBits"],
@@ -315,6 +318,7 @@ export class NobleCrypto implements ICrypto {
       return new Uint8Array(bits);
     } finally {
       pkcs8.fill(0);
+      new Uint8Array(pkcs8Ab).fill(0);
     }
   }
 }

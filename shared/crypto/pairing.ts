@@ -56,10 +56,15 @@ export async function pairKey(
     if (shared.byteLength !== X25519_PUB_LEN || shared.every((b) => b === 0)) {
       return err(Status.InvalidParam);
     }
-    const hash = await noble.blake3(
-      concat(concat(shared, SEAL_PAIR_DOMAIN), concat(reqPub, respPub)),
-    );
-    return ok(hash.slice(0, SEAL_KEY_LEN));
+    const head = concat(shared, SEAL_PAIR_DOMAIN); // S ‖ domain
+    const mix = concat(head, concat(reqPub, respPub));
+    try {
+      const hash = await noble.blake3(mix);
+      return ok(hash.slice(0, SEAL_KEY_LEN));
+    } finally {
+      head.fill(0);
+      mix.fill(0);
+    }
   } finally {
     shared.fill(0);
   }

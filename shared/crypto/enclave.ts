@@ -367,9 +367,13 @@ export class Enclave {
         })),
       };
       const enc = new Encoder();
-      const wst = enc.writeStruct(pairPackagePlainCodec, plain);
-      if (wst !== Status.Success) return err(wst);
-      return ok(enc.result());
+      try {
+        const wst = enc.writeStruct(pairPackagePlainCodec, plain);
+        if (wst !== Status.Success) return err(wst);
+        return ok(enc.result());
+      } finally {
+        enc.wipe();
+      }
     } finally {
       snap.fill(0);
     }

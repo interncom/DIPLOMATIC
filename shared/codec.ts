@@ -240,6 +240,12 @@ export class Encoder {
     return result;
   }
 
+  // Zeros held parts so encode copies of secrets do not outlive result().
+  wipe(): void {
+    for (const p of this.parts) p.fill(0);
+    this.parts.length = 0;
+  }
+
   *scan(): Generator<Uint8Array> {
     for (const part of this.parts) {
       yield part;

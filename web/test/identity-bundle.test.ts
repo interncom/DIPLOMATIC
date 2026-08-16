@@ -166,6 +166,61 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(b.publicKey).toEqual(a.publicKey);
   });
 
+  it("createCredIfNeeded omits platform attachment", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, { prf: { enabled: true } }),
+    );
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      } as AuthenticationExtensionsClientOutputs),
+    );
+    (globalThis as any).navigator = {
+      credentials: { create, get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledOnce();
+    const pub = create.mock.calls[0][0].publicKey;
+    expect(pub.authenticatorSelection.authenticatorAttachment).toBeUndefined();
+    expect(pub.extensions.prf.eval.first).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it("createCredIfNeeded fails closed when create omits prf.enabled", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, { prf: {} }),
+    );
+    const get = vi.fn();
+    (globalThis as any).navigator = {
+      credentials: { create, get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
+
+    const [, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.HostError);
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("fails closed on wrong PRF", async () => {
     stubPrfGet(2);
     const [sealed, sst] = await enclaveOf(1).sealWithPasskey({

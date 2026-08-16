@@ -10,7 +10,7 @@ Credentials are scoped to the page hostname (`rpId`). Every wrap, unwrap, and la
 
 WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.wrap.v1`) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless. Pairing uses a different KDF (`diplomatic.qrpair.v1`); see [Pairing](./pairing).
 
-`createPrfCred` defaults to a **platform** authenticator (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
+`createPrfCred` does **not** default `authenticatorAttachment`. Omitting it lets the UA offer platform passkeys, roaming keys, and third-party providers. Pass `platform` to restrict (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
 Create must report `prf.enabled`. Eval must return 32 bytes. Otherwise seal/unseal fails closed (`HostError` / `MissingBody`). There is no passphrase-seal fallback yet.
 
@@ -45,6 +45,7 @@ Tables are current as of August 2026. Always test the target browser; `prf.enabl
 | macOS 15+ Safari 18+, Chrome | yes | iCloud Keychain |
 | iOS / iPadOS 18+ Safari | yes | iCloud Keychain |
 | Android Chrome | yes | Google Password Manager |
+| GrapheneOS Vanadium | USB key / GPM only | No GPM PRF without Play. `extension:prf` is a Chromium client flag, not Titan hmac-secret. Use a USB YubiKey, or GPM via sandboxed Play. |
 | Windows 11 + Chrome/Edge 147+, Firefox 148+ | yes | Windows Hello |
 
 Platform passkeys do **not** provide largeBlob. Use a roaming key for IdentityBundle backup.

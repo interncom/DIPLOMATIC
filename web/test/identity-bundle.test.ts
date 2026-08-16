@@ -197,7 +197,8 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(create).toHaveBeenCalledOnce();
     const pub = create.mock.calls[0][0].publicKey;
     expect(pub.authenticatorSelection.authenticatorAttachment).toBeUndefined();
-    expect(pub.extensions.prf.eval.first).toBeInstanceOf(ArrayBuffer);
+    expect(pub.authenticatorSelection.residentKey).toBe("required");
+    expect(pub.extensions.prf).toEqual({});
   });
 
   it("createCredIfNeeded fails closed when create omits prf.enabled", async () => {

@@ -17,9 +17,14 @@ export const WEBAUTHN_PUB_KEY_PARAMS: PublicKeyCredentialParameters[] = [
   { type: "public-key", alg: COSE_ALG_RS256 },
 ];
 
+/** UA preference for the WebAuthn picker. Not exclusive; omit attachment to allow both. */
+export type WebAuthnHint = "security-key" | "client-device" | "hybrid";
+
 export type WebAuthnRp = {
   rpId?: string;
   rpName?: string;
+  /** Level 3 `hints`. Prefer `security-key` so Android offers USB. */
+  hints?: WebAuthnHint[];
 };
 
 /**

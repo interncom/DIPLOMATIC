@@ -151,7 +151,8 @@ export async function largeBlobWrite(
   return Status.Success;
 }
 
-/** UV `get()` with optional hints / allow list. */
+/** `get()` with optional hints / allow list. UV preferred: required fails closed
+ * on Android when USB PIN is not wired (instant NotAllowedError, no picker). */
 async function getAssertion(
   rpId: string,
   opts?: LargeBlobRp,
@@ -161,7 +162,7 @@ async function getAssertion(
   const publicKey: ReqOpts = {
     challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
     rpId,
-    userVerification: "required",
+    userVerification: "preferred",
   };
   if (opts?.hints !== undefined) publicKey.hints = opts.hints;
   if (credId !== undefined) {
@@ -200,7 +201,14 @@ export async function largeBlobRead(
 
   let id = credId;
   if (id === undefined) {
-    const [picked, pst] = await getAssertion(rpId, opts);
+    let [picked, pst] = await getAssertion(rpId, opts);
+    if (pst !== Status.Success && opts?.hints !== undefined) {
+      // hints:security-key with no provider is an instant NotAllowedError.
+      [picked, pst] = await getAssertion(rpId, {
+        rpId: opts.rpId,
+        rpName: opts.rpName,
+      });
+    }
     if (pst !== Status.Success) return err(pst);
     if (picked === undefined) return err(Status.InvalidResponse);
     id = new Uint8Array(picked.rawId);

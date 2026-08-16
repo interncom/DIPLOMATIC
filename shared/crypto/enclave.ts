@@ -353,9 +353,13 @@ export class Enclave {
   #encodePairPlain(hosts: BundleHost[]): ValStat<Uint8Array> {
     const raw = this.#seed.slice();
     const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
-    if (snap === undefined) {
+    if (sst !== Status.Success) {
       raw.fill(0);
       return err(sst);
+    }
+    if (snap === undefined) {
+      raw.fill(0);
+      return err(Status.InvalidParam);
     }
     try {
       const plain: PairPackagePlain = {
@@ -491,9 +495,13 @@ export class Enclave {
   #encodeIdentityBundleWire(hosts: BundleHost[]): ValStat<Uint8Array> {
     const raw = this.#seed.slice();
     const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
-    if (snap === undefined) {
+    if (sst !== Status.Success) {
       raw.fill(0);
       return err(sst);
+    }
+    if (snap === undefined) {
+      raw.fill(0);
+      return err(Status.InvalidParam);
     }
     try {
       const [bundle, bst] = createIdentityBundle(snap, hosts);

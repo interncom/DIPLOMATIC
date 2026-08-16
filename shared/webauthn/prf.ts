@@ -14,8 +14,13 @@ import {
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnExtensionCapable,
+  type WebAuthnHint,
   type WebAuthnRp,
 } from "./common.ts";
+
+type ReqOpts = PublicKeyCredentialRequestOptions & {
+  hints?: WebAuthnHint[];
+};
 
 export type PrfRp = WebAuthnRp;
 
@@ -92,6 +97,7 @@ export async function createPrfCred(
         pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
         authenticatorSelection: selection,
         extensions: { prf: prfInput },
+        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
   } catch {
@@ -125,7 +131,7 @@ export async function evalPrf(
 
   const salt = opts?.salt ?? DEFAULT_PRF_SALT;
   const saltBuf = copyToArrayBuffer(salt);
-  const publicKey: PublicKeyCredentialRequestOptions = {
+  const publicKey: ReqOpts = {
     challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
     rpId,
     userVerification: "required",
@@ -135,6 +141,7 @@ export async function evalPrf(
       },
     },
   };
+  if (opts?.hints !== undefined) publicKey.hints = opts.hints;
   if (opts?.credId !== undefined) {
     publicKey.allowCredentials = [
       { type: "public-key", id: copyToArrayBuffer(opts.credId) },

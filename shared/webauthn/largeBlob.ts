@@ -17,8 +17,13 @@ import {
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnExtensionCapable,
+  type WebAuthnHint,
   type WebAuthnRp,
 } from "./common.ts";
+
+type ReqOpts = PublicKeyCredentialRequestOptions & {
+  hints?: WebAuthnHint[];
+};
 
 export type LargeBlobRp = WebAuthnRp;
 
@@ -82,6 +87,7 @@ export async function largeBlobCreateCred(
         pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
         authenticatorSelection: selection,
         extensions: extensions as AuthenticationExtensionsClientInputs,
+        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
   } catch {
@@ -125,6 +131,7 @@ export async function largeBlobWrite(
         ],
         userVerification: "required",
         extensions: extensions as AuthenticationExtensionsClientInputs,
+        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
   } catch {
@@ -156,12 +163,13 @@ export async function largeBlobRead(
 
   let cred: Credential | null;
   try {
-    const publicKey: PublicKeyCredentialRequestOptions = {
+    const publicKey: ReqOpts = {
       challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
       rpId,
       userVerification: "required",
       extensions: extensions as AuthenticationExtensionsClientInputs,
     };
+    if (opts?.hints !== undefined) publicKey.hints = opts.hints;
     if (credId !== undefined) {
       publicKey.allowCredentials = [
         { type: "public-key", id: copyToArrayBuffer(credId) },

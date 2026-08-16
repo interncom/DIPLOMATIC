@@ -177,6 +177,7 @@ export class Enclave {
         rpName: opts?.rpName,
         userName: opts?.userName ?? "diplomatic-prf",
         authenticatorAttachment: opts?.authenticatorAttachment,
+        hints: opts?.hints,
         salt,
       });
       if (cst !== Status.Success) return err(cst);
@@ -190,6 +191,7 @@ export class Enclave {
       rpName: opts?.rpName,
       credId,
       salt,
+      hints: opts?.hints,
     });
     if (est !== Status.Success) return err(est);
     if (ev === undefined) return err(Status.MissingBody);
@@ -221,6 +223,7 @@ export class Enclave {
     const [ev, est] = await evalPrf({
       rpId: opts.rpId,
       rpName: opts.rpName,
+      hints: opts.hints,
       credId: opts.credId,
       salt: opts.salt,
     });

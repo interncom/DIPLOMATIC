@@ -90,7 +90,11 @@ export class PrfSeedStore implements ISeedStore {
     enclave: Enclave,
     opts?: Pick<
       PasskeyPrfOpts,
-      "salt" | "credId" | "createCredIfNeeded" | "authenticatorAttachment"
+      | "salt"
+      | "credId"
+      | "createCredIfNeeded"
+      | "authenticatorAttachment"
+      | "hints"
     >,
   ): Promise<ValStat<Enclave>> {
     const [sealed, sst] = await enclave.sealWithPasskey({
@@ -101,6 +105,7 @@ export class PrfSeedStore implements ISeedStore {
         opts?.credId === undefined,
       userName: "diplomatic-prf",
       authenticatorAttachment: opts?.authenticatorAttachment,
+      hints: opts?.hints,
     });
     if (sst !== Status.Success) return err(sst);
     if (sealed === undefined) return err(Status.InternalError);

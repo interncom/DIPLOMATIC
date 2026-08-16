@@ -198,6 +198,29 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(arg.publicKey.extensions.largeBlob.read).toBe(true);
   });
 
+  it("fromLargeBlob forwards security-key hints", async () => {
+    const seed = seedBytes(4);
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        largeBlob: {
+          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
+        },
+      }),
+    );
+    (globalThis as any).navigator = {
+      credentials: { create: vi.fn(), get },
+    };
+    (globalThis as any).PublicKeyCredential = class {};
+    (globalThis as any).location = { hostname: "localhost" };
+
+    const [, st] = await Enclave.fromLargeBlob({
+      rpId: "localhost",
+      hints: ["security-key"],
+    });
+    expect(st).toBe(Status.Success);
+    expect(get.mock.calls[0][0].publicKey.hints).toEqual(["security-key"]);
+  });
+
   it("fromLargeBlob fails on wiped zero seed", async () => {
     const zeros = seedBytes(0);
     const get = vi.fn().mockResolvedValue(

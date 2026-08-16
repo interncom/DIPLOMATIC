@@ -12,7 +12,7 @@ WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domai
 
 `createPrfCred` does **not** default `authenticatorAttachment`. Omitting it lets the UA offer platform passkeys, roaming keys, and third-party providers. Pass `platform` to restrict (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
-Create must report `prf.enabled`. Eval must return 32 bytes. Otherwise seal/unseal fails closed (`HostError` / `MissingBody`). There is no passphrase-seal fallback yet.
+Create must report `prf.enabled`. Eval must return 32 bytes. Otherwise seal/unseal fails closed (`WebAuthnError` / `MissingBody`). There is no passphrase-seal fallback yet.
 
 App API: `Enclave.sealWithPasskey` / `unsealWithPasskey`, `PrfSeedStore`. Probe: `prfCapable()` (browser advertises the extension; not a guarantee the authenticator has hmac-secret).
 
@@ -45,7 +45,7 @@ Tables are current as of August 2026. Always test the target browser; `prf.enabl
 | macOS 15+ Safari 18+, Chrome | yes | iCloud Keychain |
 | iOS / iPadOS 18+ Safari | yes | iCloud Keychain |
 | Android Chrome | yes | Google Password Manager |
-| GrapheneOS Vanadium | USB key / GPM only | No GPM PRF without Play. `extension:prf` is a Chromium client flag, not Titan hmac-secret. Use a USB YubiKey, or GPM via sandboxed Play. |
+| GrapheneOS Vanadium | USB key / GPM only | No GPM PRF without Play. `extension:prf` / `extension:largeBlob` are Chromium client flags. Discoverable `get()` + `largeBlob.read` is aborted by Android Credential Manager (no USB picker) — restore picks the key first, then reads. A security-key provider may still be required (Play FIDO or [hw-fido2-provider](https://codeberg.org/s1m/hw-fido2-provider)). |
 | Windows 11 + Chrome/Edge 147+, Firefox 148+ | yes | Windows Hello |
 
 Platform passkeys do **not** provide largeBlob. Use a roaming key for IdentityBundle backup.

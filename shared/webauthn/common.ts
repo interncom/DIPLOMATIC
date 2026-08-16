@@ -71,6 +71,22 @@ export function resolveWebAuthnRpId(opts?: WebAuthnRp): ValStat<string> {
   return ok(defaultWebAuthnRpId(location.hostname));
 }
 
+let lastWebAuthnErr = "";
+
+/** Last `credentials.create`/`get` throw (name + message). Empty if none. */
+export function webAuthnLastError(): string {
+  return lastWebAuthnErr;
+}
+
+/** Records a WebAuthn DOMException (or other throw) for {@link webAuthnLastError}. */
+export function noteWebAuthnError(e: unknown): void {
+  if (e instanceof Error) {
+    lastWebAuthnErr = e.message === "" ? e.name : `${e.name}: ${e.message}`;
+    return;
+  }
+  lastWebAuthnErr = String(e);
+}
+
 /** Success if WebAuthn credentials API is available in this environment. */
 export function checkWebAuthn(): Status {
   if (

@@ -217,7 +217,7 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
       salt: DEFAULT_PRF_SALT,
       createCredIfNeeded: true,
     });
-    expect(sst).toBe(Status.HostError);
+    expect(sst).toBe(Status.WebAuthnError);
     expect(get).not.toHaveBeenCalled();
   });
 

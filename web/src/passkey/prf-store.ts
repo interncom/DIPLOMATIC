@@ -1,7 +1,7 @@
 // Seed store: durable sealed master in protocol IDB + unlock via PRF ceremony.
 // Session handle is always an Enclave. PRF bytes never leave Enclave methods.
 
-import { Enclave } from "../shared/crypto/enclave";
+import { Enclave, type PasskeyPrfOpts } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
@@ -88,11 +88,10 @@ export class PrfSeedStore implements ISeedStore {
    */
   async wrapAndSave(
     enclave: Enclave,
-    opts?: {
-      salt?: Uint8Array;
-      credId?: Uint8Array;
-      createCredIfNeeded?: boolean;
-    },
+    opts?: Pick<
+      PasskeyPrfOpts,
+      "salt" | "credId" | "createCredIfNeeded" | "authenticatorAttachment"
+    >,
   ): Promise<ValStat<Enclave>> {
     const [sealed, sst] = await enclave.sealWithPasskey({
       ...this.#rp,
@@ -101,6 +100,7 @@ export class PrfSeedStore implements ISeedStore {
       createCredIfNeeded: opts?.createCredIfNeeded ??
         opts?.credId === undefined,
       userName: "diplomatic-prf",
+      authenticatorAttachment: opts?.authenticatorAttachment,
     });
     if (sst !== Status.Success) return err(sst);
     if (sealed === undefined) return err(Status.InternalError);

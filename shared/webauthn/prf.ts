@@ -29,7 +29,7 @@ export type PrfCreateOpts = PrfRp & {
   userName?: string;
   /** Omit so the UA can offer roaming keys (YubiKey) and third-party providers. */
   authenticatorAttachment?: "platform" | "cross-platform";
-  /** If set, also request PRF eval during create. `{ prf: {} }` already enables hmac-secret. */
+  /** Seal salt (eval is on get, not create — some UAs throw on create-time eval). */
   salt?: Uint8Array;
 };
 
@@ -71,18 +71,18 @@ export async function createPrfCred(
   if (rpId === undefined) return err(Status.MissingParam);
 
   const name = opts?.userName ?? "diplomatic-prf";
+  // Roaming USB on Android: discoverable + UV-required is refused (NotAllowed /
+  // NotReadable) before a picker. hmac-secret works on non-resident creds;
+  // we store credId for the later get().
+  const roaming = opts?.authenticatorAttachment === "cross-platform";
   const selection: AuthenticatorSelectionCriteria = {
-    residentKey: "required",
-    requireResidentKey: true,
-    userVerification: "required",
+    residentKey: roaming ? "discouraged" : "required",
+    requireResidentKey: !roaming,
+    userVerification: roaming ? "preferred" : "required",
   };
   if (opts?.authenticatorAttachment !== undefined) {
     selection.authenticatorAttachment = opts.authenticatorAttachment;
   }
-  const saltBuf = opts?.salt !== undefined
-    ? copyToArrayBuffer(opts.salt)
-    : undefined;
-  const prfInput = saltBuf === undefined ? {} : { eval: { first: saltBuf } };
 
   let cred: Credential | null;
   try {
@@ -97,7 +97,7 @@ export async function createPrfCred(
         },
         pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
         authenticatorSelection: selection,
-        extensions: { prf: prfInput },
+        extensions: { prf: {} },
         ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
@@ -136,7 +136,7 @@ export async function evalPrf(
   const publicKey: ReqOpts = {
     challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
     rpId,
-    userVerification: "required",
+    userVerification: "preferred",
     extensions: {
       prf: {
         eval: { first: saltBuf },

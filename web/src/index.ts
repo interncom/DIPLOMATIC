@@ -149,6 +149,8 @@ export function largeBlobCapable(): Promise<boolean> {
   return LargeBlob.capable();
 }
 
+export { webAuthnLastError } from "./shared/webauthn/common";
+
 export {
   APLD_APPLIED,
   APLD_ERROR,

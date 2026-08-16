@@ -13,6 +13,7 @@ import {
   bufferSourceToUint8,
   checkWebAuthn,
   copyToArrayBuffer,
+  noteWebAuthnError,
   resolveWebAuthnRpId,
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_PUB_KEY_PARAMS,
@@ -90,8 +91,9 @@ export async function largeBlobCreateCred(
         ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
-  } catch {
-    return err(Status.HostError);
+  } catch (e) {
+    noteWebAuthnError(e);
+    return err(Status.WebAuthnError);
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
@@ -99,7 +101,7 @@ export async function largeBlobCreateCred(
   if (pk === undefined) return err(Status.InvalidResponse);
   const ext = pk.getClientExtensionResults() as ExtOut;
   if (ext.largeBlob?.supported !== true) {
-    return err(Status.HostError);
+    return err(Status.WebAuthnError);
   }
   return ok(new Uint8Array(pk.rawId));
 }
@@ -134,8 +136,9 @@ export async function largeBlobWrite(
         ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
-  } catch {
-    return Status.HostError;
+  } catch (e) {
+    noteWebAuthnError(e);
+    return Status.WebAuthnError;
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
@@ -143,12 +146,48 @@ export async function largeBlobWrite(
   if (pk === undefined) return Status.InvalidResponse;
   const ext = pk.getClientExtensionResults() as ExtOut;
   if (ext.largeBlob?.written !== true) {
-    return Status.HostError;
+    return Status.WebAuthnError;
   }
   return Status.Success;
 }
 
-/** UV read from largeBlob; `credId` undefined = discoverable assertion. */
+/** UV `get()` with optional hints / allow list. */
+async function getAssertion(
+  rpId: string,
+  opts?: LargeBlobRp,
+  credId?: Uint8Array,
+  extensions?: ExtIn,
+): Promise<ValStat<PublicKeyCredential>> {
+  const publicKey: ReqOpts = {
+    challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
+    rpId,
+    userVerification: "required",
+  };
+  if (opts?.hints !== undefined) publicKey.hints = opts.hints;
+  if (credId !== undefined) {
+    publicKey.allowCredentials = [
+      { type: "public-key", id: copyToArrayBuffer(credId) },
+    ];
+  }
+  if (extensions !== undefined) {
+    publicKey.extensions = extensions as AuthenticationExtensionsClientInputs;
+  }
+  let cred: Credential | null;
+  try {
+    cred = await navigator.credentials.get({ publicKey });
+  } catch (e) {
+    noteWebAuthnError(e);
+    return err(Status.WebAuthnError);
+  }
+  const [pk, pst] = asPublicKeyCredential(cred);
+  if (pst !== Status.Success) return err(pst);
+  if (pk === undefined) return err(Status.InvalidResponse);
+  return ok(pk);
+}
+
+/** UV read from largeBlob; `credId` undefined = discoverable then targeted read. */
+// Android Credential Manager aborts a discoverable get that requests
+// largeBlob.read (no USB picker). Pick the key first, then read.
 export async function largeBlobRead(
   credId: Uint8Array | undefined,
   opts?: LargeBlobRp,
@@ -159,29 +198,18 @@ export async function largeBlobRead(
   if (rst !== Status.Success) return err(rst);
   if (rpId === undefined) return err(Status.MissingParam);
 
-  const extensions: ExtIn = { largeBlob: { read: true } };
-
-  let cred: Credential | null;
-  try {
-    const publicKey: ReqOpts = {
-      challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-      rpId,
-      userVerification: "required",
-      extensions: extensions as AuthenticationExtensionsClientInputs,
-    };
-    if (opts?.hints !== undefined) publicKey.hints = opts.hints;
-    if (credId !== undefined) {
-      publicKey.allowCredentials = [
-        { type: "public-key", id: copyToArrayBuffer(credId) },
-      ];
-    }
-    cred = await navigator.credentials.get({ publicKey });
-  } catch {
-    return err(Status.HostError);
+  let id = credId;
+  if (id === undefined) {
+    const [picked, pst] = await getAssertion(rpId, opts);
+    if (pst !== Status.Success) return err(pst);
+    if (picked === undefined) return err(Status.InvalidResponse);
+    id = new Uint8Array(picked.rawId);
   }
 
-  const [pk, pst] = asPublicKeyCredential(cred);
-  if (pst !== Status.Success) return err(pst);
+  const [pk, gst] = await getAssertion(rpId, opts, id, {
+    largeBlob: { read: true },
+  });
+  if (gst !== Status.Success) return err(gst);
   if (pk === undefined) return err(Status.InvalidResponse);
   const ext = pk.getClientExtensionResults() as ExtOut;
   const lb = ext.largeBlob;

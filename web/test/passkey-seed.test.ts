@@ -99,7 +99,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     (globalThis as any).location = { hostname: "localhost" };
 
     const [, st] = await LargeBlob.createCred({ rpId: "localhost" });
-    expect(st).toBe(Status.HostError);
+    expect(st).toBe(Status.WebAuthnError);
   });
 });
 
@@ -193,9 +193,13 @@ describe("Enclave largeBlob seed boundary", () => {
     const expected = await enclaveOf(4).deriveIdentity("test", 0);
     const got = await out.enclave.deriveIdentity("test", 0);
     expect(got.publicKey).toEqual(expected.publicKey);
-    const arg = get.mock.calls[0][0];
-    expect(arg.publicKey.allowCredentials).toBeUndefined();
-    expect(arg.publicKey.extensions.largeBlob.read).toBe(true);
+    expect(get).toHaveBeenCalledTimes(2);
+    const pick = get.mock.calls[0][0];
+    expect(pick.publicKey.allowCredentials).toBeUndefined();
+    expect(pick.publicKey.extensions).toBeUndefined();
+    const read = get.mock.calls[1][0];
+    expect(read.publicKey.allowCredentials).toBeDefined();
+    expect(read.publicKey.extensions.largeBlob.read).toBe(true);
   });
 
   it("fromLargeBlob forwards security-key hints", async () => {
@@ -219,6 +223,10 @@ describe("Enclave largeBlob seed boundary", () => {
     });
     expect(st).toBe(Status.Success);
     expect(get.mock.calls[0][0].publicKey.hints).toEqual(["security-key"]);
+    expect(get.mock.calls[1][0].publicKey.hints).toEqual(["security-key"]);
+    expect(get.mock.calls[1][0].publicKey.extensions.largeBlob.read).toBe(
+      true,
+    );
   });
 
   it("fromLargeBlob fails on wiped zero seed", async () => {

@@ -181,8 +181,8 @@ export class Enclave {
         salt,
       });
       if (cst !== Status.Success) return err(cst);
-      if (created === undefined) return err(Status.HostError);
-      if (!created.prfEnabled) return err(Status.HostError);
+      if (created === undefined) return err(Status.WebAuthnError);
+      if (!created.prfEnabled) return err(Status.WebAuthnError);
       credId = created.credId;
     }
 
@@ -259,7 +259,7 @@ export class Enclave {
     if (credId === undefined) {
       const [created, cst] = await largeBlobCreateCred(opts);
       if (cst !== Status.Success) return err(cst);
-      if (created === undefined) return err(Status.HostError);
+      if (created === undefined) return err(Status.WebAuthnError);
       credId = created;
     }
 

@@ -10,6 +10,7 @@ import {
   asPublicKeyCredential,
   checkWebAuthn,
   copyToArrayBuffer,
+  noteWebAuthnError,
   resolveWebAuthnRpId,
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_PUB_KEY_PARAMS,
@@ -100,8 +101,9 @@ export async function createPrfCred(
         ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
       },
     });
-  } catch {
-    return err(Status.HostError);
+  } catch (e) {
+    noteWebAuthnError(e);
+    return err(Status.WebAuthnError);
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
@@ -151,8 +153,9 @@ export async function evalPrf(
   let cred: Credential | null;
   try {
     cred = await navigator.credentials.get({ publicKey });
-  } catch {
-    return err(Status.HostError);
+  } catch (e) {
+    noteWebAuthnError(e);
+    return err(Status.WebAuthnError);
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);

@@ -46,6 +46,7 @@ export enum Status {
   InvalidResponse = 27,
   ConnectionClosed = 28,
   CryptoError = 29,
+  WebAuthnError = 30,
 }
 
 export enum APICallName {

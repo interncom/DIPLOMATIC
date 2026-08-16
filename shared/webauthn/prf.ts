@@ -23,7 +23,7 @@ export type PrfCreateOpts = PrfRp & {
   userName?: string;
   /** Omit so the UA can offer roaming keys (YubiKey) and third-party providers. */
   authenticatorAttachment?: "platform" | "cross-platform";
-  /** If set, request PRF eval at create so hmac-secret is actually enabled. */
+  /** If set, also request PRF eval during create. `{ prf: {} }` already enables hmac-secret. */
   salt?: Uint8Array;
 };
 

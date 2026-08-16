@@ -87,9 +87,8 @@ export class PairRequest {
       const pair = await noble.genX25519();
       priv = pair.priv;
       const [dhkeReq, qst] = asDHKEReq(pair.pub);
-      if (qst !== Status.Success || dhkeReq === undefined) {
-        return err(qst);
-      }
+      if (qst !== Status.Success) return err(qst);
+      if (dhkeReq === undefined) return err(Status.InvalidParam);
       const req = new PairRequest(priv, dhkeReq);
       priv = undefined;
       return ok(req);

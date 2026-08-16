@@ -1,6 +1,7 @@
-// WebAuthn PRF extension I/O (platform passkeys). Not crypto of the master seed —
-// that stays in Enclave. Fixed module (not pluggable). PRF output must not be
-// returned to app code; only Enclave consumes it for seal/unseal.
+// WebAuthn PRF extension I/O (platform and roaming passkeys). Not crypto of
+// the master seed — that stays in Enclave. Fixed module (not pluggable). PRF
+// output must not be returned to app code; only Enclave consumes it for
+// seal/unseal.
 
 import { Status } from "../consts.ts";
 import { randomBytesArrayBuffer } from "../crypto/entropy.ts";
@@ -20,7 +21,10 @@ export type PrfRp = WebAuthnRp;
 
 export type PrfCreateOpts = PrfRp & {
   userName?: string;
-  authenticatorAttachment?: string;
+  /** Omit so the UA can offer roaming keys (YubiKey) and third-party providers. */
+  authenticatorAttachment?: "platform" | "cross-platform";
+  /** If set, request PRF eval at create so hmac-secret is actually enabled. */
+  salt?: Uint8Array;
 };
 
 /** Default salt for DIPLOMATIC PRF eval (UTF-8). */
@@ -65,9 +69,14 @@ export async function createPrfCred(
     residentKey: "required",
     requireResidentKey: true,
     userVerification: "required",
-    authenticatorAttachment: (opts?.authenticatorAttachment ??
-      "platform") as AuthenticatorAttachment,
   };
+  if (opts?.authenticatorAttachment !== undefined) {
+    selection.authenticatorAttachment = opts.authenticatorAttachment;
+  }
+  const saltBuf = opts?.salt !== undefined
+    ? copyToArrayBuffer(opts.salt)
+    : undefined;
+  const prfInput = saltBuf === undefined ? {} : { eval: { first: saltBuf } };
 
   let cred: Credential | null;
   try {
@@ -82,7 +91,7 @@ export async function createPrfCred(
         },
         pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
         authenticatorSelection: selection,
-        extensions: { prf: {} },
+        extensions: { prf: prfInput },
       },
     });
   } catch {

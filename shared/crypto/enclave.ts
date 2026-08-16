@@ -74,12 +74,10 @@ export type { LargeBlobCreateOpts, LargeBlobRp };
 export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
 
 /** Options for PRF seal/unseal ceremonies (no raw PRF bytes). */
-export type PasskeyPrfOpts = PrfRp & {
-  salt?: Uint8Array;
+export type PasskeyPrfOpts = PrfCreateOpts & {
   credId?: Uint8Array;
   /** Seal only: create a PRF credential first when no credId is known. */
   createCredIfNeeded?: boolean;
-  userName?: string;
 };
 
 /** Durable PRF-sealed master + public meta (never includes PRF output). */
@@ -178,6 +176,8 @@ export class Enclave {
         rpId: opts?.rpId,
         rpName: opts?.rpName,
         userName: opts?.userName ?? "diplomatic-prf",
+        authenticatorAttachment: opts?.authenticatorAttachment,
+        salt,
       });
       if (cst !== Status.Success) return err(cst);
       if (created === undefined) return err(Status.HostError);

@@ -1,6 +1,6 @@
 # Pairing
 
-In-person transfer of the [master seed](./keys) (and host rows) from a device that already has an [enclave](/docs/about/glossary#enclave) (**enroller**) to a fresh device (**enrollee**). After `finish`, the enrollee wraps the seed under its own WebAuthn PRF for durable storage.
+In-person transfer of the [master seed](./keys) (and host rows) from a device that already has an [enclave](/docs/about/glossary#enclave) (**enroller**) to a fresh device (**enrollee**). After `finish`, the enrollee binds the seed under its own WebAuthn PRF for durable storage.
 
 This is not host sync and not the old shared-passkey `dip1:` flow. The two devices need not share a passkey.
 
@@ -26,7 +26,7 @@ S     = X25519(sk_local, peer_pub)
 KEK   = blake3(S ‖ diplomatic.qrpair.v1 ‖ reqPub ‖ respPub)[0..32]
 ```
 
-`reqPub` / `respPub` are bound into the KDF so the ciphertext is tied to both publics. A wrap-domain PRF KEK cannot open a pair body.
+`reqPub` / `respPub` are bound into the KDF so the ciphertext is tied to both public keys. A PRF-binding KEK cannot open a pair body.
 
 Transport is not part of the object: QR, audio, or copy-paste are encodings of these bytes. A URL hash for a system camera / deeplink must not send the payload to the app host.
 
@@ -56,9 +56,9 @@ We considered also checking `deriveBits` against an in-house DH. That would be a
 
 Same-vendor backdoor-to-backdoor is ignored.
 
-**Existing AEAD and KDF.** XSalsa20-Poly1305 and blake3 are already used for bags and PRF wrap. No ChaCha20, no HKDF-SHA256.
+**Existing AEAD and KDF.** We reuse XSalsa20-Poly1305 and blake3 which are already used for bags and PRF bindings.
 
-**PRF after transfer, not on the wire.** The enrollee’s PRF is local to its authenticator. The enroller can use it only if (1) the enrollee puts PRF bytes (or a derived key) in `DHKEReq` — then they sit on the same blob the eavesdropper already has — or (2) both devices share the passkey, which is the other flow. A split the enroller cannot see is impossible. After `finish`, `sealWithPasskey` protects IndexedDB on the new device; it does not protect `DHKEResp` in transit.
+**PRF after transfer, not on the wire.** The enrollee’s PRF is local to its binding key. The enroller can use it only if (1) the enrollee puts PRF bytes (or a derived key) in `DHKEReq` — then they sit on the same blob the eavesdropper already has — or (2) both devices share the passkey, which is the other flow. A split the enroller cannot see is impossible. After `finish`, `sealWithPasskey` protects IndexedDB on the new device; it does not protect `DHKEResp` in transit.
 
 ## API
 

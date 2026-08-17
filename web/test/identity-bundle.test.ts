@@ -62,12 +62,37 @@ function stubPrfGet(prfFill: number, credFill = 7) {
       },
     } as AuthenticationExtensionsClientOutputs),
   );
-  (globalThis as any).navigator = {
-    credentials: { create: vi.fn(), get },
-  };
-  (globalThis as any).PublicKeyCredential = class {};
-  (globalThis as any).location = { hostname: "localhost" };
+  stubNav({ create: vi.fn(), get });
   return { get, credId, prf };
+}
+
+function stubNav(credentials: { create?: unknown; get?: unknown }) {
+  const g = globalThis as {
+    navigator?: { credentials?: unknown };
+    PublicKeyCredential?: unknown;
+    location?: { hostname: string };
+  };
+  if (g.navigator !== undefined) {
+    Object.defineProperty(g.navigator, "credentials", {
+      configurable: true,
+      writable: true,
+      value: credentials,
+    });
+  } else {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      writable: true,
+      value: { credentials },
+    });
+  }
+  g.PublicKeyCredential = class {};
+  if (g.location === undefined || g.location.hostname === undefined) {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      writable: true,
+      value: { hostname: "localhost" },
+    });
+  }
 }
 
 describe("IdentityBundle codec", () => {
@@ -149,11 +174,11 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(sealed.sealedMaster.byteLength).toBe(72);
 
     stubPrfGet(3);
-    const [opened, ust] = await Enclave.unsealWithPasskey(sealed.sealedMaster,
+    const [opened, ust] = await Enclave.unsealWithPasskey(
+      [{ sealedMaster: sealed.sealedMaster, credId: sealed.credId }],
       {
         rpId: "localhost",
         salt: sealed.salt,
-        credId: sealed.credId,
       },
     );
     expect(ust).toBe(Status.Success);
@@ -181,11 +206,7 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
         },
       } as AuthenticationExtensionsClientOutputs),
     );
-    (globalThis as any).navigator = {
-      credentials: { create, get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create, get });
 
     const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
       rpId: "localhost",
@@ -207,11 +228,7 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
       mockCred(credId.buffer, { prf: {} }),
     );
     const get = vi.fn();
-    (globalThis as any).navigator = {
-      credentials: { create, get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create, get });
 
     const [, sst] = await enclaveOf(9).sealWithPasskey({
       rpId: "localhost",
@@ -234,11 +251,11 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     if (sealed === undefined) return;
 
     stubPrfGet(3); // different PRF
-    const [, ust] = await Enclave.unsealWithPasskey(sealed.sealedMaster,
+    const [, ust] = await Enclave.unsealWithPasskey(
+      [{ sealedMaster: sealed.sealedMaster, credId: sealed.credId }],
       {
         rpId: "localhost",
         salt: sealed.salt,
-        credId: sealed.credId,
       },
     );
     expect(ust).toBe(Status.DecryptionError);

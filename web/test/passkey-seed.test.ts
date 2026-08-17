@@ -55,6 +55,36 @@ function mockCred(
   } as PublicKeyCredential;
 }
 
+function stubNav(
+  credentials: { create?: unknown; get?: unknown },
+  hostname = "localhost",
+) {
+  const g = globalThis as {
+    navigator?: { credentials?: unknown };
+    PublicKeyCredential?: unknown;
+    location?: { hostname: string };
+  };
+  if (g.navigator !== undefined) {
+    Object.defineProperty(g.navigator, "credentials", {
+      configurable: true,
+      writable: true,
+      value: credentials,
+    });
+  } else {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      writable: true,
+      value: { credentials },
+    });
+  }
+  g.PublicKeyCredential = class {};
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    writable: true,
+    value: { hostname },
+  });
+}
+
 describe("LargeBlob (WebAuthn I/O only)", () => {
   const credId = new Uint8Array(16).fill(7);
 
@@ -66,9 +96,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
     );
-    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create, get: vi.fn() });
 
     const [id, st] = await LargeBlob.createCred({ rpId: "localhost" });
     expect(st).toBe(Status.Success);
@@ -82,9 +110,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
     );
-    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "life.interncom.org" };
+    stubNav({ create, get: vi.fn() }, "life.interncom.org");
 
     const [, st] = await LargeBlob.createCred();
     expect(st).toBe(Status.Success);
@@ -94,9 +120,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
 
   it("createCred fails when authenticator omits largeBlob", async () => {
     const create = vi.fn().mockResolvedValue(mockCred(credId.buffer, {}));
-    (globalThis as any).navigator = { credentials: { create, get: vi.fn() } };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create, get: vi.fn() });
 
     const [, st] = await LargeBlob.createCred({ rpId: "localhost" });
     expect(st).toBe(Status.WebAuthnError);
@@ -114,11 +138,7 @@ describe("Enclave largeBlob seed boundary", () => {
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { written: true } }),
     );
-    (globalThis as any).navigator = {
-      credentials: { create: vi.fn(), get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create: vi.fn(), get });
 
     const [id, st] = await enclaveOf(1).persistToLargeBlob([], {
       rpId: "localhost",
@@ -148,11 +168,7 @@ describe("Enclave largeBlob seed boundary", () => {
         },
       }),
     );
-    (globalThis as any).navigator = {
-      credentials: { create: vi.fn(), get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create: vi.fn(), get });
 
     const [out, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
@@ -177,11 +193,7 @@ describe("Enclave largeBlob seed boundary", () => {
         },
       }),
     );
-    (globalThis as any).navigator = {
-      credentials: { create: vi.fn(), get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create: vi.fn(), get });
 
     const [out, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
@@ -211,11 +223,7 @@ describe("Enclave largeBlob seed boundary", () => {
         },
       }),
     );
-    (globalThis as any).navigator = {
-      credentials: { create: vi.fn(), get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create: vi.fn(), get });
 
     const [, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
@@ -238,11 +246,7 @@ describe("Enclave largeBlob seed boundary", () => {
         },
       }),
     );
-    (globalThis as any).navigator = {
-      credentials: { create: vi.fn(), get },
-    };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create: vi.fn(), get });
 
     const [, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
@@ -271,9 +275,7 @@ describe("Enclave largeBlob seed boundary", () => {
           },
         }),
       );
-    (globalThis as any).navigator = { credentials: { create, get } };
-    (globalThis as any).PublicKeyCredential = class {};
-    (globalThis as any).location = { hostname: "localhost" };
+    stubNav({ create, get });
 
     const store = new PasskeySeedStore({ rpId: "localhost" });
     const enc1 = await store.save(enc0, { persist: true });

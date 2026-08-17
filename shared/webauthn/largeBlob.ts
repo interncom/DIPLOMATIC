@@ -1,5 +1,6 @@
 // WebAuthn largeBlob extension: opaque byte create / write / read (UV).
 // Not a confidentiality boundary vs the OS — only vs hosts / casual disk.
+// WebAuthn “authenticator” = binding key: IKM / blob store, not authn/authz.
 //
 // This is browser I/O plumbing, not crypto. Enclave calls it for seed persist
 // (encode stays inside Enclave). Apps may use it for non-seed opaque blobs;

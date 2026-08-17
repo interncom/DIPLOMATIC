@@ -51,7 +51,7 @@ export type SetSeedOpts = {
   /**
    * When true, request durable storage **if the store supports a non-plaintext
    * durable form** (e.g. passkey largeBlob as IdentityBundle wire).
-   * IDB holds the enclave in memory only — durable identity is PRF-sealed meta
+   * IDB holds the enclave in memory only — durable identity is the PRF keyring
    * via {@link IDBSeedStore.openPrfStore}, never plain seed.
    * Default false (session enclave only).
    *
@@ -67,7 +67,7 @@ export type SetSeedOpts = {
  * Default `client.wipe()` / `client.wipe({})` clears **everything except seed**:
  * msgs, ents, meta = true; seed = false.
  * That avoids passkey/largeBlob UV when the user only wants to clear app data.
- * Pass `{ seed: true }` to also clear identity (may prompt the authenticator).
+ * Pass `{ seed: true }` to also clear identity (may prompt the binding key).
  */
 export type WipeOpts = {
   /** Message archive. Default true. */

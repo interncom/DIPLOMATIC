@@ -14,13 +14,14 @@
 // Browser WebAuthn I/O (largeBlob, PRF) lives in shared/webauthn; Enclave only
 // encodes/decodes seed and calls those fixed modules. PRF bytes never leave
 // Enclave methods — sealed ciphertext on disk is not secret without a ceremony
-// Enclave itself initiates.
+// Enclave itself initiates. WebAuthn “authenticator” = binding key (IKM source,
+// not authentication or authorization).
 //
-// Transient secrets (PRF, wrap/pair KEK, derivation seed, Ed25519 priv) are
+// Transient secrets (PRF, binding/pair KEK, derivation seed, Ed25519 priv) are
 // fill(0)'d before return. JS cannot OPENSSL_cleanse, but an uncleared buffer
 // is a standing copy a heap dump can steal without another UV.
 
-import { concat } from "../binary.ts";
+import { bytesEqual, concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import {
   createIdentityBundle,
@@ -60,7 +61,9 @@ import {
 import {
   createPrfCred,
   DEFAULT_PRF_SALT,
+  DEFAULT_PRF_USER_NAME,
   evalPrf,
+  type PrfCeremony,
   type PrfCreateOpts,
   type PrfEvalOpts,
   type PrfRp,
@@ -75,16 +78,32 @@ export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
 
 /** Options for PRF seal/unseal ceremonies (no raw PRF bytes). */
 export type PasskeyPrfOpts = PrfCreateOpts & {
-  credId?: Uint8Array;
+  credId?: Uint8Array | readonly Uint8Array[];
   /** Seal only: create a PRF credential first when no credId is known. */
   createCredIfNeeded?: boolean;
 };
 
-/** Durable PRF-sealed master + public meta (never includes PRF output). */
-export type PrfSealedMaster = {
+/** One binding to try on unseal (cred id + sealed master). */
+export type PrfBinding = {
+  sealedMaster: SealedMasterKey;
+  credId: Uint8Array;
+};
+
+/** Durable PRF-sealed master + public ceremony facts (never includes PRF output). */
+export type PrfSealedMaster = PrfCeremony & {
   sealedMaster: SealedMasterKey;
   salt: Uint8Array;
+};
+
+/** One existing keyring member used to prove this enclave matches the list. */
+export type BindPrior = {
   credId: Uint8Array;
+  tag: Uint8Array;
+};
+
+/** Seal + bind-tag from {@link Enclave.bind} (tag is not a global fingerprint). */
+export type PrfBound = PrfSealedMaster & {
+  tag: Uint8Array;
 };
 
 export type EncryptCipher = {
@@ -119,7 +138,9 @@ export type Identity = {
   kdmFor: (msgHeadEnc: Uint8Array) => Promise<Uint8Array>;
 };
 
-const SEAL_WRAP_DOMAIN = new TextEncoder().encode("diplomatic.wrap.v1");
+const SEAL_BIND_DOMAIN = new TextEncoder().encode("diplomatic.bind.v1");
+const BIND_TAG_DOMAIN = new TextEncoder().encode("diplomatic.bindtag.v1");
+const BIND_TAG_LEN = 32;
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
 
@@ -169,21 +190,28 @@ export class Enclave {
     opts?: PasskeyPrfOpts,
   ): Promise<ValStat<PrfSealedMaster>> {
     const salt = opts?.salt ?? DEFAULT_PRF_SALT;
-    let credId = opts?.credId;
+    const known = opts?.credId;
+    let credId: Uint8Array | readonly Uint8Array[] | undefined = known;
+    const needCreate = opts?.createCredIfNeeded === true &&
+      (known === undefined ||
+        !(known instanceof Uint8Array) && known.length === 0);
 
-    if (credId === undefined && opts?.createCredIfNeeded === true) {
-      const [created, cst] = await createPrfCred({
+    let created: PrfCeremony | undefined;
+    if (needCreate) {
+      const [c, cst] = await createPrfCred({
         rpId: opts?.rpId,
         rpName: opts?.rpName,
-        userName: opts?.userName ?? "diplomatic-prf",
+        userName: opts?.userName ?? DEFAULT_PRF_USER_NAME,
         authenticatorAttachment: opts?.authenticatorAttachment,
         hints: opts?.hints,
+        excludeCredentials: opts?.excludeCredentials,
         salt,
       });
       if (cst !== Status.Success) return err(cst);
-      if (created === undefined) return err(Status.WebAuthnError);
-      if (!created.prfEnabled) return err(Status.WebAuthnError);
-      credId = created.credId;
+      if (c === undefined) return err(Status.WebAuthnError);
+      if (!c.prfEnabled) return err(Status.WebAuthnError);
+      credId = c.credId;
+      created = c;
     }
 
     const [ev, est] = await evalPrf({
@@ -204,6 +232,14 @@ export class Enclave {
         sealedMaster,
         salt: salt.slice(),
         credId: ev.credId.slice(),
+        userId: created?.userId === undefined
+          ? undefined
+          : created.userId.slice(),
+        attachment: ev.attachment ?? created?.attachment,
+        transports: ev.transports ?? created?.transports,
+        aaguid: created?.aaguid === undefined
+          ? undefined
+          : created.aaguid.slice(),
       });
     } finally {
       // hmac-secret output is IKM; must not sit next to sealedMaster in the heap.
@@ -212,31 +248,65 @@ export class Enclave {
   }
 
   /**
-   * UV + PRF ceremony, then unseal durable master into a new Enclave.
-   * Callers never supply PRF bytes — only sealed meta + RP/salt/credId.
-   * Returns the credential id used so stores can persist it (skip picker next time).
+   * UV + PRF seal, plus a per-cred bind tag (blake3(master ‖ domain ‖ credId)).
+   * Tag compute and compare stay in the enclave. If `prior` is non-empty, every
+   * stored tag must match this master or bind fails (one keyring, one master).
+   */
+  async bind(
+    opts?: PasskeyPrfOpts,
+    prior?: readonly BindPrior[],
+  ): Promise<ValStat<PrfBound>> {
+    if (prior !== undefined) {
+      for (const p of prior) {
+        if (!await this.#tagMatches(p.credId, p.tag)) {
+          return err(Status.InvalidParam);
+        }
+      }
+    }
+    const [sealed, sst] = await this.sealWithPasskey(opts);
+    if (sst !== Status.Success) return err(sst);
+    if (sealed === undefined) return err(Status.InternalError);
+    const tag = await this.#bindTag(sealed.credId);
+    return ok({ ...sealed, tag });
+  }
+
+  /**
+   * UV + PRF ceremony, then unseal one of `bindings` into a new Enclave.
+   * allowCredentials is the union of binding cred ids. Returns the asserted id.
    */
   static async unsealWithPasskey(
-    sealedMaster: SealedMasterKey,
+    bindings: readonly PrfBinding[],
     opts: PasskeyPrfOpts & { salt: Uint8Array },
   ): Promise<ValStat<{ enclave: Enclave; credId: Uint8Array }>> {
+    if (bindings.length === 0) return err(Status.MissingSeed);
+    const credIds: Uint8Array[] = [];
+    for (const w of bindings) {
+      if (w.credId.byteLength > 0) credIds.push(w.credId);
+    }
     const [ev, est] = await evalPrf({
       rpId: opts.rpId,
       rpName: opts.rpName,
       hints: opts.hints,
-      credId: opts.credId,
+      credId: credIds.length > 0 ? credIds : undefined,
       salt: opts.salt,
     });
     if (est !== Status.Success) return err(est);
     if (ev === undefined) return err(Status.MissingBody);
+    const hit = bindings.find((w) => bytesEqual(w.credId, ev.credId));
+    const order = hit === undefined
+      ? bindings
+      : [hit, ...bindings.filter((w) => w !== hit)];
     try {
-      const [enclave, ust] = await Enclave.#unsealUnderPrf(
-        sealedMaster,
-        ev.prf,
-      );
-      if (ust !== Status.Success) return err(ust);
-      if (enclave === undefined) return err(Status.InternalError);
-      return ok({ enclave, credId: ev.credId.slice() });
+      for (const w of order) {
+        const [enclave] = await Enclave.#unsealUnderPrf(
+          w.sealedMaster,
+          ev.prf,
+        );
+        if (enclave !== undefined) {
+          return ok({ enclave, credId: ev.credId.slice() });
+        }
+      }
+      return err(Status.DecryptionError);
     } finally {
       ev.prf.fill(0);
     }
@@ -448,6 +518,40 @@ export class Enclave {
     });
   }
 
+  // blake3(master ‖ bindtag domain ‖ credId). Not a global fingerprint.
+  async #bindTag(credId: Uint8Array): Promise<Uint8Array> {
+    const mix = new Uint8Array(
+      this.#seed.byteLength + BIND_TAG_DOMAIN.byteLength + credId.byteLength,
+    );
+    mix.set(this.#seed, 0);
+    mix.set(BIND_TAG_DOMAIN, this.#seed.byteLength);
+    mix.set(credId, this.#seed.byteLength + BIND_TAG_DOMAIN.byteLength);
+    try {
+      return await noble.blake3(mix);
+    } finally {
+      mix.fill(0);
+    }
+  }
+
+  // Constant-time match of a stored tag against this master + credId.
+  async #tagMatches(credId: Uint8Array, tag: Uint8Array): Promise<boolean> {
+    if (tag.byteLength !== BIND_TAG_LEN) return false;
+    const got = await this.#bindTag(credId);
+    try {
+      if (got.byteLength !== tag.byteLength) return false;
+      let d = 0;
+      for (let i = 0; i < got.byteLength; i++) {
+        const a = got[i];
+        const b = tag[i];
+        if (a === undefined || b === undefined) return false;
+        d |= a ^ b;
+      }
+      return d === 0;
+    } finally {
+      got.fill(0);
+    }
+  }
+
   /** AEAD-seal master under KDF(PRF). PRF must stay inside Enclave methods. */
   async #sealUnderPrf(prf: Uint8Array): Promise<ValStat<SealedMasterKey>> {
     const [key, kst] = await sealKeyFromPrf(noble, prf);
@@ -462,7 +566,7 @@ export class Enclave {
     } catch {
       return err(Status.InternalError);
     } finally {
-      // Wrap KEK decrypts durable master; do not leave it after seal.
+      // Binding KEK decrypts durable master; do not leave it after seal.
       key.fill(0);
     }
   }
@@ -582,7 +686,14 @@ export class Enclave {
   }
 
   async #keyFromKDM(kdm: Uint8Array): Promise<Uint8Array> {
-    return noble.blake3(concat(this.#seed, kdm));
+    const mix = new Uint8Array(this.#seed.byteLength + kdm.byteLength);
+    mix.set(this.#seed, 0);
+    mix.set(kdm, this.#seed.byteLength);
+    try {
+      return await noble.blake3(mix);
+    } finally {
+      mix.fill(0);
+    }
   }
 
   async #deriveSeed(keyPath: string, idx: number): Promise<DerivationSeed> {
@@ -639,11 +750,11 @@ export class Enclave {
 export async function sealKeyFromPrf(
   crypto: ICrypto,
   prf: Uint8Array,
-  domain: Uint8Array = SEAL_WRAP_DOMAIN,
+  domain: Uint8Array = SEAL_BIND_DOMAIN,
 ): Promise<ValStat<Uint8Array>> {
   if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
   const hash = await crypto.blake3(concat(prf, domain));
   return ok(hash.slice(0, SEAL_KEY_LEN));
 }
 
-export { MASTER_SEED_LEN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN, SEAL_WRAP_DOMAIN };
+export { MASTER_SEED_LEN, SEAL_BIND_DOMAIN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN };

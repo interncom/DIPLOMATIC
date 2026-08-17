@@ -19,7 +19,7 @@ export type MasterSeed = Uint8Array & { readonly [masterSeedSymbol]: true };
 
 /**
  * Master seed sealed under KDF(PRF) (nonce‖ciphertext‖tag).
- * Useless without the PRF output that derives the wrap key.
+ * Useless without the PRF output that derives the binding key.
  */
 export type SealedMasterKey = Uint8Array & {
   readonly [sealedMasterKeySymbol]: true;

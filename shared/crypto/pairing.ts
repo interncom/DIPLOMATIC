@@ -39,7 +39,7 @@ export function asDHKEResp(bytes: Uint8Array): ValStat<DHKEResp> {
 
 const noble = new NobleCrypto();
 
-// Derives the pairing AEAD key from ECDH and both sides' publics.
+// Derives the pairing AEAD key from ECDH and both sides' public keys.
 export async function pairKey(
   sk: X25519Sk, // local X25519 priv
   peer: Uint8Array, // ECDH peer pub (enroller: dhkeReq; enrollee: respPub)
@@ -112,7 +112,7 @@ export class PairRequest {
   }
 
   // Decrypts the enroller's DHKE response into a new Enclave + hosts.
-  // Then call sealWithPasskey for durable wrap.
+  // Then call sealWithPasskey for a durable binding.
   async finish(
     dhkeResp: DHKEResp,
   ): Promise<ValStat<{ enclave: Enclave; hosts: BundleHost[] }>> {

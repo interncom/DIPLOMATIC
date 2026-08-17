@@ -1,7 +1,7 @@
-// Protocol IDB seed meta: session Enclave (memory) + sealed durable meta.
+// Protocol IDB seed meta: session Enclave (memory) + sealed durable keyring.
 // Never stores raw master seed.
 //
-// Durable forms today: PRF-sealed master (K_PRF_META via openPrfStore).
+// Durable forms today: PRF keyring (K_KEYRING via openPrfStore).
 // Identity pin (K_ID_PIN): nonce + blake3(nonce ‖ pinPub) so setSeed / largeBlob
 // restore cannot switch masters under local data without storing host pubkeys.
 // Future fallback when PRF is unavailable: passphrase-sealed master (same
@@ -9,12 +9,12 @@
 // row — unlock prompts for passphrase, then Enclave.unseal*; still no plain seed.
 
 import { Enclave } from "../../shared/crypto/enclave";
-import { Status } from "../../shared/consts";
-import { asSealedMasterKey } from "../../shared/seed";
 import type { ICrypto } from "../../shared/types";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
-  type PrfSeedMeta,
+  cloneKeyring,
+  decodeKeyring,
+  type Keyring,
   PrfSeedStore,
   type PrfSeedStoreOpts,
 } from "../../passkey/prf-store";
@@ -27,17 +27,13 @@ import {
 } from "../identityPin";
 import { SEED_META_TABLE } from "./store";
 
+const K_KEYRING = "keyring";
+/** @deprecated pre-0.14 single-binding row; deleted on write/wipe. */
 const K_PRF_META = "prfMeta";
 /** Nonce + hash pin — see {@link IdPin}. */
 const K_ID_PIN = "idPin";
 /** @deprecated short-lived raw pinPub; deleted if present. */
 const K_ID_PUB_LEGACY = "idPub";
-
-type StoredPrfMeta = {
-  sealedMaster: Uint8Array;
-  salt: Uint8Array;
-  credId?: Uint8Array;
-};
 
 export class IDBSeedStore implements ISeedStore {
   #enclave?: Enclave;
@@ -50,15 +46,15 @@ export class IDBSeedStore implements ISeedStore {
   }
 
   /**
-   * Hold enclave in memory only. Durable identity is sealed meta
-   * ({@link openPrfStore} / {@link persistPrfMeta}), never plain seed.
+   * Hold enclave in memory only. Durable identity is the keyring
+   * ({@link openPrfStore} / {@link persistKeyring}), never plain seed.
    * Pins identity (nonce+hash) on first save; later saves must match
    * (largeBlob / PRF unlock cannot switch masters under this DB).
    * `opts.persist` is ignored (kept for API compatibility).
    *
    * TODO(passphrase): when PRF is missing, `persist: true` (or a dedicated
-   * wrap API) should seal under a passphrase KDF and write sealed meta here —
-   * same shape as prfMeta, not a return of raw seed.
+   * bind API) should seal under a passphrase KDF and write sealed meta here —
+   * same shape as a keyring entry, not a return of raw seed.
    */
   async save(enclave: Enclave, _opts?: SetSeedOpts) {
     await this.#assertAndPinIdentity(enclave);
@@ -71,7 +67,7 @@ export class IDBSeedStore implements ISeedStore {
   }
 
   /**
-   * Drop in-memory enclave. Keeps {@link K_PRF_META} and {@link K_ID_PIN}
+   * Drop in-memory enclave. Keeps {@link K_KEYRING} and {@link K_ID_PIN}
    * so unlock / largeBlob restore still match this device.
    */
   async clearSession() {
@@ -85,63 +81,54 @@ export class IDBSeedStore implements ISeedStore {
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      store.delete(K_KEYRING);
       store.delete(K_PRF_META);
       store.delete(K_ID_PIN);
       store.delete(K_ID_PUB_LEGACY);
     });
   }
 
-  async loadPrfMeta(): Promise<PrfSeedMeta | undefined> {
+  async loadKeyring(): Promise<Keyring | undefined> {
     const tx = this.db.transaction(SEED_META_TABLE, "readonly");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise((resolve, reject) => {
-      const req = store.get(K_PRF_META);
+      const req = store.get(K_KEYRING);
       req.onsuccess = () => {
-        resolve(decodeStoredPrfMeta(req.result));
+        resolve(decodeKeyring(req.result));
       };
       req.onerror = () => reject(req.error);
     });
   }
 
-  async persistPrfMeta(meta: PrfSeedMeta | undefined): Promise<void> {
+  async persistKeyring(ring: Keyring | undefined): Promise<void> {
     const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-      if (meta === undefined) {
-        store.delete(K_PRF_META);
+      store.delete(K_PRF_META);
+      if (ring === undefined) {
+        store.delete(K_KEYRING);
         return;
       }
-      const row: StoredPrfMeta = {
-        sealedMaster: meta.sealedMaster.slice(),
-        salt: meta.salt.slice(),
-        credId: meta.credId === undefined ? undefined : meta.credId.slice(),
-      };
-      store.put(row, K_PRF_META);
+      store.put(cloneKeyring(ring), K_KEYRING);
     });
   }
 
-  async hasPrfMeta(): Promise<boolean> {
-    const m = await this.loadPrfMeta();
-    return m !== undefined;
-  }
-
-  /** Last PRF passkey id, if this device has a sealed PRF identity. */
-  async lastPrfCredId(): Promise<Uint8Array | undefined> {
-    const m = await this.loadPrfMeta();
-    return m?.credId === undefined ? undefined : m.credId.slice();
+  async hasKeyring(): Promise<boolean> {
+    const r = await this.loadKeyring();
+    return r !== undefined && r.entries.length > 0;
   }
 
   async openPrfStore(
-    opts: Omit<PrfSeedStoreOpts, "persistMeta" | "meta">,
+    opts: Omit<PrfSeedStoreOpts, "persistKeyring" | "keyring">,
   ): Promise<PrfSeedStore> {
-    const meta = await this.loadPrfMeta();
+    const keyring = await this.loadKeyring();
     return new PrfSeedStore({
       rpId: opts.rpId,
       rpName: opts.rpName,
-      meta,
-      persistMeta: (m) => this.persistPrfMeta(m),
+      keyring,
+      persistKeyring: (r) => this.persistKeyring(r),
     });
   }
 
@@ -192,23 +179,4 @@ export class IDBSeedStore implements ISeedStore {
       store.delete(key);
     });
   }
-}
-
-function decodeStoredPrfMeta(raw: unknown): PrfSeedMeta | undefined {
-  if (raw === undefined || raw === null || typeof raw !== "object") {
-    return undefined;
-  }
-  const o = raw as Partial<StoredPrfMeta>;
-  if (
-    !(o.sealedMaster instanceof Uint8Array) || !(o.salt instanceof Uint8Array)
-  ) {
-    return undefined;
-  }
-  const [sealedMaster, st] = asSealedMasterKey(o.sealedMaster);
-  if (st !== Status.Success || sealedMaster === undefined) return undefined;
-  return {
-    sealedMaster,
-    salt: o.salt.slice(),
-    credId: o.credId instanceof Uint8Array ? o.credId.slice() : undefined,
-  };
 }

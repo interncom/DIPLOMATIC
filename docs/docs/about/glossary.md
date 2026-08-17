@@ -28,8 +28,29 @@ In code, prefer **`idnt`** (or **`hostIdnt`** when the path is a host) over **`i
 
 Boundary for master-seed access and seed-derived private material. Callers get only public results (ciphertexts, signatures, public keys, plaintext after open) and opaque capability handles (`Identity`, derived ciphers). Long-term intent is hardware-backed protection of the seed.
 
+## ikm
+
+Input keying material. Secret bytes fed to a KDF to derive keys — not used as a cipher key itself. Here, the 32-byte WebAuthn PRF / hmac-secret output. The enclave does `blake3(IKM ‖ diplomatic.bind.v1)` to get the KEK that seals the master.
+
+## seal
+
+AEAD ciphertext of the master under a KEK (`SealedMasterKey`). Verbs: **seal** / **unseal**. The blob does not name a binding key. Distinct from sealing a bag.
+
+## binding key
+
+WebAuthn’s **authenticator** (platform passkey or roaming security key). We do not use that word: here the device is not proving *who someone is* and confers no authorization. It only supplies IKM (PRF today; later a shard) from which a KEK is derived to seal the master. Whoever can evaluate that IKM can unseal — that is capability, not authn/authz. API fields stay `authenticatorAttachment` etc.; that is WebAuthn’s name.
+
+## binding
+
+Relationship that lets one binding key unseal the master. Holds a seal plus `credId` and ceremony facts (nick, dates, kind). Verbs: **bind** / **remove**. A binding contains a seal; it is not the seal.
+
+## keyring
+
+On-device list of bindings. Not synced.
+
 ## Other abbreviations
 
+- **ikm** — input keying material (PRF output; see above).
 - **kdm** — key derivation material (public bag field; mixed with identity private key when sealing).
 - **cph** (suffix) — encrypted, e.g. `headCph`.
 - **enc** (suffix) — binary-encoded, e.g. `bagEnc`. Also *encoder* (`enc` / `dec` = encoder / decoder).

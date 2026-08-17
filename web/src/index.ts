@@ -116,10 +116,18 @@ import {
   prfCapable,
   type PrfRp,
 } from "./shared/webauthn/prf";
-import { PrfSeedStore } from "./passkey/prf-store";
+import {
+  KEYRING_MAX,
+  keyringCredIds,
+  keyringKind,
+  keyringLabel,
+  PrfSeedStore,
+} from "./passkey/prf-store";
 import type {
-  PersistPrfSeedMeta,
-  PrfSeedMeta,
+  Keyring,
+  KeyringEntry,
+  KeyringRow,
+  PersistKeyring,
   PrfSeedStoreOpts,
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
@@ -144,7 +152,7 @@ import { WorkerClient } from "./worker/client";
 import type { WorkerClientOptions } from "./worker/client";
 import type { WipeOpts } from "./types";
 
-/** Platform advertises largeBlob (not a guarantee the authenticator has it). */
+/** Platform advertises largeBlob (not a guarantee the binding key has it). */
 export function largeBlobCapable(): Promise<boolean> {
   return LargeBlob.capable();
 }
@@ -199,6 +207,10 @@ export {
   isTerminalApplyFailure,
   isTombstone,
   IStore,
+  KEYRING_MAX,
+  keyringCredIds,
+  keyringKind,
+  keyringLabel,
   MASTER_SEED_LEN,
   MemoryStore,
   normalizeTags,
@@ -258,6 +270,9 @@ export type {
   ITombstone,
   ITransport,
   IUpdateParams,
+  Keyring,
+  KeyringEntry,
+  KeyringRow,
   ListMsgsOpts,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
@@ -266,9 +281,8 @@ export type {
   OpenEntDBOptions,
   PairPackagePlain,
   PasskeySeedStoreOpts,
-  PersistPrfSeedMeta,
+  PersistKeyring,
   PrfRp,
-  PrfSeedMeta,
   PrfSeedStoreOpts,
   ReconcileOpts,
   ReconcileReport,

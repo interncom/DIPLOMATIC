@@ -14,9 +14,11 @@ import {
   bufferSourceToUint8,
   checkWebAuthn,
   copyToArrayBuffer,
+  DEFAULT_WEBAUTHN_RP_NAME,
   noteWebAuthnError,
   resolveWebAuthnRpId,
   WEBAUTHN_CHAL_LEN,
+  WEBAUTHN_CRED_TYPE,
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnExtensionCapable,
   type WebAuthnHint,
@@ -80,7 +82,7 @@ export async function largeBlobCreateCred(
     cred = await navigator.credentials.create({
       publicKey: {
         challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-        rp: { id: rpId, name: opts?.rpName ?? "DIPLOMATIC" },
+        rp: { id: rpId, name: opts?.rpName ?? DEFAULT_WEBAUTHN_RP_NAME },
         user: {
           id: randomBytesArrayBuffer(16),
           name,
@@ -130,7 +132,7 @@ export async function largeBlobWrite(
         challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
         rpId,
         allowCredentials: [
-          { type: "public-key", id: copyToArrayBuffer(credId) },
+          { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
         ],
         userVerification: "required",
         extensions: extensions as AuthenticationExtensionsClientInputs,
@@ -168,7 +170,7 @@ async function getAssertion(
   if (opts?.hints !== undefined) publicKey.hints = opts.hints;
   if (credId !== undefined) {
     publicKey.allowCredentials = [
-      { type: "public-key", id: copyToArrayBuffer(credId) },
+      { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
     ];
   }
   if (extensions !== undefined) {

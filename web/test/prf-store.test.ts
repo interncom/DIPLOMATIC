@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
-import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
+import { DEFAULT_PRF_SALT, DEFAULT_PRF_USER_NAME } from "../src/shared/webauthn/prf";
 import {
   KEYRING_MAX,
   keyringKind,
@@ -156,6 +156,7 @@ describe("PrfSeedStore keyring", () => {
     const pub = create.mock.calls[0][0].publicKey;
     expect(pub.excludeCredentials).toHaveLength(1);
     expect(pub.user.displayName).toBe("Yubi");
+    expect(pub.user.name).toBe(DEFAULT_PRF_USER_NAME);
     expect(saved?.entries).toHaveLength(2);
     expect(saved?.entries[0]?.credId).toEqual(first.credId);
     expect(saved?.entries[1]?.credId).toEqual(createId);

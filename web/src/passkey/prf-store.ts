@@ -160,7 +160,8 @@ export class PrfSeedStore implements ISeedStore {
       credId: credIn,
       createCredIfNeeded: opts?.createCredIfNeeded ?? !known,
       excludeCredentials: exclude,
-      userName: nick ?? DEFAULT_PRF_USER_NAME,
+      userName: DEFAULT_PRF_USER_NAME,
+      displayName: nick ?? DEFAULT_PRF_USER_NAME,
       authenticatorAttachment: opts?.authenticatorAttachment,
       hints: opts?.hints,
     }, prior);

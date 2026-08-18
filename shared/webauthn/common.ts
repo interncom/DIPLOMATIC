@@ -7,6 +7,12 @@ import { err, ok, type ValStat } from "../valstat.ts";
 
 export const WEBAUTHN_CHAL_LEN = 32;
 
+/** Default RP name shown in the WebAuthn picker. */
+export const DEFAULT_WEBAUTHN_RP_NAME = "DIPLOMATIC";
+
+/** WebAuthn PublicKeyCredentialType. */
+export const WEBAUTHN_CRED_TYPE = "public-key" as const;
+
 /** COSE algorithm identifiers for WebAuthn `pubKeyCredParams`. */
 export const COSE_ALG_ES256 = -7; // ECDSA w/ SHA-256 (P-256)
 export const COSE_ALG_EDDSA = -8; // EdDSA (Ed25519)
@@ -14,9 +20,9 @@ export const COSE_ALG_RS256 = -257; // RSASSA-PKCS1-v1_5 w/ SHA-256
 
 /** Prefer modern curves; include RS256 for broader binding-key coverage. */
 export const WEBAUTHN_PUB_KEY_PARAMS: PublicKeyCredentialParameters[] = [
-  { type: "public-key", alg: COSE_ALG_ES256 },
-  { type: "public-key", alg: COSE_ALG_EDDSA },
-  { type: "public-key", alg: COSE_ALG_RS256 },
+  { type: WEBAUTHN_CRED_TYPE, alg: COSE_ALG_ES256 },
+  { type: WEBAUTHN_CRED_TYPE, alg: COSE_ALG_EDDSA },
+  { type: WEBAUTHN_CRED_TYPE, alg: COSE_ALG_RS256 },
 ];
 
 /** UA preference for the WebAuthn picker. Not exclusive; omit attachment to allow both. */
@@ -106,7 +112,7 @@ export function asPublicKeyCredential(
 ): ValStat<PublicKeyCredential> {
   if (
     cred === null ||
-    cred.type !== "public-key" ||
+    cred.type !== WEBAUTHN_CRED_TYPE ||
     !("rawId" in cred) ||
     typeof (cred as PublicKeyCredential).getClientExtensionResults !==
       "function"

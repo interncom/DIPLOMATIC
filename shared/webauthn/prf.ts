@@ -10,14 +10,17 @@ import { err, ok, type ValStat } from "../valstat.ts";
 import {
   asPublicKeyCredential,
   type AuthenticatorAttachmentName,
+  bufferSourceToUint8,
   checkWebAuthn,
   copyToArrayBuffer,
+  DEFAULT_WEBAUTHN_RP_NAME,
   noteWebAuthnError,
   readAaguid,
   readAttachment,
   readTransports,
   resolveWebAuthnRpId,
   WEBAUTHN_CHAL_LEN,
+  WEBAUTHN_CRED_TYPE,
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnExtensionCapable,
   type WebAuthnHint,
@@ -31,10 +34,13 @@ type ReqOpts = PublicKeyCredentialRequestOptions & {
 export type PrfRp = WebAuthnRp;
 
 export type PrfCreateOpts = PrfRp & {
+  /** WebAuthn user.name — stable account id. */
   userName?: string;
+  /** WebAuthn user.displayName — human nick. */
+  displayName?: string;
   /** Omit so the UA can offer roaming keys (YubiKey) and third-party providers. */
   authenticatorAttachment?: "platform" | "cross-platform";
-  /** Seal salt (eval is on get, not create — some UAs throw on create-time eval). */
+  /** PRF salt. Tried at create; some UAs only eval on get(). */
   salt?: Uint8Array;
   /** Already-bound cred ids so create does not assert an existing key. */
   excludeCredentials?: readonly Uint8Array[];
@@ -60,6 +66,8 @@ export type PrfCeremony = {
 
 export type PrfCreateResult = PrfCeremony & {
   prfEnabled: boolean;
+  /** Present when the UA evaluated PRF during create (no second get). */
+  prf?: Uint8Array;
 };
 
 /** Internal: PRF output + cred id. For Enclave only — do not re-export to apps. */
@@ -97,6 +105,7 @@ export async function createPrfCred(
   if (rpId === undefined) return err(Status.MissingParam);
 
   const name = opts?.userName ?? DEFAULT_PRF_USER_NAME;
+  const displayName = opts?.displayName ?? name;
   const userId = randomBytesArrayBuffer(16);
   // Roaming USB on Android: discoverable + UV-required is refused (NotAllowed /
   // NotReadable) before a picker. hmac-secret works on non-resident creds;
@@ -111,51 +120,99 @@ export async function createPrfCred(
     selection.authenticatorAttachment = opts.authenticatorAttachment;
   }
 
-  let cred: Credential | null;
-  try {
-    cred = await navigator.credentials.create({
+  const pubBase = {
+    challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
+    rp: { id: rpId, name: opts?.rpName ?? DEFAULT_WEBAUTHN_RP_NAME },
+    user: {
+      id: userId,
+      name,
+      displayName,
+    },
+    pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
+    authenticatorSelection: selection,
+    ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
+    ...(opts?.excludeCredentials !== undefined &&
+        opts.excludeCredentials.length > 0
+      ? {
+        excludeCredentials: opts.excludeCredentials.map((id) => ({
+          type: WEBAUTHN_CRED_TYPE,
+          id: copyToArrayBuffer(id),
+        })),
+      }
+      : {}),
+  };
+
+  const saltBuf = opts?.salt !== undefined
+    ? copyToArrayBuffer(opts.salt)
+    : undefined;
+
+  const createOnce = (evalOnCreate: boolean) =>
+    navigator.credentials.create({
       publicKey: {
-        challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-        rp: { id: rpId, name: opts?.rpName ?? "DIPLOMATIC" },
-        user: {
-          id: userId,
-          name,
-          displayName: name,
-        },
-        pubKeyCredParams: WEBAUTHN_PUB_KEY_PARAMS,
-        authenticatorSelection: selection,
-        extensions: { prf: {} },
-        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
-        ...(opts?.excludeCredentials !== undefined &&
-            opts.excludeCredentials.length > 0
-          ? {
-            excludeCredentials: opts.excludeCredentials.map((id) => ({
-              type: "public-key" as const,
-              id: copyToArrayBuffer(id),
-            })),
-          }
-          : {}),
+        ...pubBase,
+        extensions: evalOnCreate && saltBuf !== undefined
+          ? { prf: { eval: { first: saltBuf } } }
+          : { prf: {} },
       },
     });
+
+  let cred: Credential | null;
+  try {
+    cred = await createOnce(saltBuf !== undefined);
   } catch (e) {
-    noteWebAuthnError(e);
-    return err(Status.WebAuthnError);
+    // Retry enable-only only if the UA rejected prf.eval before a ceremony.
+    if (saltBuf === undefined || !prfEvalUnsupported(e)) {
+      noteWebAuthnError(e);
+      return err(Status.WebAuthnError);
+    }
+    try {
+      cred = await createOnce(false);
+    } catch (e2) {
+      noteWebAuthnError(e2);
+      return err(Status.WebAuthnError);
+    }
   }
 
   const [pk, pst] = asPublicKeyCredential(cred);
   if (pst !== Status.Success) return err(pst);
   if (pk === undefined) return err(Status.InvalidResponse);
   const ext = pk.getClientExtensionResults() as {
-    prf?: { enabled?: boolean };
+    prf?: { enabled?: boolean; results?: { first?: BufferSource } };
   };
+  const prf = readPrfFirst(ext.prf?.results?.first);
+  const prfEnabled = ext.prf?.enabled === true || prf !== undefined;
+  // Roaming create is UV-preferred; hmac-secret UV/non-UV differ. Eval on get.
+  if (roaming && prf !== undefined) prf.fill(0);
   return ok({
     credId: new Uint8Array(pk.rawId),
     userId: new Uint8Array(userId),
-    prfEnabled: ext.prf?.enabled === true,
+    prfEnabled,
+    prf: roaming ? undefined : prf,
     attachment: readAttachment(pk.authenticatorAttachment),
     transports: readTransports(pk),
     aaguid: readAaguid(pk),
   });
+}
+
+// True when the UA rejected prf.eval at create (before a ceremony).
+function prfEvalUnsupported(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "NotSupportedError" || e.name === "TypeError";
+}
+
+// Copies PRF results.first to 32 owned bytes, or undefined.
+// Zeros any leftover owned copy (short output or unused tail).
+function readPrfFirst(first: BufferSource | undefined): Uint8Array | undefined {
+  if (first === undefined) return undefined;
+  const raw = bufferSourceToUint8(first);
+  if (raw.byteLength < PRF_OUTPUT_LEN) {
+    raw.fill(0);
+    return undefined;
+  }
+  if (raw.byteLength === PRF_OUTPUT_LEN) return raw;
+  const prf = raw.slice(0, PRF_OUTPUT_LEN);
+  raw.fill(0);
+  return prf;
 }
 
 /**
@@ -187,7 +244,7 @@ export async function evalPrf(
   const allow = credIdList(opts?.credId);
   if (allow.length > 0) {
     publicKey.allowCredentials = allow.map((id) => ({
-      type: "public-key" as const,
+      type: WEBAUTHN_CRED_TYPE,
       id: copyToArrayBuffer(id),
     }));
   }
@@ -209,19 +266,8 @@ export async function evalPrf(
     }
   ).prf?.results;
   if (results?.first === undefined) return err(Status.MissingBody);
-
-  const first = results.first;
-  const raw = first instanceof ArrayBuffer
-    ? new Uint8Array(first)
-    : new Uint8Array(
-      (first as ArrayBufferView).buffer,
-      (first as ArrayBufferView).byteOffset,
-      (first as ArrayBufferView).byteLength,
-    );
-  const prf = raw.byteLength >= PRF_OUTPUT_LEN
-    ? raw.slice(0, PRF_OUTPUT_LEN)
-    : raw;
-  if (prf.byteLength !== PRF_OUTPUT_LEN) return err(Status.InvalidResponse);
+  const prf = readPrfFirst(results.first);
+  if (prf === undefined) return err(Status.InvalidResponse);
   return ok({
     prf,
     credId: new Uint8Array(pk.rawId),

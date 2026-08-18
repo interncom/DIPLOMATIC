@@ -219,7 +219,198 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     const pub = create.mock.calls[0][0].publicKey;
     expect(pub.authenticatorSelection.authenticatorAttachment).toBeUndefined();
     expect(pub.authenticatorSelection.residentKey).toBe("required");
-    expect(pub.extensions.prf).toEqual({});
+    expect(pub.extensions.prf.eval.first).toBeInstanceOf(ArrayBuffer);
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("createCredIfNeeded uses create-time PRF and skips get", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          enabled: true,
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    const get = vi.fn();
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledOnce();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("create-time PRF without enabled still skips get", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    const get = vi.fn();
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledOnce();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("roaming create-time PRF still evals on get", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const createPrf = new Uint8Array(32).fill(3);
+    const getPrf = new Uint8Array(32).fill(5);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          enabled: true,
+          results: {
+            first: createPrf.buffer.slice(
+              createPrf.byteOffset,
+              createPrf.byteOffset + 32,
+            ),
+          },
+        },
+      }),
+    );
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          results: {
+            first: getPrf.buffer.slice(getPrf.byteOffset, getPrf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+      authenticatorAttachment: "cross-platform",
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed).toBeDefined();
+    if (sealed === undefined) return;
+    expect(sealed.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledOnce();
+
+    stubNav({
+      create: vi.fn(),
+      get: vi.fn().mockResolvedValue(
+        mockCred(credId.buffer, {
+          prf: {
+            results: {
+              first: getPrf.buffer.slice(
+                getPrf.byteOffset,
+                getPrf.byteOffset + 32,
+              ),
+            },
+          },
+        }),
+      ),
+    });
+    const [opened, ust] = await Enclave.unsealWithPasskey(
+      [{ sealedMaster: sealed.sealedMaster, credId: sealed.credId }],
+      { rpId: "localhost", salt: DEFAULT_PRF_SALT },
+    );
+    expect(ust).toBe(Status.Success);
+    expect(opened).toBeDefined();
+
+    stubNav({
+      create: vi.fn(),
+      get: vi.fn().mockResolvedValue(
+        mockCred(credId.buffer, {
+          prf: {
+            results: {
+              first: createPrf.buffer.slice(
+                createPrf.byteOffset,
+                createPrf.byteOffset + 32,
+              ),
+            },
+          },
+        }),
+      ),
+    });
+    const [, ust2] = await Enclave.unsealWithPasskey(
+      [{ sealedMaster: sealed.sealedMaster, credId: sealed.credId }],
+      { rpId: "localhost", salt: DEFAULT_PRF_SALT },
+    );
+    expect(ust2).toBe(Status.DecryptionError);
+  });
+
+  it("retries enable-only create when prf.eval is unsupported", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const unsupported = new Error("eval");
+    unsupported.name = "NotSupportedError";
+    const create = vi.fn()
+      .mockRejectedValueOnce(unsupported)
+      .mockResolvedValueOnce(
+        mockCred(credId.buffer, { prf: { enabled: true } }),
+      );
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        prf: {
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[0][0].publicKey.extensions.prf.eval.first)
+      .toBeInstanceOf(ArrayBuffer);
+    expect(create.mock.calls[1][0].publicKey.extensions.prf).toEqual({});
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("does not retry create after user cancel", async () => {
+    const cancel = new Error("cancel");
+    cancel.name = "NotAllowedError";
+    const create = vi.fn().mockRejectedValue(cancel);
+    const get = vi.fn();
+    stubNav({ create, get });
+
+    const [, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.WebAuthnError);
+    expect(create).toHaveBeenCalledOnce();
+    expect(get).not.toHaveBeenCalled();
   });
 
   it("createCredIfNeeded fails closed when create omits prf.enabled", async () => {

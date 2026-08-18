@@ -197,11 +197,13 @@ export class Enclave {
         !(known instanceof Uint8Array) && known.length === 0);
 
     let created: PrfCeremony | undefined;
+    let createPrf: Uint8Array | undefined;
     if (needCreate) {
       const [c, cst] = await createPrfCred({
         rpId: opts?.rpId,
         rpName: opts?.rpName,
         userName: opts?.userName ?? DEFAULT_PRF_USER_NAME,
+        displayName: opts?.displayName,
         authenticatorAttachment: opts?.authenticatorAttachment,
         hints: opts?.hints,
         excludeCredentials: opts?.excludeCredentials,
@@ -212,6 +214,44 @@ export class Enclave {
       if (!c.prfEnabled) return err(Status.WebAuthnError);
       credId = c.credId;
       created = c;
+      createPrf = c.prf;
+    }
+
+    const finish = async (
+      prf: Uint8Array,
+      evCredId: Uint8Array,
+      evAttachment?: PrfCeremony["attachment"],
+      evTransports?: string[],
+    ): Promise<ValStat<PrfSealedMaster>> => {
+      try {
+        const [sealedMaster, sst] = await this.#sealUnderPrf(prf);
+        if (sst !== Status.Success) return err(sst);
+        if (sealedMaster === undefined) return err(Status.InternalError);
+        return ok({
+          sealedMaster,
+          salt: salt.slice(),
+          credId: evCredId.slice(),
+          userId: created?.userId === undefined
+            ? undefined
+            : created.userId.slice(),
+          attachment: evAttachment ?? created?.attachment,
+          transports: evTransports ?? created?.transports,
+          aaguid: created?.aaguid === undefined
+            ? undefined
+            : created.aaguid.slice(),
+        });
+      } finally {
+        prf.fill(0);
+      }
+    };
+
+    if (createPrf !== undefined && created !== undefined) {
+      return finish(
+        createPrf,
+        created.credId,
+        created.attachment,
+        created.transports,
+      );
     }
 
     const [ev, est] = await evalPrf({
@@ -223,28 +263,7 @@ export class Enclave {
     });
     if (est !== Status.Success) return err(est);
     if (ev === undefined) return err(Status.MissingBody);
-
-    try {
-      const [sealedMaster, sst] = await this.#sealUnderPrf(ev.prf);
-      if (sst !== Status.Success) return err(sst);
-      if (sealedMaster === undefined) return err(Status.InternalError);
-      return ok({
-        sealedMaster,
-        salt: salt.slice(),
-        credId: ev.credId.slice(),
-        userId: created?.userId === undefined
-          ? undefined
-          : created.userId.slice(),
-        attachment: ev.attachment ?? created?.attachment,
-        transports: ev.transports ?? created?.transports,
-        aaguid: created?.aaguid === undefined
-          ? undefined
-          : created.aaguid.slice(),
-      });
-    } finally {
-      // hmac-secret output is IKM; must not sit next to sealedMaster in the heap.
-      ev.prf.fill(0);
-    }
+    return finish(ev.prf, ev.credId, ev.attachment, ev.transports);
   }
 
   /**

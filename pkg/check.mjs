@@ -6,7 +6,7 @@ async function checkWebBundle() {
   try {
     const content = await readFile("./dist/web/index.mjs", "utf8");
     if (content.length < 1000) throw new Error("Bundle too small");
-    if (!content.includes("genWebClient")) throw new Error("genWebClient not found in bundle");
+    if (!content.includes("openDiplomaticClient")) throw new Error("openDiplomaticClient not found in bundle");
     if (!content.includes("SyncClient")) throw new Error("SyncClient not found in bundle");
     console.log("✓ Web bundle content verified");
   } catch (error) {

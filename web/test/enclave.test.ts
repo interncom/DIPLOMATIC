@@ -478,6 +478,17 @@ describe("Enclave imported-callee seed trace", () => {
     assertPermitted();
   });
 
+  it("fromPairPlain", () => {
+    const seed = randomSeed();
+    const wire = new Uint8Array(33);
+    wire.set(seed, 0);
+    arm("fromPairPlain", seed);
+    const [out, st] = Enclave.fromPairPlain(wire);
+    expect(st).toBe(Status.Success);
+    expect(out).toBeDefined();
+    assertPermitted();
+  });
+
   it("spawnSyncWorker", () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);

@@ -27,10 +27,6 @@ import { bytesEqual, concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
-import {
-  type PairPackagePlain,
-  pairPackagePlainCodec,
-} from "../codecs/pairPackage.ts";
 import { kdmBytes, Status } from "../consts.ts";
 import {
   asMasterSeed,
@@ -162,6 +158,33 @@ function bundleHosts(hosts: BundleHost[]): BundleHost[] {
     label: h.label,
     idx: h.idx ?? 0,
   }));
+}
+
+// Absorb seed‖hosts wire. Encoder/Decoder see only the host list.
+function fromSeedHosts(
+  buf: Uint8Array,
+): ValStat<{ enclave: Enclave; hosts: BundleHost[] }> {
+  if (buf.byteLength === 0 || buf.every((b) => b === 0)) {
+    return err(Status.MissingSeed);
+  }
+  // Empty hosts is a one-byte varint; shorter than 33 is not this wire.
+  if (buf.byteLength < MASTER_SEED_LEN + 1) {
+    return err(Status.InvalidMessage);
+  }
+  const seedRaw = buf.subarray(0, MASTER_SEED_LEN);
+  if (seedRaw.every((b) => b === 0)) return err(Status.MissingSeed);
+  const dec = new Decoder(buf.subarray(MASTER_SEED_LEN));
+  const [rows, hst] = dec.readStruct(identityHostsCodec);
+  if (hst !== Status.Success) return err(hst);
+  if (rows === undefined) return err(Status.InvalidMessage);
+  if (!dec.done()) return err(Status.InvalidMessage);
+  const [enclave, est] = Enclave.fromBytes(seedRaw);
+  if (est !== Status.Success) return err(est);
+  if (enclave === undefined) return err(Status.InternalError);
+  return ok({
+    enclave,
+    hosts: rows.hosts.map((h) => ({ ...h })),
+  });
 }
 
 // UV write of largeBlob bytes. File-local (Iron Law). credId is not seed;
@@ -415,7 +438,7 @@ export class Enclave {
       credId = created;
     }
 
-    const [encoded, est] = this.#encodeIdentityBundleWire(hosts);
+    const [encoded, est] = this.#encodeSeedHosts(hosts);
     if (est !== Status.Success) return err(est);
     if (encoded === undefined) return err(Status.InternalError);
     try {
@@ -443,10 +466,10 @@ export class Enclave {
     if (rst !== Status.Success) return err(rst);
     if (raw === undefined) return err(Status.MissingBody);
     try {
-      return Enclave.#enclaveFromLargeBlobPayload(
-        raw.blob,
-        raw.credId,
-      );
+      const [out, st] = fromSeedHosts(raw.blob);
+      if (st !== Status.Success) return err(st);
+      if (out === undefined) return err(Status.InternalError);
+      return ok({ ...out, credId: raw.credId });
     } finally {
       raw.blob.fill(0);
     }
@@ -458,6 +481,16 @@ export class Enclave {
     opts?: LargeBlobRp,
   ): Promise<Status> {
     return writeLargeBlob(credId, new Uint8Array(MASTER_SEED_LEN), opts);
+  }
+
+  /**
+   * Absorb seed‖hosts plaintext (pair AEAD inner).
+   * Encoder/Decoder never see the seed.
+   */
+  static fromPairPlain(
+    plain: Uint8Array,
+  ): ValStat<{ enclave: Enclave; hosts: BundleHost[] }> {
+    return fromSeedHosts(plain);
   }
 
   // Starts an enrollee pairing session (same as PairRequest.create).
@@ -482,7 +515,7 @@ export class Enclave {
       if (kst !== Status.Success) return err(kst);
       if (key === undefined) return err(Status.InternalError);
       try {
-        const [plainBytes, pst] = this.#encodePairPlain(hosts);
+        const [plainBytes, pst] = this.#encodeSeedHosts(hosts);
         if (pst !== Status.Success) return err(pst);
         if (plainBytes === undefined) return err(Status.InternalError);
         try {
@@ -501,40 +534,6 @@ export class Enclave {
       }
     } finally {
       eph.priv.fill(0);
-    }
-  }
-
-  // Encodes seed + hosts as pairing AEAD plaintext.
-  #encodePairPlain(hosts: BundleHost[]): ValStat<Uint8Array> {
-    const raw = this.#seed.slice();
-    const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
-    if (sst !== Status.Success) {
-      raw.fill(0);
-      return err(sst);
-    }
-    if (snap === undefined) {
-      raw.fill(0);
-      return err(Status.InvalidParam);
-    }
-    try {
-      const plain: PairPackagePlain = {
-        masterSeed: snap,
-        hosts: hosts.map((h) => ({
-          handle: h.handle,
-          label: h.label,
-          idx: h.idx ?? 0,
-        })),
-      };
-      const enc = new Encoder();
-      try {
-        const wst = enc.writeStruct(pairPackagePlainCodec, plain);
-        if (wst !== Status.Success) return err(wst);
-        return ok(enc.result());
-      } finally {
-        enc.wipe();
-      }
-    } finally {
-      snap.fill(0);
     }
   }
 
@@ -678,10 +677,10 @@ export class Enclave {
   }
 
   /**
-   * Private: IdentityBundle wire for largeBlob I/O only.
+   * Private: seed‖hosts wire (largeBlob persist and pair AEAD inner).
    * Never expose this buffer outside Enclave methods.
    */
-  #encodeIdentityBundleWire(hosts: BundleHost[]): ValStat<Uint8Array> {
+  #encodeSeedHosts(hosts: BundleHost[]): ValStat<Uint8Array> {
     const enc = new Encoder();
     const st = enc.writeStruct(identityHostsCodec, {
       hosts: bundleHosts(hosts),
@@ -692,37 +691,6 @@ export class Enclave {
     out.set(this.#seed, 0);
     out.set(hostsEnc, MASTER_SEED_LEN);
     return ok(out);
-  }
-
-  /**
-   * Private: absorb largeBlob payload (fixed 32-byte seed ‖ hosts).
-   */
-  static #enclaveFromLargeBlobPayload(
-    seedBytes: Uint8Array,
-    credId: Uint8Array,
-  ): ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }> {
-    if (seedBytes.byteLength === 0 || seedBytes.every((b) => b === 0)) {
-      return err(Status.MissingSeed);
-    }
-    // Empty hosts is a one-byte varint; shorter than 33 is not this wire.
-    if (seedBytes.byteLength < MASTER_SEED_LEN + 1) {
-      return err(Status.InvalidMessage);
-    }
-    const seedRaw = seedBytes.subarray(0, MASTER_SEED_LEN);
-    if (seedRaw.every((b) => b === 0)) return err(Status.MissingSeed);
-    const dec = new Decoder(seedBytes.subarray(MASTER_SEED_LEN));
-    const [rows, hst] = dec.readStruct(identityHostsCodec);
-    if (hst !== Status.Success) return err(hst);
-    if (rows === undefined) return err(Status.InvalidMessage);
-    if (!dec.done()) return err(Status.InvalidMessage);
-    const [enclave, est] = Enclave.fromBytes(seedRaw);
-    if (est !== Status.Success) return err(est);
-    if (enclave === undefined) return err(Status.InternalError);
-    return ok({
-      enclave,
-      hosts: rows.hosts.map((h) => ({ ...h })),
-      credId,
-    });
   }
 
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {

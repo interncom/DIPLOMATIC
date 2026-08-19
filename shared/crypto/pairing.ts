@@ -1,8 +1,6 @@
 // Enrollee half of DHKE pair. Ephemeral X25519 priv never leaves this module.
 
 import { concat } from "../binary.ts";
-import { Decoder } from "../codec.ts";
-import { pairPackagePlainCodec } from "../codecs/pairPackage.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
 import { Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
@@ -133,22 +131,11 @@ export class PairRequest {
       } catch {
         return err(Status.DecryptionError);
       }
-      const pdec = new Decoder(plain);
-      const [inner, is] = pdec.readStruct(pairPackagePlainCodec);
-      if (is !== Status.Success) return err(is);
-      if (inner === undefined) return err(Status.InvalidMessage);
-      try {
-        const [enclave, ens] = Enclave.fromBytes(inner.masterSeed);
-        if (ens !== Status.Success) return err(ens);
-        if (enclave === undefined) return err(Status.InternalError);
-        this.wipe();
-        return ok({
-          enclave,
-          hosts: inner.hosts.map((h) => ({ ...h })),
-        });
-      } finally {
-        inner.masterSeed.fill(0);
-      }
+      const [opened, ost] = Enclave.fromPairPlain(plain);
+      if (ost !== Status.Success) return err(ost);
+      if (opened === undefined) return err(Status.InternalError);
+      this.wipe();
+      return ok(opened);
     } finally {
       key.fill(0);
       plain?.fill(0);

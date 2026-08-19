@@ -1,4 +1,6 @@
 // Enclave is the sole long-lived holder of the master seed — a one-way door.
+// Public methods are locked after the class (non-writable, non-configurable)
+// so they cannot be replaced after load.
 //
 // IRON LAW — never break these:
 //   1. Never return unencrypted seed (or seed-bearing plaintext wire) to callers.
@@ -777,3 +779,22 @@ export async function sealKeyFromPrf(
 }
 
 export { MASTER_SEED_LEN, SEAL_BIND_DOMAIN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN };
+
+const LOCK_SKIP = new Set(["constructor", "prototype", "length", "name"]);
+
+// Freeze every public fn slot on obj so it cannot be replaced after load.
+function lockAll(obj: object): void {
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (LOCK_SKIP.has(key)) continue;
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (desc === undefined || typeof desc.value !== "function") continue;
+    Object.defineProperty(obj, key, {
+      value: desc.value,
+      writable: false,
+      configurable: false,
+    });
+  }
+}
+
+lockAll(Enclave);
+lockAll(Enclave.prototype);

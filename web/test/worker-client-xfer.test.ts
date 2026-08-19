@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { WorkerClient } from "../src/worker/client";
-import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
-import type { IHostConnectionInfo, IStateManager } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import { EncodedMessage } from "../src/shared/message";
+import type { IHostConnectionInfo, IStateManager } from "../src/shared/types";
+import { spawnDiplomaticSyncWorker } from "../src/shared/worker/spawn";
+import { MemoryStore } from "../src/stores/memory/store";
+import { WorkerClient } from "../src/worker/client";
+
+vi.mock("../src/shared/worker/spawn", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../src/shared/worker/spawn")>();
+  return {
+    ...orig,
+    spawnDiplomaticSyncWorker: vi.fn(),
+    postToDiplomaticWorker: (worker: Worker, data: unknown) => {
+      worker.postMessage(data);
+    },
+  };
+});
 
 /**
  * Worker that answers RPC but never posts unsolicited xferState.
@@ -117,25 +129,9 @@ describe("WorkerClient xferState", () => {
       off() {} };
 
     const mock = mockWorkerRpcOnly();
-    // Production setSeed uses Enclave.spawnSyncWorker (spawn+seed). Tests stub
-    // that factory so we keep the mock RPC worker without a real blob bundle.
-    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
-      (opts) => {
-        queueMicrotask(() => {
-          const handler = mock.onmessage;
-          if (!handler) return;
-          handler({
-            data: {
-              kind: "reply",
-              id: opts.id,
-              ok: true,
-              result: Status.Success,
-            },
-          } as MessageEvent<unknown>);
-        });
-        return mock;
-      },
-    );
+    // Production setSeed uses Enclave.spawnSyncWorker (spawn+seed). Stub the
+    // spawn helper so we keep the mock RPC worker without a real blob bundle.
+    vi.mocked(spawnDiplomaticSyncWorker).mockReturnValue(mock);
     const client = await WorkerClient.open(state, store, {
       syncDebounceMs: 0 });
 

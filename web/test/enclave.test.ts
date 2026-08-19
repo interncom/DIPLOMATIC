@@ -42,6 +42,13 @@ const permits: Permit[] = [
     src: "c87390f5b54c28fe7c228a7325c42aee",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
+  {
+    caller: "deriveIdentity",
+    callee: "NobleCrypto.blake3",
+    how: "embedded",
+    src: "f6f104ad232958bb7949fb63bf3d6580",
+    why: "To derive a sub-key from the provided KDM (keypath and index).",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {

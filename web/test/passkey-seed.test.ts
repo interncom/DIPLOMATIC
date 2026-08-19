@@ -157,8 +157,8 @@ describe("Enclave largeBlob seed boundary", () => {
     // (regression: Encoder held a ref that Enclave zeroed before result()).
     const written = new Uint8Array(writeRaw);
     expect(written.byteLength).toBeGreaterThan(32);
-    expect(written.slice(1, 33).every((b: number) => b === 0)).toBe(false);
-    expect(written.slice(1, 33).every((b: number) => b === 1)).toBe(true);
+    expect(written.subarray(0, 32).every((b: number) => b === 0)).toBe(false);
+    expect(written.subarray(0, 32).every((b: number) => b === 1)).toBe(true);
   });
 
   it("fromLargeBlob absorbs legacy 32-byte payload into enclave", async () => {

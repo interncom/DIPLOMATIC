@@ -27,8 +27,7 @@ import { bytesEqual, concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import {
   IDENTITY_BUNDLE_VERSION,
-  type IdentityBundle,
-  identityBundleCodec,
+  identityHostsCodec,
 } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
 import {
@@ -159,26 +158,13 @@ const SEAL_PRF_MIN_LEN = 16;
 // Bound at load — not an Enclave constructor argument (no caller ICrypto).
 const noble = new NobleCrypto();
 
-// File-local IdentityBundle builder (seed must not cross an import).
-function createIdentityBundle(
-  masterSeed: MasterSeed,
-  hosts: BundleHost[],
-): ValStat<IdentityBundle> {
-  const [seed, seedSt] = asMasterSeed(masterSeed);
-  if (seedSt !== Status.Success) return err(seedSt);
-  if (seed === undefined) return err(Status.InvalidParam);
-  const [copy, copySt] = asMasterSeed(seed.slice());
-  if (copySt !== Status.Success) return err(copySt);
-  if (copy === undefined) return err(Status.InvalidParam);
-  return ok({
-    v: IDENTITY_BUNDLE_VERSION,
-    masterSeed: copy,
-    hosts: hosts.map((h) => ({
-      handle: h.handle,
-      label: h.label,
-      idx: h.idx ?? 0,
-    })),
-  });
+// Host rows for IdentityBundle wire (idx defaults to 0).
+function bundleHosts(hosts: BundleHost[]): BundleHost[] {
+  return hosts.map((h) => ({
+    handle: h.handle,
+    label: h.label,
+    idx: h.idx ?? 0,
+  }));
 }
 
 // UV write of largeBlob bytes. File-local (Iron Law). credId is not seed;
@@ -699,35 +685,21 @@ export class Enclave {
    * Never expose this buffer outside Enclave methods.
    */
   #encodeIdentityBundleWire(hosts: BundleHost[]): ValStat<Uint8Array> {
-    const raw = this.#seed.slice();
-    const [snap, sst] = asMasterSeed(raw); // copy to wipe after encode
-    if (sst !== Status.Success) {
-      raw.fill(0);
-      return err(sst);
-    }
-    if (snap === undefined) {
-      raw.fill(0);
-      return err(Status.InvalidParam);
-    }
-    try {
-      const [bundle, bst] = createIdentityBundle(snap, hosts);
-      if (bst !== Status.Success) return err(bst);
-      if (bundle === undefined) return err(Status.InternalError);
-      try {
-        const enc = new Encoder();
-        const st = enc.writeStruct(identityBundleCodec, bundle);
-        if (st !== Status.Success) return err(st);
-        return ok(enc.result());
-      } finally {
-        bundle.masterSeed.fill(0);
-      }
-    } finally {
-      snap.fill(0);
-    }
+    const enc = new Encoder();
+    const st = enc.writeStruct(identityHostsCodec, {
+      hosts: bundleHosts(hosts),
+    });
+    if (st !== Status.Success) return err(st);
+    const hostsEnc = enc.result();
+    const out = new Uint8Array(MASTER_SEED_LEN + hostsEnc.byteLength);
+    out.set(this.#seed, 0);
+    out.set(hostsEnc, MASTER_SEED_LEN);
+    return ok(out);
   }
 
   /**
-   * Private: absorb largeBlob payload (legacy 32-byte seed or IdentityBundle).
+   * Private: absorb largeBlob payload (bare 32-byte seed, seed‖hosts, or
+   * legacy v+seed+hosts IdentityBundle).
    */
   static #enclaveFromLargeBlobPayload(
     seedBytes: Uint8Array,
@@ -738,32 +710,46 @@ export class Enclave {
     }
     // Legacy format: bare master seed.
     if (seedBytes.byteLength === MASTER_SEED_LEN) {
-      if (seedBytes.every((b) => b === 0)) return err(Status.MissingSeed);
       const [enclave, est] = Enclave.fromBytes(seedBytes);
       if (est !== Status.Success) return err(est);
       if (enclave === undefined) return err(Status.InternalError);
       return ok({ enclave, hosts: [], credId });
     }
-    const dec = new Decoder(seedBytes);
-    const [bundle, bst] = dec.readStruct(identityBundleCodec);
-    if (bst !== Status.Success) return err(bst);
-    if (bundle === undefined) return err(Status.InvalidMessage);
-    try {
-      // All-zero master (e.g. pre-fix write that zeroed seed while encoding).
-      if (bundle.masterSeed.every((b) => b === 0)) {
-        return err(Status.MissingSeed);
-      }
-      const [enclave, est] = Enclave.fromBytes(bundle.masterSeed);
+    const fromSeedHosts = (
+      seedRaw: Uint8Array,
+      hostsRaw: Uint8Array,
+    ): ValStat<
+      { enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }
+    > => {
+      const dec = new Decoder(hostsRaw);
+      const [rows, hst] = dec.readStruct(identityHostsCodec);
+      if (hst !== Status.Success) return err(hst);
+      if (rows === undefined) return err(Status.InvalidMessage);
+      if (!dec.done()) return err(Status.InvalidMessage);
+      if (seedRaw.every((b) => b === 0)) return err(Status.MissingSeed);
+      const [enclave, est] = Enclave.fromBytes(seedRaw);
       if (est !== Status.Success) return err(est);
       if (enclave === undefined) return err(Status.InternalError);
       return ok({
         enclave,
-        hosts: bundle.hosts.map((h) => ({ ...h })),
+        hosts: rows.hosts.map((h) => ({ ...h })),
         credId,
       });
-    } finally {
-      bundle.masterSeed.fill(0);
+    };
+    const [neu, nst] = fromSeedHosts(
+      seedBytes.subarray(0, MASTER_SEED_LEN),
+      seedBytes.subarray(MASTER_SEED_LEN),
+    );
+    if (nst === Status.Success && neu !== undefined) return ok(neu);
+    // Legacy: varint version + 32-byte seed + hosts.
+    if (seedBytes[0] === IDENTITY_BUNDLE_VERSION) {
+      const [old, ost] = fromSeedHosts(
+        seedBytes.subarray(1, 1 + MASTER_SEED_LEN),
+        seedBytes.subarray(1 + MASTER_SEED_LEN),
+      );
+      if (ost === Status.Success && old !== undefined) return ok(old);
     }
+    return err(nst);
   }
 
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {

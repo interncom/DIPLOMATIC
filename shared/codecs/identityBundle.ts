@@ -1,69 +1,46 @@
-// Full identity backup: master seed + host connection rows.
-// Untagged DIPLOMATIC codec; YubiKey largeBlob stores the encoded bytes raw.
+// Identity backup host list. Enclave prepends a fixed 32-byte master seed;
+// this codec never sees seed bytes.
 
 import { ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
-import { asMasterSeed, MASTER_SEED_LEN, type MasterSeed } from "../seed.ts";
 import { err, ok } from "../valstat.ts";
 import { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
 
 export { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
 
+/** Wire version of the pre-split IdentityBundle (v + seed + hosts). */
 export const IDENTITY_BUNDLE_VERSION = 1;
 
-export type IdentityBundle = {
-  v: number;
-  masterSeed: MasterSeed;
+export type IdentityHosts = {
   hosts: BundleHost[];
 };
 
 /**
- * IdentityBundle wire layout:
- *   v: varint
- *   masterSeed: 32 fixed bytes
+ * Host list on the IdentityBundle wire:
  *   hostsLen: varint
  *   hosts: hostsLen × BundleHost
  */
-export const identityBundleCodec: ICodecStruct<IdentityBundle> = {
+export const identityHostsCodec: ICodecStruct<IdentityHosts> = {
   encode(enc, b) {
-    if (b.v !== IDENTITY_BUNDLE_VERSION) return Status.InvalidParam;
-    const [, seedSt] = asMasterSeed(b.masterSeed);
-    if (seedSt !== Status.Success) return seedSt;
-    const s0 = enc.writeVarInt(b.v);
+    const s0 = enc.writeVarInt(b.hosts.length);
     if (s0 !== Status.Success) return s0;
-    enc.writeBytes(b.masterSeed);
-    const s1 = enc.writeVarInt(b.hosts.length);
-    if (s1 !== Status.Success) return s1;
     for (const h of b.hosts) {
-      const s2 = enc.writeStruct(bundleHostCodec, h);
-      if (s2 !== Status.Success) return s2;
+      const s1 = enc.writeStruct(bundleHostCodec, h);
+      if (s1 !== Status.Success) return s1;
     }
     return Status.Success;
   },
   decode(dec) {
-    const [v, s0] = dec.readVarInt();
+    const [n, s0] = dec.readVarInt();
     if (s0 !== Status.Success) return err(s0);
-    if (v !== IDENTITY_BUNDLE_VERSION) return err(Status.InvalidMessage);
-    const [raw, s1] = dec.readBytes(MASTER_SEED_LEN);
-    if (s1 !== Status.Success) return err(s1);
-    if (raw === undefined) return err(Status.InvalidMessage);
-    const [masterSeed, seedSt] = asMasterSeed(raw);
-    if (seedSt !== Status.Success) return err(seedSt);
-    if (masterSeed === undefined) return err(Status.InvalidMessage);
-    const [n, s2] = dec.readVarInt();
-    if (s2 !== Status.Success) return err(s2);
     if (n === undefined || n < 0) return err(Status.InvalidParam);
     const hosts: BundleHost[] = [];
     for (let i = 0; i < n; i++) {
-      const [h, s3] = dec.readStruct(bundleHostCodec);
-      if (s3 !== Status.Success) return err(s3);
+      const [h, s1] = dec.readStruct(bundleHostCodec);
+      if (s1 !== Status.Success) return err(s1);
       if (h === undefined) return err(Status.InvalidMessage);
       hosts.push(h);
     }
-    return ok({
-      v: IDENTITY_BUNDLE_VERSION,
-      masterSeed,
-      hosts,
-    });
+    return ok({ hosts });
   },
 };

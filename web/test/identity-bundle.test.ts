@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Decoder, Encoder } from "../src/shared/codec";
 import {
   IDENTITY_BUNDLE_VERSION,
-  identityBundleCodec,
+  identityHostsCodec,
 } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
 import { Enclave, sealKeyFromPrf } from "../src/shared/crypto/enclave";
@@ -24,17 +24,6 @@ function seedOf(fill: number): MasterSeed {
     throw new Error(`seedOf ${st}`);
   }
   return seed;
-}
-
-function bundleOf(
-  seed: MasterSeed,
-  hosts: { handle: string; label: string; idx: number }[],
-) {
-  const [copy, st] = asMasterSeed(seed.slice());
-  if (st !== Status.Success || copy === undefined) {
-    throw new Error(`bundleOf ${st}`);
-  }
-  return { v: IDENTITY_BUNDLE_VERSION, masterSeed: copy, hosts };
 }
 
 function enclaveOf(fill: number): Enclave {
@@ -105,51 +94,27 @@ function stubNav(credentials: { create?: unknown; get?: unknown }) {
   }
 }
 
-describe("IdentityBundle codec", () => {
-  it("round-trips seed and hosts", () => {
-    const seed = seedOf(7);
-    const bundle = bundleOf(seed, [
+describe("IdentityHosts codec", () => {
+  it("round-trips hosts", () => {
+    const hosts = [
       { handle: "https://sync.example.com", label: "host", idx: 0 },
       { handle: "https://b.example.com", label: "backup", idx: 1 },
-    ]);
+    ];
     const enc = new Encoder();
-    expect(enc.writeStruct(identityBundleCodec, bundle)).toBe(Status.Success);
-    // Simulate Enclave zeroing seed after encode (must not corrupt wire).
-    bundle.masterSeed.fill(0);
-    const dec = new Decoder(enc.result());
-    const [out, st] = dec.readStruct(identityBundleCodec);
+    expect(enc.writeStruct(identityHostsCodec, { hosts })).toBe(Status.Success);
+    const [out, st] = new Decoder(enc.result()).readStruct(identityHostsCodec);
     expect(st).toBe(Status.Success);
-    expect(out).toBeDefined();
-    if (out === undefined) return;
-    expect(out.v).toBe(IDENTITY_BUNDLE_VERSION);
-    expect(out.masterSeed).toEqual(seed);
-    expect(out.hosts).toEqual([
-      { handle: "https://sync.example.com", label: "host", idx: 0 },
-      { handle: "https://b.example.com", label: "backup", idx: 1 },
-    ]);
+    expect(out?.hosts).toEqual(hosts);
   });
 
   it("round-trips empty hosts", () => {
-    const seed = seedOf(1);
-    const bundle = bundleOf(seed, []);
     const enc = new Encoder();
-    expect(enc.writeStruct(identityBundleCodec, bundle)).toBe(Status.Success);
-    const [out, st] = new Decoder(enc.result()).readStruct(identityBundleCodec);
+    expect(enc.writeStruct(identityHostsCodec, { hosts: [] })).toBe(
+      Status.Success,
+    );
+    const [out, st] = new Decoder(enc.result()).readStruct(identityHostsCodec);
     expect(st).toBe(Status.Success);
-    expect(out).toBeDefined();
-    if (out === undefined) return;
-    expect(out.hosts).toEqual([]);
-    expect(out.masterSeed).toEqual(seed);
-  });
-
-  it("rejects bad seed length on encode", () => {
-    const enc = new Encoder();
-    const st = enc.writeStruct(identityBundleCodec, {
-      v: IDENTITY_BUNDLE_VERSION,
-      masterSeed: new Uint8Array(16) as MasterSeed,
-      hosts: [],
-    });
-    expect(st).toBe(Status.InvalidParam);
+    expect(out?.hosts).toEqual([]);
   });
 });
 
@@ -185,18 +150,94 @@ describe("Enclave persist IdentityBundle", () => {
     expect(id).toEqual(credId);
     expect(writeRaw).toBeDefined();
     if (writeRaw === undefined) return;
-    const [out, dst] = new Decoder(new Uint8Array(writeRaw)).readStruct(
-      identityBundleCodec,
+    const raw = new Uint8Array(writeRaw);
+    expect(raw.subarray(0, 32)).toEqual(seed);
+    const [out, dst] = new Decoder(raw.subarray(32)).readStruct(
+      identityHostsCodec,
     );
     expect(dst).toBe(Status.Success);
-    expect(out).toBeDefined();
-    if (out === undefined) return;
-    expect(out.v).toBe(IDENTITY_BUNDLE_VERSION);
-    expect(out.masterSeed).toEqual(seed);
-    expect(out.hosts).toEqual([
+    expect(out?.hosts).toEqual([
       { handle: "https://a.example", label: "a", idx: 0 },
       { handle: "https://b.example", label: "b", idx: 2 },
     ]);
+  });
+
+  it("fromLargeBlob restores seed and hosts from persist wire", async () => {
+    let writeRaw: ArrayBuffer | undefined;
+    const get = vi.fn().mockImplementation((arg: {
+      publicKey: { extensions: { largeBlob: { write?: ArrayBuffer } } };
+    }) => {
+      const w = arg.publicKey.extensions.largeBlob.write;
+      if (w !== undefined) writeRaw = w.slice(0);
+      const blob = writeRaw ?? new ArrayBuffer(0);
+      return Promise.resolve(
+        mockCred(credId.buffer, {
+          largeBlob: { written: true, blob },
+        }),
+      );
+    });
+    stubNav({ create: vi.fn(), get });
+
+    const enc = enclaveOf(4);
+    const hosts = [
+      { handle: "https://a.example", label: "a", idx: 0 },
+      { handle: "https://b.example", label: "b", idx: 2 },
+    ];
+    const [id, st] = await enc.persistToLargeBlob(hosts, {
+      rpId: "localhost",
+      credId,
+    });
+    expect(st).toBe(Status.Success);
+    expect(id).toEqual(credId);
+
+    const [opened, ost] = await Enclave.fromLargeBlob({
+      rpId: "localhost",
+      credId,
+    });
+    expect(ost).toBe(Status.Success);
+    expect(opened?.hosts).toEqual(hosts);
+    if (opened === undefined) return;
+    const a = await enc.deriveIdentity("test", 0);
+    const b = await opened.enclave.deriveIdentity("test", 0);
+    expect(b.publicKey).toEqual(a.publicKey);
+  });
+
+  it("fromLargeBlob restores legacy v+seed+hosts", async () => {
+    const seed = seedOf(5);
+    const hosts = [
+      { handle: "https://old.example", label: "old", idx: 1 },
+    ];
+    const hostsEnc = new Encoder();
+    expect(hostsEnc.writeStruct(identityHostsCodec, { hosts })).toBe(
+      Status.Success,
+    );
+    const tail = hostsEnc.result();
+    const raw = new Uint8Array(1 + 32 + tail.byteLength);
+    raw[0] = IDENTITY_BUNDLE_VERSION;
+    raw.set(seed, 1);
+    raw.set(tail, 1 + 32);
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, {
+        largeBlob: {
+          blob: raw.buffer.slice(
+            raw.byteOffset,
+            raw.byteOffset + raw.byteLength,
+          ),
+        },
+      }),
+    );
+    stubNav({ create: vi.fn(), get });
+
+    const [opened, st] = await Enclave.fromLargeBlob({
+      rpId: "localhost",
+      credId,
+    });
+    expect(st).toBe(Status.Success);
+    expect(opened?.hosts).toEqual(hosts);
+    if (opened === undefined) return;
+    const expected = await enclaveOf(5).deriveIdentity("test", 0);
+    const got = await opened.enclave.deriveIdentity("test", 0);
+    expect(got.publicKey).toEqual(expected.publicKey);
   });
 });
 

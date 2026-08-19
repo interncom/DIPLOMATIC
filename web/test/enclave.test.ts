@@ -246,24 +246,6 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   });
 });
 
-vi.mock("../src/shared/webauthn/prf", async (importOriginal) => {
-  const orig = await importOriginal<
-    typeof import("../src/shared/webauthn/prf")
-  >();
-  const { ok } = await import("../src/shared/valstat");
-  const credId = new Uint8Array(16).fill(7);
-  const prf = new Uint8Array(32).fill(2);
-  return wrapFns("prf", orig, {
-    evalPrf: async () => ok({ prf: prf.slice(), credId: credId.slice() }),
-    createPrfCred: async () =>
-      ok({
-        prf: prf.slice(),
-        credId: credId.slice(),
-        prfEnabled: true,
-      }),
-  });
-});
-
 vi.mock("../src/shared/worker/spawn", async (importOriginal) => {
   const orig = await importOriginal<
     typeof import("../src/shared/worker/spawn")
@@ -321,12 +303,7 @@ function enclaveOf(seed: MasterSeed): Enclave {
   return e;
 }
 
-function stubWrittenGet(credId: Uint8Array) {
-  const get = vi.fn().mockResolvedValue({
-    type: "public-key",
-    rawId: credId,
-    getClientExtensionResults: () => ({ largeBlob: { written: true } }),
-  });
+function stubNav(credentials: { create?: unknown; get?: unknown }) {
   const g = globalThis as {
     navigator?: { credentials?: unknown };
     PublicKeyCredential?: unknown;
@@ -336,13 +313,13 @@ function stubWrittenGet(credId: Uint8Array) {
     Object.defineProperty(g.navigator, "credentials", {
       configurable: true,
       writable: true,
-      value: { create: vi.fn(), get },
+      value: credentials,
     });
   } else {
     Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       writable: true,
-      value: { credentials: { create: vi.fn(), get } },
+      value: { credentials },
     });
   }
   g.PublicKeyCredential = class {};
@@ -351,6 +328,33 @@ function stubWrittenGet(credId: Uint8Array) {
     writable: true,
     value: { hostname: "localhost" },
   });
+}
+
+function stubWrittenGet(credId: Uint8Array) {
+  const get = vi.fn().mockResolvedValue({
+    type: "public-key",
+    rawId: credId,
+    response: {},
+    getClientExtensionResults: () => ({ largeBlob: { written: true } }),
+  });
+  stubNav({ create: vi.fn(), get });
+}
+
+function stubPrfGet(credId: Uint8Array, prfFill = 2) {
+  const prf = new Uint8Array(32).fill(prfFill);
+  const get = vi.fn().mockResolvedValue({
+    type: "public-key",
+    rawId: credId,
+    response: {},
+    getClientExtensionResults: () => ({
+      prf: {
+        results: {
+          first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+        },
+      },
+    }),
+  });
+  stubNav({ create: vi.fn(), get });
 }
 
 describe("Enclave imported-callee seed trace", () => {
@@ -388,10 +392,12 @@ describe("Enclave imported-callee seed trace", () => {
   it("sealWithPasskey", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
+    const credId = new Uint8Array(16).fill(7);
+    stubPrfGet(credId);
     arm("sealWithPasskey", seed);
     const [out, st] = await e.sealWithPasskey({
       rpId: "localhost",
-      credId: new Uint8Array(16).fill(7),
+      credId,
       salt: DEFAULT_PRF_SALT,
     });
     expect(st).toBe(Status.Success);
@@ -402,10 +408,12 @@ describe("Enclave imported-callee seed trace", () => {
   it("bind", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
+    const credId = new Uint8Array(16).fill(7);
+    stubPrfGet(credId);
     arm("bind", seed);
     const [out, st] = await e.bind({
       rpId: "localhost",
-      credId: new Uint8Array(16).fill(7),
+      credId,
       salt: DEFAULT_PRF_SALT,
     });
     expect(st).toBe(Status.Success);
@@ -415,6 +423,8 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("unsealWithPasskey", async () => {
     const seed = randomSeed();
+    const credId = new Uint8Array(16).fill(7);
+    stubPrfGet(credId);
     arm("unsealWithPasskey", seed);
     const [sealed, sst] = asSealedMasterKey(
       new Uint8Array(SEALED_MASTER_KEY_LEN),
@@ -422,7 +432,7 @@ describe("Enclave imported-callee seed trace", () => {
     expect(sst).toBe(Status.Success);
     if (sealed === undefined) return;
     const [, st] = await Enclave.unsealWithPasskey(
-      [{ sealedMaster: sealed, credId: new Uint8Array(16).fill(7) }],
+      [{ sealedMaster: sealed, credId }],
       { rpId: "localhost", salt: DEFAULT_PRF_SALT },
     );
     expect(st).not.toBe(Status.Success);

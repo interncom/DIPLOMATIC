@@ -10,7 +10,7 @@ Credentials are scoped to the page hostname (`rpId`). Every bind, unseal, and la
 
 WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.bind.v1`) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless. Pairing uses a different KDF (`diplomatic.qrpair.v1`); see [Pairing](./pairing).
 
-`createPrfCred` does **not** default `authenticatorAttachment`. Omitting it lets the UA offer platform passkeys, roaming keys, and third-party providers. Pass `platform` to restrict (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
+PRF credential create (inside Enclave) does **not** default `authenticatorAttachment`. Omitting it lets the UA offer platform passkeys, roaming keys, and third-party providers. Pass `platform` to restrict (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
 Create must report `prf.enabled`. Eval must return 32 bytes. Otherwise seal/unseal fails closed (`WebAuthnError` / `MissingBody`). There is no passphrase-seal fallback yet.
 

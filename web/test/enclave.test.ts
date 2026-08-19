@@ -63,6 +63,13 @@ const permits: Permit[] = [
     src: "c87390f5b54c28fe7c228a7325c42aee",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
+  {
+    caller: "bind",
+    callee: "NobleCrypto.blake3",
+    how: "embedded",
+    src: "f6f104ad232958bb7949fb63bf3d6580",
+    why: "To check hashed fingerprints of each provided binding to ensure the current seed matches.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {

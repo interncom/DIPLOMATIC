@@ -364,29 +364,27 @@ function stubPrfGet(credId: Uint8Array, prfFill = 2) {
   stubNav({ create: vi.fn(), get });
 }
 
-describe("Enclave imported-callee seed trace", () => {
-  beforeEach(() => {
-    wrapProto("Encoder", Encoder.prototype);
-    wrapProto("NobleCrypto", NobleCrypto.prototype);
-  });
+const SKIP = new Set(["constructor", "prototype", "length", "name"]);
 
-  afterEach(() => {
-    trace.seed = undefined;
-    trace.caller = undefined;
-    trace.hits = [];
-    vi.restoreAllMocks();
+// Own function keys on a constructor or prototype (not private slots).
+function publicFns(obj: object): string[] {
+  return Object.getOwnPropertyNames(obj).filter((k) => {
+    if (SKIP.has(k)) return false;
+    const d = Object.getOwnPropertyDescriptor(obj, k);
+    return typeof d?.value === "function";
   });
+}
 
-  it("fromBytes", () => {
+const traces: Record<string, () => void | Promise<void>> = {
+  fromBytes() {
     const seed = randomSeed();
     arm("fromBytes", seed);
     const [e, st] = Enclave.fromBytes(seed);
     expect(st).toBe(Status.Success);
     expect(e).toBeDefined();
     assertPermitted();
-  });
-
-  it("fromRandom", async () => {
+  },
+  async fromRandom() {
     const seed = randomSeed();
     arm("fromRandom", seed);
     vi.spyOn(NobleCrypto.prototype, "gen256BitSecureRandomSeed")
@@ -394,9 +392,8 @@ describe("Enclave imported-callee seed trace", () => {
     const e = await Enclave.fromRandom();
     expect(e).toBeDefined();
     assertPermitted();
-  });
-
-  it("sealWithPasskey", async () => {
+  },
+  async sealWithPasskey() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     const credId = new Uint8Array(16).fill(7);
@@ -410,9 +407,8 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(out).toBeDefined();
     assertPermitted();
-  });
-
-  it("bind", async () => {
+  },
+  async bind() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     const credId = new Uint8Array(16).fill(7);
@@ -426,9 +422,8 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(out).toBeDefined();
     assertPermitted();
-  });
-
-  it("unsealWithPasskey", async () => {
+  },
+  async unsealWithPasskey() {
     const seed = randomSeed();
     const credId = new Uint8Array(16).fill(7);
     stubPrfGet(credId);
@@ -444,9 +439,8 @@ describe("Enclave imported-callee seed trace", () => {
     );
     expect(st).not.toBe(Status.Success);
     assertPermitted();
-  });
-
-  it("persistToLargeBlob", async () => {
+  },
+  async persistToLargeBlob() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("persistToLargeBlob", seed);
@@ -456,9 +450,8 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(id).toBeDefined();
     assertPermitted();
-  });
-
-  it("fromLargeBlob", async () => {
+  },
+  async fromLargeBlob() {
     const seed = randomSeed();
     arm("fromLargeBlob", seed);
     const [out, st] = await Enclave.fromLargeBlob({
@@ -468,9 +461,8 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(out).toBeDefined();
     assertPermitted();
-  });
-
-  it("clearLargeBlob", async () => {
+  },
+  async clearLargeBlob() {
     const seed = randomSeed();
     arm("clearLargeBlob", seed);
     const credId = new Uint8Array(16).fill(7);
@@ -478,18 +470,16 @@ describe("Enclave imported-callee seed trace", () => {
     const st = await Enclave.clearLargeBlob(credId, { rpId: "localhost" });
     expect(st).toBe(Status.Success);
     assertPermitted();
-  });
-
-  it("pairRequest", async () => {
+  },
+  async pairRequest() {
     const seed = randomSeed();
     arm("pairRequest", seed);
     const [req, st] = await Enclave.pairRequest();
     expect(st).toBe(Status.Success);
     expect(req).toBeDefined();
     assertPermitted();
-  });
-
-  it("pairAccept", async () => {
+  },
+  async pairAccept() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("pairAccept", seed);
@@ -500,9 +490,8 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(resp).toBeDefined();
     assertPermitted();
-  });
-
-  it("fromPairPlain", () => {
+  },
+  fromPairPlain() {
     const seed = randomSeed();
     const wire = new Uint8Array(33);
     wire.set(seed, 0);
@@ -511,32 +500,52 @@ describe("Enclave imported-callee seed trace", () => {
     expect(st).toBe(Status.Success);
     expect(out).toBeDefined();
     assertPermitted();
-  });
-
-  it("spawnSyncWorker", () => {
+  },
+  spawnSyncWorker() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("spawnSyncWorker", seed);
     const w = e.spawnSyncWorker({ id: 1 });
     expect(w).toBeDefined();
     assertPermitted();
-  });
-
-  it("deriveCipher", () => {
+  },
+  deriveCipher() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("deriveCipher", seed);
     const c = e.deriveCipher(new Uint8Array(8), "both");
     expect(c.encrypt).toBeDefined();
     assertPermitted();
-  });
-
-  it("deriveIdentity", async () => {
+  },
+  async deriveIdentity() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("deriveIdentity", seed);
     const idnt = await e.deriveIdentity("test", 0);
     expect(idnt.publicKey).toBeDefined();
     assertPermitted();
+  },
+};
+
+describe("Enclave imported-callee seed trace", () => {
+  it("covers every public method", () => {
+    const pub = [...publicFns(Enclave), ...publicFns(Enclave.prototype)].sort();
+    expect(Object.keys(traces).sort()).toEqual(pub);
   });
+
+  beforeEach(() => {
+    wrapProto("Encoder", Encoder.prototype);
+    wrapProto("NobleCrypto", NobleCrypto.prototype);
+  });
+
+  afterEach(() => {
+    trace.seed = undefined;
+    trace.caller = undefined;
+    trace.hits = [];
+    vi.restoreAllMocks();
+  });
+
+  for (const [name, fn] of Object.entries(traces)) {
+    it(name, fn);
+  }
 });

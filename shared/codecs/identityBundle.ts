@@ -4,7 +4,7 @@
 import { ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { asMasterSeed, MASTER_SEED_LEN, type MasterSeed } from "../seed.ts";
-import { err, ok, type ValStat } from "../valstat.ts";
+import { err, ok } from "../valstat.ts";
 import { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
 
 export { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
@@ -67,28 +67,3 @@ export const identityBundleCodec: ICodecStruct<IdentityBundle> = {
     });
   },
 };
-
-/**
- * Build a wire-format identity bundle from a branded {@link MasterSeed} + hosts.
- * Codec/tests only. Runtime persist uses a file-local copy in enclave.ts.
- */
-export function createIdentityBundle(
-  masterSeed: MasterSeed,
-  hosts: BundleHost[],
-): ValStat<IdentityBundle> {
-  const [seed, seedSt] = asMasterSeed(masterSeed);
-  if (seedSt !== Status.Success) return err(seedSt);
-  if (seed === undefined) return err(Status.InvalidParam);
-  const [copy, copySt] = asMasterSeed(seed.slice());
-  if (copySt !== Status.Success) return err(copySt);
-  if (copy === undefined) return err(Status.InvalidParam);
-  return ok({
-    v: IDENTITY_BUNDLE_VERSION,
-    masterSeed: copy,
-    hosts: hosts.map((h) => ({
-      handle: h.handle,
-      label: h.label,
-      idx: h.idx ?? 0,
-    })),
-  });
-}

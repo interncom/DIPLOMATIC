@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Decoder, Encoder } from "../src/shared/codec";
 import {
-  createIdentityBundle,
   IDENTITY_BUNDLE_VERSION,
   identityBundleCodec,
 } from "../src/shared/codecs/identityBundle";
@@ -25,6 +24,17 @@ function seedOf(fill: number): MasterSeed {
     throw new Error(`seedOf ${st}`);
   }
   return seed;
+}
+
+function bundleOf(
+  seed: MasterSeed,
+  hosts: { handle: string; label: string; idx: number }[],
+) {
+  const [copy, st] = asMasterSeed(seed.slice());
+  if (st !== Status.Success || copy === undefined) {
+    throw new Error(`bundleOf ${st}`);
+  }
+  return { v: IDENTITY_BUNDLE_VERSION, masterSeed: copy, hosts };
 }
 
 function enclaveOf(fill: number): Enclave {
@@ -98,13 +108,10 @@ function stubNav(credentials: { create?: unknown; get?: unknown }) {
 describe("IdentityBundle codec", () => {
   it("round-trips seed and hosts", () => {
     const seed = seedOf(7);
-    const [bundle, cst] = createIdentityBundle(seed, [
+    const bundle = bundleOf(seed, [
       { handle: "https://sync.example.com", label: "host", idx: 0 },
       { handle: "https://b.example.com", label: "backup", idx: 1 },
     ]);
-    expect(cst).toBe(Status.Success);
-    expect(bundle).toBeDefined();
-    if (bundle === undefined) return;
     const enc = new Encoder();
     expect(enc.writeStruct(identityBundleCodec, bundle)).toBe(Status.Success);
     // Simulate Enclave zeroing seed after encode (must not corrupt wire).
@@ -124,10 +131,7 @@ describe("IdentityBundle codec", () => {
 
   it("round-trips empty hosts", () => {
     const seed = seedOf(1);
-    const [bundle, cst] = createIdentityBundle(seed, []);
-    expect(cst).toBe(Status.Success);
-    expect(bundle).toBeDefined();
-    if (bundle === undefined) return;
+    const bundle = bundleOf(seed, []);
     const enc = new Encoder();
     expect(enc.writeStruct(identityBundleCodec, bundle)).toBe(Status.Success);
     const [out, st] = new Decoder(enc.result()).readStruct(identityBundleCodec);
@@ -138,11 +142,6 @@ describe("IdentityBundle codec", () => {
     expect(out.masterSeed).toEqual(seed);
   });
 
-  it("rejects bad seed length on create", () => {
-    const [, st] = createIdentityBundle(new Uint8Array(16) as MasterSeed, []);
-    expect(st).toBe(Status.InvalidParam);
-  });
-
   it("rejects bad seed length on encode", () => {
     const enc = new Encoder();
     const st = enc.writeStruct(identityBundleCodec, {
@@ -151,6 +150,47 @@ describe("IdentityBundle codec", () => {
       hosts: [],
     });
     expect(st).toBe(Status.InvalidParam);
+  });
+});
+
+describe("Enclave persist IdentityBundle", () => {
+  const credId = new Uint8Array(16).fill(7);
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Covers the file-local builder without exporting it: decode what persist wrote.
+  it("writes seed, hosts, and default idx", async () => {
+    const get = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, { largeBlob: { written: true } }),
+    );
+    stubNav({ create: vi.fn(), get });
+
+    const seed = seedOf(4);
+    const [id, st] = await enclaveOf(4).persistToLargeBlob(
+      [
+        { handle: "https://a.example", label: "a" },
+        { handle: "https://b.example", label: "b", idx: 2 },
+      ],
+      { rpId: "localhost", credId },
+    );
+    expect(st).toBe(Status.Success);
+    expect(id).toEqual(credId);
+
+    const writeRaw = get.mock.calls[0][0].publicKey.extensions.largeBlob.write;
+    const [out, dst] = new Decoder(new Uint8Array(writeRaw)).readStruct(
+      identityBundleCodec,
+    );
+    expect(dst).toBe(Status.Success);
+    expect(out).toBeDefined();
+    if (out === undefined) return;
+    expect(out.v).toBe(IDENTITY_BUNDLE_VERSION);
+    expect(out.masterSeed).toEqual(seed);
+    expect(out.hosts).toEqual([
+      { handle: "https://a.example", label: "a", idx: 0 },
+      { handle: "https://b.example", label: "b", idx: 2 },
+    ]);
   });
 });
 

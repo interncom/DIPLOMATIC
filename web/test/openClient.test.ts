@@ -8,7 +8,19 @@ import { nullStateManager } from "../src/state";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { MemoryStore } from "../src/stores/memory/store";
+import { spawnDiplomaticSyncWorker } from "../src/shared/worker/spawn";
 import { WorkerClient } from "../src/worker/client";
+
+vi.mock("../src/shared/worker/spawn", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../src/shared/worker/spawn")>();
+  return {
+    ...orig,
+    spawnDiplomaticSyncWorker: vi.fn(),
+    postToDiplomaticWorker: (worker: Worker, data: unknown) => {
+      worker.postMessage(data);
+    },
+  };
+});
 
 function mockWorker(): Worker {
   return {
@@ -177,7 +189,7 @@ describe("WorkerClient open / setSeed", () => {
   test("setSeed times out when spawned worker never replies", async () => {
     const store = new MemoryStore(crypto);
     const w = mockWorker();
-    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockReturnValue(w);
+    vi.mocked(spawnDiplomaticSyncWorker).mockReturnValue(w);
     const client = await WorkerClient.open(nullStateManager, store, {
       readyTimeoutMs: 50,
       syncDebounceMs: 0,
@@ -194,23 +206,7 @@ describe("WorkerClient open / setSeed", () => {
   test("setSeed binds Enclave-spawned worker; seed/host stay local", async () => {
     const store = new MemoryStore(crypto);
     const w = mockWorkerRpcOnly();
-    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
-      (opts) => {
-        queueMicrotask(() => {
-          const handler = w.onmessage;
-          if (!handler) return;
-          handler({
-            data: {
-              kind: "reply",
-              id: opts.id,
-              ok: true,
-              result: undefined,
-            },
-          } as MessageEvent<unknown>);
-        });
-        return w;
-      },
-    );
+    vi.mocked(spawnDiplomaticSyncWorker).mockReturnValue(w);
     const client = await WorkerClient.open(nullStateManager, store, {
       syncDebounceMs: 0,
     });
@@ -237,26 +233,7 @@ describe("WorkerClient open / setSeed", () => {
   test("worker connected events do not clear hasSeed", async () => {
     const store = new MemoryStore(crypto);
     const w = mockWorkerRpcOnly();
-    vi.spyOn(Enclave.prototype, "spawnSyncWorker").mockImplementation(
-      (opts) => {
-        queueMicrotask(() => {
-          const handler = w.onmessage;
-          if (!handler) return;
-          handler({
-            data: { kind: "clientState", connected: false },
-          } as MessageEvent<unknown>);
-          handler({
-            data: {
-              kind: "reply",
-              id: opts.id,
-              ok: true,
-              result: undefined,
-            },
-          } as MessageEvent<unknown>);
-        });
-        return w;
-      },
-    );
+    vi.mocked(spawnDiplomaticSyncWorker).mockReturnValue(w);
     const client = await WorkerClient.open(nullStateManager, store, {
       syncDebounceMs: 0,
     });

@@ -56,6 +56,13 @@ const permits: Permit[] = [
     src: "5af866aa6e511c9ee3df323202b50e08",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
+  {
+    caller: "pairAccept",
+    callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
+    how: "embedded",
+    src: "c87390f5b54c28fe7c228a7325c42aee",
+    why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {

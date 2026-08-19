@@ -49,6 +49,13 @@ const permits: Permit[] = [
     src: "f6f104ad232958bb7949fb63bf3d6580",
     why: "To derive a sub-key from the provided KDM (keypath and index).",
   },
+  {
+    caller: "spawnSyncWorker",
+    callee: "spawn.postToDiplomaticWorker",
+    how: "exact",
+    src: "5af866aa6e511c9ee3df323202b50e08",
+    why: "To inject seed into Web Worker we build to base64 blob ourselves.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {

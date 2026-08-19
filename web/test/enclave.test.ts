@@ -9,36 +9,50 @@ import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
 
+type Hit = { fn: string; how: "exact" | "embedded" };
+
 const { trace, wrapFns } = vi.hoisted(() => {
-  const trace: { seed: Uint8Array | undefined; hits: string[] } = {
+  const trace: { seed: Uint8Array | undefined; hits: Hit[] } = {
     seed: undefined,
     hits: [],
   };
 
-  function bufHasSeed(buf: Uint8Array, seed: Uint8Array): boolean {
-    if (buf.byteLength < seed.byteLength) return false;
-    if (buf.byteLength === seed.byteLength) return bytesEqual(buf, seed);
+  // Exact 32-byte match vs seed bytes inside a larger buffer.
+  function bufHow(
+    buf: Uint8Array,
+    seed: Uint8Array,
+  ): Hit["how"] | undefined {
+    if (buf.byteLength < seed.byteLength) return undefined;
+    if (buf.byteLength === seed.byteLength) {
+      return bytesEqual(buf, seed) ? "exact" : undefined;
+    }
     const last = buf.byteLength - seed.byteLength;
     for (let i = 0; i <= last; i++) {
-      if (bytesEqual(buf.subarray(i, i + seed.byteLength), seed)) return true;
+      if (bytesEqual(buf.subarray(i, i + seed.byteLength), seed)) {
+        return "embedded";
+      }
     }
-    return false;
+    return undefined;
   }
 
-  function valHasSeed(
+  function valHow(
     v: unknown,
     seed: Uint8Array,
     seen: WeakSet<object>,
-  ): boolean {
-    if (v instanceof Uint8Array) return bufHasSeed(v, seed);
-    if (v instanceof ArrayBuffer) return bufHasSeed(new Uint8Array(v), seed);
-    if (v === null || typeof v !== "object") return false;
-    if (seen.has(v)) return false;
+  ): Hit["how"] | undefined {
+    if (v instanceof Uint8Array) return bufHow(v, seed);
+    if (v instanceof ArrayBuffer) return bufHow(new Uint8Array(v), seed);
+    if (v === null || typeof v !== "object") return undefined;
+    if (seen.has(v)) return undefined;
     seen.add(v);
-    if (Array.isArray(v)) {
-      return v.some((x) => valHasSeed(x, seed, seen));
+    const kids = Array.isArray(v) ? v : Object.values(v);
+    let embedded = false;
+    for (const x of kids) {
+      const how = valHow(x, seed, seen);
+      if (how === "exact") return "exact";
+      if (how === "embedded") embedded = true;
     }
-    return Object.values(v).some((x) => valHasSeed(x, seed, seen));
+    return embedded ? "embedded" : undefined;
   }
 
   function isCtor(v: unknown): boolean {
@@ -53,17 +67,22 @@ const { trace, wrapFns } = vi.hoisted(() => {
   function wrapFns(
     prefix: string,
     orig: Record<string, unknown>,
+    impls?: Record<string, (...args: never[]) => unknown>,
   ): Record<string, unknown> {
     const out: Record<string, unknown> = { ...orig };
     for (const key of Object.keys(orig)) {
       const v = orig[key];
       if (typeof v !== "function" || isCtor(v)) continue;
+      const impl = impls?.[key] ?? v;
       out[key] = (...args: unknown[]) => {
         const seed = trace.seed;
-        if (seed !== undefined && valHasSeed(args, seed, new WeakSet())) {
-          trace.hits.push(`${prefix}.${key}`);
+        if (seed !== undefined) {
+          const how = valHow(args, seed, new WeakSet());
+          if (how !== undefined) {
+            trace.hits.push({ fn: `${prefix}.${key}`, how });
+          }
         }
-        return v(...args);
+        return impl(...args);
       };
     }
     return out;
@@ -83,8 +102,7 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   const orig = await importOriginal<
     typeof import("../src/shared/webauthn/largeBlob")
   >();
-  return wrapFns("largeBlob", {
-    ...orig,
+  return wrapFns("largeBlob", orig, {
     largeBlobWrite: async () => Status.Success,
   });
 });

@@ -30,16 +30,19 @@ type Permit = {
   callee: string;
   how: Hit["how"];
   src: string;
+  callerSrc: string;
   why: string;
 };
 
-// Permitted Enclave caller → imported callee (src = blake3(toString)[:16] hex).
+// Permitted Enclave caller → imported callee.
+// src = blake3(callee.toString)[:16]; callerSrc = blake3(Enclave method.toString)[:16].
 const permits: Permit[] = [
   {
     caller: "sealWithPasskey",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "c87390f5b54c28fe7c228a7325c42aee",
+    callerSrc: "57da7bb62e3e99db1d2ad0770581d37e",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
   {
@@ -47,6 +50,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "embedded",
     src: "f6f104ad232958bb7949fb63bf3d6580",
+    callerSrc: "0585bc2e74dc906e302e01e4e7fe51eb",
     why: "To derive a sub-key from the provided KDM (keypath and index).",
   },
   {
@@ -54,6 +58,7 @@ const permits: Permit[] = [
     callee: "spawn.postToDiplomaticWorker",
     how: "exact",
     src: "5af866aa6e511c9ee3df323202b50e08",
+    callerSrc: "17a2b199cf2fafcab70f195b0fd1e096",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
   {
@@ -61,6 +66,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
     src: "c87390f5b54c28fe7c228a7325c42aee",
+    callerSrc: "cdfce786b8a930761560a451f0f38fb6",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {
@@ -68,6 +74,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "embedded",
     src: "f6f104ad232958bb7949fb63bf3d6580",
+    callerSrc: "a1adaf7c1ae3d8a06d34592d420eb434",
     why: "To check hashed fingerprints of each provided binding to ensure the current seed matches.",
   },
   {
@@ -75,6 +82,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "c87390f5b54c28fe7c228a7325c42aee",
+    callerSrc: "a1adaf7c1ae3d8a06d34592d420eb434",
     why: "To encrypt the master with KEK derived from passkey PRF.",
   },
 ];
@@ -188,12 +196,25 @@ const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
   return { trace, wrapFns, wrapProto, origByFn, srcHex };
 });
 
+// Enclave public method for a trace caller name (instance, else static).
+function enclaveFn(
+  name: string,
+): ((...args: never[]) => unknown) | undefined {
+  const inst = Object.getOwnPropertyDescriptor(Enclave.prototype, name);
+  if (inst !== undefined && typeof inst.value === "function") return inst.value;
+  const stat = Object.getOwnPropertyDescriptor(Enclave, name);
+  if (stat !== undefined && typeof stat.value === "function") return stat.value;
+  return undefined;
+}
+
 // Fails on unpermitted sinks or changed bodies; prints permit lines to paste.
 function assertPermitted() {
   const lines: string[] = [];
   for (const hit of trace.hits) {
     const orig = origByFn.get(hit.callee);
     const hex = orig === undefined ? undefined : srcHex(orig);
+    const callerOrig = enclaveFn(hit.caller);
+    const callerHex = callerOrig === undefined ? undefined : srcHex(callerOrig);
     const permit = permits.find((p) =>
       p.caller === hit.caller && p.callee === hit.callee && p.how === hit.how
     );
@@ -203,23 +224,38 @@ function assertPermitted() {
       );
       continue;
     }
+    if (callerHex === undefined) {
+      lines.push(
+        `unpermitted ${hit.caller} → ${hit.callee} (${hit.how}): no Enclave method to hash`,
+      );
+      continue;
+    }
     const row =
       `{ caller: ${JSON.stringify(hit.caller)}, ` +
       `callee: ${JSON.stringify(hit.callee)}, ` +
       `how: ${JSON.stringify(hit.how)}, ` +
-      `src: ${JSON.stringify(hex)}, why: "…" },`;
+      `src: ${JSON.stringify(hex)}, ` +
+      `callerSrc: ${JSON.stringify(callerHex)}, why: "…" },`;
     if (permit === undefined) {
       lines.push(
         `unpermitted ${hit.caller} → ${hit.callee} (${hit.how})\n` +
           `  src: ${hex}\n` +
+          `  callerSrc: ${callerHex}\n` +
           `  add to permits in web/test/enclave.test.ts (fill in why):\n    ${row}`,
       );
     } else if (permit.src !== hex) {
       lines.push(
-        `${hit.caller} → ${hit.callee} (${hit.how}) source changed\n` +
+        `${hit.caller} → ${hit.callee} (${hit.how}) callee source changed\n` +
           `  was: ${permit.src}\n` +
           `  now: ${hex}\n` +
           `  update permit src:\n    ${row}`,
+      );
+    } else if (permit.callerSrc !== callerHex) {
+      lines.push(
+        `${hit.caller} → ${hit.callee} (${hit.how}) caller source changed\n` +
+          `  was: ${permit.callerSrc}\n` +
+          `  now: ${callerHex}\n` +
+          `  update permit callerSrc:\n    ${row}`,
       );
     } else if (permit.why.trim().length === 0 || permit.why === "…") {
       lines.push(

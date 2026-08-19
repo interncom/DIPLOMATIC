@@ -8,9 +8,6 @@ import { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
 
 export { type BundleHost, bundleHostCodec } from "./bundleHost.ts";
 
-/** Wire version of the pre-split IdentityBundle (v + seed + hosts). */
-export const IDENTITY_BUNDLE_VERSION = 1;
-
 export type IdentityHosts = {
   hosts: BundleHost[];
 };

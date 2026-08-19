@@ -22,7 +22,7 @@ The keyring is on-device only. A later optional sync would union by cred id and 
 
 ### largeBlob (offline backup)
 
-WebAuthn `largeBlob` stores an **IdentityBundle** (seed + host rows) or a legacy bare 32-byte seed on the binding key. The write is not a PRF binding. UV and `rpId` are the gate. This is not a confidentiality boundary against the OS or against anyone who can complete UV on a stolen key.
+WebAuthn `largeBlob` stores an **IdentityBundle** (32-byte seed, then host rows) on the binding key. The write is not a PRF binding. UV and `rpId` are the gate. This is not a confidentiality boundary against the OS or against anyone who can complete UV on a stolen key.
 
 Create requires `largeBlob.support = "required"`. Attachment is not defaulted — pass `cross-platform` for a security key. Platform passkeys generally do not implement largeBlob.
 

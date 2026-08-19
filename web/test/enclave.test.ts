@@ -231,7 +231,8 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   >();
   const { ok } = await import("../src/shared/valstat");
   const credId = new Uint8Array(16).fill(7);
-  const blob = new Uint8Array(32).fill(1);
+  const blob = new Uint8Array(33);
+  blob.fill(1, 0, 32);
   return wrapFns("largeBlob", orig, {
     largeBlobRead: async () => ok({ blob: blob.slice(), credId: credId.slice() }),
     largeBlobCreateCred: async () => ok(credId.slice()),

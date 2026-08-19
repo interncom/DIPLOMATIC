@@ -2,9 +2,8 @@
 // Not a confidentiality boundary vs the OS — only vs hosts / casual disk.
 // WebAuthn “authenticator” = binding key: IKM / blob store, not authn/authz.
 //
-// This is browser I/O plumbing, not crypto. Enclave calls it for seed persist
-// (encode stays inside Enclave). Apps may use it for non-seed opaque blobs;
-// never pass unencrypted seed from app code into write.
+// This is browser I/O plumbing, not crypto. Seed persist/clear write lives
+// in enclave.ts (Iron Law). This module is create / read / capability probe.
 
 import { Status } from "../consts.ts";
 import { randomBytesArrayBuffer } from "../crypto/entropy.ts";
@@ -107,51 +106,6 @@ export async function largeBlobCreateCred(
     return err(Status.WebAuthnError);
   }
   return ok(new Uint8Array(pk.rawId));
-}
-
-/** UV write of opaque bytes to largeBlob. */
-export async function largeBlobWrite(
-  credId: Uint8Array,
-  data: Uint8Array,
-  opts?: LargeBlobRp,
-): Promise<Status> {
-  const wst = checkWebAuthn();
-  if (wst !== Status.Success) return wst;
-  const [rpId, rst] = resolveWebAuthnRpId(opts);
-  if (rst !== Status.Success) return rst;
-  if (rpId === undefined) return Status.MissingParam;
-
-  const extensions: ExtIn = {
-    largeBlob: { write: copyToArrayBuffer(data) },
-  };
-
-  let cred: Credential | null;
-  try {
-    cred = await navigator.credentials.get({
-      publicKey: {
-        challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-        rpId,
-        allowCredentials: [
-          { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
-        ],
-        userVerification: "required",
-        extensions: extensions as AuthenticationExtensionsClientInputs,
-        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
-      },
-    });
-  } catch (e) {
-    noteWebAuthnError(e);
-    return Status.WebAuthnError;
-  }
-
-  const [pk, pst] = asPublicKeyCredential(cred);
-  if (pst !== Status.Success) return pst;
-  if (pk === undefined) return Status.InvalidResponse;
-  const ext = pk.getClientExtensionResults() as ExtOut;
-  if (ext.largeBlob?.written !== true) {
-    return Status.WebAuthnError;
-  }
-  return Status.Success;
 }
 
 /** `get()` with optional hints / allow list. UV preferred: required fails closed

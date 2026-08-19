@@ -102,9 +102,7 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   const orig = await importOriginal<
     typeof import("../src/shared/webauthn/largeBlob")
   >();
-  return wrapFns("largeBlob", orig, {
-    largeBlobWrite: async () => Status.Success,
-  });
+  return wrapFns("largeBlob", orig);
 });
 
 function randomSeed(): MasterSeed {
@@ -125,6 +123,39 @@ function enclaveOf(seed: MasterSeed): Enclave {
   return e;
 }
 
+function stubWrittenGet(credId: Uint8Array) {
+  const get = vi.fn().mockResolvedValue({
+    type: "public-key",
+    rawId: credId,
+    getClientExtensionResults: () => ({ largeBlob: { written: true } }),
+  });
+  const g = globalThis as {
+    navigator?: { credentials?: unknown };
+    PublicKeyCredential?: unknown;
+    location?: { hostname: string };
+  };
+  if (g.navigator !== undefined) {
+    Object.defineProperty(g.navigator, "credentials", {
+      configurable: true,
+      writable: true,
+      value: { create: vi.fn(), get },
+    });
+  } else {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      writable: true,
+      value: { credentials: { create: vi.fn(), get } },
+    });
+  }
+  g.PublicKeyCredential = class {};
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    writable: true,
+    value: { hostname: "localhost" },
+  });
+  return get;
+}
+
 describe("Enclave imported-callee seed trace", () => {
   afterEach(() => {
     trace.seed = undefined;
@@ -136,9 +167,11 @@ describe("Enclave imported-callee seed trace", () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     trace.seed = seed;
+    const credId = new Uint8Array(16).fill(7);
+    stubWrittenGet(credId);
 
     const [id, st] = await e.persistToLargeBlob([], {
-      credId: new Uint8Array(16).fill(7),
+      credId,
     });
     expect(st).toBe(Status.Success);
     expect(id).toBeDefined();

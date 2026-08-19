@@ -70,8 +70,7 @@ export const identityBundleCodec: ICodecStruct<IdentityBundle> = {
 
 /**
  * Build a wire-format identity bundle from a branded {@link MasterSeed} + hosts.
- * Codec/tests only. Runtime seed I/O must go through Enclave.persistToLargeBlob
- * — never encode then hand seed-bearing bytes to outer layers.
+ * Codec/tests only. Runtime persist uses a file-local copy in enclave.ts.
  */
 export function createIdentityBundle(
   masterSeed: MasterSeed,

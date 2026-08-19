@@ -24,38 +24,7 @@ type Hit = { fn: string; how: "exact" | "embedded" };
 type Permit = { fn: string; how: Hit["how"]; src: string };
 
 // Permitted sinks: fn + how + blake3(toString).slice(0, 16) hex.
-const permits: Permit[] = [
-  {
-    fn: "NobleCrypto.encryptXSalsa20Poly1305Combined",
-    how: "exact",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
-  },
-  {
-    fn: "NobleCrypto.encryptXSalsa20Poly1305Combined",
-    how: "embedded",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
-  },
-  {
-    fn: "NobleCrypto.blake3",
-    how: "embedded",
-    src: "f6f104ad232958bb7949fb63bf3d6580",
-  },
-  {
-    fn: "Encoder.writeStruct",
-    how: "exact",
-    src: "4f264d9b6facb19f47270689dc12d5fd",
-  },
-  {
-    fn: "Encoder.writeBytes",
-    how: "exact",
-    src: "7931016c4f8577c43fd8e1018657bdc5",
-  },
-  {
-    fn: "spawn.postToDiplomaticWorker",
-    how: "exact",
-    src: "5af866aa6e511c9ee3df323202b50e08",
-  },
-];
+const permits: Permit[] = [];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
   const trace: { seed: Uint8Array | undefined; hits: Hit[] } = {

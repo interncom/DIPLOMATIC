@@ -20,15 +20,38 @@ import {
 } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
-type Hit = { fn: string; how: "exact" | "embedded" };
-type Permit = { fn: string; how: Hit["how"]; src: string };
+type Hit = {
+  caller: string;
+  callee: string;
+  how: "exact" | "embedded";
+};
+type Permit = {
+  caller: string;
+  callee: string;
+  how: Hit["how"];
+  src: string;
+  why: string;
+};
 
-// Permitted sinks: fn + how + blake3(toString).slice(0, 16) hex.
-const permits: Permit[] = [];
+// Permitted Enclave caller → imported callee (src = blake3(toString)[:16] hex).
+const permits: Permit[] = [
+  {
+    caller: "sealWithPasskey",
+    callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
+    how: "exact",
+    src: "c87390f5b54c28fe7c228a7325c42aee",
+    why: "To encrypt the master with a KEK derived from passkey PRF.",
+  },
+];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
-  const trace: { seed: Uint8Array | undefined; hits: Hit[] } = {
+  const trace: {
+    seed: Uint8Array | undefined;
+    caller: string | undefined;
+    hits: Hit[];
+  } = {
     seed: undefined,
+    caller: undefined,
     hits: [],
   };
   const origByFn = new Map<string, (...args: never[]) => unknown>();
@@ -75,11 +98,12 @@ const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
     return embedded ? "embedded" : undefined;
   }
 
-  function record(fn: string, args: unknown[]) {
+  function record(callee: string, args: unknown[]) {
     const seed = trace.seed;
-    if (seed === undefined) return;
+    const caller = trace.caller;
+    if (seed === undefined || caller === undefined) return;
     const how = valHow(args, seed, new WeakSet());
-    if (how !== undefined) trace.hits.push({ fn, how });
+    if (how !== undefined) trace.hits.push({ caller, callee, how });
   }
 
   function isCtor(v: unknown): boolean {
@@ -133,30 +157,38 @@ const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
 function assertPermitted() {
   const lines: string[] = [];
   for (const hit of trace.hits) {
-    const orig = origByFn.get(hit.fn);
+    const orig = origByFn.get(hit.callee);
     const hex = orig === undefined ? undefined : srcHex(orig);
-    const permit = permits.find((p) => p.fn === hit.fn && p.how === hit.how);
+    const permit = permits.find((p) =>
+      p.caller === hit.caller && p.callee === hit.callee && p.how === hit.how
+    );
     if (hex === undefined) {
       lines.push(
-        `unpermitted ${hit.fn} (${hit.how}): no original to hash`,
+        `unpermitted ${hit.caller} → ${hit.callee} (${hit.how}): no original to hash`,
       );
       continue;
     }
     const row =
-      `{ fn: ${JSON.stringify(hit.fn)}, how: ${JSON.stringify(hit.how)}, ` +
-      `src: ${JSON.stringify(hex)} },`;
+      `{ caller: ${JSON.stringify(hit.caller)}, ` +
+      `callee: ${JSON.stringify(hit.callee)}, ` +
+      `how: ${JSON.stringify(hit.how)}, ` +
+      `src: ${JSON.stringify(hex)}, why: "…" },`;
     if (permit === undefined) {
       lines.push(
-        `unpermitted ${hit.fn} (${hit.how})\n` +
+        `unpermitted ${hit.caller} → ${hit.callee} (${hit.how})\n` +
           `  src: ${hex}\n` +
-          `  add to permits in web/test/enclave.test.ts:\n    ${row}`,
+          `  add to permits in web/test/enclave.test.ts (fill in why):\n    ${row}`,
       );
     } else if (permit.src !== hex) {
       lines.push(
-        `${hit.fn} (${hit.how}) source changed\n` +
+        `${hit.caller} → ${hit.callee} (${hit.how}) source changed\n` +
           `  was: ${permit.src}\n` +
           `  now: ${hex}\n` +
           `  update permit src:\n    ${row}`,
+      );
+    } else if (permit.why.trim().length === 0 || permit.why === "…") {
+      lines.push(
+        `${hit.caller} → ${hit.callee} (${hit.how}) permit needs a why`,
       );
     }
   }
@@ -247,6 +279,11 @@ function randomSeed(): MasterSeed {
   return seed;
 }
 
+function arm(caller: string, seed: MasterSeed) {
+  trace.caller = caller;
+  trace.seed = seed;
+}
+
 function enclaveOf(seed: MasterSeed): Enclave {
   const [e, st] = Enclave.fromBytes(seed);
   if (st !== Status.Success || e === undefined) {
@@ -295,13 +332,14 @@ describe("Enclave imported-callee seed trace", () => {
 
   afterEach(() => {
     trace.seed = undefined;
+    trace.caller = undefined;
     trace.hits = [];
     vi.restoreAllMocks();
   });
 
   it("fromBytes", () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("fromBytes", seed);
     const [e, st] = Enclave.fromBytes(seed);
     expect(st).toBe(Status.Success);
     expect(e).toBeDefined();
@@ -310,7 +348,7 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("fromRandom", async () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("fromRandom", seed);
     vi.spyOn(NobleCrypto.prototype, "gen256BitSecureRandomSeed")
       .mockResolvedValue(seed);
     const e = await Enclave.fromRandom();
@@ -321,7 +359,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("sealWithPasskey", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("sealWithPasskey", seed);
     const [out, st] = await e.sealWithPasskey({
       rpId: "localhost",
       credId: new Uint8Array(16).fill(7),
@@ -335,7 +373,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("bind", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("bind", seed);
     const [out, st] = await e.bind({
       rpId: "localhost",
       credId: new Uint8Array(16).fill(7),
@@ -348,7 +386,7 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("unsealWithPasskey", async () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("unsealWithPasskey", seed);
     const [sealed, sst] = asSealedMasterKey(
       new Uint8Array(SEALED_MASTER_KEY_LEN),
     );
@@ -365,7 +403,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("persistToLargeBlob", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("persistToLargeBlob", seed);
     const credId = new Uint8Array(16).fill(7);
     stubWrittenGet(credId);
     const [id, st] = await e.persistToLargeBlob([], { credId });
@@ -376,7 +414,7 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("fromLargeBlob", async () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("fromLargeBlob", seed);
     const [out, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
       credId: new Uint8Array(16).fill(7),
@@ -388,7 +426,7 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("clearLargeBlob", async () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("clearLargeBlob", seed);
     const credId = new Uint8Array(16).fill(7);
     stubWrittenGet(credId);
     const st = await Enclave.clearLargeBlob(credId, { rpId: "localhost" });
@@ -398,7 +436,7 @@ describe("Enclave imported-callee seed trace", () => {
 
   it("pairRequest", async () => {
     const seed = randomSeed();
-    trace.seed = seed;
+    arm("pairRequest", seed);
     const [req, st] = await Enclave.pairRequest();
     expect(st).toBe(Status.Success);
     expect(req).toBeDefined();
@@ -408,7 +446,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("pairAccept", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("pairAccept", seed);
     const [req, rst] = asDHKEReq(new Uint8Array(32).fill(3));
     expect(rst).toBe(Status.Success);
     if (req === undefined) return;
@@ -421,7 +459,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("spawnSyncWorker", () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("spawnSyncWorker", seed);
     const w = e.spawnSyncWorker({ id: 1 });
     expect(w).toBeDefined();
     assertPermitted();
@@ -430,7 +468,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("deriveCipher", () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("deriveCipher", seed);
     const c = e.deriveCipher(new Uint8Array(8), "both");
     expect(c.encrypt).toBeDefined();
     assertPermitted();
@@ -439,7 +477,7 @@ describe("Enclave imported-callee seed trace", () => {
   it("deriveIdentity", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    trace.seed = seed;
+    arm("deriveIdentity", seed);
     const idnt = await e.deriveIdentity("test", 0);
     expect(idnt.publicKey).toBeDefined();
     assertPermitted();

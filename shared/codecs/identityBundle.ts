@@ -1,5 +1,5 @@
-// Identity backup host list. Enclave prepends a fixed 32-byte master seed;
-// this codec never sees seed bytes.
+// Host list after a fixed 32-byte master seed (largeBlob persist and pair
+// AEAD inner). This codec never sees seed bytes.
 
 import { ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";

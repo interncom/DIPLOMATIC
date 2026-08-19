@@ -131,7 +131,6 @@ import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
 import { asDHKEReq, asDHKEResp, PairRequest } from "./shared/crypto/pairing";
 import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
-import type { PairPackagePlain } from "./shared/codecs/pairPackage";
 import {
   checksumEntRevs,
   checksumSet,
@@ -274,7 +273,6 @@ export type {
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
   OpenEntDBOptions,
-  PairPackagePlain,
   PasskeySeedStoreOpts,
   PersistKeyring,
   PrfRp,

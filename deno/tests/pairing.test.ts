@@ -2,8 +2,6 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { Decoder, Encoder } from "../../shared/codec.ts";
-import { pairPackagePlainCodec } from "../../shared/codecs/pairPackage.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { NobleCrypto } from "../../shared/crypto/noble.ts";
@@ -215,27 +213,4 @@ Deno.test("wipe abandons the session", async () => {
 Deno.test("pairAccept rejects an all-zero enrollee pub", async () => {
   const [, ast] = await encOf(7).pairAccept(brandReq(new Uint8Array(32)), []);
   assert(ast !== Status.Success);
-});
-
-Deno.test("pairPackagePlain codec round-trip", () => {
-  const seed = seedOf(9);
-  const hosts = [{ handle: "https://a.example", label: "a", idx: 2 }];
-  const enc = new Encoder();
-  assertEquals(
-    enc.writeStruct(pairPackagePlainCodec, { masterSeed: seed, hosts }),
-    Status.Success,
-  );
-  const [out, st] = new Decoder(enc.result()).readStruct(pairPackagePlainCodec);
-  assertEquals(st, Status.Success);
-  assert(out !== undefined);
-  assertEquals(out.masterSeed, seed);
-  assertEquals(out.hosts, hosts);
-});
-
-Deno.test("pairPackagePlain decode rejects short input", () => {
-  const [out, st] = new Decoder(new Uint8Array(16)).readStruct(
-    pairPackagePlainCodec,
-  );
-  assertEquals(out, undefined);
-  assert(st !== Status.Success);
 });

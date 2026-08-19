@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Decoder, Encoder } from "../src/shared/codec";
-import {
-  IDENTITY_BUNDLE_VERSION,
-  identityHostsCodec,
-} from "../src/shared/codecs/identityBundle";
+import { identityHostsCodec } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
 import { Enclave, sealKeyFromPrf } from "../src/shared/crypto/enclave";
 import {
@@ -202,42 +199,22 @@ describe("Enclave persist IdentityBundle", () => {
     expect(b.publicKey).toEqual(a.publicKey);
   });
 
-  it("fromLargeBlob restores legacy v+seed+hosts", async () => {
+  it("fromLargeBlob rejects a bare 32-byte seed", async () => {
     const seed = seedOf(5);
-    const hosts = [
-      { handle: "https://old.example", label: "old", idx: 1 },
-    ];
-    const hostsEnc = new Encoder();
-    expect(hostsEnc.writeStruct(identityHostsCodec, { hosts })).toBe(
-      Status.Success,
-    );
-    const tail = hostsEnc.result();
-    const raw = new Uint8Array(1 + 32 + tail.byteLength);
-    raw[0] = IDENTITY_BUNDLE_VERSION;
-    raw.set(seed, 1);
-    raw.set(tail, 1 + 32);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
         largeBlob: {
-          blob: raw.buffer.slice(
-            raw.byteOffset,
-            raw.byteOffset + raw.byteLength,
-          ),
+          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
         },
       }),
     );
     stubNav({ create: vi.fn(), get });
 
-    const [opened, st] = await Enclave.fromLargeBlob({
+    const [, st] = await Enclave.fromLargeBlob({
       rpId: "localhost",
       credId,
     });
-    expect(st).toBe(Status.Success);
-    expect(opened?.hosts).toEqual(hosts);
-    if (opened === undefined) return;
-    const expected = await enclaveOf(5).deriveIdentity("test", 0);
-    const got = await opened.enclave.deriveIdentity("test", 0);
-    expect(got.publicKey).toEqual(expected.publicKey);
+    expect(st).toBe(Status.InvalidMessage);
   });
 });
 

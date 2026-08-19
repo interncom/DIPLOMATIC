@@ -31,6 +31,18 @@ function seedBytes(fill: number): Uint8Array {
   return new Uint8Array(32).fill(fill);
 }
 
+// Persist wire: 32-byte seed ‖ empty host list (varint 0).
+function persistWire(fill: number): Uint8Array {
+  const w = new Uint8Array(33);
+  w.fill(fill, 0, 32);
+  return w;
+}
+
+function persistBlob(fill: number): ArrayBuffer {
+  const w = persistWire(fill);
+  return w.buffer.slice(w.byteOffset, w.byteOffset + w.byteLength);
+}
+
 function enclaveOf(fill: number): Enclave {
   const [e, st] = Enclave.fromBytes(seedBytes(fill));
   if (st !== Status.Success || e === undefined) {
@@ -161,13 +173,10 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(written.subarray(0, 32).every((b: number) => b === 1)).toBe(true);
   });
 
-  it("fromLargeBlob absorbs legacy 32-byte payload into enclave", async () => {
-    const seed = seedBytes(9);
+  it("fromLargeBlob absorbs persist wire into enclave", async () => {
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
-        largeBlob: {
-          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
-        },
+        largeBlob: { blob: persistBlob(9) },
       }),
     );
     stubNav({ create: vi.fn(), get });
@@ -187,12 +196,9 @@ describe("Enclave largeBlob seed boundary", () => {
   });
 
   it("fromLargeBlob without credId is discoverable", async () => {
-    const seed = seedBytes(4);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
-        largeBlob: {
-          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
-        },
+        largeBlob: { blob: persistBlob(4) },
       }),
     );
     stubNav({ create: vi.fn(), get });
@@ -217,12 +223,9 @@ describe("Enclave largeBlob seed boundary", () => {
   });
 
   it("fromLargeBlob forwards security-key hints", async () => {
-    const seed = seedBytes(4);
     const get = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, {
-        largeBlob: {
-          blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
-        },
+        largeBlob: { blob: persistBlob(4) },
       }),
     );
     stubNav({ create: vi.fn(), get });
@@ -257,7 +260,6 @@ describe("Enclave largeBlob seed boundary", () => {
   });
 
   it("PasskeySeedStore save/unlock/load", async () => {
-    const seed = seedBytes(3);
     const enc0 = enclaveOf(3);
     const create = vi.fn().mockResolvedValue(
       mockCred(credId.buffer, { largeBlob: { supported: true } }),
@@ -272,9 +274,7 @@ describe("Enclave largeBlob seed boundary", () => {
       )
       .mockResolvedValueOnce(
         mockCred(credId.buffer, {
-          largeBlob: {
-            blob: seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32),
-          },
+          largeBlob: { blob: persistBlob(3) },
         }),
       );
     stubNav({ create, get });

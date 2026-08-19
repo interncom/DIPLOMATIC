@@ -54,12 +54,21 @@ import {
   PairRequest,
 } from "./pairing.ts";
 import type { X25519Sk } from "./x25519.ts";
+import { randomBytesArrayBuffer } from "./entropy.ts";
+import {
+  asPublicKeyCredential,
+  checkWebAuthn,
+  copyToArrayBuffer,
+  noteWebAuthnError,
+  resolveWebAuthnRpId,
+  WEBAUTHN_CHAL_LEN,
+  WEBAUTHN_CRED_TYPE,
+} from "../webauthn/common.ts";
 import {
   largeBlobCreateCred,
   type LargeBlobCreateOpts,
   largeBlobRead,
   type LargeBlobRp,
-  largeBlobWrite,
 } from "../webauthn/largeBlob.ts";
 import {
   createPrfCred,
@@ -170,6 +179,52 @@ function createIdentityBundle(
       idx: h.idx ?? 0,
     })),
   });
+}
+
+// UV write of largeBlob bytes. File-local (Iron Law). credId is not seed;
+// data may be IdentityBundle wire.
+async function writeLargeBlob(
+  credId: Uint8Array,
+  data: Uint8Array,
+  opts?: LargeBlobRp,
+): Promise<Status> {
+  const wst = checkWebAuthn();
+  if (wst !== Status.Success) return wst;
+  const [rpId, rst] = resolveWebAuthnRpId(opts);
+  if (rst !== Status.Success) return rst;
+  if (rpId === undefined) return Status.MissingParam;
+
+  const write = new Uint8Array(data.byteLength);
+  write.set(data);
+  let cred: Credential | null;
+  try {
+    cred = await navigator.credentials.get({
+      publicKey: {
+        challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
+        rpId,
+        allowCredentials: [
+          { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
+        ],
+        userVerification: "required",
+        extensions: { largeBlob: { write: write.buffer } },
+        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
+      },
+    });
+  } catch (e) {
+    noteWebAuthnError(e);
+    return Status.WebAuthnError;
+  } finally {
+    write.fill(0);
+  }
+
+  const [pk, pst] = asPublicKeyCredential(cred);
+  if (pst !== Status.Success) return pst;
+  if (pk === undefined) return Status.InvalidResponse;
+  const ext = pk.getClientExtensionResults();
+  if (ext.largeBlob?.written !== true) {
+    return Status.WebAuthnError;
+  }
+  return Status.Success;
 }
 
 export class Enclave {
@@ -381,7 +436,7 @@ export class Enclave {
     if (est !== Status.Success) return err(est);
     if (encoded === undefined) return err(Status.InternalError);
     try {
-      const wst = await largeBlobWrite(credId, encoded, opts);
+      const wst = await writeLargeBlob(credId, encoded, opts);
       if (wst !== Status.Success) return err(wst);
       return ok(credId);
     } finally {
@@ -419,7 +474,7 @@ export class Enclave {
     credId: Uint8Array,
     opts?: LargeBlobRp,
   ): Promise<Status> {
-    return largeBlobWrite(credId, new Uint8Array(MASTER_SEED_LEN), opts);
+    return writeLargeBlob(credId, new Uint8Array(MASTER_SEED_LEN), opts);
   }
 
   // Starts an enrollee pairing session (same as PairRequest.create).

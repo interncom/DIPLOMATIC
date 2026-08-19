@@ -106,11 +106,8 @@ import {
   idleProgress,
   shouldEmitItemProgress,
 } from "./progress";
-import {
-  defaultWebAuthnRpId,
-  LargeBlob,
-  PasskeySeedStore,
-} from "./passkey/seed";
+import { PasskeySeedStore } from "./passkey/seed";
+import { defaultWebAuthnRpId } from "./shared/webauthn/common";
 import {
   DEFAULT_PRF_SALT,
   prfCapable,
@@ -153,9 +150,7 @@ import type { WorkerClientOptions } from "./worker/client";
 import type { WipeOpts } from "./types";
 
 /** Platform advertises largeBlob (not a guarantee the binding key has it). */
-export function largeBlobCapable(): Promise<boolean> {
-  return LargeBlob.capable();
-}
+export { largeBlobCapable } from "./shared/webauthn/largeBlob";
 
 export { webAuthnLastError } from "./shared/webauthn/common";
 

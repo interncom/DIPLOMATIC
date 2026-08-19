@@ -5,14 +5,7 @@ import { Enclave } from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
 import { err, ok, type ValStat } from "../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../types";
-import { type LargeBlobRp } from "./largeBlob";
-
-export { defaultWebAuthnRpId } from "./webauthn";
-export {
-  LargeBlob,
-  type LargeBlobCreateOpts,
-  type LargeBlobRp,
-} from "./largeBlob";
+import type { LargeBlobRp } from "../shared/webauthn/largeBlob";
 
 export type PasskeySeedStoreOpts = LargeBlobRp & {
   credId?: Uint8Array;

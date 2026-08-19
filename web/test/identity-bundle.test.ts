@@ -162,9 +162,15 @@ describe("Enclave persist IdentityBundle", () => {
 
   // Covers the file-local builder without exporting it: decode what persist wrote.
   it("writes seed, hosts, and default idx", async () => {
-    const get = vi.fn().mockResolvedValue(
-      mockCred(credId.buffer, { largeBlob: { written: true } }),
-    );
+    let writeRaw: ArrayBuffer | undefined;
+    const get = vi.fn().mockImplementation((arg: {
+      publicKey: { extensions: { largeBlob: { write: ArrayBuffer } } };
+    }) => {
+      writeRaw = arg.publicKey.extensions.largeBlob.write.slice(0);
+      return Promise.resolve(
+        mockCred(credId.buffer, { largeBlob: { written: true } }),
+      );
+    });
     stubNav({ create: vi.fn(), get });
 
     const seed = seedOf(4);
@@ -177,8 +183,8 @@ describe("Enclave persist IdentityBundle", () => {
     );
     expect(st).toBe(Status.Success);
     expect(id).toEqual(credId);
-
-    const writeRaw = get.mock.calls[0][0].publicKey.extensions.largeBlob.write;
+    expect(writeRaw).toBeDefined();
+    if (writeRaw === undefined) return;
     const [out, dst] = new Decoder(new Uint8Array(writeRaw)).readStruct(
       identityBundleCodec,
     );

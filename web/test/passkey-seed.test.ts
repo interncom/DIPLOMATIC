@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  defaultWebAuthnRpId,
-  LargeBlob,
-  PasskeySeedStore,
-} from "../src/passkey/seed";
+import { PasskeySeedStore } from "../src/passkey/seed";
+import { defaultWebAuthnRpId } from "../src/shared/webauthn/common";
+import { largeBlobCreateCred } from "../src/shared/webauthn/largeBlob";
 import crypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
@@ -85,7 +83,7 @@ function stubNav(
   });
 }
 
-describe("LargeBlob (WebAuthn I/O only)", () => {
+describe("largeBlob createCred (WebAuthn I/O only)", () => {
   const credId = new Uint8Array(16).fill(7);
 
   afterEach(() => {
@@ -98,7 +96,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     );
     stubNav({ create, get: vi.fn() });
 
-    const [id, st] = await LargeBlob.createCred({ rpId: "localhost" });
+    const [id, st] = await largeBlobCreateCred({ rpId: "localhost" });
     expect(st).toBe(Status.Success);
     expect(id).toEqual(credId);
     expect(create).toHaveBeenCalledOnce();
@@ -112,7 +110,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     );
     stubNav({ create, get: vi.fn() }, "life.interncom.org");
 
-    const [, st] = await LargeBlob.createCred();
+    const [, st] = await largeBlobCreateCred();
     expect(st).toBe(Status.Success);
     const arg = create.mock.calls[0][0];
     expect(arg.publicKey.rp.id).toBe("life.interncom.org");
@@ -122,7 +120,7 @@ describe("LargeBlob (WebAuthn I/O only)", () => {
     const create = vi.fn().mockResolvedValue(mockCred(credId.buffer, {}));
     stubNav({ create, get: vi.fn() });
 
-    const [, st] = await LargeBlob.createCred({ rpId: "localhost" });
+    const [, st] = await largeBlobCreateCred({ rpId: "localhost" });
     expect(st).toBe(Status.WebAuthnError);
   });
 });
@@ -135,9 +133,15 @@ describe("Enclave largeBlob seed boundary", () => {
   });
 
   it("persistToLargeBlob UV-writes without returning seed", async () => {
-    const get = vi.fn().mockResolvedValue(
-      mockCred(credId.buffer, { largeBlob: { written: true } }),
-    );
+    let writeRaw: ArrayBuffer | undefined;
+    const get = vi.fn().mockImplementation((arg: {
+      publicKey: { extensions: { largeBlob: { write: ArrayBuffer } } };
+    }) => {
+      writeRaw = arg.publicKey.extensions.largeBlob.write.slice(0);
+      return Promise.resolve(
+        mockCred(credId.buffer, { largeBlob: { written: true } }),
+      );
+    });
     stubNav({ create: vi.fn(), get });
 
     const [id, st] = await enclaveOf(1).persistToLargeBlob([], {
@@ -147,10 +151,8 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(st).toBe(Status.Success);
     expect(id).toEqual(credId);
     expect(get).toHaveBeenCalledOnce();
-    const arg = get.mock.calls[0][0];
-    // write must be a real ArrayBuffer (Safari / some Chromium paths).
-    const writeRaw = arg.publicKey.extensions.largeBlob.write;
     expect(writeRaw).toBeInstanceOf(ArrayBuffer);
+    if (writeRaw === undefined) return;
     // Opaque wire longer than bare seed; seed bytes must not be all-zero
     // (regression: Encoder held a ref that Enclave zeroed before result()).
     const written = new Uint8Array(writeRaw);

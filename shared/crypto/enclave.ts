@@ -26,7 +26,8 @@
 import { bytesEqual, concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import {
-  createIdentityBundle,
+  IDENTITY_BUNDLE_VERSION,
+  type IdentityBundle,
   identityBundleCodec,
 } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
@@ -148,6 +149,28 @@ const SEAL_PRF_MIN_LEN = 16;
 
 // Bound at load — not an Enclave constructor argument (no caller ICrypto).
 const noble = new NobleCrypto();
+
+// File-local IdentityBundle builder (seed must not cross an import).
+function createIdentityBundle(
+  masterSeed: MasterSeed,
+  hosts: BundleHost[],
+): ValStat<IdentityBundle> {
+  const [seed, seedSt] = asMasterSeed(masterSeed);
+  if (seedSt !== Status.Success) return err(seedSt);
+  if (seed === undefined) return err(Status.InvalidParam);
+  const [copy, copySt] = asMasterSeed(seed.slice());
+  if (copySt !== Status.Success) return err(copySt);
+  if (copy === undefined) return err(Status.InvalidParam);
+  return ok({
+    v: IDENTITY_BUNDLE_VERSION,
+    masterSeed: copy,
+    hosts: hosts.map((h) => ({
+      handle: h.handle,
+      label: h.label,
+      idx: h.idx ?? 0,
+    })),
+  });
+}
 
 export class Enclave {
   #seed: MasterSeed;

@@ -1,4 +1,5 @@
-// Iron Law: imported functions must not receive the seed (or a copy).
+// Iron Law: imported functions must not receive the seed, a copy, or
+// framed plaintext (seed bytes embedded in a larger buffer).
 // File-local / #private calls are invisible. ESM named imports are only
 // intercepted if the spy is installed via vi.mock (hoisted).
 
@@ -6,8 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bytesEqual } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
-import { asMasterSeed } from "../src/shared/seed";
-import * as largeBlob from "../src/shared/webauthn/largeBlob";
+import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
 
 const { trace, wrapFns } = vi.hoisted(() => {
   const trace: { seed: Uint8Array | undefined; hits: string[] } = {
@@ -15,12 +15,23 @@ const { trace, wrapFns } = vi.hoisted(() => {
     hits: [],
   };
 
+  function bufHasSeed(buf: Uint8Array, seed: Uint8Array): boolean {
+    if (buf.byteLength < seed.byteLength) return false;
+    if (buf.byteLength === seed.byteLength) return bytesEqual(buf, seed);
+    const last = buf.byteLength - seed.byteLength;
+    for (let i = 0; i <= last; i++) {
+      if (bytesEqual(buf.subarray(i, i + seed.byteLength), seed)) return true;
+    }
+    return false;
+  }
+
   function valHasSeed(
     v: unknown,
     seed: Uint8Array,
     seen: WeakSet<object>,
   ): boolean {
-    if (v instanceof Uint8Array) return bytesEqual(v, seed);
+    if (v instanceof Uint8Array) return bufHasSeed(v, seed);
+    if (v instanceof ArrayBuffer) return bufHasSeed(new Uint8Array(v), seed);
     if (v === null || typeof v !== "object") return false;
     if (seen.has(v)) return false;
     seen.add(v);
@@ -68,16 +79,28 @@ vi.mock("../src/shared/codecs/identityBundle", async (importOriginal) => {
   return wrapFns("identityBundle", orig);
 });
 
-function seedOf(fill: number) {
-  const [seed, st] = asMasterSeed(new Uint8Array(32).fill(fill));
+vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/webauthn/largeBlob")
+  >();
+  return wrapFns("largeBlob", {
+    ...orig,
+    largeBlobWrite: async () => Status.Success,
+  });
+});
+
+function randomSeed(): MasterSeed {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const [seed, st] = asMasterSeed(bytes);
   if (st !== Status.Success || seed === undefined) {
     throw new Error(`seed ${st}`);
   }
   return seed;
 }
 
-function enclaveOf(fill: number): Enclave {
-  const [e, st] = Enclave.fromBytes(seedOf(fill));
+function enclaveOf(seed: MasterSeed): Enclave {
+  const [e, st] = Enclave.fromBytes(seed);
   if (st !== Status.Success || e === undefined) {
     throw new Error(`enclave ${st}`);
   }
@@ -92,9 +115,9 @@ describe("Enclave imported-callee seed trace", () => {
   });
 
   it("imported functions must not receive the seed", async () => {
-    const e = enclaveOf(3);
-    trace.seed = seedOf(3);
-    vi.spyOn(largeBlob, "largeBlobWrite").mockResolvedValue(Status.Success);
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
 
     const [id, st] = await e.persistToLargeBlob([], {
       credId: new Uint8Array(16).fill(7),

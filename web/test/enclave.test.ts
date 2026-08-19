@@ -2,22 +2,31 @@
 // framed plaintext (seed bytes embedded in a larger buffer).
 // File-local / #private calls are invisible. ESM named imports are only
 // intercepted if the spy is installed via vi.mock (hoisted).
+// Class methods (Encoder, NobleCrypto) are wrapped via prototype spies.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bytesEqual } from "../src/shared/binary";
+import { Encoder } from "../src/shared/codec";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
-import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
+import { NobleCrypto } from "../src/shared/crypto/noble";
+import { asDHKEReq } from "../src/shared/crypto/pairing";
+import {
+  asMasterSeed,
+  asSealedMasterKey,
+  SEALED_MASTER_KEY_LEN,
+  type MasterSeed,
+} from "../src/shared/seed";
+import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
 type Hit = { fn: string; how: "exact" | "embedded" };
 
-const { trace, wrapFns } = vi.hoisted(() => {
+const { trace, wrapFns, wrapProto } = vi.hoisted(() => {
   const trace: { seed: Uint8Array | undefined; hits: Hit[] } = {
     seed: undefined,
     hits: [],
   };
 
-  // Exact 32-byte match vs seed bytes inside a larger buffer.
   function bufHow(
     buf: Uint8Array,
     seed: Uint8Array,
@@ -55,6 +64,13 @@ const { trace, wrapFns } = vi.hoisted(() => {
     return embedded ? "embedded" : undefined;
   }
 
+  function record(fn: string, args: unknown[]) {
+    const seed = trace.seed;
+    if (seed === undefined) return;
+    const how = valHow(args, seed, new WeakSet());
+    if (how !== undefined) trace.hits.push({ fn, how });
+  }
+
   function isCtor(v: unknown): boolean {
     if (typeof v !== "function") return false;
     const proto = v.prototype;
@@ -62,8 +78,6 @@ const { trace, wrapFns } = vi.hoisted(() => {
     return Object.getOwnPropertyNames(proto).some((n) => n !== "constructor");
   }
 
-  // Wrap non-class function exports; record hits at call time (args may be
-  // fill(0)'d after return).
   function wrapFns(
     prefix: string,
     orig: Record<string, unknown>,
@@ -75,20 +89,29 @@ const { trace, wrapFns } = vi.hoisted(() => {
       if (typeof v !== "function" || isCtor(v)) continue;
       const impl = impls?.[key] ?? v;
       out[key] = (...args: unknown[]) => {
-        const seed = trace.seed;
-        if (seed !== undefined) {
-          const how = valHow(args, seed, new WeakSet());
-          if (how !== undefined) {
-            trace.hits.push({ fn: `${prefix}.${key}`, how });
-          }
-        }
+        record(`${prefix}.${key}`, args);
         return impl(...args);
       };
     }
     return out;
   }
 
-  return { trace, wrapFns };
+  function wrapProto(prefix: string, proto: object) {
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (key === "constructor") continue;
+      const desc = Object.getOwnPropertyDescriptor(proto, key);
+      if (desc === undefined || typeof desc.value !== "function") continue;
+      const orig = desc.value;
+      vi.spyOn(proto, key).mockImplementation(
+        function (this: unknown, ...args: unknown[]) {
+          record(`${prefix}.${key}`, args);
+          return orig.apply(this, args);
+        },
+      );
+    }
+  }
+
+  return { trace, wrapFns, wrapProto };
 });
 
 vi.mock("../src/shared/codecs/identityBundle", async (importOriginal) => {
@@ -102,7 +125,65 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   const orig = await importOriginal<
     typeof import("../src/shared/webauthn/largeBlob")
   >();
-  return wrapFns("largeBlob", orig);
+  const { ok } = await import("../src/shared/valstat");
+  const credId = new Uint8Array(16).fill(7);
+  const blob = new Uint8Array(32).fill(1);
+  return wrapFns("largeBlob", orig, {
+    largeBlobRead: async () => ok({ blob: blob.slice(), credId: credId.slice() }),
+    largeBlobCreateCred: async () => ok(credId.slice()),
+  });
+});
+
+vi.mock("../src/shared/webauthn/prf", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/webauthn/prf")
+  >();
+  const { ok } = await import("../src/shared/valstat");
+  const credId = new Uint8Array(16).fill(7);
+  const prf = new Uint8Array(32).fill(2);
+  return wrapFns("prf", orig, {
+    evalPrf: async () => ok({ prf: prf.slice(), credId: credId.slice() }),
+    createPrfCred: async () =>
+      ok({
+        prf: prf.slice(),
+        credId: credId.slice(),
+        prfEnabled: true,
+      }),
+  });
+});
+
+vi.mock("../src/shared/worker/spawn", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/worker/spawn")
+  >();
+  return wrapFns("spawn", orig, {
+    spawnDiplomaticSyncWorker: () => ({
+      postMessage() {},
+      terminate() {},
+    }),
+    postToDiplomaticWorker: () => {},
+  });
+});
+
+vi.mock("../src/shared/webauthn/common", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/webauthn/common")
+  >();
+  return wrapFns("common", orig);
+});
+
+vi.mock("../src/shared/crypto/pairing", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/pairing")
+  >();
+  return wrapFns("pairing", orig);
+});
+
+vi.mock("../src/shared/crypto/entropy", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/entropy")
+  >();
+  return wrapFns("entropy", orig);
 });
 
 function randomSeed(): MasterSeed {
@@ -153,28 +234,163 @@ function stubWrittenGet(credId: Uint8Array) {
     writable: true,
     value: { hostname: "localhost" },
   });
-  return get;
 }
 
 describe("Enclave imported-callee seed trace", () => {
+  beforeEach(() => {
+    wrapProto("Encoder", Encoder.prototype);
+    wrapProto("NobleCrypto", NobleCrypto.prototype);
+  });
+
   afterEach(() => {
     trace.seed = undefined;
     trace.hits = [];
     vi.restoreAllMocks();
   });
 
-  it("imported functions must not receive the seed", async () => {
+  it("fromBytes", () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    const [e, st] = Enclave.fromBytes(seed);
+    expect(st).toBe(Status.Success);
+    expect(e).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("fromRandom", async () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    vi.spyOn(NobleCrypto.prototype, "gen256BitSecureRandomSeed")
+      .mockResolvedValue(seed);
+    const e = await Enclave.fromRandom();
+    expect(e).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("sealWithPasskey", async () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const [out, st] = await e.sealWithPasskey({
+      rpId: "localhost",
+      credId: new Uint8Array(16).fill(7),
+      salt: DEFAULT_PRF_SALT,
+    });
+    expect(st).toBe(Status.Success);
+    expect(out).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("bind", async () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const [out, st] = await e.bind({
+      rpId: "localhost",
+      credId: new Uint8Array(16).fill(7),
+      salt: DEFAULT_PRF_SALT,
+    });
+    expect(st).toBe(Status.Success);
+    expect(out).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("unsealWithPasskey", async () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    const [sealed, sst] = asSealedMasterKey(
+      new Uint8Array(SEALED_MASTER_KEY_LEN),
+    );
+    expect(sst).toBe(Status.Success);
+    if (sealed === undefined) return;
+    const [, st] = await Enclave.unsealWithPasskey(
+      [{ sealedMaster: sealed, credId: new Uint8Array(16).fill(7) }],
+      { rpId: "localhost", salt: DEFAULT_PRF_SALT },
+    );
+    expect(st).not.toBe(Status.Success);
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("persistToLargeBlob", async () => {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     trace.seed = seed;
     const credId = new Uint8Array(16).fill(7);
     stubWrittenGet(credId);
-
-    const [id, st] = await e.persistToLargeBlob([], {
-      credId,
-    });
+    const [id, st] = await e.persistToLargeBlob([], { credId });
     expect(st).toBe(Status.Success);
     expect(id).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("fromLargeBlob", async () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    const [out, st] = await Enclave.fromLargeBlob({
+      rpId: "localhost",
+      credId: new Uint8Array(16).fill(7),
+    });
+    expect(st).toBe(Status.Success);
+    expect(out).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("clearLargeBlob", async () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    const credId = new Uint8Array(16).fill(7);
+    stubWrittenGet(credId);
+    const st = await Enclave.clearLargeBlob(credId, { rpId: "localhost" });
+    expect(st).toBe(Status.Success);
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("pairRequest", async () => {
+    const seed = randomSeed();
+    trace.seed = seed;
+    const [req, st] = await Enclave.pairRequest();
+    expect(st).toBe(Status.Success);
+    expect(req).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("pairAccept", async () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const [req, rst] = asDHKEReq(new Uint8Array(32).fill(3));
+    expect(rst).toBe(Status.Success);
+    if (req === undefined) return;
+    const [resp, st] = await e.pairAccept(req, []);
+    expect(st).toBe(Status.Success);
+    expect(resp).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("spawnSyncWorker", () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const w = e.spawnSyncWorker({ id: 1 });
+    expect(w).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("deriveCipher", () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const c = e.deriveCipher(new Uint8Array(8), "both");
+    expect(c.encrypt).toBeDefined();
+    expect(trace.hits).toEqual([]);
+  });
+
+  it("deriveIdentity", async () => {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    trace.seed = seed;
+    const idnt = await e.deriveIdentity("test", 0);
+    expect(idnt.publicKey).toBeDefined();
     expect(trace.hits).toEqual([]);
   });
 });

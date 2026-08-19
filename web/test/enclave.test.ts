@@ -70,6 +70,13 @@ const permits: Permit[] = [
     src: "f6f104ad232958bb7949fb63bf3d6580",
     why: "To check hashed fingerprints of each provided binding to ensure the current seed matches.",
   },
+  {
+    caller: "bind",
+    callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
+    how: "exact",
+    src: "c87390f5b54c28fe7c228a7325c42aee",
+    why: "To encrypt the master with KEK derived from passkey PRF.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {

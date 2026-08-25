@@ -19,7 +19,9 @@ import {
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_CRED_TYPE,
   WEBAUTHN_PUB_KEY_PARAMS,
+  webAuthnCreate,
   webAuthnExtensionCapable,
+  webAuthnGet,
   type WebAuthnHint,
   type WebAuthnRp,
 } from "./common.ts";
@@ -78,7 +80,7 @@ export async function largeBlobCreateCred(
 
   let cred: Credential | null;
   try {
-    cred = await navigator.credentials.create({
+    cred = await webAuthnCreate({
       publicKey: {
         challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
         rp: { id: rpId, name: opts?.rpName ?? DEFAULT_WEBAUTHN_RP_NAME },
@@ -132,7 +134,7 @@ async function getAssertion(
   }
   let cred: Credential | null;
   try {
-    cred = await navigator.credentials.get({ publicKey });
+    cred = await webAuthnGet({ publicKey });
   } catch (e) {
     noteWebAuthnError(e);
     return err(Status.WebAuthnError);

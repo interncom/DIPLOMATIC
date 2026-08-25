@@ -58,10 +58,15 @@ import {
   readAttachment,
   readTransports,
   resolveWebAuthnRpId,
+  tryFocus,
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_CRED_TYPE,
   WEBAUTHN_PUB_KEY_PARAMS,
+  webAuthnCreate,
+  webAuthnGet,
   type WebAuthnHint,
+  webAuthnNotFocused,
+  whenVisible,
 } from "../webauthn/common.ts";
 import {
   largeBlobCreateCred,
@@ -205,22 +210,30 @@ async function writeLargeBlob(
   if (rst !== Status.Success) return rst;
   if (rpId === undefined) return Status.MissingParam;
 
+  await whenVisible();
   const write = new Uint8Array(data.byteLength);
   write.set(data);
+  const req: CredentialRequestOptions = {
+    publicKey: {
+      challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
+      rpId,
+      allowCredentials: [
+        { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
+      ],
+      userVerification: "required",
+      extensions: { largeBlob: { write: write.buffer } },
+      ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
+    },
+  };
   let cred: Credential | null;
   try {
-    cred = await navigator.credentials.get({
-      publicKey: {
-        challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-        rpId,
-        allowCredentials: [
-          { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
-        ],
-        userVerification: "required",
-        extensions: { largeBlob: { write: write.buffer } },
-        ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
-      },
-    });
+    try {
+      cred = await navigator.credentials.get(req);
+    } catch (e) {
+      if (!webAuthnNotFocused(e)) throw e;
+      tryFocus();
+      cred = await navigator.credentials.get(req);
+    }
   } catch (e) {
     noteWebAuthnError(e);
     return Status.WebAuthnError;
@@ -335,7 +348,7 @@ async function createPrfCred(
     : undefined;
 
   const createOnce = (evalOnCreate: boolean) =>
-    navigator.credentials.create({
+    webAuthnCreate({
       publicKey: {
         ...pubBase,
         extensions: evalOnCreate && saltBuf !== undefined
@@ -415,7 +428,7 @@ async function evalPrf(
 
   let cred: Credential | null;
   try {
-    cred = await navigator.credentials.get({ publicKey });
+    cred = await webAuthnGet({ publicKey });
   } catch (e) {
     noteWebAuthnError(e);
     return err(Status.WebAuthnError);

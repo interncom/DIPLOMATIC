@@ -14,7 +14,7 @@ execSync(
 );
 if (verbose) await printSizeBreakdown("dist/cli/index.meta.json", "cli/index.mjs");
 
-execSync("tsc --project pkg/tsconfig-cli.json || true", { cwd: "..", stdio: "inherit" });
+execSync("tsc --project pkg/tsconfig-cli.json", { cwd: "..", stdio: "inherit" });
 
 // Create bin/host.js
 await mkdir("dist/cli/bin", { recursive: true });

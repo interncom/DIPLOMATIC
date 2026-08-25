@@ -9,7 +9,8 @@
     "demos"
   ],
   "scripts": {
-    "style": "./style.sh"
+    "style": "./style.sh",
+    "publish-pkg": "./pkg/publish.sh"
   },
   "devDependencies": {
     "esbuild": "0.21.5"

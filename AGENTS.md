@@ -60,7 +60,7 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 - `cli` holds CLI client code and build configuration.
 - `cli/src` contains the CLI client implementation for connecting to DIPLOMATIC hosts.
 - `bun` holds Bun-specific utilities and crypto implementations, including the Bun host server.
-- `pkg` manages the build and packaging of the `@interncom/diplomatic` NPM module, which exposes web and CLI components from the monorepo. It pulls source from `shared/`, `web/`, `cli/`, and `bun/`. Run `bun install` then `bun run build` from this dir to generate distribution bundles.
+- `pkg` manages the build and packaging of the `@interncom/diplomatic` NPM module, which exposes web and CLI components from the monorepo. It pulls source from `shared/`, `web/`, `cli/`, and `bun/`. Run `bun install` then `bun run build` from this dir to generate distribution bundles. Publish with `npm run publish-pkg` from the repo root (see Publishing).
 - `demos` contains example usage of the DIPLOMATIC protocol, depending on the `pkg` module for imports.
 
 ## Checking Work
@@ -78,3 +78,11 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 
 - Ensure that changes have not introduced new sensitive cryptographic operations outside the `shared/crypto` folder.
 - Ensure that changes have not resulted in the unencrypted master seed (key) being accessible outside of the Enclave in `shared/crypto`.
+
+## Publishing
+
+Bump `pkg/package.json` `version` first (and commit). Then from the repo root:
+
+    npm run publish-pkg
+
+That `clean`s and `build`s in `pkg/` (CLI `tsc` is a hard gate) and runs `npm publish`. `npm whoami` skips login when the session is still valid; otherwise `npm login` runs first. Both `npm login` and `npm publish` may print a URL — pass it to the human so they can open it on a device with their 2FA token. Wait for them to confirm before treating the step as done.

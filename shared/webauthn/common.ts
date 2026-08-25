@@ -95,6 +95,80 @@ export function noteWebAuthnError(e: unknown): void {
   lastWebAuthnErr = String(e);
 }
 
+/** Chromium: create/get rejected because the browsing context is unfocused. */
+export function webAuthnNotFocused(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "NotAllowedError" &&
+    e.message.toLowerCase().includes("does not have focus");
+}
+
+/** True unless a document exists and is `hidden`.
+ * Non-browser exec (Deno, tests) has no document, so this is true. */
+function notHidden(): boolean {
+  if (typeof document === "undefined") return true;
+  return document.visibilityState !== "hidden";
+}
+
+/** Best-effort `window.focus()` so Chromium's IsFocused check can pass. */
+export function tryFocus(): void {
+  if (typeof globalThis.focus !== "function") return;
+  try {
+    globalThis.focus();
+  } catch {
+    // ignore
+  }
+}
+
+/** Wait until the document is visible, or `ms` elapses; then try `focus()`. */
+export function whenVisible(ms = 2500): Promise<void> {
+  if (notHidden()) {
+    tryFocus();
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(t);
+      document.removeEventListener("visibilitychange", onEvt);
+      tryFocus();
+      resolve();
+    };
+    const onEvt = () => {
+      if (notHidden()) done();
+    };
+    const t = setTimeout(done, ms);
+    document.addEventListener("visibilitychange", onEvt);
+    onEvt();
+  });
+}
+
+/** `credentials.create` after the document is visible; one retry on NOT_FOCUSED. */
+export async function webAuthnCreate(
+  opts: CredentialCreationOptions,
+): Promise<Credential | null> {
+  await whenVisible();
+  try {
+    return await navigator.credentials.create(opts);
+  } catch (e) {
+    if (!webAuthnNotFocused(e)) throw e;
+    tryFocus();
+    return await navigator.credentials.create(opts);
+  }
+}
+
+/** `credentials.get` after the document is visible; one retry on NOT_FOCUSED. */
+export async function webAuthnGet(
+  opts: CredentialRequestOptions,
+): Promise<Credential | null> {
+  await whenVisible();
+  try {
+    return await navigator.credentials.get(opts);
+  } catch (e) {
+    if (!webAuthnNotFocused(e)) throw e;
+    tryFocus();
+    return await navigator.credentials.get(opts);
+  }
+}
+
 /** Success if WebAuthn credentials API is available in this environment. */
 export function checkWebAuthn(): Status {
   if (

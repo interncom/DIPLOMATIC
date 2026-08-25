@@ -49,7 +49,7 @@ Tables are current as of August 2026. Always test the target browser; `prf.enabl
 | macOS 15+ Safari 18+, Chrome | yes | iCloud Keychain |
 | iOS / iPadOS 18+ Safari | yes | iCloud Keychain |
 | Android Chrome | yes | Google Password Manager |
-| GrapheneOS Vanadium | USB key / GPM only | No GPM PRF without Play. `extension:prf` / `extension:largeBlob` are Chromium client flags. Discoverable `get()` + `largeBlob.read` is aborted by Android Credential Manager (no USB picker) — restore picks the key first, then reads. A security-key provider may still be required (Play FIDO or [hw-fido2-provider](https://codeberg.org/s1m/hw-fido2-provider)). |
+| GrapheneOS Vanadium | USB key / Passchain / GPM | No GPM PRF without Play. [Passchain](https://codeberg.org/s1m/hw-fido2-provider) can expose the Pixel SE or a USB key. Create often omits PRF results, so a follow-up `get()` eval runs after the provider activity; we wait until the page is visible, then retry once on Chromium `NOT_FOCUSED`. Discoverable `get()` + `largeBlob.read` is aborted by Credential Manager (no USB picker) — restore picks the key first, then reads. |
 | Windows 11 + Chrome/Edge 147+, Firefox 148+ | yes | Windows Hello |
 
 Platform passkeys do **not** provide largeBlob. Use a roaming key for IdentityBundle backup.

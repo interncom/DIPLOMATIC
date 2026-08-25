@@ -477,6 +477,72 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it("retries get after page-not-focused (create then eval)", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const focusErr = new Error(
+      "The operation is not allowed at this time because the page does not have focus.",
+    );
+    focusErr.name = "NotAllowedError";
+    const create = vi.fn().mockResolvedValue(
+      mockCred(credId.buffer, { prf: { enabled: true } }),
+    );
+    const get = vi.fn()
+      .mockRejectedValueOnce(focusErr)
+      .mockResolvedValueOnce(
+        mockCred(credId.buffer, {
+          prf: {
+            results: {
+              first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+            },
+          },
+        } as AuthenticationExtensionsClientOutputs),
+      );
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries create after page-not-focused", async () => {
+    const credId = new Uint8Array(16).fill(7);
+    const prf = new Uint8Array(32).fill(3);
+    const focusErr = new Error(
+      "The operation is not allowed at this time because the page does not have focus.",
+    );
+    focusErr.name = "NotAllowedError";
+    const create = vi.fn()
+      .mockRejectedValueOnce(focusErr)
+      .mockResolvedValueOnce(
+        mockCred(credId.buffer, {
+          prf: {
+            enabled: true,
+            results: {
+              first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+            },
+          },
+        }),
+      );
+    const get = vi.fn();
+    stubNav({ create, get });
+
+    const [sealed, sst] = await enclaveOf(9).sealWithPasskey({
+      rpId: "localhost",
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(sst).toBe(Status.Success);
+    expect(sealed?.credId).toEqual(credId);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("createCredIfNeeded fails closed when create omits prf.enabled", async () => {
     const credId = new Uint8Array(16).fill(7);
     const create = vi.fn().mockResolvedValue(

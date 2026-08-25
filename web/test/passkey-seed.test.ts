@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PasskeySeedStore } from "../src/passkey/seed";
-import { defaultWebAuthnRpId } from "../src/shared/webauthn/common";
+import {
+  defaultWebAuthnRpId,
+  webAuthnGet,
+} from "../src/shared/webauthn/common";
 import { largeBlobCreateCred } from "../src/shared/webauthn/largeBlob";
 import crypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
@@ -94,6 +97,88 @@ function stubNav(
     value: { hostname },
   });
 }
+
+type VisLsn = () => void;
+
+function stubDocument(hidden: boolean): { show: () => void } {
+  const vis = { hidden };
+  const lsns = new Set<VisLsn>();
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      get visibilityState() {
+        return vis.hidden ? "hidden" : "visible";
+      },
+      addEventListener(type: string, fn: VisLsn) {
+        if (type === "visibilitychange") lsns.add(fn);
+      },
+      removeEventListener(type: string, fn: VisLsn) {
+        lsns.delete(fn);
+      },
+    },
+  });
+  return {
+    show: () => {
+      vis.hidden = false;
+      for (const fn of lsns) fn();
+    },
+  };
+}
+
+function getOpts(): CredentialRequestOptions {
+  return { publicKey: { challenge: new ArrayBuffer(32), rpId: "localhost" } };
+}
+
+function focusErr(): Error {
+  const e = new Error(
+    "The operation is not allowed at this time because the page does not have focus.",
+  );
+  e.name = "NotAllowedError";
+  return e;
+}
+
+describe("webAuthnGet focus wait", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(globalThis, "document");
+  });
+
+  it("delays get until the document is visible", async () => {
+    const doc = stubDocument(true);
+    const get = vi.fn().mockResolvedValue(null);
+    stubNav({ get, create: vi.fn() });
+    const p = webAuthnGet(getOpts());
+    await Promise.resolve();
+    expect(get).not.toHaveBeenCalled();
+    doc.show();
+    await p;
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("proceeds after timeout while still hidden", async () => {
+    vi.useFakeTimers();
+    stubDocument(true);
+    const get = vi.fn().mockResolvedValue(null);
+    stubNav({ get, create: vi.fn() });
+    const p = webAuthnGet(getOpts());
+    await Promise.resolve();
+    expect(get).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2500);
+    await p;
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("retries get immediately on NOT_FOCUSED", async () => {
+    vi.useFakeTimers();
+    const get = vi.fn()
+      .mockRejectedValueOnce(focusErr())
+      .mockResolvedValueOnce(null);
+    stubNav({ get, create: vi.fn() });
+    await expect(webAuthnGet(getOpts())).resolves.toBeNull();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("largeBlob createCred (WebAuthn I/O only)", () => {
   const credId = new Uint8Array(16).fill(7);

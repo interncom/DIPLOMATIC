@@ -197,6 +197,14 @@ function fromSeedHosts(
   });
 }
 
+// DOM lib used by pkg/cli tsc lags largeBlob (see webauthn/largeBlob.d.ts).
+type LbIn = AuthenticationExtensionsClientInputs & {
+  largeBlob?: { write?: BufferSource };
+};
+type LbOut = AuthenticationExtensionsClientOutputs & {
+  largeBlob?: { written?: boolean };
+};
+
 // UV write of largeBlob bytes. File-local (Iron Law). credId is not seed;
 // data may be IdentityBundle wire.
 async function writeLargeBlob(
@@ -213,6 +221,7 @@ async function writeLargeBlob(
   await whenVisible();
   const write = new Uint8Array(data.byteLength);
   write.set(data);
+  const extensions: LbIn = { largeBlob: { write: write.buffer } };
   const req: CredentialRequestOptions = {
     publicKey: {
       challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
@@ -221,7 +230,7 @@ async function writeLargeBlob(
         { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
       ],
       userVerification: "required",
-      extensions: { largeBlob: { write: write.buffer } },
+      extensions,
       ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
     },
   };
@@ -244,7 +253,7 @@ async function writeLargeBlob(
   const [pk, pst] = asPublicKeyCredential(cred);
   if (pst !== Status.Success) return pst;
   if (pk === undefined) return Status.InvalidResponse;
-  const ext = pk.getClientExtensionResults();
+  const ext: LbOut = pk.getClientExtensionResults();
   if (ext.largeBlob?.written !== true) {
     return Status.WebAuthnError;
   }

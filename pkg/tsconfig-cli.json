@@ -11,5 +11,8 @@
     "outDir": "../pkg/dist/cli",
     "types": ["node"]
   },
-  "include": ["../cli/src/**/*"]
+  "include": [
+    "../cli/src/**/*",
+    "../shared/webauthn/webauthn-largeblob.d.ts"
+  ]
 }

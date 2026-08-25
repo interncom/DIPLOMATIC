@@ -37,7 +37,7 @@ export type LargeBlobCreateOpts = LargeBlobRp & {
   authenticatorAttachment?: string;
 };
 
-// DOM lib typings lag largeBlob; cast extension bags (see largeBlob.d.ts).
+// DOM lib typings lag largeBlob; cast extension bags (see webauthn-largeblob.d.ts).
 type ExtIn = AuthenticationExtensionsClientInputs & {
   largeBlob?: { support?: string; write?: BufferSource; read?: boolean };
 };

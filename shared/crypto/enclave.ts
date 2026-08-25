@@ -197,7 +197,7 @@ function fromSeedHosts(
   });
 }
 
-// DOM lib used by pkg/cli tsc lags largeBlob (see webauthn/largeBlob.d.ts).
+// DOM lib used by pkg/cli tsc lags largeBlob (see webauthn-largeblob.d.ts).
 type LbIn = AuthenticationExtensionsClientInputs & {
   largeBlob?: { write?: BufferSource };
 };

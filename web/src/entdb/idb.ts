@@ -13,6 +13,8 @@ import {
   IEntRow,
   isLiveEnt,
   revFromEntity,
+  TagSpec,
+  tagSpecMayMatch,
   typesChanged,
 } from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
@@ -127,6 +129,63 @@ function storedToRow<T>(stored: IStoredRow<T>): IEntRow<T> {
     updatedAt: stored.upd,
     ctr: stored.ctr ?? 0,
   };
+}
+
+/** IDB key range for a tag spec that {@link tagSpecMayMatch} said can match. */
+function tagIdbRange(spec: TagSpec): IDBKeyRange {
+  if (typeof spec === "string") {
+    return IDBKeyRange.only(spec);
+  }
+  if ("range" in spec) {
+    const r = spec.range;
+    return IDBKeyRange.bound(
+      r.start,
+      r.end,
+      r.excludeStart === true,
+      r.excludeEnd === true,
+    );
+  }
+  // Prefix: scan hint; {@link filterTagHits} keeps startsWith.
+  return IDBKeyRange.bound(spec.prefix, spec.prefix + "\uffff");
+}
+
+/**
+ * Type-filter tag index hits. Range/prefix also dedupe by eid (one ent can
+ * match two tags). Prefix additionally requires startsWith (bound is a hint).
+ */
+function filterTagHits<T>(
+  stored: IStoredEntity<T>[],
+  opType: string,
+  spec: TagSpec,
+): IEntity<T>[] {
+  const out: IEntity<T>[] = [];
+  if (typeof spec === "string") {
+    for (const s of stored) {
+      if (s.typ === opType) {
+        out.push(storedToEntity(s));
+      }
+    }
+    return out;
+  }
+  const seen = new Set<string>();
+  const prefix = "prefix" in spec ? spec.prefix : undefined;
+  for (const s of stored) {
+    if (s.typ !== opType) {
+      continue;
+    }
+    if (seen.has(s.eid)) {
+      continue;
+    }
+    if (prefix !== undefined) {
+      const tgs = s.tgs;
+      if (!tgs || !tgs.some((t) => t.startsWith(prefix))) {
+        continue;
+      }
+    }
+    seen.add(s.eid);
+    out.push(storedToEntity(s));
+  }
+  return out;
 }
 
 export class EntIDB implements IEntDB {
@@ -409,25 +468,29 @@ export class EntIDB implements IEntDB {
 
   async getByTag<T>(
     opType: string,
-    tag: string,
+    spec: TagSpec,
   ): Promise<ValStat<IEntity<T>[]>> {
+    const [may, st] = tagSpecMayMatch(spec);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (!may) {
+      return ok([]);
+    }
     let db: IDBDatabase;
     try {
       db = await this.ensureDb();
     } catch {
       return err(Status.DatabaseClosed);
     }
+    const keyRange = tagIdbRange(spec);
     const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(tagsIndexName);
     return new Promise((resolve) => {
-      const req = index.getAll(IDBKeyRange.only(tag));
+      const req = index.getAll(keyRange);
       req.onsuccess = () => {
         const storedEnts = req.result as IStoredEntity<T>[];
-        // multiEntry index is tag-only; keep type filter (same API as pid/gid).
-        const ents = storedEnts
-          .filter((s) => s.typ === opType)
-          .map(storedToEntity);
-        resolve(ok(ents));
+        resolve(ok(filterTagHits(storedEnts, opType, spec)));
       };
       req.onerror = () => resolve(err(Status.DatabaseError));
     });

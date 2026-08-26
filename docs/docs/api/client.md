@@ -52,7 +52,7 @@ type EntFields<T> = {
 };
 ```
 
-`tags` are opaque strings (exact match). EntDB multiEntry-indexes them for reverse lookup via `getEntities({ type, tag })` — same performance model as `pid` reverse lookup, but multi-value. Clients define conventions (e.g. `impl:${btob64(eid)}`). Empty strings and duplicates are dropped on apply.
+`tags` are opaque strings. EntDB multiEntry-indexes them for reverse lookup via `getEntities({ type, tag })` — same performance model as `pid` reverse lookup, but multi-value. `tag` is an exact string, `{ range: { start, end, excludeStart?, excludeEnd? } }` (lexicographic, inclusive by default), or `{ prefix }`. Range `start > end` returns `InvalidParam`. Clients define conventions (e.g. `impl:${btob64(eid)}`, `time-week-2026W01`). Empty strings and duplicates are dropped on apply.
 
 A [rev](../about/glossary#rev) is the latest observed identity of an ent:
 

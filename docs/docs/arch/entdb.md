@@ -56,9 +56,17 @@ EntDB provides the following indexes for efficient ent lookup:
 4. [`typ`, `gid`],
 5. `tgs` (multiEntry) — lookup by exact tag, then filter by `typ`.
 
-**Tag reverse lookup** is the multi-value analogue of `pid`: `getEntities({ type, tag })` returns ents of that type whose `tags` array includes the tag. Memory EntDB keeps a secondary map `type → tag → eid`; IndexedDB uses a multiEntry index on `tgs` only (IndexedDB forbids multiEntry with a compound key path), so the type filter runs in application code after the tag index hit. Prefer unique-ish client encodings (e.g. eid-backed `impl:…` tags) so the tag bucket stays small.
+**Tag reverse lookup** is the multi-value analogue of `pid`. `getEntities({ type, tag })` returns ents of that type whose `tags` array matches `tag`:
 
-Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }`, or `{ type, updatedBetween }`. Compound combinations (e.g. pid + tag) are not supported.
+- `tag: string` — exact.
+- `tag: { range: { start, end, excludeStart?, excludeEnd? } }` — lexicographic range (inclusive by default). `start > end` yields `InvalidParam`.
+- `tag: { prefix: string }` — `startsWith`. Empty prefix matches nothing.
+
+Memory EntDB keeps a secondary map `type → tag → eid` (exact is a map hit; range/prefix scan tag keys — Map order is insertion, not sorted). IndexedDB uses a multiEntry index on `tgs` only (IndexedDB forbids multiEntry with a compound key path): `IDBKeyRange.only` / `bound`, then filter `typ` in application code. One ent can have two tags in a range or prefix, so results are deduped by eid. Prefer unique-ish client encodings (e.g. eid-backed `impl:…` tags) so the exact-tag bucket stays small.
+
+Range order is **string** order, not calendar semantics. Clients that want week/day spans must encode tags so lexicographic order matches (prefix + fixed-width fields), e.g. `time-week-2026W01` … `time-week-2026W12`. Prefix `"time-week-"` lists all such tags.
+
+Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }` (exact / range / prefix), or `{ type, updatedBetween }`. Compound combinations (e.g. pid + tag) are not supported.
 
 Example client convention (not enforced by EntDB):
 

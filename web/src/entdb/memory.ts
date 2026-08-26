@@ -3,31 +3,22 @@
 
 import {
   applyOp,
+  EntitiesQuery,
   IEntDB,
   IEntity,
   IEntRow,
   isLiveEnt,
   revFromEntity,
+  tagMatches,
+  TagSpec,
+  tagSpecMayMatch,
   typesChanged,
 } from "./entdb";
 import { btob64, bytesEqual } from "../shared/binary";
 import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, Hash, ICrypto, IOp } from "../shared/types";
+import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
-
-interface IDateRange {
-  start: Date;
-  end: Date;
-}
-
-type EntitiesQuery = {
-  type: string;
-  gid?: GroupID;
-  pid?: EntityID;
-  tag?: string;
-  updatedBetween?: IDateRange;
-};
 
 /** Options for {@link EntDBMemory}. */
 export type EntDBMemoryOptions = {
@@ -225,6 +216,42 @@ export class EntDBMemory implements IEntDB {
     return out;
   }
 
+  /**
+   * List by tag spec. Exact uses the tag map; range/prefix scan tag keys
+   * (Map order is insertion, not lexicographic).
+   */
+  private byTagSpec<T>(type: string, spec: TagSpec): ValStat<IEntity<T>[]> {
+    const [may, st] = tagSpecMayMatch(spec);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (!may) {
+      return ok([]);
+    }
+    if (typeof spec === "string") {
+      return ok(this.bucketList<T>(this.byTypeTag.get(type)?.get(spec)));
+    }
+    const byTag = this.byTypeTag.get(type);
+    if (!byTag) {
+      return ok([]);
+    }
+    const seen = new Set<string>();
+    const out: IEntity<T>[] = [];
+    for (const [tag, bucket] of byTag) {
+      if (!tagMatches(tag, spec)) {
+        continue;
+      }
+      for (const [key, ent] of bucket) {
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        out.push(ent as IEntity<T>);
+      }
+    }
+    return ok(out);
+  }
+
   async apply(ops: IOp[]) {
     const types = new Set<string>();
     const eids: EntityID[] = [];
@@ -279,27 +306,28 @@ export class EntDBMemory implements IEntDB {
   }
 
   private async getAllEntities<T>(
-    { type, gid, pid, tag, updatedBetween }: EntitiesQuery,
+    query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
+    const { type } = query;
     if (this.useIndex) {
-      if (pid !== undefined) {
-        const pk = btob64(pid);
+      if ("pid" in query) {
+        const pk = btob64(query.pid);
         return ok(this.bucketList<T>(this.byTypePid.get(type)?.get(pk)));
       }
-      if (gid !== undefined) {
-        return ok(this.bucketList<T>(this.byTypeGid.get(type)?.get(gid)));
+      if ("gid" in query) {
+        return ok(this.bucketList<T>(this.byTypeGid.get(type)?.get(query.gid)));
       }
-      if (tag !== undefined) {
-        return ok(this.bucketList<T>(this.byTypeTag.get(type)?.get(tag)));
+      if ("tag" in query) {
+        return this.byTagSpec<T>(type, query.tag);
       }
-      if (updatedBetween !== undefined) {
+      if ("updatedBetween" in query) {
         const results: IEntity<T>[] = [];
         const typeBucket = this.byType.get(type);
         if (typeBucket) {
           for (const ent of typeBucket.values()) {
             if (
-              ent.updatedAt >= updatedBetween.start &&
-              ent.updatedAt <= updatedBetween.end
+              ent.updatedAt >= query.updatedBetween.start &&
+              ent.updatedAt <= query.updatedBetween.end
             ) {
               results.push(ent as IEntity<T>);
             }
@@ -312,39 +340,47 @@ export class EntDBMemory implements IEntDB {
 
     // Full-map scan (indexes disabled). Live only.
     const results: IEntity<T>[] = [];
-    if (pid !== undefined) {
+    if ("pid" in query) {
       for (const row of this.ents.values()) {
         if (
           isLiveEnt(row) && row.type === type && row.pid &&
-          bytesEqual(row.pid, pid)
+          bytesEqual(row.pid, query.pid)
         ) {
           results.push(row as IEntity<T>);
         }
       }
-    } else if (gid !== undefined) {
+    } else if ("gid" in query) {
       for (const row of this.ents.values()) {
         if (
           isLiveEnt(row) && row.type === type &&
-          (typeof row.gid === "string" && row.gid === gid)
+          (typeof row.gid === "string" && row.gid === query.gid)
         ) {
           results.push(row as IEntity<T>);
         }
       }
-    } else if (tag !== undefined) {
+    } else if ("tag" in query) {
+      const spec = query.tag;
+      const [may, st] = tagSpecMayMatch(spec);
+      if (st !== Status.Success) {
+        return err(st);
+      }
+      if (!may) {
+        return ok(results);
+      }
       for (const row of this.ents.values()) {
         if (
           isLiveEnt(row) && row.type === type && row.tags &&
-          row.tags.includes(tag)
+          row.tags.some((t) => tagMatches(t, spec))
         ) {
           results.push(row as IEntity<T>);
         }
       }
-    } else if (updatedBetween !== undefined) {
+    } else if ("updatedBetween" in query) {
       for (const row of this.ents.values()) {
         if (
           isLiveEnt(row) && row.type === type &&
-          row.updatedAt >= updatedBetween.start &&
-          row.updatedAt <= updatedBetween.end
+          row.updatedAt >= query.updatedBetween.start &&
+          row.updatedAt <= query.updatedBetween.end
         ) {
           results.push(row as IEntity<T>);
         }

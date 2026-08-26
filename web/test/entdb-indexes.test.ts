@@ -15,6 +15,16 @@ async function eidAt(tsMs: number, fill = 1) {
   return eid;
 }
 
+function bodyNs(
+  ents: { body: unknown }[] | undefined,
+): Set<unknown> {
+  return new Set(ents?.map((e) =>
+    e.body && typeof e.body === "object" && "n" in e.body
+      ? e.body.n
+      : undefined
+  ));
+}
+
 function mutate(
   eid: Uint8Array,
   type: string,
@@ -177,6 +187,118 @@ describe("EntDBMemory indexes", () => {
       expect(cnt).toBe(0);
     });
 
+    it("lists by tag range and prefix", async () => {
+      const w01 = "time-week-2026W01";
+      const w02 = "time-week-2026W02";
+      const w12 = "time-week-2026W12";
+      const impl = "impl:AAA";
+      const g1 = await eidAt(2000, 80);
+      const g2 = await eidAt(2100, 81);
+      const gBoth = await eidAt(2200, 82);
+      const gImpl = await eidAt(2300, 83);
+      const task = await eidAt(2400, 84);
+
+      await db.apply([
+        mutate(g1, "goal", { n: "w1" }, { tags: [w01] }),
+        mutate(g2, "goal", { n: "w2" }, { tags: [w02] }),
+        mutate(gBoth, "goal", { n: "both" }, { tags: [w01, w02] }),
+        mutate(gImpl, "goal", { n: "impl" }, { tags: [impl] }),
+        mutate(task, "task", { n: "t" }, { tags: [w01, w12] }),
+      ]);
+
+      const rangeW1W12 = {
+        range: { start: w01, end: w12 },
+      };
+      const [incl, stI] = await db.getEntities({
+        type: "goal",
+        tag: rangeW1W12,
+      });
+      expect(stI).toBe(Status.Success);
+      expect(bodyNs(incl)).toEqual(new Set(["w1", "w2", "both"]));
+
+      const [exStart] = await db.getEntities({
+        type: "goal",
+        tag: { range: { start: w01, end: w12, excludeStart: true } },
+      });
+      // gBoth still hits via W02.
+      expect(bodyNs(exStart)).toEqual(new Set(["w2", "both"]));
+
+      const [exEnd] = await db.getEntities({
+        type: "goal",
+        tag: { range: { start: w01, end: w02, excludeEnd: true } },
+      });
+      expect(bodyNs(exEnd)).toEqual(new Set(["w1", "both"]));
+
+      const [pref, stP] = await db.getEntities({
+        type: "goal",
+        tag: { prefix: "time-week-" },
+      });
+      expect(stP).toBe(Status.Success);
+      expect(bodyNs(pref)).toEqual(new Set(["w1", "w2", "both"]));
+
+      const [emptyPref] = await db.getEntities({
+        type: "goal",
+        tag: { prefix: "" },
+      });
+      expect(emptyPref).toHaveLength(0);
+
+      const [typed] = await db.getEntities({
+        type: "task",
+        tag: rangeW1W12,
+      });
+      expect(bodyNs(typed)).toEqual(new Set(["t"]));
+      expect(typed).toHaveLength(1);
+
+      const [bad, stBad] = await db.getEntities({
+        type: "goal",
+        tag: { range: { start: w12, end: w01 } },
+      });
+      expect(stBad).toBe(Status.InvalidParam);
+      expect(bad).toBeUndefined();
+    });
+
+    it("reindexes tag range after tag change", async () => {
+      const w01 = "time-week-2026W01";
+      const w12 = "time-week-2026W12";
+      const goal = await eidAt(2000, 90);
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g" }, { tags: [w01], ctr: 1 }),
+      ]);
+      const range = { range: { start: w01, end: w01 } };
+      const [before] = await db.getEntities({ type: "goal", tag: range });
+      expect(before).toHaveLength(1);
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g2" }, { tags: [w12], off: 10, ctr: 1 }),
+      ]);
+      const [oldR] = await db.getEntities({ type: "goal", tag: range });
+      expect(oldR).toHaveLength(0);
+      const [newR] = await db.getEntities({
+        type: "goal",
+        tag: { range: { start: w12, end: w12 } },
+      });
+      expect(newR).toHaveLength(1);
+
+      const [prefOld] = await db.getEntities({
+        type: "goal",
+        tag: { prefix: "time-week-2026W01" },
+      });
+      expect(prefOld).toHaveLength(0);
+      const [prefNew] = await db.getEntities({
+        type: "goal",
+        tag: { prefix: "time-week-" },
+      });
+      expect(prefNew).toHaveLength(1);
+
+      await db.apply([{ eid: goal, off: 20, ctr: 2 }]);
+      const [del] = await db.getEntities({
+        type: "goal",
+        tag: { prefix: "time-week-" },
+      });
+      expect(del).toHaveLength(0);
+    });
+
     it("reindexes on type/pid/gid change and delete", async () => {
       const parent1 = await eidAt(1000, 10);
       const parent2 = await eidAt(1100, 11);
@@ -287,6 +409,59 @@ describe("CachedEntDB indexes via put/del", () => {
     expect(st).toBe(Status.Success);
     expect(hits).toHaveLength(1);
     expect(hits?.[0]?.tags).toEqual([tag]);
+  });
+
+  it("warm + tag range after durable apply", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const w01 = "time-week-2026W01";
+    const w02 = "time-week-2026W02";
+    const goal = await eidAt(2000, 91);
+    const both = await eidAt(2100, 92);
+
+    await durable.apply([
+      mutate(goal, "goal", { n: "g" }, { tags: [w01] }),
+      mutate(both, "goal", { n: "b" }, { tags: [w01, w02] }),
+    ]);
+
+    const [hits, st] = await cache.getEntities({
+      type: "goal",
+      tag: { range: { start: w01, end: w02 } },
+    });
+    expect(st).toBe(Status.Success);
+    expect(bodyNs(hits)).toEqual(new Set(["g", "b"]));
+    expect(hits).toHaveLength(2);
+  });
+
+  it("apply path keeps tag range coherent", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable, undefined, { indexes: true });
+    const w01 = "time-week-2026W01";
+    const w12 = "time-week-2026W12";
+    const goal = await eidAt(2000, 93);
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g" }, { tags: [w01] }),
+    ]);
+    const [a1] = await cache.getEntities({
+      type: "goal",
+      tag: { range: { start: w01, end: w01 } },
+    });
+    expect(a1).toHaveLength(1);
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g2" }, { tags: [w12], off: 5, ctr: 1 }),
+    ]);
+    const [oldR] = await cache.getEntities({
+      type: "goal",
+      tag: { range: { start: w01, end: w01 } },
+    });
+    const [newR] = await cache.getEntities({
+      type: "goal",
+      tag: { prefix: "time-week-2026W12" },
+    });
+    expect(oldR).toHaveLength(0);
+    expect(newR).toHaveLength(1);
   });
 
   it("apply path keeps tag index coherent", async () => {

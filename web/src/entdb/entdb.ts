@@ -11,7 +11,7 @@
 // 3. "gid" (group ID) - Optional. Supports non-hierarchical grouping.
 // 4. "tags" - Optional string[]; multi-value reverse index (multiEntry).
 //    Like pid reverse lookup, but N:M. Opaque strings; clients define semantics
-//    (e.g. impl:<btob64(eid)> for non-exclusive "implements" links).
+//    (e.g. impl:<btob64(eid)>). Query: exact string, { range }, or { prefix }.
 // These are msgpack-encoded within the DIPLOMATIC msg body.
 // The rest of the ent data lives alongside those, encoded the same way.
 //
@@ -75,12 +75,64 @@ export interface IDateRange {
   end: Date;
 }
 
+/** Lexicographic tag range. Inclusive unless excludeStart / excludeEnd. */
+export type ITagRange = {
+  start: string;
+  end: string;
+  excludeStart?: boolean;
+  excludeEnd?: boolean;
+};
+
+/** Exact tag, lexicographic range, or prefix. One shape per query. */
+export type TagSpec =
+  | string
+  | { range: ITagRange }
+  | { prefix: string };
+
 export type EntitiesQuery =
   | { type: string }
   | { type: string; gid: GroupID }
   | { type: string; pid: EntityID }
-  | { type: string; tag: string }
+  | { type: string; tag: TagSpec }
   | { type: string; updatedBetween: IDateRange };
+
+/** Whether tag falls in r (inclusive by default). Does not check start > end. */
+export function tagInRange(tag: string, r: ITagRange): boolean {
+  const ge = r.excludeStart ? tag > r.start : tag >= r.start;
+  const le = r.excludeEnd ? tag < r.end : tag <= r.end;
+  return ge && le;
+}
+
+/**
+ * Whether a tag spec can match. InvalidParam if range start > end.
+ * False (Success) for empty exact string or empty prefix.
+ */
+export function tagSpecMayMatch(spec: TagSpec): ValStat<boolean> {
+  if (typeof spec === "string") {
+    return ok(spec.length > 0);
+  }
+  if ("range" in spec) {
+    if (spec.range.start > spec.range.end) {
+      return err(Status.InvalidParam);
+    }
+    return ok(true);
+  }
+  return ok(spec.prefix.length > 0);
+}
+
+/** Whether tag satisfies an exact / range / prefix spec. */
+export function tagMatches(tag: string, spec: TagSpec): boolean {
+  if (typeof spec === "string") {
+    return tag === spec;
+  }
+  if ("range" in spec) {
+    return tagInRange(tag, spec.range);
+  }
+  if (spec.prefix.length === 0) {
+    return false;
+  }
+  return tag.startsWith(spec.prefix);
+}
 
 /**
  * Normalize tags for storage/index: drop non-strings and empty strings, dedupe

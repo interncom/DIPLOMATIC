@@ -22,6 +22,7 @@ import {
   revFromEntity,
   revFromHead,
 } from "./entdb/entdb";
+import type { ITagRange, TagSpec } from "./entdb/entdb";
 import { EntIDB } from "./entdb/idb";
 import { EntDBMemory, type EntDBMemoryOptions } from "./entdb/memory";
 import {
@@ -261,6 +262,7 @@ export type {
   IStoredMessage,
   IStoredMessageData,
   IStoredMessageWrite,
+  ITagRange,
   ITombstone,
   ITransport,
   IUpdateParams,
@@ -282,6 +284,7 @@ export type {
   SealedMasterKey,
   SetSeedOpts,
   SyncProgressEvent,
+  TagSpec,
   WipeOpts,
   WorkerClientOptions,
 };

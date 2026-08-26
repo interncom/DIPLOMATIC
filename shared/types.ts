@@ -9,7 +9,6 @@ import type { ValStat } from "./valstat.ts";
 /** Identity seed brands — defined in seed.ts; re-exported for convenience. */
 export type { MasterSeed, SealedMasterKey } from "./seed.ts";
 export {
-  asMasterSeed,
   asSealedMasterKey,
   MASTER_SEED_LEN,
   SEALED_MASTER_KEY_LEN,

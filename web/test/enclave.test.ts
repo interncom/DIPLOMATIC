@@ -9,11 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { btoh, bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { Status } from "../src/shared/consts";
-import { Enclave } from "../src/shared/crypto/enclave";
+import { asMasterSeed, Enclave } from "../src/shared/crypto/enclave";
 import { NobleCrypto } from "../src/shared/crypto/noble";
 import { asDHKEReq } from "../src/shared/crypto/pairing";
 import {
-  asMasterSeed,
   asSealedMasterKey,
   SEALED_MASTER_KEY_LEN,
   type MasterSeed,

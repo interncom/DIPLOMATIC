@@ -3,6 +3,9 @@
 
 import {
   applyOp,
+  dateMatches,
+  DateSpec,
+  dateSpecMayMatch,
   EntitiesQuery,
   IEntDB,
   IEntity,
@@ -252,6 +255,29 @@ export class EntDBMemory implements IEntDB {
     return ok(out);
   }
 
+  /**
+   * List by updatedAt spec. Scans the type bucket (no date secondary map).
+   */
+  private byDateSpec<T>(type: string, spec: DateSpec): ValStat<IEntity<T>[]> {
+    const [may, st] = dateSpecMayMatch(spec);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (!may) {
+      return ok([]);
+    }
+    const results: IEntity<T>[] = [];
+    const typeBucket = this.byType.get(type);
+    if (typeBucket) {
+      for (const ent of typeBucket.values()) {
+        if (dateMatches(ent.updatedAt, spec)) {
+          results.push(ent as IEntity<T>);
+        }
+      }
+    }
+    return ok(results);
+  }
+
   async apply(ops: IOp[]) {
     const types = new Set<string>();
     const eids: EntityID[] = [];
@@ -320,20 +346,8 @@ export class EntDBMemory implements IEntDB {
       if ("tag" in query) {
         return this.byTagSpec<T>(type, query.tag);
       }
-      if ("updatedBetween" in query) {
-        const results: IEntity<T>[] = [];
-        const typeBucket = this.byType.get(type);
-        if (typeBucket) {
-          for (const ent of typeBucket.values()) {
-            if (
-              ent.updatedAt >= query.updatedBetween.start &&
-              ent.updatedAt <= query.updatedBetween.end
-            ) {
-              results.push(ent as IEntity<T>);
-            }
-          }
-        }
-        return ok(results);
+      if ("updatedAt" in query) {
+        return this.byDateSpec<T>(type, query.updatedAt);
       }
       return ok(this.bucketList<T>(this.byType.get(type)));
     }
@@ -375,12 +389,19 @@ export class EntDBMemory implements IEntDB {
           results.push(row as IEntity<T>);
         }
       }
-    } else if ("updatedBetween" in query) {
+    } else if ("updatedAt" in query) {
+      const spec = query.updatedAt;
+      const [may, st] = dateSpecMayMatch(spec);
+      if (st !== Status.Success) {
+        return err(st);
+      }
+      if (!may) {
+        return ok(results);
+      }
       for (const row of this.ents.values()) {
         if (
           isLiveEnt(row) && row.type === type &&
-          row.updatedAt >= query.updatedBetween.start &&
-          row.updatedAt <= query.updatedBetween.end
+          dateMatches(row.updatedAt, spec)
         ) {
           results.push(row as IEntity<T>);
         }

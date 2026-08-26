@@ -66,7 +66,14 @@ Memory EntDB keeps a secondary map `type → tag → eid` (exact is a map hit; r
 
 Range order is **string** order, not calendar semantics. Clients that want week/day spans must encode tags so lexicographic order matches (prefix + fixed-width fields), e.g. `time-week-2026W01` … `time-week-2026W12`. Prefix `"time-week-"` lists all such tags.
 
-Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }` (exact / range / prefix), or `{ type, updatedBetween }`. Compound combinations (e.g. pid + tag) are not supported.
+**updatedAt lookup** uses the compound index `[typ, upd]`. `getEntities({ type, updatedAt })` matches that type by last-write time:
+
+- `updatedAt: Date` — exact millisecond.
+- `updatedAt: { range: { start, end, excludeStart?, excludeEnd? } }` — inclusive by default. `start > end` yields `InvalidParam`.
+
+Memory EntDB scans the type bucket and filters. IndexedDB uses `IDBKeyRange.only` / `bound` on `[typ, upd]`.
+
+Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }` (exact / range / prefix), or `{ type, updatedAt }` (exact / range). Compound combinations (e.g. pid + tag) are not supported.
 
 Example client convention (not enforced by EntDB):
 

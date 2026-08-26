@@ -7,6 +7,8 @@ import { EntityID, GroupID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 import {
   applyOp,
+  DateSpec,
+  dateSpecMayMatch,
   EntitiesQuery,
   IEntDB,
   IEntity,
@@ -129,6 +131,20 @@ function storedToRow<T>(stored: IStoredRow<T>): IEntRow<T> {
     updatedAt: stored.upd,
     ctr: stored.ctr ?? 0,
   };
+}
+
+/** IDB key range for a date spec that {@link dateSpecMayMatch} said can match. */
+function dateIdbRange(opType: string, spec: DateSpec): IDBKeyRange {
+  if (spec instanceof Date) {
+    return IDBKeyRange.only([opType, spec]);
+  }
+  const r = spec.range;
+  return IDBKeyRange.bound(
+    [opType, r.start],
+    [opType, r.end],
+    r.excludeStart === true,
+    r.excludeEnd === true,
+  );
 }
 
 /** IDB key range for a tag spec that {@link tagSpecMayMatch} said can match. */
@@ -395,11 +411,18 @@ export class EntIDB implements IEntDB {
     return ok(row);
   }
 
-  async getAllOfTypeUpdatedBetween<T>(
+  /** List live ents of type matching an updatedAt spec. */
+  private async getByUpdatedAt<T>(
     opType: string,
-    start: Date,
-    end: Date,
+    spec: DateSpec,
   ): Promise<ValStat<IEntity<T>[]>> {
+    const [may, st] = dateSpecMayMatch(spec);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (!may) {
+      return ok([]);
+    }
     let db: IDBDatabase;
     try {
       db = await this.ensureDb();
@@ -408,10 +431,9 @@ export class EntIDB implements IEntDB {
     }
     const tx = db.transaction(entityTableName, "readonly");
     const index = tx.objectStore(entityTableName).index(typeUpdatedAtIndexName);
+    const keyRange = dateIdbRange(opType, spec);
     return new Promise((resolve) => {
-      const req = index.getAll(
-        IDBKeyRange.bound([opType, start], [opType, end]),
-      );
+      const req = index.getAll(keyRange);
       req.onsuccess = () => {
         // Type indexes omit tombstones (no typ) → live IStoredEntity only.
         const storedEnts = req.result as IStoredEntity<T>[];
@@ -522,12 +544,8 @@ export class EntIDB implements IEntDB {
       return await this.getGroupMembers<T>(query.type, query.gid);
     } else if ("tag" in query) {
       return await this.getByTag<T>(query.type, query.tag);
-    } else if ("updatedBetween" in query) {
-      return await this.getAllOfTypeUpdatedBetween<T>(
-        query.type,
-        query.updatedBetween.start,
-        query.updatedBetween.end,
-      );
+    } else if ("updatedAt" in query) {
+      return await this.getByUpdatedAt<T>(query.type, query.updatedAt);
     }
     return await this.getAllOfType<T>(query.type);
   }

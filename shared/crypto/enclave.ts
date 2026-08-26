@@ -464,7 +464,8 @@ async function evalPrf(
 /** Brand `bytes` as {@link MasterSeed} only if length is {@link MASTER_SEED_LEN}. */
 export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
   if (bytes.byteLength !== MASTER_SEED_LEN) return err(Status.InvalidParam);
-  return ok(bytes as MasterSeed);
+  // Inline ValStat ok: do not pass seed bytes to imported `ok`.
+  return [bytes as MasterSeed, Status.Success];
 }
 
 export class Enclave {

@@ -29,7 +29,6 @@ import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
 import { kdmBytes, Status } from "../consts.ts";
 import {
-  asMasterSeed,
   asSealedMasterKey,
   MASTER_SEED_LEN,
   type MasterSeed,
@@ -460,6 +459,12 @@ async function evalPrf(
     attachment: readAttachment(pk.authenticatorAttachment),
     transports: readTransports(pk),
   });
+}
+
+/** Brand `bytes` as {@link MasterSeed} only if length is {@link MASTER_SEED_LEN}. */
+export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
+  if (bytes.byteLength !== MASTER_SEED_LEN) return err(Status.InvalidParam);
+  return ok(bytes as MasterSeed);
 }
 
 export class Enclave {
@@ -919,7 +924,8 @@ export class Enclave {
     const out = new Uint8Array(MASTER_SEED_LEN + hostsEnc.byteLength);
     out.set(this.#seed, 0);
     out.set(hostsEnc, MASTER_SEED_LEN);
-    return ok(out);
+    // Inline ValStat ok: do not pass seed-bearing `out` to imported `ok`.
+    return [out, Status.Success];
   }
 
   async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {

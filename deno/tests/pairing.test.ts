@@ -3,7 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Status } from "../../shared/consts.ts";
-import { Enclave } from "../../shared/crypto/enclave.ts";
+import { asMasterSeed, Enclave } from "../../shared/crypto/enclave.ts";
 import { NobleCrypto } from "../../shared/crypto/noble.ts";
 import {
   asDHKEReq,
@@ -13,7 +13,6 @@ import {
   PairRequest,
   X25519_PUB_LEN,
 } from "../../shared/crypto/pairing.ts";
-import { asMasterSeed } from "../../shared/seed.ts";
 
 function seedOf(fill: number) {
   const [s, st] = asMasterSeed(new Uint8Array(32).fill(fill));

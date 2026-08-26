@@ -25,12 +25,6 @@ export type SealedMasterKey = Uint8Array & {
   readonly [sealedMasterKeySymbol]: true;
 };
 
-/** Brand `bytes` as {@link MasterSeed} only if length is {@link MASTER_SEED_LEN}. */
-export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
-  if (bytes.byteLength !== MASTER_SEED_LEN) return err(Status.InvalidParam);
-  return ok(bytes as MasterSeed);
-}
-
 /** Brand `bytes` as {@link SealedMasterKey} only if length is {@link SEALED_MASTER_KEY_LEN}. */
 export function asSealedMasterKey(
   bytes: Uint8Array,

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Decoder, Encoder } from "../src/shared/codec";
 import { identityHostsCodec } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
-import { Enclave, sealKeyFromPrf } from "../src/shared/crypto/enclave";
+import {
+  asMasterSeed,
+  Enclave,
+  sealKeyFromPrf,
+} from "../src/shared/crypto/enclave";
 import {
   asDHKEReq,
   asDHKEResp,
@@ -12,7 +16,7 @@ import {
 } from "../src/shared/crypto/pairing";
 import { NobleCrypto } from "../src/shared/crypto/noble";
 import crypto from "../src/crypto";
-import { asMasterSeed, type MasterSeed } from "../src/shared/seed";
+import type { MasterSeed } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
 function seedOf(fill: number): MasterSeed {

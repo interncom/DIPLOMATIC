@@ -70,10 +70,18 @@ export function isTombstone(row: IEntRow): row is ITombstone {
   return !isLiveEnt(row);
 }
 
-export interface IDateRange {
+/** Inclusive Date range unless excludeStart / excludeEnd. */
+export type IDateRange = {
   start: Date;
   end: Date;
-}
+  excludeStart?: boolean;
+  excludeEnd?: boolean;
+};
+
+/** Exact updatedAt or Date range. One shape per query. */
+export type DateSpec =
+  | Date
+  | { range: IDateRange };
 
 /** Lexicographic tag range. Inclusive unless excludeStart / excludeEnd. */
 export type ITagRange = {
@@ -94,7 +102,35 @@ export type EntitiesQuery =
   | { type: string; gid: GroupID }
   | { type: string; pid: EntityID }
   | { type: string; tag: TagSpec }
-  | { type: string; updatedBetween: IDateRange };
+  | { type: string; updatedAt: DateSpec };
+
+/** Whether t falls in r (inclusive by default). Does not check start > end. */
+export function dateInRange(t: Date, r: IDateRange): boolean {
+  const ge = r.excludeStart ? t > r.start : t >= r.start;
+  const le = r.excludeEnd ? t < r.end : t <= r.end;
+  return ge && le;
+}
+
+/**
+ * Whether a date spec can match. InvalidParam if range start > end.
+ */
+export function dateSpecMayMatch(spec: DateSpec): ValStat<boolean> {
+  if (spec instanceof Date) {
+    return ok(true);
+  }
+  if (spec.range.start > spec.range.end) {
+    return err(Status.InvalidParam);
+  }
+  return ok(true);
+}
+
+/** Whether t satisfies an exact / range spec. */
+export function dateMatches(t: Date, spec: DateSpec): boolean {
+  if (spec instanceof Date) {
+    return t.getTime() === spec.getTime();
+  }
+  return dateInRange(t, spec.range);
+}
 
 /** Whether tag falls in r (inclusive by default). Does not check start > end. */
 export function tagInRange(tag: string, r: ITagRange): boolean {

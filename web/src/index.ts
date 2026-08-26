@@ -22,7 +22,7 @@ import {
   revFromEntity,
   revFromHead,
 } from "./entdb/entdb";
-import type { ITagRange, TagSpec } from "./entdb/entdb";
+import type { DateSpec, IDateRange, ITagRange, TagSpec } from "./entdb/entdb";
 import { EntIDB } from "./entdb/idb";
 import { EntDBMemory, type EntDBMemoryOptions } from "./entdb/memory";
 import {
@@ -242,6 +242,7 @@ export type {
   Applier,
   BundleHost,
   CachedEntDBOptions,
+  DateSpec,
   DHKEReq,
   DHKEResp,
   EntDBMemoryOptions,
@@ -249,6 +250,7 @@ export type {
   HostStatsUpdate,
   IClient,
   ICrypto,
+  IDateRange,
   IDeleteParams,
   IDiplomaticClientState,
   IEntRev,

@@ -257,6 +257,122 @@ describe("EntDBMemory indexes", () => {
       expect(bad).toBeUndefined();
     });
 
+    it("lists by updatedAt range and exact", async () => {
+      const t0 = 2000;
+      const t1 = 2100;
+      const t2 = 2200;
+      const g0 = await eidAt(t0, 80);
+      const g1 = await eidAt(t1, 81);
+      const g2 = await eidAt(t2, 82);
+      const task = await eidAt(t0, 83);
+
+      await db.apply([
+        mutate(g0, "goal", { n: "a" }),
+        mutate(g1, "goal", { n: "b" }),
+        mutate(g2, "goal", { n: "c" }),
+        mutate(task, "task", { n: "t" }),
+      ]);
+
+      const range = {
+        range: { start: new Date(t0), end: new Date(t2) },
+      };
+      const [incl, stI] = await db.getEntities({
+        type: "goal",
+        updatedAt: range,
+      });
+      expect(stI).toBe(Status.Success);
+      expect(bodyNs(incl)).toEqual(new Set(["a", "b", "c"]));
+
+      const [exStart] = await db.getEntities({
+        type: "goal",
+        updatedAt: {
+          range: {
+            start: new Date(t0),
+            end: new Date(t2),
+            excludeStart: true,
+          },
+        },
+      });
+      expect(bodyNs(exStart)).toEqual(new Set(["b", "c"]));
+
+      const [exEnd] = await db.getEntities({
+        type: "goal",
+        updatedAt: {
+          range: {
+            start: new Date(t0),
+            end: new Date(t1),
+            excludeEnd: true,
+          },
+        },
+      });
+      expect(bodyNs(exEnd)).toEqual(new Set(["a"]));
+
+      const [exact, stE] = await db.getEntities({
+        type: "goal",
+        updatedAt: new Date(t1),
+      });
+      expect(stE).toBe(Status.Success);
+      expect(bodyNs(exact)).toEqual(new Set(["b"]));
+
+      const [typed] = await db.getEntities({
+        type: "task",
+        updatedAt: range,
+      });
+      expect(bodyNs(typed)).toEqual(new Set(["t"]));
+      expect(typed).toHaveLength(1);
+
+      const [bad, stBad] = await db.getEntities({
+        type: "goal",
+        updatedAt: {
+          range: { start: new Date(t2), end: new Date(t0) },
+        },
+      });
+      expect(stBad).toBe(Status.InvalidParam);
+      expect(bad).toBeUndefined();
+    });
+
+    it("reindexes updatedAt range after update", async () => {
+      const t0 = 2000;
+      const goal = await eidAt(t0, 90);
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g" }, { ctr: 1 }),
+      ]);
+      const range = {
+        range: { start: new Date(t0), end: new Date(t0) },
+      };
+      const [before] = await db.getEntities({
+        type: "goal",
+        updatedAt: range,
+      });
+      expect(before).toHaveLength(1);
+
+      await db.apply([
+        mutate(goal, "goal", { n: "g2" }, { off: 100, ctr: 1 }),
+      ]);
+      const [oldR] = await db.getEntities({
+        type: "goal",
+        updatedAt: range,
+      });
+      expect(oldR).toHaveLength(0);
+      const [newR] = await db.getEntities({
+        type: "goal",
+        updatedAt: {
+          range: { start: new Date(t0 + 100), end: new Date(t0 + 100) },
+        },
+      });
+      expect(newR).toHaveLength(1);
+
+      await db.apply([{ eid: goal, off: 200, ctr: 2 }]);
+      const [del] = await db.getEntities({
+        type: "goal",
+        updatedAt: {
+          range: { start: new Date(t0), end: new Date(t0 + 200) },
+        },
+      });
+      expect(del).toHaveLength(0);
+    });
+
     it("reindexes tag range after tag change", async () => {
       const w01 = "time-week-2026W01";
       const w12 = "time-week-2026W12";
@@ -459,6 +575,58 @@ describe("CachedEntDB indexes via put/del", () => {
     const [newR] = await cache.getEntities({
       type: "goal",
       tag: { prefix: "time-week-2026W12" },
+    });
+    expect(oldR).toHaveLength(0);
+    expect(newR).toHaveLength(1);
+  });
+
+  it("warm + updatedAt range after durable apply", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable);
+    const t0 = 2000;
+    const t1 = 2100;
+    const g0 = await eidAt(t0, 94);
+    const g1 = await eidAt(t1, 95);
+
+    await durable.apply([
+      mutate(g0, "goal", { n: "a" }),
+      mutate(g1, "goal", { n: "b" }),
+    ]);
+
+    const [hits, st] = await cache.getEntities({
+      type: "goal",
+      updatedAt: { range: { start: new Date(t0), end: new Date(t1) } },
+    });
+    expect(st).toBe(Status.Success);
+    expect(bodyNs(hits)).toEqual(new Set(["a", "b"]));
+    expect(hits).toHaveLength(2);
+  });
+
+  it("apply path keeps updatedAt range coherent", async () => {
+    const durable = new EntDBMemory();
+    const cache = new CachedEntDB(durable, undefined, { indexes: true });
+    const t0 = 2000;
+    const goal = await eidAt(t0, 96);
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g" }),
+    ]);
+    const [a1] = await cache.getEntities({
+      type: "goal",
+      updatedAt: { range: { start: new Date(t0), end: new Date(t0) } },
+    });
+    expect(a1).toHaveLength(1);
+
+    await cache.apply([
+      mutate(goal, "goal", { n: "g2" }, { off: 100, ctr: 1 }),
+    ]);
+    const [oldR] = await cache.getEntities({
+      type: "goal",
+      updatedAt: { range: { start: new Date(t0), end: new Date(t0) } },
+    });
+    const [newR] = await cache.getEntities({
+      type: "goal",
+      updatedAt: new Date(t0 + 100),
     });
     expect(oldR).toHaveLength(0);
     expect(newR).toHaveLength(1);

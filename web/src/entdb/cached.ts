@@ -19,8 +19,7 @@
 // provided via constructor init). apply / getEnt / ingest only touch
 // individual eids — they must not mark a type warm, or a write before
 // the first list would hide every other row of that type until restart.
-// Tombstones are pulled by eid (getRow) so LWW still rejects obsolete mutates
-// even when the type was never fully warm.
+// Unknown durable tombstones are corrected on reconcile, not before notify.
 
 import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
@@ -119,22 +118,25 @@ export class CachedEntDB implements IEntDB {
   /**
    * Fan-out write: mem (immediate notify) + durable, then reconcile mem
    * from durable for the ops' eids (second notify only if something moved).
+   * Mem patch+emit is synchronous so notify does not wait on IDB (new insert
+   * included). Persist stays on the write chain.
    */
   apply(ops: IOp[]) {
+    this.emit(applyOps(this.mem, ops).types);
+    const snap = new Map<string, RowStamp | undefined>();
+    for (const op of ops) {
+      const key = btob64(op.eid);
+      snap.set(key, rowStamp(this.mem.ents.get(key)));
+    }
+
     return this.run(async () => {
-      // Ensure mem has durable frontier (incl. tombstones) before LWW apply.
-      await this.pullEids(ops.map((o) => o.eid));
-
-      // 1–2. Mem immediately + durable in parallel (mem is sync).
-      const memResult = applyOps(this.mem, ops);
-      this.emit(memResult.types);
-
       const durResult = await this.durable.apply(ops);
-
-      // 3. Authority: mem := durable for these eids (live or tombstone).
-      // Do not mark types warm here: only these eids are in mem. A later
-      // list/count still needs warmType if the type was never fully loaded.
-      const { changed, status } = await this.pullEids(ops.map((o) => o.eid));
+      // Authority for eids whose mem stamp still matches this apply.
+      // Do not mark types warm: only these eids are in mem.
+      const { changed, status } = await this.pullEids(
+        ops.map((o) => o.eid),
+        snap,
+      );
       this.emit(changed);
 
       if (status !== Status.Success) {
@@ -144,7 +146,6 @@ export class CachedEntDB implements IEntDB {
           eids: durResult.eids,
         };
       }
-      // Durable stats/types are authoritative for the apply caller.
       return durResult;
     });
   }
@@ -179,11 +180,13 @@ export class CachedEntDB implements IEntDB {
 
   /**
    * Install durable truth for each eid into mem (live or tombstone).
-   * Always writes mem from durable; notifies types only when the full row
-   * identity differs from what mem had (or the row appeared/vanished).
+   * When `snap` is set (post-apply reconcile), skip eids whose mem stamp
+   * moved — a later apply owns them. Without snap (ingest), do not clobber
+   * a newer in-flight mem row.
    */
   private async pullEids(
     eids: Iterable<EntityID>,
+    snap?: Map<string, RowStamp | undefined>,
   ): Promise<{ changed: Set<string>; status: Status }> {
     const changed = new Set<string>();
     const seen = new Set<string>();
@@ -192,28 +195,36 @@ export class CachedEntDB implements IEntDB {
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const prev = this.mem.ents.get(key);
       const [row, st] = await this.durable.getRow(eid);
       if (st !== Status.Success) {
         // Do not leave mem half-reconciled on a read failure.
         return { changed, status: st };
       }
+
+      const curr = this.mem.ents.get(key);
+      if (snap) {
+        if (!stampEq(rowStamp(curr), snap.get(key))) continue;
+      } else if (
+        curr !== undefined && row !== undefined && rowWins(curr, row)
+      ) {
+        continue;
+      }
+
       if (row) {
-        // Always install durable row (authority), even if we skip notify.
         // Single-eid ingest is not a full type load — leave warmed alone.
         this.mem.put(row);
-        if (!prev || !sameRow(prev, row)) {
+        if (!curr || !sameRow(curr, row)) {
           if (isLiveEnt(row)) {
             changed.add(row.type);
           }
-          if (prev !== undefined && isLiveEnt(prev)) {
-            changed.add(prev.type);
+          if (curr !== undefined && isLiveEnt(curr)) {
+            changed.add(curr.type);
           }
         }
-      } else if (prev !== undefined) {
+      } else if (curr !== undefined) {
         this.mem.del(key);
-        if (isLiveEnt(prev)) {
-          changed.add(prev.type);
+        if (isLiveEnt(curr)) {
+          changed.add(curr.type);
         }
       }
     }
@@ -374,6 +385,21 @@ function rowWins(a: IEntRow, b: IEntRow): boolean {
   const tb = b.updatedAt.getTime();
   if (ta !== tb) return ta > tb;
   return a.ctr > b.ctr;
+}
+
+type RowStamp = { t: number; ctr: number };
+
+function rowStamp(row: IEntRow | undefined): RowStamp | undefined {
+  if (row === undefined) return undefined;
+  return { t: row.updatedAt.getTime(), ctr: row.ctr };
+}
+
+function stampEq(
+  a: RowStamp | undefined,
+  b: RowStamp | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.t === b.t && a.ctr === b.ctr;
 }
 
 /** Apply ops to mem (LWW per eid); uses put so tombstones stay for LWW. */

@@ -8,6 +8,28 @@ import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
 import type { EntityID, IMessage, IOp } from "../src/shared/types";
 
+/** Resolve when `notifies` has at least `want` entries. */
+function waitNotifies(notifies: unknown[], want: number): Promise<void> {
+  if (notifies.length >= want) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (notifies.length >= want) {
+        resolve();
+        return;
+      }
+      if (Date.now() - t0 > 1000) {
+        reject(new Error(`notify timeout: ${notifies.length} < ${want}`));
+        return;
+      }
+      setTimeout(tick, 0);
+    };
+    tick();
+  });
+}
+
 async function mutateOp(
   body: unknown,
   type: string,
@@ -202,6 +224,97 @@ describe("CachedEntDB", () => {
     expect(stN).toBe(Status.Success);
     expect(n).toBe(1);
     expect(durableLists).toBe(0);
+  });
+
+  test("apply notifies and serves mem before durable.apply", async () => {
+    const durable = new EntDBMemory();
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      await applyHold;
+      return origApply(ops);
+    };
+    const origGetRow = durable.getRow.bind(durable);
+    let getRows = 0;
+    let releaseGet = () => {};
+    const getHold = new Promise<void>((resolve) => {
+      releaseGet = resolve;
+    });
+    durable.getRow = async (eid) => {
+      getRows += 1;
+      await getHold;
+      return origGetRow(eid);
+    };
+
+    const cache = new CachedEntDB(durable);
+    // Warm so list after notify does not serialize on the write chain.
+    await cache.getEntities({ type: "note" });
+
+    const notifies: string[][] = [];
+    cache.subscribe((types) => notifies.push([...types]));
+
+    const op1 = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    const p1 = cache.apply([op1]);
+    expect(notifies.length).toBeGreaterThanOrEqual(1);
+    expect(getRows).toBe(0);
+    const [m1] = await cache.getEntities({ type: "note" });
+    expect(m1).toHaveLength(1);
+    expect(m1?.[0]?.body).toEqual({ n: 1 });
+    const [d1] = await durable.getEntities({ type: "note" });
+    expect(d1).toHaveLength(0);
+
+    const op2 = await mutateOp({ n: 2 }, "note", new Date(1000), 50, 1, 1);
+    const p2 = cache.apply([op2]);
+    expect(notifies.length).toBeGreaterThanOrEqual(2);
+    expect(getRows).toBe(0);
+    const [m2] = await cache.getEntities({ type: "note" });
+    expect(m2?.[0]?.body).toEqual({ n: 2 });
+
+    releaseGet();
+    releaseApply();
+    await p1;
+    await p2;
+    const [done] = await durable.getEntities({ type: "note" });
+    expect(done?.[0]?.body).toEqual({ n: 2 });
+  });
+
+  test("second apply emits before first durable.apply (distinct eids)", async () => {
+    const durable = new EntDBMemory();
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      await applyHold;
+      return origApply(ops);
+    };
+
+    const cache = new CachedEntDB(durable);
+    await cache.getEntities({ type: "note" });
+
+    const notifies: string[][] = [];
+    cache.subscribe((types) => notifies.push([...types]));
+
+    const op1 = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    const op2 = await mutateOp({ n: 2 }, "note", new Date(2000), 0, 0, 2);
+    const p1 = cache.apply([op1]);
+    await waitNotifies(notifies, 1);
+    const p2 = cache.apply([op2]);
+    await waitNotifies(notifies, 2);
+    const [mem] = await cache.getEntities({ type: "note" });
+    expect(mem).toHaveLength(2);
+    const [dur] = await durable.getEntities({ type: "note" });
+    expect(dur).toHaveLength(0);
+
+    releaseApply();
+    await p1;
+    await p2;
+    const [after] = await durable.getEntities({ type: "note" });
+    expect(after).toHaveLength(2);
   });
 
   test("concurrent warm list reads all see mem", async () => {

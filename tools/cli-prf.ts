@@ -140,7 +140,10 @@ export function makeHmacCred(dev: string, rpId: string): Uint8Array {
   crypto.getRandomValues(uid);
   const input = [b64enc(cdh), rpId, CLI_USER, b64enc(uid)].join("\n") + "\n";
   console.error("Touch the key / enter PIN to create a PRF credential...");
-  const out = runFido(["fido2-cred", "-M", "-h", "-t", "uv=true", dev], input);
+  const out = runFido(
+    ["fido2-cred", "-M", "-h", "-t", "uv=true", "-t", "pin=true", dev],
+    input,
+  );
   const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   const idLine = lines[4];
   if (idLine === undefined) die("fido2-cred: no credential id");
@@ -164,7 +167,10 @@ export function evalHmac(
   const input = [b64enc(cdh), rpId, b64enc(credId), b64enc(salt)].join("\n") +
     "\n";
   console.error("Touch the key / enter PIN to evaluate PRF...");
-  const out = runFido(["fido2-assert", "-G", "-h", "-t", "uv=true", dev], input);
+  const out = runFido(
+    ["fido2-assert", "-G", "-h", "-t", "uv=true", "-t", "pin=true", dev],
+    input,
+  );
   cdh.fill(0);
   const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   for (let i = 4; i < lines.length; i++) {

@@ -62,7 +62,7 @@ export interface IMessageHead {
 // apply them in-order, producing a global, eventually-consistent data state
 // across the distributed system.
 // The header of the message contains that metadata.
-// The body of a message (bod) is contains application-specific information.
+// The body of a message (bod) contains application-specific information.
 export interface IMessage extends IMessageHead {
   bod?: SerializedContent;
 }

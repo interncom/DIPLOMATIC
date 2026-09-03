@@ -84,6 +84,22 @@ const permits: Permit[] = [
     callerSrc: "a1adaf7c1ae3d8a06d34592d420eb434",
     why: "To encrypt the master with KEK derived from passkey PRF.",
   },
+  {
+    caller: "sealWithIkm",
+    callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
+    how: "exact",
+    src: "c87390f5b54c28fe7c228a7325c42aee",
+    callerSrc: "a40b76baa8edc592ba346492c6d3bb67",
+    why: "To encrypt the master with a KEK derived from caller-supplied PRF IKM.",
+  },
+  {
+    caller: "fromRandom",
+    callee: "NobleCrypto.blake3",
+    how: "embedded",
+    src: "f6f104ad232958bb7949fb63bf3d6580",
+    callerSrc: "cc6a30672d6476be55cadc2e27672e0c",
+    why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
@@ -424,7 +440,9 @@ const traces: Record<string, () => void | Promise<void>> = {
     arm("fromRandom", seed);
     vi.spyOn(NobleCrypto.prototype, "gen256BitSecureRandomSeed")
       .mockResolvedValue(seed);
-    const e = await Enclave.fromRandom();
+    const musec = new Uint8Array(32).fill(9);
+    const [e, st] = await Enclave.fromRandom(musec);
+    expect(st).toBe(Status.Success);
     expect(e).toBeDefined();
     assertPermitted();
   },
@@ -473,6 +491,29 @@ const traces: Record<string, () => void | Promise<void>> = {
       { rpId: "localhost", salt: DEFAULT_PRF_SALT },
     );
     expect(st).not.toBe(Status.Success);
+    assertPermitted();
+  },
+  async sealWithIkm() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    const ikm = new Uint8Array(32).fill(3);
+    arm("sealWithIkm", seed);
+    const [out, st] = await e.sealWithIkm(ikm);
+    expect(st).toBe(Status.Success);
+    expect(out).toBeDefined();
+    assertPermitted();
+  },
+  async unsealWithIkm() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    const ikm = new Uint8Array(32).fill(3);
+    const [sealed, sst] = await e.sealWithIkm(ikm.slice());
+    expect(sst).toBe(Status.Success);
+    if (sealed === undefined) return;
+    arm("unsealWithIkm", seed);
+    const [opened, st] = await Enclave.unsealWithIkm(sealed, ikm.slice());
+    expect(st).toBe(Status.Success);
+    expect(opened).toBeDefined();
     assertPermitted();
   },
   async persistToLargeBlob() {

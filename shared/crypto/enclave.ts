@@ -14,9 +14,10 @@
 // ciphertext, Status/booleans, and new Enclave instances from factories.
 //
 // Browser WebAuthn: largeBlob create/read and PRF capability probe live in
-// shared/webauthn. PRF eval/create and largeBlob seed write live here — PRF
-// output is IKM that unseals a binding and must not leave this file. Sealed
-// ciphertext on disk is useless without a ceremony Enclave itself initiates.
+// shared/webauthn. PRF eval/create, CLI IKM seal/unseal, and largeBlob seed
+// write live here — PRF output is IKM that unseals a binding and must not
+// leave this file. Sealed ciphertext on disk is useless without a ceremony
+// Enclave itself initiates (or caller-supplied IKM that is wiped here).
 // WebAuthn “authenticator” = binding key (IKM source, not authn/authz).
 //
 // Transient secrets (PRF, binding/pair KEK, derivation seed, Ed25519 priv) are
@@ -156,6 +157,8 @@ const BIND_TAG_DOMAIN = new TextEncoder().encode("diplomatic.bindtag.v1");
 const BIND_TAG_LEN = 32;
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
+/** Minimum musec length (Mandatory User-Space Entropy Contribution). */
+const MUSEC_MIN_LEN = 32;
 
 // Bound at load — not an Enclave constructor argument (no caller ICrypto).
 const noble = new NobleCrypto();
@@ -475,14 +478,24 @@ export class Enclave {
     this.#seed = seed;
   }
 
-  /** New enclave with a fresh 32-byte master seed. */
-  static async fromRandom(): Promise<Enclave> {
-    const bytes = await noble.gen256BitSecureRandomSeed();
-    const [seed, st] = asMasterSeed(bytes);
-    if (st !== Status.Success || seed === undefined) {
-      throw new Error(`enclave: invalid random seed (${st})`);
+  /**
+   * New enclave: blake3(OS CSPRNG ‖ musec). musec is required (MUSEC_MIN_LEN).
+   * Mix stays in this method; musec is wiped before return.
+   */
+  static async fromRandom(musec: Uint8Array): Promise<ValStat<Enclave>> {
+    if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
+    const os = await noble.gen256BitSecureRandomSeed();
+    const mix = concat(os, musec);
+    try {
+      const hashed = await noble.blake3(mix);
+      const [seed, st] = asMasterSeed(hashed);
+      if (st !== Status.Success || seed === undefined) return err(st);
+      return ok(new Enclave(seed));
+    } finally {
+      os.fill(0);
+      mix.fill(0);
+      musec.fill(0);
     }
-    return new Enclave(seed);
   }
 
   /**
@@ -649,6 +662,33 @@ export class Enclave {
       return err(Status.DecryptionError);
     } finally {
       ev.prf.fill(0);
+    }
+  }
+
+  /**
+   * AEAD-seal master under caller-supplied PRF IKM (CLI hmac-secret).
+   * Wipes `ikm` before return. Ciphertext only — never the seed.
+   */
+  async sealWithIkm(ikm: Uint8Array): Promise<ValStat<SealedMasterKey>> {
+    try {
+      return await this.#sealUnderPrf(ikm);
+    } finally {
+      ikm.fill(0);
+    }
+  }
+
+  /**
+   * Unseal a PRF binding given IKM (CLI hmac-secret eval). Returns Enclave.
+   * Wipes `ikm` before return.
+   */
+  static async unsealWithIkm(
+    sealed: SealedMasterKey,
+    ikm: Uint8Array,
+  ): Promise<ValStat<Enclave>> {
+    try {
+      return await Enclave.#unsealUnderPrf(sealed, ikm);
+    } finally {
+      ikm.fill(0);
     }
   }
 
@@ -1019,7 +1059,13 @@ export async function sealKeyFromPrf(
   return ok(hash.slice(0, SEAL_KEY_LEN));
 }
 
-export { MASTER_SEED_LEN, SEAL_BIND_DOMAIN, SEAL_KEY_LEN, SEAL_PRF_MIN_LEN };
+export {
+  MASTER_SEED_LEN,
+  MUSEC_MIN_LEN,
+  SEAL_BIND_DOMAIN,
+  SEAL_KEY_LEN,
+  SEAL_PRF_MIN_LEN,
+};
 
 const LOCK_SKIP = new Set(["constructor", "prototype", "length", "name"]);
 

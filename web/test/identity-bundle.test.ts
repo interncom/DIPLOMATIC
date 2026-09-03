@@ -5,6 +5,7 @@ import { Status } from "../src/shared/consts";
 import {
   asMasterSeed,
   Enclave,
+  MUSEC_MIN_LEN,
   sealKeyFromPrf,
 } from "../src/shared/crypto/enclave";
 import {
@@ -219,6 +220,43 @@ describe("Enclave persist IdentityBundle", () => {
       credId,
     });
     expect(st).toBe(Status.InvalidMessage);
+  });
+});
+
+describe("enclave fromRandom musec", () => {
+  it("rejects musec shorter than MUSEC_MIN_LEN", async () => {
+    const [, st] = await Enclave.fromRandom(new Uint8Array(MUSEC_MIN_LEN - 1));
+    expect(st).toBe(Status.InvalidParam);
+  });
+
+  it("mixes musec and returns an enclave", async () => {
+    const musec = new Uint8Array(32).fill(7);
+    const [e, st] = await Enclave.fromRandom(musec);
+    expect(st).toBe(Status.Success);
+    expect(e).toBeDefined();
+    if (e === undefined) return;
+    const idnt = await e.deriveIdentity("test", 0);
+    expect(idnt.publicKey.byteLength).toBeGreaterThan(0);
+  });
+});
+
+describe("enclave seal/unseal via caller IKM", () => {
+  it("round-trips master under sealWithIkm / unsealWithIkm", async () => {
+    const enc = enclaveOf(9);
+    const ikm = new Uint8Array(32).fill(4);
+    const [sealed, sst] = await enc.sealWithIkm(ikm.slice());
+    expect(sst).toBe(Status.Success);
+    expect(sealed).toBeDefined();
+    if (sealed === undefined) return;
+    expect(sealed.byteLength).toBe(72);
+
+    const [opened, ust] = await Enclave.unsealWithIkm(sealed, ikm.slice());
+    expect(ust).toBe(Status.Success);
+    expect(opened).toBeDefined();
+    if (opened === undefined) return;
+    const a = await enc.deriveIdentity("test", 0);
+    const b = await opened.deriveIdentity("test", 0);
+    expect(b.publicKey).toEqual(a.publicKey);
   });
 });
 

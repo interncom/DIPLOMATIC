@@ -36,8 +36,8 @@ export interface IMsgEntBody<T = unknown> {
 }
 
 export interface IMessageHead {
-  // eid will generally be a random identifier.
   // eid is an ID packed together with a created at timestamp for the entity.
+  // The ID portion will generally be a random identifier.
   eid: EntityID;
 
   // [eid, clk] combined form a unique identifier of an entity.

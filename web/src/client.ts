@@ -9,7 +9,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
-import { decodeFile, encodeFile } from "./shared/exim";
+import { Exim } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import type { Enclave } from "./shared/crypto/enclave";
 import {
@@ -913,7 +913,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     console.time("import: decoding file...");
     const bytes = await file.bytes();
-    const [msgs, statDec] = await decodeFile(bytes, crypto, enclave);
+    const [msgs, statDec] = await Exim.decodeFile(bytes, crypto, enclave);
     if (statDec !== Status.Success) return statDec;
     console.timeEnd("import: decoding file...");
 
@@ -983,7 +983,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (!enclave) return err(Status.MissingSeed);
 
     const msgs = await store.messages.list();
-    return encodeFile("export", 0, msgs, crypto, enclave);
+    return Exim.encodeFile("export", 0, msgs, crypto, enclave);
   }
 
   public async export(filename: string) {

@@ -1,4 +1,4 @@
-import { decodeFile, encodeFile } from "../../shared/exim.ts";
+import { Exim } from "../../shared/exim.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
@@ -73,7 +73,7 @@ const newBytes = htob(newHex);
 console.error("Decrypting with old master key...");
 const [oldEnclave, oest] = Enclave.fromBytes(oldBytes);
 if (oest !== Status.Success || oldEnclave === undefined) throw new Error(`old enclave ${oest}`);
-const [msgs, statDec] = await decodeFile(input, crypto, oldEnclave);
+const [msgs, statDec] = await Exim.decodeFile(input, crypto, oldEnclave);
 if (statDec !== Status.Success) {
   console.error(`Failed to decode: ${Status[statDec]}`);
   process.exit(1);
@@ -83,7 +83,7 @@ console.error(`Decoded ${msgs.length} message(s).`);
 console.error("Re-encrypting with new master key...");
 const [newEnclave, nest] = Enclave.fromBytes(newBytes);
 if (nest !== Status.Success || newEnclave === undefined) throw new Error(`new enclave ${nest}`);
-const [outBytes, statEnc] = await encodeFile(
+const [outBytes, statEnc] = await Exim.encodeFile(
   "export",
   0,
   msgs,

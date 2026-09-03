@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import readline from "node:readline";
 import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
+import { NobleCrypto } from "../../shared/crypto/noble.ts";
 import { asDHKEReq } from "../../shared/crypto/pairing.ts";
 import {
   defaultBindPath,
@@ -39,6 +40,27 @@ if (a0 !== undefined && a0.length > 0) {
   }
 }
 
+/** Which X25519 step threw (pairAccept swallows this into CryptoError). */
+async function noteDhkeErr(peer: Uint8Array): Promise<void> {
+  const n = new NobleCrypto();
+  try {
+    const eph = await n.genX25519();
+    try {
+      const s = await n.x25519Shared(eph.priv, peer);
+      s.fill(0);
+      console.error("genX25519 and x25519Shared succeeded on retry");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`x25519Shared: ${msg}`);
+    } finally {
+      eph.priv.fill(0);
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`genX25519: ${msg}`);
+  }
+}
+
 /** Read one line from stdin; prompt on stderr if that is a TTY. */
 async function readReq(): Promise<string> {
   if (!process.stdin.isTTY) {
@@ -71,6 +93,7 @@ console.error(`Using ${dev}`);
 const enc = await unlockBind(bind, dev);
 const [resp, ast] = await enc.pairAccept(dhkeReq, []);
 if (ast !== Status.Success || resp === undefined) {
+  if (ast === Status.CryptoError) await noteDhkeErr(dhkeReq);
   die(`pairAccept ${Status[ast]} (${ast})`);
 }
 process.stdout.write(btoh(resp) + "\n");

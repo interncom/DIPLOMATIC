@@ -71,6 +71,6 @@ console.error(`Using ${dev}`);
 const enc = await unlockBind(bind, dev);
 const [resp, ast] = await enc.pairAccept(dhkeReq, []);
 if (ast !== Status.Success || resp === undefined) {
-  die(`pairAccept ${ast}`);
+  die(`pairAccept ${Status[ast]} (${ast})`);
 }
 process.stdout.write(btoh(resp) + "\n");

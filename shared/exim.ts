@@ -197,4 +197,27 @@ export namespace Exim {
 
     return ok(messages);
   }
+
+  // Re-encodes a file from enclaveIn to enclaveOut, mapping msgs through transform.
+  export async function migrateFile(
+    file: Uint8Array,
+    crypto: ICrypto,
+    enclaveIn: Enclave,
+    enclaveOut: Enclave,
+    transform: (
+      msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+    ) => Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+  ): Promise<ValStat<Uint8Array>> {
+    const [msgs, stDec] = await decodeFile(file, crypto, enclaveIn);
+    if (stDec !== Status.Success) return err(stDec);
+    const [fileStruct, stFile] = fileCodec.decode(new Decoder(file));
+    if (stFile !== Status.Success) return err(stFile);
+    return encodeFile(
+      fileStruct.head.lbl,
+      fileStruct.head.idx,
+      transform(msgs),
+      crypto,
+      enclaveOut,
+    );
+  }
 }

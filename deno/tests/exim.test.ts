@@ -412,3 +412,135 @@ Deno.test("Exim.decodeFile", async (t) => {
     }
   });
 });
+
+Deno.test("Exim.migrateFile", async (t) => {
+  const crypto = new MockCrypto();
+  const [enclaveIn, stIn] = Enclave.fromBytes(testSeed);
+  if (stIn !== Status.Success || enclaveIn === undefined) {
+    throw new Error(`enclaveIn ${stIn}`);
+  }
+  const [enclaveOut, stOut] = Enclave.fromBytes(new Uint8Array(32).fill(0x22));
+  if (stOut !== Status.Success || enclaveOut === undefined) {
+    throw new Error(`enclaveOut ${stOut}`);
+  }
+
+  await t.step("re-encrypts under a new enclave", async () => {
+    const now = new Date();
+    const id = await crypto.genRandomBytes(8);
+    const [eid, statEid] = makeEID({ id, ts: now });
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
+    const body = new TextEncoder().encode("migrate me");
+    const [head, statHead] = await genUpsertHead({
+      now,
+      eid,
+      ctr: 1,
+      bod: body,
+      crypto,
+    });
+    if (statHead !== Status.Success) {
+      assertEquals(statHead, Status.Success);
+      return;
+    }
+    const [file, statEnc] = await Exim.encodeFile(
+      lbl,
+      1,
+      [{ head, body }],
+      crypto,
+      enclaveIn,
+    );
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [migrated, stMig] = await Exim.migrateFile(
+      file,
+      crypto,
+      enclaveIn,
+      enclaveOut,
+      (msgs) => msgs,
+    );
+    assertEquals(stMig, Status.Success);
+    if (stMig !== Status.Success) return;
+
+    const [outStruct, stOutFile] = fileCodec.decode(new Decoder(migrated));
+    assertEquals(stOutFile, Status.Success);
+    if (stOutFile !== Status.Success) return;
+    assertEquals(outStruct.head.lbl, lbl);
+    assertEquals(outStruct.head.idx, 1);
+
+    const [msgsOut, stDecOut] = await Exim.decodeFile(
+      migrated,
+      crypto,
+      enclaveOut,
+    );
+    assertEquals(stDecOut, Status.Success);
+    if (stDecOut !== Status.Success) return;
+    assertEquals(msgsOut.length, 1);
+    assertEquals(msgsOut[0].head.eid, head.eid);
+    assertEquals(msgsOut[0].body, body);
+
+    const [, stDecIn] = await Exim.decodeFile(migrated, crypto, enclaveIn);
+    assertEquals(stDecIn, Status.DecryptionError);
+  });
+
+  await t.step("applies transform to plaintext msgs", async () => {
+    const msgs: Array<{ head: IMessageHead; body?: Uint8Array }> = [];
+    for (let i = 0; i < 2; i++) {
+      const now = new Date();
+      const id = await crypto.genRandomBytes(8);
+      const [eid, statEid] = makeEID({ id, ts: now });
+      if (statEid !== Status.Success) {
+        assertEquals(statEid, Status.Success);
+        return;
+      }
+      const body = new TextEncoder().encode(`body ${i}`);
+      const [head, statHead] = await genUpsertHead({
+        now,
+        eid,
+        ctr: i,
+        bod: body,
+        crypto,
+      });
+      if (statHead !== Status.Success) {
+        assertEquals(statHead, Status.Success);
+        return;
+      }
+      msgs.push({ head, body });
+    }
+    const [file, statEnc] = await Exim.encodeFile(
+      lbl,
+      0,
+      msgs,
+      crypto,
+      enclaveIn,
+    );
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const [migrated, stMig] = await Exim.migrateFile(
+      file,
+      crypto,
+      enclaveIn,
+      enclaveOut,
+      (inMsgs) => {
+        const [first] = inMsgs;
+        return first ? [first] : [];
+      },
+    );
+    assertEquals(stMig, Status.Success);
+    if (stMig !== Status.Success) return;
+
+    const [msgsOut, stDec] = await Exim.decodeFile(
+      migrated,
+      crypto,
+      enclaveOut,
+    );
+    assertEquals(stDec, Status.Success);
+    if (stDec !== Status.Success) return;
+    assertEquals(msgsOut.length, 1);
+    assertEquals(msgsOut[0].head.eid, msgs[0].head.eid);
+    assertEquals(msgsOut[0].body, msgs[0].body);
+  });
+});

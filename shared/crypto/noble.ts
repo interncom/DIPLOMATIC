@@ -3,7 +3,7 @@ import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 import { blake3 } from "@noble/hashes/blake3";
 import { b64urltob, btoh, bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
-import { asX25519Sk, x25519Pub, type X25519Sk } from "./x25519.ts";
+import { asX25519Sk, x25519, x25519Pub, type X25519Sk } from "./x25519.ts";
 import type {
   DerivationSeed,
   Hash,
@@ -288,7 +288,8 @@ export class NobleCrypto implements ICrypto {
   }
 
   // Computes ECDH via WebCrypto deriveBits on our imported scalar.
-  // Does not re-check against RFC 7748; pub was checked in genX25519.
+  // Some CLI SubtleCrypto builds import X25519 PKCS#8 (genX25519) but reject
+  // raw-pub ECDH ("The algorithm is not supported"); then RFC 7748 ladder.
   async x25519Shared(
     priv: X25519Sk,
     peerPub: Uint8Array,
@@ -316,6 +317,9 @@ export class NobleCrypto implements ICrypto {
         256,
       );
       return new Uint8Array(bits);
+    } catch {
+      // Fall back to TypeScript x25519 implementation if crypto.subtle's is not available.
+      return x25519(priv, peerPub);
     } finally {
       pkcs8.fill(0);
       new Uint8Array(pkcs8Ab).fill(0);

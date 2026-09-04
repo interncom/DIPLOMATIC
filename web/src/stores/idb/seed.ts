@@ -127,6 +127,7 @@ export class IDBSeedStore implements ISeedStore {
     return new PrfSeedStore({
       rpId: opts.rpId,
       rpName: opts.rpName,
+      userName: opts.userName,
       keyring,
       persistKeyring: (r) => this.persistKeyring(r),
     });

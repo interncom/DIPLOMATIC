@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
-import { DEFAULT_PRF_SALT, DEFAULT_PRF_USER_NAME } from "../src/shared/webauthn/prf";
+import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 import {
   KEYRING_MAX,
   keyringKind,
@@ -156,7 +156,7 @@ describe("PrfSeedStore keyring", () => {
     const pub = create.mock.calls[0][0].publicKey;
     expect(pub.excludeCredentials).toHaveLength(1);
     expect(pub.user.displayName).toBe("Yubi");
-    expect(pub.user.name).toBe(DEFAULT_PRF_USER_NAME);
+    expect(pub.user.name).toBe("localhost");
     expect(saved?.entries).toHaveLength(2);
     expect(saved?.entries[0]?.credId).toEqual(first.credId);
     expect(saved?.entries[1]?.credId).toEqual(createId);
@@ -228,6 +228,67 @@ describe("PrfSeedStore keyring", () => {
     expect(dst).toBe(Status.Success);
     expect(store.list()).toHaveLength(0);
     expect(store.keyring).toBeUndefined();
+  });
+
+  it("create uses rpId as user.name and rpName as displayName", async () => {
+    const createId = new Uint8Array(16).fill(3);
+    const prf = new Uint8Array(32).fill(5);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(createId.buffer, {
+        prf: {
+          enabled: true,
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    stubNavigator({ create, get: vi.fn() });
+    const store = new PrfSeedStore({
+      rpId: "life.interncom.org",
+      rpName: "LIFE",
+      persistKeyring: () => undefined,
+    });
+    const [, st] = await store.bindAndSave(enclaveOf(9), {
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(st).toBe(Status.Success);
+    const pub = create.mock.calls[0][0].publicKey;
+    expect(pub.user.name).toBe("life.interncom.org");
+    expect(pub.user.displayName).toBe("LIFE");
+    expect(pub.rp.id).toBe("life.interncom.org");
+    expect(pub.rp.name).toBe("LIFE");
+  });
+
+  it("create honors explicit userName", async () => {
+    const createId = new Uint8Array(16).fill(4);
+    const prf = new Uint8Array(32).fill(5);
+    const create = vi.fn().mockResolvedValue(
+      mockCred(createId.buffer, {
+        prf: {
+          enabled: true,
+          results: {
+            first: prf.buffer.slice(prf.byteOffset, prf.byteOffset + 32),
+          },
+        },
+      }),
+    );
+    stubNavigator({ create, get: vi.fn() });
+    const store = new PrfSeedStore({
+      rpId: "life.interncom.org",
+      rpName: "LIFE",
+      userName: "LIFE",
+      persistKeyring: () => undefined,
+    });
+    const [, st] = await store.bindAndSave(enclaveOf(9), {
+      salt: DEFAULT_PRF_SALT,
+      createCredIfNeeded: true,
+    });
+    expect(st).toBe(Status.Success);
+    const pub = create.mock.calls[0][0].publicKey;
+    expect(pub.user.name).toBe("LIFE");
+    expect(pub.user.displayName).toBe("LIFE");
   });
 
   it("refuses a ninth binding", async () => {

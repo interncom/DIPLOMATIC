@@ -12,23 +12,28 @@ import {
   fidoDev,
   loadRing,
   makeHmacCred,
-  parseLabel,
+  parseKeyArgs,
   ringPath,
   upsertEntry,
   writeRing,
 } from "./cli-prf.ts";
 
-const arg = process.argv[2];
-if (arg === undefined || arg === "-h" || arg === "--help") {
-  console.error("Usage: bun run tools/keys/gen.ts LABEL");
+const argv = process.argv.slice(2);
+if (
+  argv.includes("-h") || argv.includes("--help") ||
+  argv.every((a) => a === "--non-resident")
+) {
+  console.error("Usage: bun run tools/keys/gen.ts LABEL [--non-resident]");
   console.error("");
   console.error("  Mix musec, Enclave.fromRandom, bind the plugged YubiKey");
-  console.error("  (non-resident hmac-secret). Writes ~/.diplomatic/LABEL.");
-  console.error("  Refuses if that file exists (use bind.ts to add a token).");
-  process.exit(arg === "-h" || arg === "--help" ? 0 : 1);
+  console.error("  (hmac-secret). Discoverable cred by default (Authenticator,");
+  console.error("  one RK slot). --non-resident: no RK. Writes");
+  console.error("  ~/.diplomatic/LABEL. Refuses if that file exists");
+  console.error("  (use bind.ts to add a token).");
+  process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
 }
 
-const label = parseLabel(arg);
+const { label, resident } = parseKeyArgs(argv);
 const path = ringPath(label);
 if (loadRing(path) !== undefined) {
   die(`${path} exists; use bind.ts ${label} to add a YubiKey`);
@@ -43,11 +48,11 @@ const salt = await cliSalt();
 const ring = { v: 2 as const, rpId: CLI_RP_ID, salt, entries: [] };
 const dev = fidoDev();
 console.error(`Using ${dev}`);
-const credId = makeHmacCred(dev, ring.rpId);
+const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
 const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
 const [sealed, sst] = await enc.sealWithIkm(ikm);
 if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
-upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed });
+upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
 writeRing(path, ring);
 console.error(`Wrote ${path}`);
 console.error(`credId ${btoh(credId)}`);

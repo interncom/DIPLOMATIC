@@ -22,6 +22,7 @@ export type CliEntry = {
   type: "prf";
   credId: Uint8Array;
   sealedMaster: Uint8Array;
+  resident: boolean;
 };
 
 export type CliRing = {
@@ -43,6 +44,20 @@ export function parseLabel(s: string): string {
     die(`bad label ${s}`);
   }
   return s;
+}
+
+/** LABEL plus optional `--non-resident` from argv (after the script name). */
+export function parseKeyArgs(argv: string[]): {
+  label: string;
+  resident: boolean;
+} {
+  const resident = !argv.includes("--non-resident");
+  const rest = argv.filter((a) => a !== "--non-resident");
+  const a0 = rest[0];
+  if (a0 === undefined || a0 === "-h" || a0 === "--help") {
+    return { label: "", resident };
+  }
+  return { label: parseLabel(a0), resident };
 }
 
 /** `~/.diplomatic/<LABEL>` */
@@ -75,6 +90,7 @@ function parseEntry(v: unknown): CliEntry {
     type: "prf",
     credId: hexField(v, "credId"),
     sealedMaster: hexField(v, "sealedMaster", 72),
+    resident: v.resident === true,
   };
 }
 
@@ -111,6 +127,7 @@ export function writeRing(path: string, ring: CliRing): void {
       type: "prf",
       credId: btoh(e.credId),
       sealedMaster: btoh(e.sealedMaster),
+      resident: e.resident,
     })),
   }) + "\n";
   writeFileSync(path, body, { mode: 0o600 });
@@ -175,18 +192,27 @@ export async function cliSalt(): Promise<Uint8Array> {
   return await noble.blake3(SALT_DOM);
 }
 
-/** Create a non-resident hmac-secret cred; returns cred id. */
-export function makeHmacCred(dev: string, rpId: string): Uint8Array {
+/** Create a hmac-secret cred; returns cred id. `-r` when resident. */
+export function makeHmacCred(
+  dev: string,
+  rpId: string,
+  opts?: { resident?: boolean; userName?: string },
+): Uint8Array {
   const cdh = new Uint8Array(32);
   const uid = new Uint8Array(16);
   crypto.getRandomValues(cdh);
   crypto.getRandomValues(uid);
-  const input = [b64enc(cdh), rpId, CLI_USER, b64enc(uid)].join("\n") + "\n";
-  console.error("Touch the key / enter PIN to create a PRF credential...");
-  const out = runFido(
-    ["fido2-cred", "-M", "-h", "-t", "uv=true", "-t", "pin=true", dev],
-    input,
+  const user = opts?.userName ?? CLI_USER;
+  const input = [b64enc(cdh), rpId, user, b64enc(uid)].join("\n") + "\n";
+  const argv = ["fido2-cred", "-M", "-h", "-t", "uv=true", "-t", "pin=true"];
+  if (opts?.resident !== false) argv.push("-r");
+  argv.push(dev);
+  console.error(
+    opts?.resident === false
+      ? "Touch the key / enter PIN to create a PRF credential..."
+      : "Touch the key / enter PIN to create a resident PRF credential...",
   );
+  const out = runFido(argv, input);
   const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   const idLine = lines[4];
   if (idLine === undefined) die("fido2-cred: no credential id");

@@ -1,4 +1,4 @@
-// Enroller half of DHKE pair: unlock CLI PRF binding, emit dhkeResp hex.
+// Enroller DHKE: unlock labeled CLI keyring, emit dhkeResp hex.
 
 import { readFileSync } from "node:fs";
 import readline from "node:readline";
@@ -7,20 +7,19 @@ import { Status } from "../../shared/consts.ts";
 import { NobleCrypto } from "../../shared/crypto/noble.ts";
 import { asDHKEReq } from "../../shared/crypto/pairing.ts";
 import {
-  defaultBindPath,
   die,
   fidoDev,
-  loadBind,
-  unlockBind,
-} from "../cli-prf.ts";
+  loadRing,
+  parseLabel,
+  ringPath,
+  unlockRing,
+} from "./cli-prf.ts";
 
 function usage(code: number): never {
-  console.error("Usage: bun run pair.ts [BINDING_FILE] [DHKEREQ_HEX]");
+  console.error("Usage: bun run tools/keys/pair.ts LABEL [DHKEREQ_HEX]");
   console.error("");
-  console.error("  Unlock the CLI PRF binding (default ~/.diplomatic) with");
-  console.error("  a YubiKey UV, accept the enrollee DHKEReq (64 hex chars),");
-  console.error("  print DHKEResp hex on stdout for paste into the web app.");
-  console.error("");
+  console.error("  Unlock ~/.diplomatic/LABEL with a YubiKey UV, accept the");
+  console.error("  enrollee DHKEReq (64 hex chars), print DHKEResp hex.");
   console.error("  Progress and PIN prompts go to stderr.");
   process.exit(code);
 }
@@ -28,17 +27,12 @@ function usage(code: number): never {
 const a0 = process.argv[2];
 const a1 = process.argv[3];
 if (a0 === "-h" || a0 === "--help") usage(0);
+if (a0 === undefined) usage(1);
 
-let path = defaultBindPath();
+const label = parseLabel(a0);
+const path = ringPath(label);
 let reqHex: string | undefined;
-if (a0 !== undefined && a0.length > 0) {
-  if (/^[0-9a-fA-F]{64}$/.test(a0) && a1 === undefined) {
-    reqHex = a0;
-  } else {
-    path = a0;
-    if (a1 !== undefined && a1.length > 0) reqHex = a1;
-  }
-}
+if (a1 !== undefined && a1.length > 0) reqHex = a1;
 
 /** Which X25519 step threw (pairAccept swallows this into CryptoError). */
 async function noteDhkeErr(peer: Uint8Array): Promise<void> {
@@ -87,10 +81,11 @@ if (!/^[0-9a-fA-F]{64}$/.test(hex)) die("DHKEReq must be 64 hex characters");
 const [dhkeReq, qst] = asDHKEReq(htob(hex));
 if (qst !== Status.Success || dhkeReq === undefined) die(`DHKEReq ${qst}`);
 
-const bind = loadBind(path);
+const ring = loadRing(path);
+if (ring === undefined) die(`no keyring at ${path}`);
 const dev = fidoDev();
 console.error(`Using ${dev}`);
-const enc = await unlockBind(bind, dev);
+const enc = await unlockRing(ring, dev);
 const [resp, ast] = await enc.pairAccept(dhkeReq, []);
 if (ast !== Status.Success || resp === undefined) {
   if (ast === Status.CryptoError) await noteDhkeErr(dhkeReq);

@@ -1,24 +1,24 @@
 # REKEY
 
-REKEY takes a DIPLOMATIC export file and reencrypts it with a new master key.
-
-The old and new master keys are read from files (paths are provided on the
-command line) so the secret material never appears in shell history.
+REKEY takes a DIPLOMATIC export file and re-encrypts it under a different
+labeled CLI master (`~/.diplomatic/<LABEL>`). Each label is unlocked with
+a YubiKey UV via `tools/keys` (hmac-secret). No plaintext key files.
 
 ## Usage
 
-`bun run rekey.ts OLDKEY_FILE NEWKEY_FILE INPUT_FILE [OUTPUT_FILE]`
+`bun run rekey.ts OLD_LABEL NEW_LABEL INPUT_FILE [OUTPUT_FILE]`
 
-- `OLDKEY_FILE`: file containing the current 64-hex-char master key.
-- `NEWKEY_FILE`: file containing the new 64-hex-char master key.
-- `INPUT_FILE` (required): the export file to rekey.
-- `OUTPUT_FILE` (optional): destination. If omitted, writes to stdout
-  (progress messages always go to stderr, so `> out.dpl` works).
+- `OLD_LABEL` / `NEW_LABEL`: CLI key labels (must already exist; `gen` or
+  `pair request`). Must differ.
+- `INPUT_FILE`: export to rekey.
+- `OUTPUT_FILE`: optional. If omitted, writes to stdout (progress on
+  stderr, so `> out.dpl` works).
 
-Progress messages are emitted for each major step:
-reading key files, reading input, decrypting, re-encrypting, writing.
+If the labels live on different tokens, swap when prompted.
 
 Examples:
 
-  bun run rekey.ts old.key new.key export.dpl rekeyed.dpl
-  bun run rekey.ts old.key new.key export.dpl > rekeyed.dpl
+```
+bun run rekey.ts old new export.dpl rekeyed.dpl
+bun run rekey.ts old new export.dpl > rekeyed.dpl
+```

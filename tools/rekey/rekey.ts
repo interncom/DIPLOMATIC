@@ -1,80 +1,71 @@
 import { Exim } from "../../shared/exim.ts";
-import { Enclave } from "../../shared/crypto/enclave.ts";
-import { htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import crypto from "../../bun/src/crypto.ts";
+import {
+  die,
+  fidoDev,
+  loadRing,
+  parseLabel,
+  ringPath,
+  unlockRing,
+  waitEnter,
+} from "../keys/cli-prf.ts";
 
-const [oldKeyFile, newKeyFile, inputFile, outputFile] = process.argv.slice(2);
-if (!oldKeyFile || !newKeyFile || !inputFile) {
+const [oldLabelArg, newLabelArg, inputFile, outputFile] = process.argv.slice(2);
+if (
+  oldLabelArg === undefined || newLabelArg === undefined ||
+  inputFile === undefined || oldLabelArg === "-h" || oldLabelArg === "--help"
+) {
   console.error(
-    "Usage: bun run rekey.ts OLDKEY_FILE NEWKEY_FILE INPUT_FILE [OUTPUT_FILE]",
+    "Usage: bun run rekey.ts OLD_LABEL NEW_LABEL INPUT_FILE [OUTPUT_FILE]",
   );
   console.error("");
-  console.error("  REKEY reads a DIPLOMATIC export file and re-encrypts it");
-  console.error("  using a new master key.");
-  console.error("");
-  console.error("  The old and new keys are read from files (paths provided");
-  console.error("  on the command line) so that secret key material does not");
-  console.error("  appear in shell history.");
+  console.error("  REKEY reads a DIPLOMATIC export and re-encrypts it under");
+  console.error("  a different labeled CLI key (~/.diplomatic/<LABEL>).");
+  console.error("  Each label is unlocked with a YubiKey UV (fido2-tools).");
   console.error("");
   console.error("  INPUT_FILE is the export to rekey (required).");
   console.error("  If OUTPUT_FILE is omitted, result is written to stdout.");
   console.error("  (All progress messages go to stderr.)");
   console.error("");
   console.error("Examples:");
-  console.error("  bun run rekey.ts old.key new.key export.dpl rekeyed.dpl");
-  console.error("  bun run rekey.ts old.key new.key export.dpl > rekeyed.dpl");
-  process.exit(1);
+  console.error("  bun run rekey.ts old new export.dpl rekeyed.dpl");
+  console.error("  bun run rekey.ts old new export.dpl > rekeyed.dpl");
+  process.exit(oldLabelArg === "-h" || oldLabelArg === "--help" ? 0 : 1);
 }
 
-console.error("Reading old key file...");
-let oldHex: string;
-try {
-  oldHex = (await Bun.file(oldKeyFile).text()).trim();
-} catch (err) {
-  console.error(`Failed to read old key file ${oldKeyFile}: ${err}`);
-  process.exit(1);
-}
-if (!/^[0-9a-fA-F]{64}$/.test(oldHex)) {
-  console.error("Old key file must contain exactly 64 hexadecimal characters.");
-  process.exit(1);
-}
+const oldLabel = parseLabel(oldLabelArg);
+const newLabel = parseLabel(newLabelArg);
+if (oldLabel === newLabel) die("OLD_LABEL and NEW_LABEL must differ");
 
-console.error("Reading new key file...");
-let newHex: string;
-try {
-  newHex = (await Bun.file(newKeyFile).text()).trim();
-} catch (err) {
-  console.error(`Failed to read new key file ${newKeyFile}: ${err}`);
-  process.exit(1);
-}
-if (!/^[0-9a-fA-F]{64}$/.test(newHex)) {
-  console.error("New key file must contain exactly 64 hexadecimal characters.");
-  process.exit(1);
-}
+const oldRing = loadRing(ringPath(oldLabel));
+if (oldRing === undefined) die(`no keyring for ${oldLabel}`);
+const newRing = loadRing(ringPath(newLabel));
+if (newRing === undefined) die(`no keyring for ${newLabel}`);
+
+console.error(`Unlocking ${oldLabel}...`);
+const oldDev = fidoDev();
+console.error(`Using ${oldDev}`);
+const oldEnclave = await unlockRing(oldRing, oldDev);
+
+await waitEnter(
+  `Insert the YubiKey for ${newLabel} if it is a different token, then Enter.`,
+);
+
+console.error(`Unlocking ${newLabel}...`);
+const newDev = fidoDev();
+console.error(`Using ${newDev}`);
+const newEnclave = await unlockRing(newRing, newDev);
 
 console.error("Reading input file...");
 let input: Uint8Array;
 try {
   input = new Uint8Array(await Bun.file(inputFile).arrayBuffer());
 } catch (err) {
-  console.error(`Failed to read input file ${inputFile}: ${err}`);
-  process.exit(1);
+  die(`Failed to read input file ${inputFile}: ${err}`);
 }
-if (input.length === 0) {
-  console.error("Input file is empty.");
-  process.exit(1);
-}
+if (input.length === 0) die("Input file is empty.");
 console.error(`Read ${input.length} bytes from ${inputFile}.`);
-
-const oldBytes = htob(oldHex);
-const newBytes = htob(newHex);
-
-console.error("Opening enclaves...");
-const [oldEnclave, oest] = Enclave.fromBytes(oldBytes);
-if (oest !== Status.Success || oldEnclave === undefined) throw new Error(`old enclave ${oest}`);
-const [newEnclave, nest] = Enclave.fromBytes(newBytes);
-if (nest !== Status.Success || newEnclave === undefined) throw new Error(`new enclave ${nest}`);
 
 console.error("Migrating export to new master key...");
 const [outBytes, statMig] = await Exim.migrateFile(
@@ -84,13 +75,12 @@ const [outBytes, statMig] = await Exim.migrateFile(
   newEnclave,
   (msgs) => msgs,
 );
-if (statMig !== Status.Success) {
-  console.error(`Failed to migrate: ${Status[statMig]}`);
-  process.exit(1);
+if (statMig !== Status.Success || outBytes === undefined) {
+  die(`Failed to migrate: ${Status[statMig]}`);
 }
 
 console.error("Writing rekeyed data...");
-if (outputFile) {
+if (outputFile !== undefined && outputFile.length > 0) {
   await Bun.write(outputFile, outBytes);
   console.error(`Wrote ${outBytes.length} bytes to ${outputFile}.`);
 } else {
@@ -99,4 +89,3 @@ if (outputFile) {
 }
 
 console.error("Done.");
-process.exit(0);

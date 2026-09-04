@@ -116,6 +116,30 @@ export function loadRing(path: string): CliRing | undefined {
   };
 }
 
+/** First hmac-secret bind for a new label. Refuses if the file exists. */
+export async function persistNewLabel(
+  enc: Enclave,
+  label: string,
+  resident: boolean,
+): Promise<void> {
+  const path = ringPath(label);
+  if (loadRing(path) !== undefined) {
+    die(`${path} exists; use bind.ts ${label} to add a YubiKey`);
+  }
+  const salt = await cliSalt();
+  const ring = { v: 2 as const, rpId: CLI_RP_ID, salt, entries: [] };
+  const dev = fidoDev();
+  console.error(`Using ${dev}`);
+  const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
+  const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
+  const [sealed, sst] = await enc.sealWithIkm(ikm);
+  if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
+  upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
+  writeRing(path, ring);
+  console.error(`Wrote ${path}`);
+  console.error(`credId ${btoh(credId)}`);
+}
+
 /** Write a CLI keyring (mode 0600). */
 export function writeRing(path: string, ring: CliRing): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

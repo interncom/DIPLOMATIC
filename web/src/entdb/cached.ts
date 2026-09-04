@@ -47,7 +47,7 @@ export type OpenEntDBOptions = {
    */
   cache?: boolean;
   /**
-   * Secondary type/pid/gid/tag indexes on the in-memory layer (default true).
+   * Secondary type/pid/tag indexes on the in-memory layer (default true).
    * Speeds up getEntities list queries after a type is warm.
    * Ignored when `cache` is false.
    */
@@ -337,7 +337,6 @@ function sameRow(a: IEntRow, b: IEntRow): boolean {
   }
   if (a.createdAt.getTime() !== b.createdAt.getTime()) return false;
   if (a.type !== b.type) return false;
-  if (a.gid !== b.gid) return false;
   if (!optBytesEqual(a.pid, b.pid)) return false;
   if (!sameTags(a.tags, b.tags)) return false;
   return sameBody(a.body, b.body);

@@ -3,7 +3,7 @@
 
 import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
-import { EntityID, GroupID, Hash, ICrypto, IOp } from "../shared/types";
+import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 import {
   applyOp,
@@ -24,22 +24,22 @@ import { b64tob, btob64 } from "../shared/binary";
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
 export const typeUpdatedAtIndexName = "entity_type_updated_at";
-export const typeGroupIndexName = "entity_type_group_id";
 export const typeParentIndexName = "entity_type_parent_id";
 /** multiEntry index on tgs[]; query by tag then filter by type. */
 export const tagsIndexName = "entity_tags";
+/** Dropped in v14; name kept so upgrade can deleteIndex. */
+const typeGroupIndexName = "entity_type_group_id";
 
 /** Shared by main thread and sync worker — must stay in lockstep. */
 export const ENT_IDB_NAME = "db";
-/** v13: stored field tags → tgs (3-letter keys); multiEntry on tgs. */
-export const ENT_IDB_VERSION = 13;
+/** v14: drop [`typ`,`gid`] index (gid superseded by tags). */
+export const ENT_IDB_VERSION = 14;
 
 interface IStoredEntity<T = unknown> {
   bod: T;
   crd: Date; // createdAt
   ctr?: number;
   eid: string;
-  gid?: string;
   pid?: string;
   tgs?: string[]; // tags (API); multiEntry-indexed
   typ: string;
@@ -72,16 +72,12 @@ function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
     crd: ent.createdAt,
     ...(ent.ctr !== 0 ? { ctr: ent.ctr } : {}),
     eid: btob64(ent.eid),
-    gid: ent.gid,
     pid: ent.pid ? btob64(ent.pid) : undefined,
     tgs: ent.tags,
     typ: ent.type,
     upd: ent.updatedAt,
   };
   // NOTE: IndexedDB *will* store undefined attributes unless deleted. Wasteful.
-  if (stored.gid === undefined) {
-    delete stored.gid;
-  }
   if (stored.pid === undefined) {
     delete stored.pid;
   }
@@ -116,7 +112,6 @@ function storedToEntity<T>(
     ctr: stored.ctr ?? 0,
     type: stored.typ,
     eid: b64tob(stored.eid) as EntityID,
-    gid: stored.gid,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
     ...(stored.tgs !== undefined ? { tags: stored.tgs } : {}),
   };
@@ -443,28 +438,6 @@ export class EntIDB implements IEntDB {
     });
   }
 
-  async getGroupMembers<T>(
-    opType: string,
-    gid: GroupID,
-  ): Promise<ValStat<IEntity<T>[]>> {
-    let db: IDBDatabase;
-    try {
-      db = await this.ensureDb();
-    } catch {
-      return err(Status.DatabaseClosed);
-    }
-    const tx = db.transaction(entityTableName, "readonly");
-    const index = tx.objectStore(entityTableName).index(typeGroupIndexName);
-    return new Promise((resolve) => {
-      const req = index.getAll(IDBKeyRange.only([opType, gid]));
-      req.onsuccess = () => {
-        const storedEnts = req.result as IStoredEntity<T>[];
-        resolve(ok(storedEnts.map(storedToEntity)));
-      };
-      req.onerror = () => resolve(err(Status.DatabaseError));
-    });
-  }
-
   async getAllOfType<T>(
     opType: string,
   ): Promise<ValStat<IEntity<T>[]>> {
@@ -540,8 +513,6 @@ export class EntIDB implements IEntDB {
         };
         req.onerror = () => resolve(err(Status.DatabaseError));
       });
-    } else if ("gid" in query) {
-      return await this.getGroupMembers<T>(query.type, query.gid);
     } else if ("tag" in query) {
       return await this.getByTag<T>(query.type, query.tag);
     } else if ("updatedAt" in query) {
@@ -624,10 +595,8 @@ function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
       unique: false,
     });
   }
-  if (!store.indexNames.contains(typeGroupIndexName)) {
-    store.createIndex(typeGroupIndexName, ["typ", "gid"], {
-      unique: false,
-    });
+  if (store.indexNames.contains(typeGroupIndexName)) {
+    store.deleteIndex(typeGroupIndexName);
   }
   if (!store.indexNames.contains(typeParentIndexName)) {
     store.createIndex(typeParentIndexName, ["typ", "pid"], {

@@ -26,7 +26,6 @@ describe("EntDBMemory.apply()", () => {
         off: 0,
         ctr: 1,
         eid,
-        gid: "group1",
         type: "test",
         body: { data: "new" },
       };
@@ -38,7 +37,6 @@ describe("EntDBMemory.apply()", () => {
       expect(entityStatus).toBe(Status.Success);
       expect(entity).toEqual({
         eid,
-        gid: "group1",
         type: "test",
         createdAt: new Date(1000),
         updatedAt: new Date(1000),
@@ -74,8 +72,6 @@ describe("EntDBMemory.apply()", () => {
         off: 10,
         ctr: 2,
         eid,
-        gid: "group2",
-        // pid: new Uint8Array(16).fill(3),
         type: "test2",
         body: { data: "new" },
       };

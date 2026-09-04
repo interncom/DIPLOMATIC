@@ -57,7 +57,6 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
     off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,
-    gid: bodDec.gid,
     pid: bodDec.pid,
     tags: bodDec.tags,
     type: bodDec.type,

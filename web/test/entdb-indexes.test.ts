@@ -30,7 +30,6 @@ function mutate(
   type: string,
   body: unknown,
   opts?: {
-    gid?: string;
     pid?: Uint8Array;
     tags?: string[];
     off?: number;
@@ -43,7 +42,6 @@ function mutate(
     ctr: opts?.ctr ?? 1,
     type,
     body,
-    gid: opts?.gid,
     pid: opts?.pid,
     tags: opts?.tags,
   };
@@ -60,7 +58,7 @@ describe("EntDBMemory indexes", () => {
       db = new EntDBMemory([], { indexes });
     });
 
-    it("lists by type, pid, gid", async () => {
+    it("lists by type, pid", async () => {
       const parent = await eidAt(1000, 1);
       const childA = await eidAt(2000, 2);
       const childB = await eidAt(3000, 3);
@@ -68,9 +66,9 @@ describe("EntDBMemory indexes", () => {
 
       await db.apply([
         mutate(parent, "project", { n: "p" }),
-        mutate(childA, "goal", { n: "a" }, { pid: parent, gid: "w1" }),
-        mutate(childB, "goal", { n: "b" }, { pid: parent, gid: "w2" }),
-        mutate(other, "goal", { n: "x" }, { gid: "w1" }),
+        mutate(childA, "goal", { n: "a" }, { pid: parent }),
+        mutate(childB, "goal", { n: "b" }, { pid: parent }),
+        mutate(other, "goal", { n: "x" }),
       ]);
 
       const [byType, stT] = await db.getEntities({ type: "goal" });
@@ -87,10 +85,6 @@ describe("EntDBMemory indexes", () => {
         return undefined;
       }));
       expect(names).toEqual(new Set(["a", "b"]));
-
-      const [byGid, stG] = await db.getEntities({ type: "goal", gid: "w1" });
-      expect(stG).toBe(Status.Success);
-      expect(byGid).toHaveLength(2);
 
       const [count, stC] = await db.countEntities({ type: "goal" });
       expect(stC).toBe(Status.Success);
@@ -415,7 +409,7 @@ describe("EntDBMemory indexes", () => {
       expect(del).toHaveLength(0);
     });
 
-    it("reindexes on type/pid/gid change and delete", async () => {
+    it("reindexes on type/pid change and delete", async () => {
       const parent1 = await eidAt(1000, 10);
       const parent2 = await eidAt(1100, 11);
       const child = await eidAt(2000, 12);
@@ -423,14 +417,13 @@ describe("EntDBMemory indexes", () => {
       await db.apply([
         mutate(parent1, "project", { n: "p1" }),
         mutate(parent2, "project", { n: "p2" }),
-        mutate(child, "goal", { n: "c" }, { pid: parent1, gid: "g1", ctr: 1 }),
+        mutate(child, "goal", { n: "c" }, { pid: parent1, ctr: 1 }),
       ]);
 
-      // Move parent + group + type via newer op.
+      // Move parent + type via newer op.
       await db.apply([
         mutate(child, "task", { n: "c2" }, {
           pid: parent2,
-          gid: "g2",
           off: 10,
           ctr: 1,
         }),
@@ -440,13 +433,9 @@ describe("EntDBMemory indexes", () => {
       expect(oldPid).toHaveLength(0);
       const [oldType] = await db.getEntities({ type: "goal" });
       expect(oldType).toHaveLength(0);
-      const [oldGid] = await db.getEntities({ type: "task", gid: "g1" });
-      expect(oldGid).toHaveLength(0);
 
       const [newPid] = await db.getEntities({ type: "task", pid: parent2 });
       expect(newPid).toHaveLength(1);
-      const [newGid] = await db.getEntities({ type: "task", gid: "g2" });
-      expect(newGid).toHaveLength(1);
 
       // Delete
       await db.apply([{

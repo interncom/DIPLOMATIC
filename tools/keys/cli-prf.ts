@@ -375,17 +375,22 @@ export async function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
 
 /** Wait for Enter on a TTY (key swap before binding another token). */
 export async function waitEnter(msg: string): Promise<void> {
-  if (!process.stdin.isTTY) return;
+  const stdin = process.stdin;
+  if (!stdin.isTTY) return;
   console.error(msg);
-  await new Promise<void>((resolve) => {
-    const onData = (buf: Buffer | string) => {
-      const s = typeof buf === "string" ? buf : buf.toString("utf8");
-      if (s.includes("\n") || s.includes("\r")) {
-        process.stdin.off("data", onData);
-        resolve();
-      }
-    };
-    process.stdin.resume();
-    process.stdin.on("data", onData);
-  });
+  try {
+    await new Promise<void>((resolve) => {
+      const onData = (buf: Buffer | string) => {
+        const s = typeof buf === "string" ? buf : buf.toString("utf8");
+        if (s.includes("\n") || s.includes("\r")) {
+          stdin.off("data", onData);
+          resolve();
+        }
+      };
+      stdin.resume();
+      stdin.on("data", onData);
+    });
+  } finally {
+    stdin.pause();
+  }
 }

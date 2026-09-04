@@ -9,8 +9,8 @@ master.
 
 | Command | Role |
 | --- | --- |
-| `gen.ts LABEL` | New master (musec + `fromRandom`), first hmac-secret bind |
-| `bind.ts LABEL` | Unlock, add another YubiKey to that label |
+| `gen.ts LABEL [--non-resident]` | New master (musec + `fromRandom`), first hmac-secret bind |
+| `bind.ts LABEL [--non-resident]` | Unlock, add another YubiKey to that label |
 | `pair.ts LABEL` | Unlock, DHKE enroller (`DHKEResp` hex on stdout) |
 
 Requires [fido2-tools](https://developers.yubico.com/libfido2/). Optional
@@ -19,11 +19,14 @@ Requires [fido2-tools](https://developers.yubico.com/libfido2/). Optional
 
 ```
 bun run tools/keys/gen.ts LIFE
+bun run tools/keys/gen.ts LIFE --non-resident
 bun run tools/keys/bind.ts LIFE
 bun run tools/keys/pair.ts LIFE
 bun run tools/keys/pair.ts LIFE 0123…cdef
 ```
 
-`gen` refuses if `~/.diplomatic/LABEL` exists. Pair: paste enrollee
-`DHKEReq` hex, paste printed resp into the web app, then
+Default is a discoverable cred (`fido2-cred -r`): Yubico Authenticator
+shows rp `diplomatic` / user `LABEL`, one RK slot. `--non-resident`
+skips the slot. `gen` refuses if `~/.diplomatic/LABEL` exists. Pair:
+paste enrollee `DHKEReq` hex, paste printed resp into the web app, then
 `sealWithPasskey` on that origin.

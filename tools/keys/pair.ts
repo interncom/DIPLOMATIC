@@ -1,38 +1,32 @@
-// Enroller DHKE: unlock labeled CLI keyring, emit dhkeResp hex.
+// DHKE pair: request (enrollee) or accept (enroller).
 
 import { readFileSync } from "node:fs";
 import readline from "node:readline";
 import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
 import { NobleCrypto } from "../../shared/crypto/noble.ts";
-import { asDHKEReq } from "../../shared/crypto/pairing.ts";
+import { asDHKEReq, asDHKEResp, DHKE_RESP_MIN } from "../../shared/crypto/pairing.ts";
 import {
   die,
   fidoDev,
   loadRing,
-  parseLabel,
+  parseKeyArgs,
+  persistNewLabel,
   ringPath,
   unlockRing,
 } from "./cli-prf.ts";
 
 function usage(code: number): never {
-  console.error("Usage: bun run tools/keys/pair.ts LABEL [DHKEREQ_HEX]");
+  console.error("Usage:");
+  console.error("  bun run tools/keys/pair.ts request LABEL [--non-resident]");
+  console.error("  bun run tools/keys/pair.ts accept LABEL [DHKEREQ_HEX]");
   console.error("");
-  console.error("  Unlock ~/.diplomatic/LABEL with a YubiKey UV, accept the");
-  console.error("  enrollee DHKEReq (64 hex chars), print DHKEResp hex.");
-  console.error("  Progress and PIN prompts go to stderr.");
+  console.error("  request: enrollee. Print DHKEReq, read DHKEResp, bind");
+  console.error("  the plugged YubiKey (new ~/.diplomatic/LABEL).");
+  console.error("  accept: enroller. Unlock LABEL, print DHKEResp.");
   process.exit(code);
 }
-
-const a0 = process.argv[2];
-const a1 = process.argv[3];
-if (a0 === "-h" || a0 === "--help") usage(0);
-if (a0 === undefined) usage(1);
-
-const label = parseLabel(a0);
-const path = ringPath(label);
-let reqHex: string | undefined;
-if (a1 !== undefined && a1.length > 0) reqHex = a1;
 
 /** Which X25519 step threw (pairAccept swallows this into CryptoError). */
 async function noteDhkeErr(peer: Uint8Array): Promise<void> {
@@ -56,11 +50,11 @@ async function noteDhkeErr(peer: Uint8Array): Promise<void> {
 }
 
 /** Read one line from stdin; prompt on stderr if that is a TTY. */
-async function readReq(): Promise<string> {
+async function readLine(prompt: string): Promise<string> {
   if (!process.stdin.isTTY) {
     return readFileSync(0, "utf8").trim();
   }
-  console.error("Paste DHKEReq hex, then Enter.");
+  console.error(prompt);
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stderr,
@@ -74,21 +68,75 @@ async function readReq(): Promise<string> {
   return line;
 }
 
-if (reqHex === undefined) reqHex = await readReq();
-const hex = reqHex.replace(/\s+/g, "");
-if (!/^[0-9a-fA-F]{64}$/.test(hex)) die("DHKEReq must be 64 hex characters");
-
-const [dhkeReq, qst] = asDHKEReq(htob(hex));
-if (qst !== Status.Success || dhkeReq === undefined) die(`DHKEReq ${qst}`);
-
-const ring = loadRing(path);
-if (ring === undefined) die(`no keyring at ${path}`);
-const dev = fidoDev();
-console.error(`Using ${dev}`);
-const enc = await unlockRing(ring, dev);
-const [resp, ast] = await enc.pairAccept(dhkeReq, []);
-if (ast !== Status.Success || resp === undefined) {
-  if (ast === Status.CryptoError) await noteDhkeErr(dhkeReq);
-  die(`pairAccept ${Status[ast]} (${ast})`);
+async function runRequest(label: string, resident: boolean): Promise<void> {
+  const path = ringPath(label);
+  if (loadRing(path) !== undefined) {
+    die(`${path} exists; use bind.ts ${label} to add a YubiKey`);
+  }
+  const [req, rst] = await Enclave.pairRequest();
+  if (rst !== Status.Success || req === undefined) die(`pairRequest ${rst}`);
+  const reqHex = btoh(req.dhkeReq);
+  console.error("DHKEReq (paste into the other device):");
+  process.stdout.write(reqHex + "\n");
+  const raw = await readLine("Paste DHKEResp hex, then Enter.");
+  const hex = raw.replace(/\s+/g, "");
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < DHKE_RESP_MIN * 2) {
+    req.wipe();
+    die(`DHKEResp must be at least ${DHKE_RESP_MIN * 2} hex characters`);
+  }
+  const [dhkeResp, vst] = asDHKEResp(htob(hex));
+  if (vst !== Status.Success || dhkeResp === undefined) {
+    req.wipe();
+    die(`DHKEResp ${vst}`);
+  }
+  const [opened, ost] = await req.finish(dhkeResp);
+  if (ost !== Status.Success || opened === undefined) {
+    die(`finish ${Status[ost]} (${ost})`);
+  }
+  await persistNewLabel(opened.enclave, label, resident);
 }
-process.stdout.write(btoh(resp) + "\n");
+
+async function runAccept(label: string, reqHex: string | undefined): Promise<void> {
+  const path = ringPath(label);
+  if (reqHex === undefined) {
+    reqHex = await readLine("Paste DHKEReq hex, then Enter.");
+  }
+  const hex = reqHex.replace(/\s+/g, "");
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) die("DHKEReq must be 64 hex characters");
+  const [dhkeReq, qst] = asDHKEReq(htob(hex));
+  if (qst !== Status.Success || dhkeReq === undefined) die(`DHKEReq ${qst}`);
+
+  const ring = loadRing(path);
+  if (ring === undefined) die(`no keyring at ${path}`);
+  const dev = fidoDev();
+  console.error(`Using ${dev}`);
+  const enc = await unlockRing(ring, dev);
+  const [resp, ast] = await enc.pairAccept(dhkeReq, []);
+  if (ast !== Status.Success || resp === undefined) {
+    if (ast === Status.CryptoError) await noteDhkeErr(dhkeReq);
+    die(`pairAccept ${Status[ast]} (${ast})`);
+  }
+  process.stdout.write(btoh(resp) + "\n");
+}
+
+const argv = process.argv.slice(2);
+if (argv.includes("-h") || argv.includes("--help") || argv.length === 0) {
+  usage(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
+}
+const verb = argv[0];
+if (verb !== "request" && verb !== "accept") usage(1);
+
+if (verb === "request") {
+  const { label, resident } = parseKeyArgs(argv.slice(1));
+  if (label.length === 0) usage(1);
+  await runRequest(label, resident);
+} else {
+  const rest = argv.slice(1);
+  const a0 = rest[0];
+  const a1 = rest[1];
+  if (a0 === undefined) usage(1);
+  const label = parseKeyArgs([a0]).label;
+  let reqHex: string | undefined;
+  if (a1 !== undefined && a1.length > 0) reqHex = a1;
+  await runAccept(label, reqHex);
+}

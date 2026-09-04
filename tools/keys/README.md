@@ -11,7 +11,8 @@ master.
 | --- | --- |
 | `gen.ts LABEL [--non-resident]` | New master (musec + `fromRandom`), first hmac-secret bind |
 | `bind.ts LABEL [--non-resident]` | Unlock, add another YubiKey to that label |
-| `pair.ts LABEL` | Unlock, DHKE enroller (`DHKEResp` hex on stdout) |
+| `pair.ts request LABEL [--non-resident]` | Enrollee: print `DHKEReq`, read `DHKEResp`, bind YubiKey |
+| `pair.ts accept LABEL [DHKEREQ_HEX]` | Enroller: unlock, print `DHKEResp` |
 
 Requires [fido2-tools](https://developers.yubico.com/libfido2/). Optional
 `DIP_FIDO_DEV`. CLI PRF salt is raw hmac-secret, not the browser SHA-256
@@ -21,12 +22,14 @@ Requires [fido2-tools](https://developers.yubico.com/libfido2/). Optional
 bun run tools/keys/gen.ts LIFE
 bun run tools/keys/gen.ts LIFE --non-resident
 bun run tools/keys/bind.ts LIFE
-bun run tools/keys/pair.ts LIFE
-bun run tools/keys/pair.ts LIFE 0123…cdef
+bun run tools/keys/pair.ts accept LIFE
+bun run tools/keys/pair.ts accept LIFE 0123…cdef
+bun run tools/keys/pair.ts request LIFE
 ```
 
 Default is a discoverable cred (`fido2-cred -r`): Yubico Authenticator
 shows rp `diplomatic` / user `LABEL`, one RK slot. `--non-resident`
-skips the slot. `gen` refuses if `~/.diplomatic/LABEL` exists. Pair:
-paste enrollee `DHKEReq` hex, paste printed resp into the web app, then
-`sealWithPasskey` on that origin.
+skips the slot. `gen` / `pair request` refuse if `~/.diplomatic/LABEL`
+exists. `accept`: paste enrollee `DHKEReq`, paste printed resp into the
+web app. `request`: paste printed `DHKEReq` into the existing device,
+paste its `DHKEResp` back, then bind the plugged YubiKey.

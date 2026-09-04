@@ -8,8 +8,7 @@
 // EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 // 1. "type" - Mandatory. Groups ents by their application-defined type.
 // 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents.
-// 3. "gid" (group ID) - Optional. Supports non-hierarchical grouping.
-// 4. "tags" - Optional string[]; multi-value reverse index (multiEntry).
+// 3. "tags" - Optional string[]; multi-value reverse index (multiEntry).
 //    Like pid reverse lookup, but N:M. Opaque strings; clients define semantics
 //    (e.g. impl:<btob64(eid)>). Query: exact string, { range }, or { prefix }.
 // These are msgpack-encoded within the DIPLOMATIC msg body.
@@ -25,7 +24,6 @@ import { Status } from "../shared/consts";
 import { err, ok, ValStat } from "../shared/valstat";
 import {
   EntityID,
-  GroupID,
   Hash,
   ICrypto,
   IEntRev,
@@ -99,7 +97,6 @@ export type TagSpec =
 
 export type EntitiesQuery =
   | { type: string }
-  | { type: string; gid: GroupID }
   | { type: string; pid: EntityID }
   | { type: string; tag: TagSpec }
   | { type: string; updatedAt: DateSpec };
@@ -271,7 +268,6 @@ export function applyOp(
     const tags = normalizeTags(op.tags);
     return ok({
       eid: op.eid,
-      gid: op.gid,
       pid: op.pid,
       ...(tags !== undefined ? { tags } : {}),
       type: op.type,

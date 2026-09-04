@@ -14,8 +14,6 @@ export {
   SEALED_MASTER_KEY_LEN,
 } from "./seed.ts";
 
-export type GroupID = string;
-
 const entityIDSymbol = Symbol("EntityID");
 export type EntityID = Uint8Array & { readonly [entityIDSymbol]: true };
 
@@ -23,7 +21,6 @@ export type SerializedContent = Uint8Array;
 
 export interface IMsgEntBody<T = unknown> {
   // aid?: AppID // Optional app ID to distinguish data from different apps in same database? TODO: think this one through.
-  gid?: GroupID; // Optional group ID to efficiently select a group of entities (will be indexed).
   pid?: EntityID; // Parent entity ID. Not necessarily of same type.
   /**
    * Optional multi-value tags for reverse multi-ref / label lookup (multiEntry-indexed).
@@ -76,7 +73,7 @@ export interface IMessageWithHash extends IMessage {
 // It reuses the header information from a message to identify a specific
 // entity, with created at timestamp embedded in the eid, and updated at
 // timestamp encoded via the milliseconds offset from created at (off).
-// An IOp additionally has type, gid, pid, and tags fields for indexing the entity.
+// An IOp additionally has type, pid, and tags fields for indexing the entity.
 export interface IDeleteOp extends Omit<IMessageHead, "len" | "hsh" | "bod"> {}
 export interface IMutateOp<T = unknown>
   extends IDeleteOp, Omit<IMsgEntBody<T>, "body"> {

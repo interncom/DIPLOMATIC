@@ -14,8 +14,7 @@ EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 
 1. "type" - Mandatory. Groups ents by their application-defined type.
 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents. One ent's `pid` is another ent's `eid`.
-3. "gid" (group ID) - Optional. Supports non-hierarchical grouping, e.g. by date.
-4. "tags" - Optional `string[]`. Multi-value reverse index (like `pid`, but N:M). Opaque strings; EntDB does not parse semantics. Clients define conventions (e.g. `impl:${btob64(eid)}` for non-exclusive "implements" links). Empty strings and duplicates are dropped on apply; omit or `[]` means no tags.
+3. "tags" - Optional `string[]`. Multi-value reverse index (like `pid`, but N:M). Opaque strings; EntDB does not parse semantics. Clients define conventions (e.g. `impl:${btob64(eid)}` for non-exclusive "implements" links, or `time-week-2026W01` for non-hierarchical grouping). Empty strings and duplicates are dropped on apply; omit or `[]` means no tags.
 
 These are [msgpack](https://msgpack.org)-encoded within the DIPLOMATIC msg body. The rest of the ent data lives alongside those, encoded the same way.
 
@@ -27,7 +26,6 @@ interface IStoredEntity<T = unknown> {
   crd: Date; // createdAt, 8 bytes
   ctr?: number; // 8 bytes
   eid: string; // Typical EID has 8 random bytes + 6 bytes for embedded timestamp = 14 bytes. Base64-encoded in IndexedDB, which expands it to 19 bytes unpadded.
-  gid?: string; // G bytes.
   pid?: string; // 19 bytes (see eid comment above).
   tgs?: string[]; // tags (API); multiEntry-indexed; each tag is a separate index entry.
   typ: string; // T bytes
@@ -44,7 +42,7 @@ interface IStoredTomb {
 type IStoredRow<T = unknown> = IStoredEntity<T> | IStoredTomb;
 ```
 
-An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no gid, no pid, no tgs, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
+An ent in IndexedDB takes variable amounts of storage based on what attributes it has set. The minimum-size ent will have a ctr of 0 which is omitted, no pid, no tgs, an N-byte body, and a T-byte type. That ent will consume N + 8 + 19 + T + 8 = 35 + N + T bytes of storage in IndexedDB, plus 3 bytes for each attribute name, costing 15 more bytes, for a total of 50 + N + T bytes of storage. That's the minimum.
 
 A maximum-size ent will have all attributes defined. Attribute name overhead scales with which optional fields are set; tgs add the array payload plus multiEntry index entries.
 
@@ -53,8 +51,7 @@ EntDB provides the following indexes for efficient ent lookup:
 1. [`typ`, `crd`],
 2. [`typ`, `upd`],
 3. [`typ`, `pid`],
-4. [`typ`, `gid`],
-5. `tgs` (multiEntry) — lookup by exact tag, then filter by `typ`.
+4. `tgs` (multiEntry) — lookup by exact tag, then filter by `typ`.
 
 **Tag reverse lookup** is the multi-value analogue of `pid`. `getEntities({ type, tag })` returns ents of that type whose `tags` array matches `tag`:
 
@@ -73,7 +70,7 @@ Range order is **string** order, not calendar semantics. Clients that want week/
 
 Memory EntDB scans the type bucket and filters. IndexedDB uses `IDBKeyRange.only` / `bound` on `[typ, upd]`.
 
-Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, gid }`, `{ type, tag }` (exact / range / prefix), or `{ type, updatedAt }` (exact / range). Compound combinations (e.g. pid + tag) are not supported.
+Query surface (v1): one secondary key per query — `{ type }`, `{ type, pid }`, `{ type, tag }` (exact / range / prefix), or `{ type, updatedAt }` (exact / range). Compound combinations (e.g. pid + tag) are not supported.
 
 Example client convention (not enforced by EntDB):
 

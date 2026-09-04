@@ -26,14 +26,14 @@ import { err, ok, ValStat } from "../shared/valstat.ts";
 /** Options for {@link EntDBMemory}. */
 export type EntDBMemoryOptions = {
   /**
-   * Secondary type / type+pid / type+gid / type+tag indexes for list queries.
+   * Secondary type / type+pid / type+tag indexes for list queries.
    * Default true. Disable only if you need to save the index memory.
    */
   indexes?: boolean;
 };
 
 /**
- * eidKey → entity within one type (or one type+parent / type+group bucket).
+ * eidKey → entity within one type (or one type+parent bucket).
  * Map (not array) so put/del stay O(1). Live ents only (tombstones unindexed).
  */
 type EntBucket = Map<string, IEntity>;
@@ -47,8 +47,6 @@ export class EntDBMemory implements IEntDB {
   private byType = new Map<string, EntBucket>();
   /** type → pidKey → eidKey → ent */
   private byTypePid = new Map<string, Map<string, EntBucket>>();
-  /** type → gid → eidKey → ent */
-  private byTypeGid = new Map<string, Map<string, EntBucket>>();
   /** type → tag → eidKey → ent */
   private byTypeTag = new Map<string, Map<string, EntBucket>>();
 
@@ -110,20 +108,6 @@ export class EntDBMemory implements IEntDB {
       pidBucket.set(key, ent);
     }
 
-    if (typeof ent.gid === "string") {
-      let byGid = this.byTypeGid.get(ent.type);
-      if (!byGid) {
-        byGid = new Map();
-        this.byTypeGid.set(ent.type, byGid);
-      }
-      let gidBucket = byGid.get(ent.gid);
-      if (!gidBucket) {
-        gidBucket = new Map();
-        byGid.set(ent.gid, gidBucket);
-      }
-      gidBucket.set(key, ent);
-    }
-
     if (ent.tags) {
       let byTag = this.byTypeTag.get(ent.type);
       if (!byTag) {
@@ -168,20 +152,6 @@ export class EntDBMemory implements IEntDB {
       }
     }
 
-    if (typeof ent.gid === "string") {
-      const byGid = this.byTypeGid.get(ent.type);
-      const gidBucket = byGid?.get(ent.gid);
-      if (gidBucket) {
-        gidBucket.delete(key);
-        if (gidBucket.size === 0) {
-          byGid?.delete(ent.gid);
-        }
-      }
-      if (byGid && byGid.size === 0) {
-        this.byTypeGid.delete(ent.type);
-      }
-    }
-
     if (ent.tags) {
       const byTag = this.byTypeTag.get(ent.type);
       if (byTag) {
@@ -204,7 +174,6 @@ export class EntDBMemory implements IEntDB {
   private clearIndexes(): void {
     this.byType.clear();
     this.byTypePid.clear();
-    this.byTypeGid.clear();
     this.byTypeTag.clear();
   }
 
@@ -340,9 +309,6 @@ export class EntDBMemory implements IEntDB {
         const pk = btob64(query.pid);
         return ok(this.bucketList<T>(this.byTypePid.get(type)?.get(pk)));
       }
-      if ("gid" in query) {
-        return ok(this.bucketList<T>(this.byTypeGid.get(type)?.get(query.gid)));
-      }
       if ("tag" in query) {
         return this.byTagSpec<T>(type, query.tag);
       }
@@ -359,15 +325,6 @@ export class EntDBMemory implements IEntDB {
         if (
           isLiveEnt(row) && row.type === type && row.pid &&
           bytesEqual(row.pid, query.pid)
-        ) {
-          results.push(row as IEntity<T>);
-        }
-      }
-    } else if ("gid" in query) {
-      for (const row of this.ents.values()) {
-        if (
-          isLiveEnt(row) && row.type === type &&
-          (typeof row.gid === "string" && row.gid === query.gid)
         ) {
           results.push(row as IEntity<T>);
         }

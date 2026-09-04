@@ -3,12 +3,12 @@
 // import useStateWatcher from "./useStateWatcher";
 
 // export function useEntities<T>(
-//   { type, gid, pid, updatedAt }: EntitiesQuery,
+//   { type, pid, updatedAt }: EntitiesQuery,
 // ): IEntity<T>[] | undefined {
 //   const { stateManager, entityDB } = useContext(AppContext);
 //   const getter = useCallback(() => {
-//     return entityDB.getEntities<T>({ type, gid, pid, updatedAt });
-//   }, [entityDB, type, gid, pid, updatedAt]);
+//     return entityDB.getEntities<T>({ type, pid, updatedAt });
+//   }, [entityDB, type, pid, updatedAt]);
 //   return useStateWatcher(stateManager, type, getter);
 // }
 

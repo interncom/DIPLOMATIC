@@ -56,7 +56,6 @@ import {
 } from "./shared/seed";
 import {
   EntityID,
-  GroupID,
   HostHandle,
   ICrypto,
   IDeleteParams,
@@ -187,7 +186,6 @@ export {
   EntityID,
   entStateManager,
   genSingletonEID,
-  GroupID,
   hostHTTPTransport,
   htob,
   HTTPTransport,

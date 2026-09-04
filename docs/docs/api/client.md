@@ -46,7 +46,6 @@ Shared fields on write ops (msgpack body of the ent):
 type EntFields<T> = {
   type: string;       // application type name
   body?: T;           // application payload
-  gid?: string;       // optional group id
   pid?: EntityID;     // optional parent eid (exclusive hierarchy)
   tags?: string[];    // optional multi-value reverse-indexed tags (N:M refs)
 };

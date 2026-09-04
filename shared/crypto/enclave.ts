@@ -489,7 +489,8 @@ export class Enclave {
     try {
       const hashed = await noble.blake3(mix);
       const [seed, st] = asMasterSeed(hashed);
-      if (st !== Status.Success || seed === undefined) return err(st);
+      if (st !== Status.Success) return err(st);
+      if (seed === undefined) return err(Status.InternalError);
       return ok(new Enclave(seed));
     } finally {
       os.fill(0);

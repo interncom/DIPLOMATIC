@@ -65,7 +65,7 @@ export async function largeBlobCreateCred(
   if (rst !== Status.Success) return err(rst);
   if (rpId === undefined) return err(Status.MissingParam);
 
-  const name = opts?.userName ?? "diplomatic-seed";
+  const name = opts?.userName ?? opts?.rpName ?? rpId;
   const selection: AuthenticatorSelectionCriteria = {
     residentKey: "required",
     requireResidentKey: true,

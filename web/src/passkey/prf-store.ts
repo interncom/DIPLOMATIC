@@ -81,11 +81,15 @@ export class PrfSeedStore implements ISeedStore {
   #enclave: Enclave | undefined;
   #keyring: Keyring | undefined;
   #rp: PrfRp;
+  /** WebAuthn user.name — rpId (hostname) so the binding key is app-specific. */
+  #userName: string;
   #persist: PersistKeyring;
 
   constructor(opts: PrfSeedStoreOpts) {
     this.#persist = opts.persistKeyring;
     this.#rp = { rpId: opts.rpId, rpName: opts.rpName };
+    this.#userName = opts.userName ?? opts.rpId ?? opts.rpName ??
+      DEFAULT_PRF_USER_NAME;
     if (opts.keyring !== undefined) {
       this.#keyring = cloneKeyring(opts.keyring);
     }
@@ -160,8 +164,8 @@ export class PrfSeedStore implements ISeedStore {
       credId: credIn,
       createCredIfNeeded: opts?.createCredIfNeeded ?? !known,
       excludeCredentials: exclude,
-      userName: DEFAULT_PRF_USER_NAME,
-      displayName: nick ?? DEFAULT_PRF_USER_NAME,
+      userName: this.#userName,
+      displayName: nick ?? this.#rp.rpName ?? this.#userName,
       authenticatorAttachment: opts?.authenticatorAttachment,
       hints: opts?.hints,
     }, prior);

@@ -211,6 +211,7 @@ describe("largeBlob createCred (WebAuthn I/O only)", () => {
     expect(st).toBe(Status.Success);
     const arg = create.mock.calls[0][0];
     expect(arg.publicKey.rp.id).toBe("life.interncom.org");
+    expect(arg.publicKey.user.name).toBe("life.interncom.org");
   });
 
   it("createCred fails when authenticator omits largeBlob", async () => {

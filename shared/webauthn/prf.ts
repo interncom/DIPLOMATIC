@@ -9,11 +9,12 @@ import {
   type WebAuthnRp,
 } from "./common.ts";
 
-export type PrfRp = WebAuthnRp;
+export type PrfRp = WebAuthnRp & {
+  /** WebAuthn user.name — stable account id shown on the binding key. */
+  userName?: string;
+};
 
 export type PrfCreateOpts = PrfRp & {
-  /** WebAuthn user.name — stable account id. */
-  userName?: string;
   /** WebAuthn user.displayName — human nick. */
   displayName?: string;
   /** Omit so the UA can offer roaming keys (YubiKey) and third-party providers. */
@@ -27,7 +28,7 @@ export type PrfCreateOpts = PrfRp & {
 /** Default salt for DIPLOMATIC PRF eval (UTF-8). */
 export const DEFAULT_PRF_SALT = new TextEncoder().encode("diplomatic.prf.v1");
 
-/** Default WebAuthn user.name / displayName when none is supplied. */
+/** Last-resort WebAuthn user.name when the app omits userName, rpId, and rpName. */
 export const DEFAULT_PRF_USER_NAME = "diplomatic-prf";
 
 /** Public ceremony facts (no PRF bytes). */

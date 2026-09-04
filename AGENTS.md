@@ -69,7 +69,7 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
   - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
   - `npm test` from `web` dir.
 
-- Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. Type errors and warnings are never acceptable.
+- Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.
 
 - Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully.
 

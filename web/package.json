@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Secure sync layer",
   "scripts": {
-    "tsc": "tsc",
+    "tsc": "tsc && tsc --project ../pkg/tsconfig-cli.json --noEmit",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "fmt": "deno fmt",

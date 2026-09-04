@@ -2,28 +2,33 @@
 // CLI salt is raw hmac-secret (not the browser's SHA-256 "WebAuthn PRF" map).
 
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { btoh, htob } from "../shared/binary.ts";
-import { Status } from "../shared/consts.ts";
-import { Enclave } from "../shared/crypto/enclave.ts";
-import { NobleCrypto } from "../shared/crypto/noble.ts";
-import { asSealedMasterKey } from "../shared/seed.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { btoh, bytesEqual, htob } from "../../shared/binary.ts";
+import { Status } from "../../shared/consts.ts";
+import { Enclave } from "../../shared/crypto/enclave.ts";
+import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { asSealedMasterKey } from "../../shared/seed.ts";
 
 export const CLI_RP_ID = "diplomatic";
 export const CLI_USER = "diplomatic-cli";
 const SALT_DOM = new TextEncoder().encode("diplomatic.cli.prf.v1");
 const MIN_KEYS = 16;
+const KEYRING_MAX = 8;
 const noble = new NobleCrypto();
 
-export type CliBind = {
-  v: 1;
+export type CliEntry = {
   type: "prf";
-  rpId: string;
-  salt: Uint8Array;
   credId: Uint8Array;
   sealedMaster: Uint8Array;
+};
+
+export type CliRing = {
+  v: 2;
+  rpId: string;
+  salt: Uint8Array;
+  entries: CliEntry[];
 };
 
 /** Abort with a message on stderr. */
@@ -32,11 +37,19 @@ export function die(msg: string): never {
   process.exit(1);
 }
 
-/** Default binding path (`~/.diplomatic`). */
-export function defaultBindPath(): string {
+/** Reject path separators and empty/dot labels. */
+export function parseLabel(s: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(s) || s === "." || s === "..") {
+    die(`bad label ${s}`);
+  }
+  return s;
+}
+
+/** `~/.diplomatic/<LABEL>` */
+export function ringPath(label: string): string {
   const home = homedir();
   if (home.length === 0) die("HOME unset");
-  return join(home, ".diplomatic");
+  return join(home, ".diplomatic", parseLabel(label));
 }
 
 function isRec(v: unknown): v is Record<string, unknown> {
@@ -56,42 +69,64 @@ function hexField(
   return htob(v);
 }
 
-/** Load a CLI PRF binding file. */
-export function loadBind(path: string): CliBind {
+function parseEntry(v: unknown): CliEntry {
+  if (!isRec(v) || v.type !== "prf") die("bad keyring entry");
+  return {
+    type: "prf",
+    credId: hexField(v, "credId"),
+    sealedMaster: hexField(v, "sealedMaster", 72),
+  };
+}
+
+/** Load a CLI keyring. Missing file → undefined. */
+export function loadRing(path: string): CliRing | undefined {
+  if (!existsSync(path)) return undefined;
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     die(`failed to read ${path}: ${e}`);
   }
-  if (!isRec(raw) || raw.v !== 1 || raw.type !== "prf") {
-    die(`bad binding ${path}`);
-  }
+  if (!isRec(raw) || raw.v !== 2) die(`bad keyring ${path} (want v: 2)`);
   if (typeof raw.rpId !== "string" || raw.rpId.length === 0) {
-    die("bad binding rpId");
+    die("bad keyring rpId");
   }
+  if (!Array.isArray(raw.entries)) die("bad keyring entries");
   return {
-    v: 1,
-    type: "prf",
+    v: 2,
     rpId: raw.rpId,
     salt: hexField(raw, "salt", 32),
-    credId: hexField(raw, "credId"),
-    sealedMaster: hexField(raw, "sealedMaster", 72),
+    entries: raw.entries.map(parseEntry),
   };
 }
 
-/** Write a CLI PRF binding (mode 0600). Refuses to overwrite. */
-export function saveBind(path: string, b: CliBind): void {
-  if (existsSync(path)) die(`refusing to overwrite ${path}`);
+/** Write a CLI keyring (mode 0600). */
+export function writeRing(path: string, ring: CliRing): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const body = JSON.stringify({
-    v: 1,
-    type: "prf",
-    rpId: b.rpId,
-    salt: btoh(b.salt),
-    credId: btoh(b.credId),
-    sealedMaster: btoh(b.sealedMaster),
+    v: 2,
+    rpId: ring.rpId,
+    salt: btoh(ring.salt),
+    entries: ring.entries.map((e) => ({
+      type: "prf",
+      credId: btoh(e.credId),
+      sealedMaster: btoh(e.sealedMaster),
+    })),
   }) + "\n";
   writeFileSync(path, body, { mode: 0o600 });
+}
+
+/** Insert or replace an entry by credId. */
+export function upsertEntry(ring: CliRing, next: CliEntry): void {
+  const i = ring.entries.findIndex((e) => bytesEqual(e.credId, next.credId));
+  if (i >= 0) {
+    ring.entries[i] = next;
+    return;
+  }
+  if (ring.entries.length >= KEYRING_MAX) {
+    die(`keyring full (${KEYRING_MAX})`);
+  }
+  ring.entries.push(next);
 }
 
 function b64enc(bytes: Uint8Array): string {
@@ -104,15 +139,23 @@ function b64pad(s: string): Uint8Array {
   return Uint8Array.from(Buffer.from(pad, "base64"));
 }
 
-function runFido(argv: string[], input: string): string {
+function spawnFido(
+  argv: string[],
+  input: string,
+): { status: number; out: string } {
   const r = spawnSync(argv[0] ?? "fido2-token", argv.slice(1), {
     input,
     encoding: "utf8",
     stdio: ["pipe", "pipe", "inherit"],
   });
   if (r.error) die(`${argv[0]}: ${r.error.message} (install fido2-tools)`);
+  return { status: r.status ?? 1, out: r.stdout ?? "" };
+}
+
+function runFido(argv: string[], input: string): string {
+  const r = spawnFido(argv, input);
   if (r.status !== 0) die(`${argv[0]} failed (${r.status})`);
-  return r.stdout ?? "";
+  return r.out;
 }
 
 /** First hidraw/ioreg path from `fido2-token -L`, or DIP_FIDO_DEV. */
@@ -154,24 +197,7 @@ export function makeHmacCred(dev: string, rpId: string): Uint8Array {
   return id;
 }
 
-/** Eval hmac-secret (UV); returns 32-byte IKM. */
-export function evalHmac(
-  dev: string,
-  rpId: string,
-  credId: Uint8Array,
-  salt: Uint8Array,
-): Uint8Array {
-  if (salt.byteLength !== 32) die("hmac-secret salt must be 32 bytes");
-  const cdh = new Uint8Array(32);
-  crypto.getRandomValues(cdh);
-  const input = [b64enc(cdh), rpId, b64enc(credId), b64enc(salt)].join("\n") +
-    "\n";
-  console.error("Touch the key / enter PIN to evaluate PRF...");
-  const out = runFido(
-    ["fido2-assert", "-G", "-h", "-t", "uv=true", "-t", "pin=true", dev],
-    input,
-  );
-  cdh.fill(0);
+function parseHmacOut(out: string): Uint8Array | undefined {
   const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   for (let i = 4; i < lines.length; i++) {
     const line = lines[i];
@@ -179,7 +205,41 @@ export function evalHmac(
     const b = b64pad(line);
     if (b.byteLength === 32) return b;
   }
-  die("fido2-assert: no hmac-secret in output");
+  return undefined;
+}
+
+/** Eval hmac-secret (UV); returns 32-byte IKM or undefined if assert fails. */
+export function tryEvalHmac(
+  dev: string,
+  rpId: string,
+  credId: Uint8Array,
+  salt: Uint8Array,
+): Uint8Array | undefined {
+  if (salt.byteLength !== 32) die("hmac-secret salt must be 32 bytes");
+  const cdh = new Uint8Array(32);
+  crypto.getRandomValues(cdh);
+  const input = [b64enc(cdh), rpId, b64enc(credId), b64enc(salt)].join("\n") +
+    "\n";
+  console.error("Touch the key / enter PIN to evaluate PRF...");
+  const r = spawnFido(
+    ["fido2-assert", "-G", "-h", "-t", "uv=true", "-t", "pin=true", dev],
+    input,
+  );
+  cdh.fill(0);
+  if (r.status !== 0) return undefined;
+  return parseHmacOut(r.out);
+}
+
+/** Eval hmac-secret (UV); returns 32-byte IKM. */
+export function evalHmac(
+  dev: string,
+  rpId: string,
+  credId: Uint8Array,
+  salt: Uint8Array,
+): Uint8Array {
+  const ikm = tryEvalHmac(dev, rpId, credId, salt);
+  if (ikm === undefined) die("fido2-assert: no hmac-secret in output");
+  return ikm;
 }
 
 /** Collect keystroke timings from a TTY (musec for Enclave.fromRandom). */
@@ -191,7 +251,7 @@ export async function collectMusec(): Promise<Uint8Array> {
 /** Collect keystroke timings from a TTY until Enter. */
 async function readKeys(min: number): Promise<Uint8Array> {
   const stdin = process.stdin;
-  if (!stdin.isTTY) die("keygen needs a TTY for keystroke entropy");
+  if (!stdin.isTTY) die("gen needs a TTY for keystroke entropy");
   stdin.setRawMode(true);
   stdin.resume();
   const chunks: number[] = [];
@@ -246,14 +306,36 @@ async function readKeys(min: number): Promise<Uint8Array> {
   return new Uint8Array(chunks);
 }
 
-/** UV-eval the binding's cred and return an Enclave. */
-export async function unlockBind(b: CliBind, dev: string): Promise<Enclave> {
-  const [sm, sst] = asSealedMasterKey(b.sealedMaster);
-  if (sst !== Status.Success || sm === undefined) die("bad sealed master");
-  const ikm = evalHmac(dev, b.rpId, b.credId, b.salt);
-  const [enc, est] = await Enclave.unsealWithIkm(sm, ikm);
-  if (est !== Status.Success || enc === undefined) {
-    die(`unseal failed (${est})`);
+/** UV-eval each keyring cred until one unseals. */
+export async function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
+  if (ring.entries.length === 0) die("empty keyring");
+  for (const e of ring.entries) {
+    const tail = btoh(e.credId);
+    const short = tail.length <= 8 ? tail : tail.slice(tail.length - 8);
+    console.error(`Trying cred …${short}`);
+    const [sm, sst] = asSealedMasterKey(e.sealedMaster);
+    if (sst !== Status.Success || sm === undefined) continue;
+    const ikm = tryEvalHmac(dev, ring.rpId, e.credId, ring.salt);
+    if (ikm === undefined) continue;
+    const [enc, est] = await Enclave.unsealWithIkm(sm, ikm);
+    if (est === Status.Success && enc !== undefined) return enc;
   }
-  return enc;
+  die("no keyring entry unsealed (wrong YubiKey?)");
+}
+
+/** Wait for Enter on a TTY (key swap before binding another token). */
+export async function waitEnter(msg: string): Promise<void> {
+  if (!process.stdin.isTTY) return;
+  console.error(msg);
+  await new Promise<void>((resolve) => {
+    const onData = (buf: Buffer | string) => {
+      const s = typeof buf === "string" ? buf : buf.toString("utf8");
+      if (s.includes("\n") || s.includes("\r")) {
+        process.stdin.off("data", onData);
+        resolve();
+      }
+    };
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
 }

@@ -1,33 +1,32 @@
 import { Decoder, ICodecStruct } from "../codec.ts";
 import { hshBytes, Status } from "../consts.ts";
 import { eidCodec } from "./eid.ts";
-import { EntityID } from "../types.ts";
+import { EntityID, IMessageHead } from "../types.ts";
 import { err, ok } from "../valstat.ts";
 
-export interface IMessageHead {
-  eid: EntityID;
-  off: number;
-  ctr: number;
-  len: number;
-  hsh?: Uint8Array;
-}
+export type { IMessageHead };
 
 export const messageHeadCodec: ICodecStruct<IMessageHead> = {
   encode(enc, msg) {
-    const s0 = enc.writeVarBytes(msg.eid);
+    const s0 = enc.writeVarString(msg.typ ?? "");
     if (s0 !== Status.Success) return s0;
-    const s1 = enc.writeVarInt(msg.off);
+    const s1 = enc.writeVarBytes(msg.eid);
     if (s1 !== Status.Success) return s1;
-    const s2 = enc.writeVarInt(msg.ctr);
+    const s2 = enc.writeVarInt(msg.off);
     if (s2 !== Status.Success) return s2;
-    const s3 = enc.writeVarInt(msg.len);
+    const s3 = enc.writeVarInt(msg.ctr);
     if (s3 !== Status.Success) return s3;
+    const s4 = enc.writeVarInt(msg.len);
+    if (s4 !== Status.Success) return s4;
     if (msg.hsh) {
       enc.writeBytes(msg.hsh);
     }
     return Status.Success;
   },
   decode(dec) {
+    const [typ, sTyp] = dec.readVarString();
+    if (sTyp !== Status.Success) return err(sTyp);
+
     const [eid, s1] = dec.readVarBytes();
     if (s1 !== Status.Success) return err(s1);
 
@@ -49,6 +48,7 @@ export const messageHeadCodec: ICodecStruct<IMessageHead> = {
       hsh = h;
     }
     return ok({
+      typ,
       eid: eid as EntityID,
       off,
       ctr,

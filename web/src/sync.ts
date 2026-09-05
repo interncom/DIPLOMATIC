@@ -613,6 +613,7 @@ export function msg2StoredMsgData(
   };
   if (head.off !== 0) data.off = head.off;
   if (head.ctr !== 0) data.ctr = head.ctr;
+  if (head.typ) data.typ = head.typ;
   return data;
 }
 

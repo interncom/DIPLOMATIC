@@ -295,6 +295,7 @@ export async function recsToMessages(
       eid: r.e as EntityID,
       off: r.off,
       ctr: r.ctr,
+      typ: "todo",
       len,
       hsh,
       bod: r.b,

@@ -42,8 +42,8 @@ async function mutateOp(
   const [eid, st] = makeEID({ id, ts: eidTs });
   expect(st).toBe(Status.Success);
   if (!eid) throw new Error("eid");
-  const bod = encode({ type, body });
-  const msg: IMessage = { eid, off, ctr, len: bod.length, bod };
+  const bod = encode({ body });
+  const msg: IMessage = { eid, off, ctr, typ: type, len: bod.length, bod };
   const [op, stOp] = msgToOp(msg);
   expect(stOp).toBe(Status.Success);
   if (!op) throw new Error("op");

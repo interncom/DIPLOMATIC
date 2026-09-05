@@ -19,6 +19,7 @@ Deno.test("messageHead roundtrip with hash", () => {
     eid,
     off: 100,
     ctr: 200,
+    typ: "todo",
     len: 300,
     hsh: new Uint8Array(32).fill(0x22),
   };
@@ -32,6 +33,7 @@ Deno.test("messageHead roundtrip with hash", () => {
   assertEquals(decoded.eid, original.eid);
   assertEquals(decoded.off, original.off);
   assertEquals(decoded.ctr, original.ctr);
+  assertEquals(decoded.typ, original.typ);
   assertEquals(decoded.len, original.len);
   assertEquals(decoded.hsh, original.hsh);
   assertEquals(dec.done(), true);
@@ -49,6 +51,7 @@ Deno.test("messageHead roundtrip without hash", () => {
     eid,
     off: 0,
     ctr: 1,
+    typ: "",
     len: 0,
     hsh: undefined,
   };
@@ -62,6 +65,7 @@ Deno.test("messageHead roundtrip without hash", () => {
   assertEquals(decoded.eid, original.eid);
   assertEquals(decoded.off, original.off);
   assertEquals(decoded.ctr, original.ctr);
+  assertEquals(decoded.typ, "");
   assertEquals(decoded.len, original.len);
   assertEquals(decoded.hsh, original.hsh);
   assertEquals(dec.done(), true);
@@ -103,6 +107,7 @@ Deno.test("messageHead decode short input", () => {
 
 Deno.test("messageHead decode invalid eid", () => {
   const enc = new Encoder();
+  enc.writeVarString("");
   enc.writeVarBytes(new Uint8Array(0)); // Empty eid
   enc.writeVarInt(0);
   enc.writeVarInt(0);
@@ -123,6 +128,7 @@ Deno.test("messageHead decode with hash but len=0", () => {
   if (eidStat !== Status.Success) return;
 
   const enc = new Encoder();
+  enc.writeVarString("");
   enc.writeVarBytes(eid);
   enc.writeVarInt(0);
   enc.writeVarInt(0);
@@ -133,4 +139,59 @@ Deno.test("messageHead decode with hash but len=0", () => {
   assertEquals(status, Status.Success);
   if (status !== Status.Success) return;
   assertEquals(decoded.hsh, undefined);
+});
+
+Deno.test("messageHead empty typ (raw) roundtrip", () => {
+  const [eid, eidStat] = makeEID({
+    id: new Uint8Array(16).fill(0x66),
+    ts: new Date(0),
+  });
+  assertEquals(eidStat, Status.Success);
+  if (eidStat !== Status.Success) return;
+
+  const omitted = { eid, off: 0, ctr: 0, len: 1, hsh: new Uint8Array(32) };
+  const empty = { ...omitted, typ: "" };
+  const encOmitted = new Encoder();
+  encOmitted.writeStruct(messageHeadCodec, omitted);
+  const encEmpty = new Encoder();
+  encEmpty.writeStruct(messageHeadCodec, empty);
+  assertEquals(encOmitted.result(), encEmpty.result());
+
+  const dec = new Decoder(encEmpty.result());
+  const [decoded, status] = dec.readStruct(messageHeadCodec);
+  assertEquals(status, Status.Success);
+  if (status !== Status.Success) return;
+  assertEquals(decoded.typ, "");
+});
+
+Deno.test("messageHead named typ is positional varstring", () => {
+  const [eid, eidStat] = makeEID({
+    id: new Uint8Array(16).fill(0x77),
+    ts: new Date(0),
+  });
+  assertEquals(eidStat, Status.Success);
+  if (eidStat !== Status.Success) return;
+
+  const original = {
+    eid,
+    off: 0,
+    ctr: 0,
+    typ: "note",
+    len: 0,
+  };
+  const enc = new Encoder();
+  enc.writeStruct(messageHeadCodec, original);
+  const dec = new Decoder(enc.result());
+  const [decoded, status] = dec.readStruct(messageHeadCodec);
+  assertEquals(status, Status.Success);
+  if (status !== Status.Success) return;
+  assertEquals(decoded.typ, "note");
+  assertEquals(dec.done(), true);
+
+  // typ is the first field: prefix is varstring("note").
+  const prefix = new Encoder();
+  prefix.writeVarString("note");
+  const encoded = enc.result();
+  const pre = prefix.result();
+  assertEquals(encoded.slice(0, pre.length), pre);
 });

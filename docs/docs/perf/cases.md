@@ -11,21 +11,23 @@ We can calculate the overhead of DIPLOMATIC in various situations to characteriz
 
 Our model of a personal productivity app will have a user taking maybe 50 actions per day in the app, each generating a msg. We'll assume half are INSERTs and half are UPDATEs (e.g. creating a todo and then checking it off as complete). The actions will have some object structure. For a todo app, it might look like `{ todo: "Get groceries", done: false, deadline: undefined }`. Call it roughly 50-250 bytes of content data per action.
 
-In DIPLOMATIC, an INSERT msg has [52 bytes of overhead](../api/push#message-head-data-structure-overhead) and an UPDATE has 58 bytes of overhead. So with our assumed 50/50 split, we can call the overhead 55 bytes on average. This is about the bottom end of our assumed content size range. So the overhead is 50% or less.
+In DIPLOMATIC, an INSERT msg has [53 bytes of overhead](../api/push#message-head-data-structure-overhead) and an UPDATE has 59 bytes of overhead. So with our assumed 50/50 split, we can call the overhead 56 bytes on average. This is about the bottom end of our assumed content size range. So the overhead is 50% or less.
+
+A todo app would encode a type anyway. Putting it on the head as a positional var-string is cheaper than a msgpack `"type"` map entry in the body (TLV: key + value headers). For `"todo"`, that is 5 bytes on the head vs about 10 in the body. The 53/59 figures already include the 1-byte empty `typ`; the name itself is a wash-or-win against the old body field, not extra protocol tax.
 
 This is the main case DIPLOMATIC has been designed for.
 
 ## IoT
 
-In an IoT data collection setting, there will be many INSERTs an no UPDATEs or DELETEs. The size of the collected data samples will vary based on the detector, but let's assume 8 bytes for a single numeric measurement. 
+In an IoT data collection setting, there will be many INSERTs and no UPDATEs or DELETEs. The size of the collected data samples will vary based on the detector, but let's assume 8 bytes for a single numeric measurement. 
 
-In DIPLOMATIC, an INSERT msg has [52 bytes of overhead](../api/push#message-head-data-structure-overhead). With a total msg size of 60 bytes, the overhead will be almost 90%. If securely relaying the data is important, DIPLOMATIC may be a fit. But if space-efficiency matters, you probably want a different solution with lower overhead for this use case.
+In DIPLOMATIC, an INSERT msg has [53 bytes of overhead](../api/push#message-head-data-structure-overhead). With a total msg size of 61 bytes, the overhead will be almost 90%. If securely relaying the data is important, DIPLOMATIC may be a fit. But if space-efficiency matters, you probably want a different solution with lower overhead for this use case.
 
 ## Media Library
 
 A media library stores immutable files. One insert per file. No updates. Take an example photo library of 25k photos, each 4mb in size. This is 100gb of raw data.
 
-In DIPLOMATIC, an INSERT msg has [52 bytes of overhead](../api/push#message-head-data-structure-overhead). Multiplied by 25,000, that is about 1mb of total overhead. Completely negligible compared to the data set size. Fraction of a fraction of a percent.
+In DIPLOMATIC, an INSERT msg has [53 bytes of overhead](../api/push#message-head-data-structure-overhead). Multiplied by 25,000, that is about 1.3mb of total overhead. Completely negligible compared to the data set size. Fraction of a fraction of a percent.
 
 ## Editor
 

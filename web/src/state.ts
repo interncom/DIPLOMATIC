@@ -30,10 +30,16 @@ export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
   if ("body" in bodDec === false) {
     return false;
   }
-  if ("type" in bodDec === false) {
-    return false;
-  }
   return true;
+}
+
+/** Legacy msgpack bodies stored type in-band; prefer msg head typ. */
+function typeFromBody(bod: unknown): string | undefined {
+  if (bod === null || typeof bod !== "object") return undefined;
+  if (!("type" in bod)) return undefined;
+  const t = bod.type;
+  if (typeof t !== "string") return undefined;
+  return t;
 }
 
 export function msgToOp(msg: IMessage): ValStat<IOp> {
@@ -53,13 +59,15 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
     console.warn(`msg body invalid`, bodDec);
     return err(Status.InvalidMessage);
   }
+  const headTyp = msg.typ ?? "";
+  const type = headTyp.length > 0 ? headTyp : (typeFromBody(bodDec) ?? "");
   const op: IMutateOp = {
     off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,
     pid: bodDec.pid,
     tags: bodDec.tags,
-    type: bodDec.type,
+    type,
     body: bodDec.body,
   };
   return ok(op);

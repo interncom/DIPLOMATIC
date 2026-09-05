@@ -41,11 +41,11 @@ const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 
 Local writes build a message and call `state.apply` **before** waiting on the message archive. With the default EntDB cache, `apply` patches the in-memory layer immediately, queues IndexedDB persist, then notifies UI subscribers (microtask) and reconciles. Pass `{ optimistic: false }` to notify only after that durable commit. The same message then continues through archive → exec completion → upload.
 
-Shared fields on write ops (msgpack body of the ent):
+Shared fields on write ops. `type` is stored on the msg head (`typ`); `body` / `pid` / `tags` are msgpack in the msg body:
 
 ```ts
 type EntFields<T> = {
-  type: string;       // application type name
+  type: string;       // application type name (msg head typ)
   body?: T;           // application payload
   pid?: EntityID;     // optional parent eid (exclusive hierarchy)
   tags?: string[];    // optional multi-value reverse-indexed tags (N:M refs)

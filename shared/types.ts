@@ -28,11 +28,14 @@ export interface IMsgEntBody<T = unknown> {
    * dropped on apply. Omit or [] means no tags.
    */
   tags?: string[];
-  type: string;
   body?: T;
 }
 
 export interface IMessageHead {
+  // First on the wire so handlers can branch before reading the rest.
+  // Empty or omitted means raw (untyped) body.
+  typ?: string;
+
   // eid is an ID packed together with a created at timestamp for the entity.
   // The ID portion will generally be a random identifier.
   eid: EntityID;
@@ -74,9 +77,11 @@ export interface IMessageWithHash extends IMessage {
 // entity, with created at timestamp embedded in the eid, and updated at
 // timestamp encoded via the milliseconds offset from created at (off).
 // An IOp additionally has type, pid, and tags fields for indexing the entity.
-export interface IDeleteOp extends Omit<IMessageHead, "len" | "hsh" | "bod"> {}
+export interface IDeleteOp
+  extends Omit<IMessageHead, "len" | "hsh" | "bod" | "typ"> {}
 export interface IMutateOp<T = unknown>
   extends IDeleteOp, Omit<IMsgEntBody<T>, "body"> {
+  type: string;
   body: T;
 }
 export type IOp = IDeleteOp | IMutateOp;
@@ -90,6 +95,7 @@ export function isMutateOp(op: IOp): op is IMutateOp {
 }
 
 export interface IInsertParams<T> extends IMsgEntBody<T> {
+  type: string;
   /** Optional 8-byte id material for the new eid; else random. */
   id?: Uint8Array;
 }
@@ -106,6 +112,7 @@ export interface IEntRev {
 }
 
 export interface IUpdateParams<T> extends IMsgEntBody<T> {
+  type: string;
   prior: IEntRev;
   /** Clock-skew recovery; default client-wide (usually true). */
   force?: boolean;

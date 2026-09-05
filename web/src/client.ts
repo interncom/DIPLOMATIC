@@ -71,6 +71,14 @@ import {
   WipeOpts,
 } from "./types";
 
+/** IMessage views of local write parts. */
+function msgsFromParts(parts: IMsgParts[]): IMessage[] {
+  return parts.map(({ head, body }) => ({
+    ...head,
+    bod: body,
+  }));
+}
+
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
@@ -186,10 +194,14 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   /**
    * Persist msgs (APLD_PENDING), exec into app state, then optionally enq upload.
    *
-   * Order (crash-safe):
-   * 1) durable archive  2) exec + APLD_APPLIED/APLD_ERROR  3) upload queue
-   * Exec is where the app validates the msg; only successes are pushed.
-   * Crash between 1–2 → drainApplyQueue / exec stage recovers.
+   * Order (do not invert — UI notify depends on it):
+   * 1) Kick off state.apply (CachedEntDB emits in the sync prefix of apply;
+   *    the returned Promise is durable EntDB + reconcile).
+   * 2) Durable archive (messages.add).
+   * 3) Await apply + mark APLD_APPLIED/APLD_ERROR.
+   * 4) Upload queue.
+   * Crash between 2–3 → drainApplyQueue recovers.
+   * Awaiting apply before archive makes the UI wait on EntDB IDB.
    *
    * Serialized on applyChain (with local mutates).
    */
@@ -211,6 +223,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       triggerUpload: true,
     },
   ): Promise<Status[]> {
+    // Must run before any archive await. StateManager.apply is async but
+    // its first await is the EntDB applier; CachedEntDB.apply emits in that
+    // call's sync prefix, so subscribers fire before we hit messages.add.
+    const applyP = this.state.apply(msgsFromParts(parts));
+
     const hashes: Hash[] = [];
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
@@ -236,7 +253,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // later sync does not re-PULL bags we already have in the archive.
     await deqDownloadsForHeadHashes(this.store, hashes, this.crypto);
 
-    const stats = await this.doApplyHashes(hashes);
+    const stats = await applyP;
+    await this.markApplyStats(hashes, stats);
 
     // Upload only after successful (or no-op) exec for each hash.
     if (options.enqueueUpload) {
@@ -329,14 +347,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       bod: m.body,
     }));
     const stats = await this.state.apply(msgs);
+    await this.markApplyStats(stored.map((m) => m.hash), stats);
+    return stats;
+  }
+
+  /** Mark archive rows APPLIED / ERROR from apply stats (aligned with keys). */
+  private async markApplyStats(keys: Hash[], stats: Status[]) {
     const done: Hash[] = [];
     const failed: { key: Hash; err: Status }[] = [];
-    for (let i = 0; i < stored.length; i++) {
+    for (let i = 0; i < keys.length; i++) {
       const st = stats[i];
       if (st === Status.Success || st === Status.NoChange) {
-        done.push(stored[i].hash);
+        done.push(keys[i]);
       } else if (st !== undefined && isTerminalApplyFailure(st)) {
-        failed.push({ key: stored[i].hash, err: st });
+        failed.push({ key: keys[i], err: st });
       }
     }
     if (done.length > 0) {
@@ -345,7 +369,6 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (failed.length > 0) {
       await this.store.messages.markFailed(failed);
     }
-    return stats;
   }
 
   public async insertRaw(bod: EncodedMessage) {

@@ -28,8 +28,31 @@ import {
 } from "../src/types";
 import { sealBag } from "../src/shared/bag";
 import { makeEID } from "../src/shared/codecs/eid";
+import { CachedEntDB } from "../src/entdb/cached";
 import { entStateManager, isTombstone, revFromHead } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
+
+/** Resolve when `notifies` has at least `want` entries. */
+function waitNotifies(notifies: unknown[], want: number): Promise<void> {
+  if (notifies.length >= want) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (notifies.length >= want) {
+        resolve();
+        return;
+      }
+      if (Date.now() - t0 > 1000) {
+        reject(new Error(`notify timeout: ${notifies.length} < ${want}`));
+        return;
+      }
+      setTimeout(tick, 0);
+    };
+    tick();
+  });
+}
 
 function enclaveFrom(bytes: Uint8Array): Enclave {
   const [e, st] = Enclave.fromBytes(bytes);
@@ -623,6 +646,51 @@ describe("Client", () => {
       const deleteMsg = messages[1];
       expect(deleteMsg.head.len).toBe(0);
       expect(deleteMsg.head.ctr).toBe(1);
+    });
+  });
+
+  describe("optimistic EntDB cache", () => {
+    // Load-bearing: doApply must call state.apply before messages.add.
+    test("insert notifies before archive IDB", async () => {
+      const durable = new EntDBMemory();
+      const cache = new CachedEntDB(durable);
+      const stateMgr = entStateManager(cache);
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+
+      let releaseAdd = () => {};
+      const addHold = new Promise<void>((resolve) => {
+        releaseAdd = resolve;
+      });
+      const origAdd = store.messages.add.bind(store.messages);
+      store.messages.add = async (msgs) => {
+        await addHold;
+        return origAdd(msgs);
+      };
+
+      const client = new SyncClient(
+        mockClock,
+        stateMgr,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+      await cache.getEntities({ type: "todo" });
+      const notifies: string[][] = [];
+      cache.subscribe((types) => notifies.push([...types]));
+
+      const body = encode({ type: "todo", body: { text: "a" } });
+      const pIns = client.insertRaw(body);
+      await waitNotifies(notifies, 1);
+      expect(notifies[0]).toContain("todo");
+      const [afterIns] = await cache.getEntities({ type: "todo" });
+      expect(afterIns).toHaveLength(1);
+      expect(afterIns?.[0]?.body).toEqual({ text: "a" });
+      expect(Array.from(await store.messages.list()).length).toBe(0);
+
+      releaseAdd();
+      const [, stIns] = await pIns;
+      expect(stIns).toBe(Status.Success);
+      expect(Array.from(await store.messages.list()).length).toBe(1);
     });
   });
 

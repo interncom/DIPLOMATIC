@@ -226,6 +226,7 @@ describe("CachedEntDB", () => {
     expect(durableLists).toBe(0);
   });
 
+  // Load-bearing: UI must see the write while durable.apply is still held.
   test("apply notifies and serves mem before durable.apply", async () => {
     const durable = new EntDBMemory();
     let releaseApply = () => {};
@@ -315,6 +316,37 @@ describe("CachedEntDB", () => {
     await p2;
     const [after] = await durable.getEntities({ type: "note" });
     expect(after).toHaveLength(2);
+  });
+
+  // Counterpart: with the flag off, mem and notify wait on durable.apply.
+  test("optimistic: false notifies only after durable.apply", async () => {
+    const durable = new EntDBMemory();
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      await applyHold;
+      return origApply(ops);
+    };
+    const cache = new CachedEntDB(durable, undefined, { optimistic: false });
+    await cache.getEntities({ type: "note" });
+    const notifies: string[][] = [];
+    cache.subscribe((types) => notifies.push([...types]));
+
+    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const p = cache.apply([op]);
+    expect(notifies.length).toBe(0);
+    const [before] = await cache.getEntities({ type: "note" });
+    expect(before).toHaveLength(0);
+
+    releaseApply();
+    await p;
+    expect(notifies.length).toBeGreaterThanOrEqual(1);
+    expect(notifies[0]).toContain("note");
+    const [after] = await cache.getEntities({ type: "note" });
+    expect(after).toHaveLength(1);
   });
 
   test("concurrent warm list reads all see mem", async () => {

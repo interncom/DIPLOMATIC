@@ -499,16 +499,20 @@ export class WorkerClient implements IClient<URL> {
   }
 
   /** Local UI write on main (cache notifies in apply's sync prefix); sync via worker. */
-  async insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>> {
-    return this.local.insertRaw(content);
+  async insertRaw(
+    content: SerializedContent,
+    typ?: string,
+  ): Promise<ValStat<IMessageHead>> {
+    return this.local.insertRaw(content, typ);
   }
 
   async updateRaw(
     prior: IEntRev,
     content: SerializedContent | undefined,
     force?: boolean,
+    typ?: string,
   ): Promise<ValStat<IMessageHead>> {
-    return this.local.updateRaw(prior, content, force);
+    return this.local.updateRaw(prior, content, force, typ);
   }
 
   async insert<T = unknown>(

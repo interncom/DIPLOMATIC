@@ -243,6 +243,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       };
       if (head.off !== 0) data.off = head.off;
       if (head.ctr !== 0) data.ctr = head.ctr;
+      if (head.typ) data.typ = head.typ;
       hashes.push(hash);
       storables.push({ key: hash, data });
     }
@@ -371,9 +372,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
   }
 
-  public async insertRaw(bod: EncodedMessage) {
+  public async insertRaw(bod: EncodedMessage, typ = "") {
     const { clock, crypto } = this;
-    const [head, stat] = await genInsertHead({ now: clock.now(), bod, crypto });
+    const now = clock.now();
+    const [head, stat] = await genInsertHead({ now, bod, typ, crypto });
     if (stat !== Status.Success) {
       return err<IMessageHead>(stat);
     }
@@ -392,6 +394,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   private async makeUpdate(
     prior: IEntRev,
     bod: EncodedMessage | undefined,
+    typ = "",
   ): Promise<ValStat<IMsgParts>> {
     const { clock, crypto } = this;
     const now = clock.now();
@@ -403,6 +406,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       now,
       eid: prior.eid,
       ctr,
+      typ,
       bod,
       crypto,
     });
@@ -427,6 +431,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     prior: IEntRev,
     bod: EncodedMessage | undefined,
     force: boolean,
+    typ = "",
   ): Promise<ValStat<IMessageHead>> {
     if (force === false) {
       return err(Status.ClockOutOfSync);
@@ -444,6 +449,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       eid: prior.eid,
       off: priorOff + 1,
       ctr: prior.ctr + 1,
+      typ: "",
       len: 0,
     };
     const statsDel = await this.apply([
@@ -466,6 +472,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       now,
       eid: replEID,
       ctr: 0,
+      typ,
       bod,
       crypto,
     });
@@ -484,16 +491,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     prior: IEntRev,
     bod: EncodedMessage | undefined,
     force = this.forceSkewHandlingByDefault,
+    typ = "",
   ): Promise<ValStat<IMessageHead>> {
     // prior was written "in the future" relative to this clock → skew path.
     if (prior.updatedAt.getTime() > this.clock.now().getTime()) {
-      return this.updateWithSkew(prior, bod, force);
+      return this.updateWithSkew(prior, bod, force, typ);
     }
 
     return this.enqueueApplyJob(async () => {
       // prior is the app's latest observed rev (from cache / revFromEntity).
       // Next ctr = prior.ctr + 1. Stale priors still produce a msg; LWW applies.
-      const [parts, stMake] = await this.makeUpdate(prior, bod);
+      const [parts, stMake] = await this.makeUpdate(prior, bod, typ);
       if (stMake !== Status.Success) {
         return err<IMessageHead>(stMake);
       }
@@ -508,19 +516,24 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async insert<T = unknown>(op: IInsertParams<T>) {
     const { body, type, pid, tags } = op;
-    const entBody: IMsgEntBody = { body, type, pid, tags };
+    const entBody: IMsgEntBody = { body };
+    if (pid !== undefined) entBody.pid = pid;
+    if (tags !== undefined) entBody.tags = tags;
     const entBodyEnc = encode(entBody);
-    return this.insertRaw(entBodyEnc);
+    return this.insertRaw(entBodyEnc, type);
   }
 
   public async update<T = unknown>(op: IUpdateParams<T>) {
     const { prior, body, type, pid, tags, force } = op;
-    const entBody: IMsgEntBody = { body, type, pid, tags };
+    const entBody: IMsgEntBody = { body };
+    if (pid !== undefined) entBody.pid = pid;
+    if (tags !== undefined) entBody.tags = tags;
     const entBodyEnc = encode(entBody);
     return this.updateRaw(
       prior,
       entBodyEnc,
       force ?? this.forceSkewHandlingByDefault,
+      type,
     );
   }
 

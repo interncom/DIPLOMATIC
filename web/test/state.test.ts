@@ -70,6 +70,30 @@ describe("msgToOp", () => {
     expect(mutateOp.tags).toEqual(["impl:x", "label:y"]);
   });
 
+  test("returns IMutateOp type from msg head typ", () => {
+    const msgEntBody = {
+      body: { key: "value" },
+    };
+    const bod = encode(msgEntBody);
+
+    const msg: IMessage = {
+      eid: new Uint8Array(16).fill(2),
+      off: 200,
+      ctr: 10,
+      typ: "headType",
+      len: bod.length,
+      bod,
+    };
+
+    const [op, status] = msgToOp(msg);
+
+    expect(status).toBe(Status.Success);
+    expect(isMutateOp(op)).toBe(true);
+    if (!isMutateOp(op)) return;
+    expect(op.type).toBe("headType");
+    expect(op.body).toEqual({ key: "value" });
+  });
+
   test("returns InvalidMessage when bod is invalid msgpack", () => {
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(3),

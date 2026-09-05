@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { encode } from "@msgpack/msgpack";
+import { decode, encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Enclave } from "../src/shared/crypto/enclave";
@@ -219,10 +219,10 @@ describe("Client", () => {
 
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(3)));
       // No host link: local-only archive.
-      const entBod: EncodedMessage = encode({
+      await client.insert({
         type: "todo",
-        body: { text: "rebuild-me" } });
-      await client.insertRaw(entBod);
+        body: { text: "rebuild-me" },
+      });
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
       expect(beforeStat).toBe(Status.Success);
@@ -292,10 +292,10 @@ describe("Client", () => {
       );
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(5)));
 
-      const entBod: EncodedMessage = encode({
+      const [head, stIns] = await client.insert({
         type: "todo",
-        body: { text: "undead?" } });
-      const [head, stIns] = await client.insertRaw(entBod);
+        body: { text: "undead?" },
+      });
       expect(stIns).toBe(Status.Success);
       if (!head) throw new Error("insert head");
 
@@ -402,10 +402,10 @@ describe("Client", () => {
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(7)));
       await client.link(testHost, false);
 
-      const entBod: EncodedMessage = encode({
+      await client.insert({
         type: "todo",
-        body: { text: "hi" } });
-      await client.insertRaw(entBod);
+        body: { text: "hi" },
+      });
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
       expect(beforeStat).toBe(Status.Success);
@@ -469,6 +469,26 @@ describe("Client", () => {
       expect(bytesEqual(body, msg.body)).toBeTruthy();
       expect(msg.head.ctr).toBe(0);
       expect(msg.head.len).toBe(body.length);
+    });
+
+    test("insert puts typ on the msg head, not the body", async () => {
+      const { store, client } = await createClient({
+        now: () => new Date(1234567890000),
+      });
+      const [head, st] = await client.insert({
+        type: "todo",
+        body: { text: "milk" },
+      });
+      expect(st).toBe(Status.Success);
+      expect(head?.typ).toBe("todo");
+      const messages = Array.from(await store.messages.list());
+      expect(messages).toHaveLength(1);
+      expect(messages[0].head.typ).toBe("todo");
+      const bod = messages[0].body;
+      expect(bod).toBeDefined();
+      if (!bod) return;
+      const decoded = decode(bod);
+      expect(decoded).toEqual({ body: { text: "milk" } });
     });
   });
 
@@ -678,8 +698,7 @@ describe("Client", () => {
       const notifies: string[][] = [];
       cache.subscribe((types) => notifies.push([...types]));
 
-      const body = encode({ type: "todo", body: { text: "a" } });
-      const pIns = client.insertRaw(body);
+      const pIns = client.insert({ type: "todo", body: { text: "a" } });
       await waitNotifies(notifies, 1);
       expect(notifies[0]).toContain("todo");
       const [afterIns] = await cache.getEntities({ type: "todo" });

@@ -41,6 +41,7 @@ export async function genSingletonUpsert(
     eid,
     off,
     ctr,
+    typ: "",
     len: content.length,
     bod: content,
   });

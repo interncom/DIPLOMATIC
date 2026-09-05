@@ -21,10 +21,11 @@ interface IInsertParams {
   now: Date;
   bod: SerializedContent;
   crypto: ICrypto;
+  typ?: string;
 }
 
 export async function genInsertHead(
-  { now, bod, crypto }: IInsertParams,
+  { now, bod, crypto, typ = "" }: IInsertParams,
 ): Promise<ValStat<IMessageHead>> {
   const id = await crypto.genRandomBytes(8);
   const encEid = new Encoder();
@@ -34,18 +35,19 @@ export async function genInsertHead(
   }
   const eid = encEid.result() as EntityID;
 
-  return genUpsertHead({ now, eid, ctr: 0, bod, crypto });
+  return genUpsertHead({ now, eid, ctr: 0, typ, bod, crypto });
 }
 
-interface IUpsertParams extends Omit<IMessage, "off" | "len" | "hsh"> {
+interface IUpsertParams extends Omit<IMessage, "off" | "len" | "hsh" | "typ"> {
   now: Date;
   crypto: ICrypto;
+  typ?: string;
 }
 
 // NOTE: if using a non-random eid from multiple devices independently,
 // set clk to 0 to ensure they all point to the same entity.
 export async function genUpsertHead(
-  { now, eid, ctr, bod, crypto }: IUpsertParams,
+  { now, eid, ctr, typ = "", bod, crypto }: IUpsertParams,
 ): Promise<ValStat<IMessageHead>> {
   const decEid = new Decoder(eid);
   const [eidParsed, statEid] = eidCodec.decode(decEid);
@@ -59,18 +61,20 @@ export async function genUpsertHead(
   if (bod && len > 0) {
     hsh = await crypto.blake3(bod);
   }
-  return ok({ eid, off, ctr, len, hsh });
+  return ok({ eid, off, ctr, typ, len, hsh });
 }
 
-interface IDeleteParams extends Omit<IMessage, "off" | "len" | "hsh" | "bod"> {
+interface IDeleteParams
+  extends Omit<IMessage, "off" | "len" | "hsh" | "bod" | "typ"> {
   now: Date;
   crypto: ICrypto;
+  typ?: string;
 }
 
 export function genDeleteHead(
-  { now, eid, ctr, crypto }: IDeleteParams,
+  { now, eid, ctr, typ = "", crypto }: IDeleteParams,
 ): Promise<ValStat<IMessageHead>> {
-  return genUpsertHead({ now, eid, ctr, bod: undefined, crypto });
+  return genUpsertHead({ now, eid, ctr, typ, bod: undefined, crypto });
 }
 
 // Test helpers.
@@ -91,6 +95,6 @@ export async function genDelete(
   if (stat !== Status.Success) {
     return err(stat);
   }
-  const { eid, off, ctr } = head;
-  return ok({ eid, off, ctr, len: 0 });
+  const { eid, off, ctr, typ } = head;
+  return ok({ eid, off, ctr, typ, len: 0 });
 }

@@ -7,12 +7,12 @@
 
 // EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 // 1. "type" - Mandatory. Groups ents by their application-defined type.
+//    Taken from the msg head `typ` (empty = untyped / single-type).
 // 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents.
 // 3. "tags" - Optional string[]; multi-value reverse index (multiEntry).
 //    Like pid reverse lookup, but N:M. Opaque strings; clients define semantics
 //    (e.g. impl:<btob64(eid)>). Query: exact string, { range }, or { prefix }.
-// These are msgpack-encoded within the DIPLOMATIC msg body.
-// The rest of the ent data lives alongside those, encoded the same way.
+// pid/tags plus the application payload are msgpack-encoded in the msg body.
 //
 // Deletes leave permanent tombstones ({ eid, updatedAt, ctr }). Without them,
 // out-of-order / newest-first apply of older mutates would resurrect ents.
@@ -36,6 +36,7 @@ import {
 export { entStateManager } from "./manager.ts";
 
 export interface IEntity<T = unknown> extends Omit<IMsgEntBody<T>, "body"> {
+  type: string;
   eid: EntityID;
   updatedAt: Date;
   createdAt: Date;

@@ -76,6 +76,7 @@ function openDb(path: string): Database {
       eid BLOB NOT NULL,
       off INTEGER NOT NULL,
       ctr INTEGER NOT NULL,
+      typ TEXT NOT NULL DEFAULT '',
       len INTEGER NOT NULL,
       hsh BLOB,
       headEnc BLOB,
@@ -87,6 +88,7 @@ function openDb(path: string): Database {
       eid BLOB NOT NULL,
       off INTEGER,
       ctr INTEGER,
+      typ TEXT,
       body BLOB,
       apld INTEGER NOT NULL DEFAULT 0,
       err INTEGER
@@ -94,9 +96,19 @@ function openDb(path: string): Database {
     CREATE INDEX IF NOT EXISTS messages_apld ON messages(apld);
     CREATE INDEX IF NOT EXISTS messages_eid ON messages(eid);
   `);
-  // Older perf DBs may lack err / host bag stats.
+  // Older perf DBs may lack err / typ / host bag stats.
   try {
     db.exec("ALTER TABLE messages ADD COLUMN err INTEGER");
+  } catch {
+    // column already present
+  }
+  try {
+    db.exec("ALTER TABLE messages ADD COLUMN typ TEXT");
+  } catch {
+    // column already present
+  }
+  try {
+    db.exec("ALTER TABLE downloads ADD COLUMN typ TEXT NOT NULL DEFAULT ''");
   } catch {
     // column already present
   }
@@ -285,8 +297,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
   async enq(msgs: Iterable<IDownloadMessage>) {
     const ins = this.db.prepare(
       `INSERT OR REPLACE INTO downloads
-        (host, seq, kdm, eid, off, ctr, len, hsh, headEnc, headEncHash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (host, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.exec("BEGIN");
     try {
@@ -299,6 +311,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
           head.eid,
           head.off,
           head.ctr,
+          head.typ ?? "",
           head.len,
           head.hsh ?? null,
           m.headEnc ?? null,
@@ -330,7 +343,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
 
   async list(): Promise<IDownloadMessage[]> {
     const rows = this.db.prepare(
-      `SELECT host, seq, kdm, eid, off, ctr, len, hsh, headEnc, headEncHash
+      `SELECT host, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash
        FROM downloads`,
     ).all() as {
       host: string;
@@ -339,6 +352,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
       eid: Uint8Array;
       off: number;
       ctr: number;
+      typ: string | null;
       len: number;
       hsh: Uint8Array | null;
       headEnc: Uint8Array | null;
@@ -349,6 +363,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
         eid: new Uint8Array(row.eid) as EntityID,
         off: row.off,
         ctr: row.ctr,
+        typ: row.typ ?? "",
         len: row.len,
         ...(row.hsh ? { hsh: new Uint8Array(row.hsh) } : {}),
       };
@@ -382,8 +397,8 @@ class SqliteMessageStore implements IMessageStore {
   async add(messages: IStorableMessage[]): Promise<Status[]> {
     if (messages.length < 1) return [];
     const ins = this.db.prepare(
-      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, body, apld, err)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, typ, body, apld, err)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const results: Status[] = [];
     this.db.exec("BEGIN");
@@ -394,6 +409,7 @@ class SqliteMessageStore implements IMessageStore {
           data.eid,
           data.off ?? null,
           data.ctr ?? null,
+          data.typ ?? null,
           data.body ?? null,
           apldToSql(data.apld),
           data.err ?? null,
@@ -432,6 +448,7 @@ class SqliteMessageStore implements IMessageStore {
       eid: Uint8Array;
       off: number | null;
       ctr: number | null;
+      typ: string | null;
       body: Uint8Array | null;
       apld: number;
       err: number | null;
@@ -447,6 +464,7 @@ class SqliteMessageStore implements IMessageStore {
         eid: new Uint8Array(row.eid) as EntityID,
         ...(row.off !== null ? { off: row.off } : {}),
         ...(row.ctr !== null ? { ctr: row.ctr } : {}),
+        ...(row.typ ? { typ: row.typ } : {}),
         ...(row.body ? { body: new Uint8Array(row.body) } : {}),
         apld,
         ...(apld === APLD_ERROR && row.err !== null ? { err: row.err } : {}),
@@ -458,12 +476,13 @@ class SqliteMessageStore implements IMessageStore {
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
     const row = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE hash = ?",
+      "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE hash = ?",
     ).get(btob64(key)) as {
       hash: string;
       eid: Uint8Array;
       off: number | null;
       ctr: number | null;
+      typ: string | null;
       body: Uint8Array | null;
       apld: number;
       err: number | null;
@@ -485,6 +504,7 @@ class SqliteMessageStore implements IMessageStore {
       eid: Uint8Array;
       off: number | null;
       ctr: number | null;
+      typ: string | null;
       body: Uint8Array | null;
       apld: number;
       err: number | null;
@@ -493,10 +513,10 @@ class SqliteMessageStore implements IMessageStore {
     const body = opts?.body !== false;
     const rows = apld === undefined
       ? this.db.prepare(
-        "SELECT hash, eid, off, ctr, body, apld, err FROM messages",
+        "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages",
       ).all() as Row[]
       : this.db.prepare(
-        "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE apld = ?",
+        "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE apld = ?",
       ).all(apldToSql(apld)) as Row[];
     return await Promise.all(
       rows.map((row) =>
@@ -529,12 +549,13 @@ class SqliteMessageStore implements IMessageStore {
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     // Compare in JS; eid blob equality in SQL is fine for exact match filter.
     const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, body, apld, err FROM messages WHERE eid = ?",
+      "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE eid = ?",
     ).all(eid) as {
       hash: string;
       eid: Uint8Array;
       off: number | null;
       ctr: number | null;
+      typ: string | null;
       body: Uint8Array | null;
       apld: number;
       err: number | null;

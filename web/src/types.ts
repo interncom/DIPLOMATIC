@@ -219,6 +219,8 @@ export interface IStoredMessageFields {
   eid: EntityID;
   off?: number;
   ctr?: number;
+  /** Msg head typ. Omit when empty (raw). */
+  typ?: string;
   body?: EncodedMessage;
 }
 
@@ -236,7 +238,7 @@ export interface IStoredMessageData extends IStoredMessageFields {
 /**
  * Required shape for every put into the message archive (app/API layer).
  * `apld` is required and must be one of the three {@link ApldState} values.
- * Omit optional fields (`off`, `ctr`, `body`, `err`) rather than storing empties.
+ * Omit optional fields (`off`, `ctr`, `typ`, `body`, `err`) rather than storing empties.
  */
 export type IStoredMessageWrite = IStoredMessageFields & {
   apld: ApldState;
@@ -342,6 +344,7 @@ export async function toStoredMessage(
     eid: data.eid,
     off: data.off ?? 0,
     ctr: data.ctr ?? 0,
+    typ: data.typ ?? "",
     len,
     hsh,
   };
@@ -412,11 +415,15 @@ export interface IClient<Handle extends HostHandle> {
   // insert/update/delete return the msg head. On clock skew, update/delete may
   // issue a delete (+ optional replacement) so the returned head can differ
   // from a naive read of the params.
-  insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>>;
+  insertRaw(
+    content: SerializedContent,
+    typ?: string,
+  ): Promise<ValStat<IMessageHead>>;
   updateRaw(
     prior: IEntRev,
     content: SerializedContent | undefined,
     force?: boolean,
+    typ?: string,
   ): Promise<ValStat<IMessageHead>>;
   insert<T = unknown>(op: IInsertParams<T>): Promise<ValStat<IMessageHead>>;
   update<T = unknown>(op: IUpdateParams<T>): Promise<ValStat<IMessageHead>>;

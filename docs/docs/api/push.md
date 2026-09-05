@@ -32,13 +32,16 @@ Typical size: 14 bytes.
 
 |Field|Bytes|Encoding|
 |-----|-----|--------|
+|typ|1+N|var-string|
 |eid|2-N (typically 14)|see above|
 |off|1-8|var-int milliseconds since eid.ts|
 |ctr|1-8 (typically 1)|var-int|
 |len|1-8|var-int|
 |hsh|32|raw bytes|
 
-Following `eid` comes `off`, which is the millisecond offset from ent creation time that this message was created. Therefore `eid` and `off` together provide the creation and modification times for a message. Having both these values is generally useful in applications, so Ruby on Rails for instance, adds those columns to every database table. Because the creation and modification times are generally close, we encode the modification time as a delta from creation. This means that the message creating a new ent will encode the creation time with a 6-byte var int, and the offset will be 0, taking a single byte in var-int encoding, for a total cost of 7 bytes. Without this encoding, we would spend 12 bytes or more to encode the two values.
+The first field is `typ`, a var-string naming the application type (or blob class). It comes first so a decoder can branch on kind before reading the rest of the head — later kinds (e.g. blobs) may use a different layout after `typ`. An empty string (1 byte: length 0) means raw / untyped — a single-type app can skip naming a type. A short name like `"todo"` costs 5 bytes (1 length + 4 UTF-8). EntDB takes the ent's `type` from this field.
+
+Following `typ` comes `eid`, then `off`, the millisecond offset from ent creation time that this message was created. Therefore `eid` and `off` together provide the creation and modification times for a message. Having both these values is generally useful in applications, so Ruby on Rails for instance, adds those columns to every database table. Because the creation and modification times are generally close, we encode the modification time as a delta from creation. This means that the message creating a new ent will encode the creation time with a 6-byte var int, and the offset will be 0, taking a single byte in var-int encoding, for a total cost of 7 bytes. Without this encoding, we would spend 12 bytes or more to encode the two values.
 
 To handle the potential for multiple messages for a single ent in the same millisecond (e.g. high-frequency measurements), the next field is `ctr` an update counter. The client generating a message sets `ctr` to the maximum `ctr` it has observed for this ent, plus 1. This will generally cost 1 byte.
 
@@ -46,17 +49,19 @@ The next fields describe the message contents. `len` is the byte length and `hsh
 
 ### Message Head Data Structure Overhead
 
-An INSERT will have `off` and `ctr` of 0, costing 1 byte each. The `eid` will typically be 14 bytes. `hsh` will be 32 (INSERT-ing an empty message makes no sense). And `len` will depend on body size, with 2 bytes sufficient for a 16KB body, and 4 bytes sufficient for 250MB. So a typically INSERT will have a header of 52 bytes.
+An INSERT will have `off` and `ctr` of 0, costing 1 byte each. The `eid` will typically be 14 bytes. `hsh` will be 32 (INSERT-ing an empty message makes no sense). And `len` will depend on body size, with 2 bytes sufficient for a 16KB body, and 4 bytes sufficient for 250MB. `typ` costs 1 byte when empty; a non-empty name adds its UTF-8 length (e.g. `"todo"` is 4 more). So a typical INSERT will have a header of 53 bytes, plus the type name if any.
 
-An UPDATE will have higher values for `off` and `ctr`. A single byte will generally suffice for `ctr` (over 100 updates), but 2 bytes would hold 16 thousand. For `off`, 4-6 bytes will capture most values. So we can conservatively estimate an UPDATE header cost as 58 bytes.
+An UPDATE will have higher values for `off` and `ctr`. A single byte will generally suffice for `ctr` (over 100 updates), but 2 bytes would hold 16 thousand. For `off`, 4-6 bytes will capture most values. So we can conservatively estimate an UPDATE header cost as 59 bytes, plus the type name if any.
 
-A DELETE will be an UPDATE, but without the hash, putting the estimated cost as 26 bytes.
+A DELETE will be an UPDATE, but without the hash, putting the estimated cost as 27 bytes.
 
 |Message Type|Estimated Msg Overhead (bytes)|
 |------------|--------------------------|
-|INSERT|52|
-|UPDATE|58|
-|DELETE|26|
+|INSERT|53|
+|UPDATE|59|
+|DELETE|27|
+
+Those figures include the 1-byte empty `typ`. A type name adds only its UTF-8 bytes (positional var-string: 1-byte length already counted). That is cheaper than embedding the same name in a [msgpack](https://msgpack.org) body, which is TLV: a map key `"type"` (1 + 4) plus a string value (1 + N) — 10 bytes for `"todo"` vs 5 on the head. For an app that would have encoded a type in the body anyway, total msg size goes down even though the head table went up.
 
 ### Bag Data Structure Overhead
 
@@ -66,9 +71,9 @@ Each of those two fields carries an encryption overhead of 40 bytes. Thus the es
 
 |Message Type|Estimated Bag Overhead (bytes)|
 |------------|--------------------------|
-|INSERT|92|
-|UPDATE|98|
-|DELETE|66|
+|INSERT|93|
+|UPDATE|99|
+|DELETE|67|
 
 ### PUSH Request Data Structure
 
@@ -77,7 +82,7 @@ Each of those two fields carries an encryption overhead of 40 bytes. Thus the es
 |authTS|101-104|[see docs](./host#authts-data-structure)|
 |bags|see above|see above|
 
-Taking the highest estimate for bag overhead (98 bytes), the estimated weight of a PUSH request is 104 bytes for authTS, plus 98 bytes per bag, plus the weight of each message body.
+Taking the highest estimate for bag overhead (99 bytes), the estimated weight of a PUSH request is 104 bytes for authTS, plus 99 bytes per bag, plus the weight of each message body.
 
 For a TODO list application, a message like `{ "todo": "take out the trash", done: true }` is a 44 byte JSON string, so the bag overhead os over double the size of the message contents. For this reason, DIPLOMATIC is designed to be prunable. Each message is a complete overwrite of the prior state of the ent. At first glance this may seem wasteful, but the consequence is that correct state of the system can be produced with only the final message for each ent. Clients only need to retain older messages if they want access to historical state, e.g. to support undo. A thin client can immediately discard older messages for an ent upon receiving a new valid one. And if the latest message is a DELETE, the client can discard that one too. This bounds the number of required messages at the size of the "working set" of ents. Even if the message and bag overhead is greater than the size of the message contents, the overhead is fixed-size and thus the data storage requirement of DIPLOMATIC is O(N) where N is the number of messages in the working set.
 

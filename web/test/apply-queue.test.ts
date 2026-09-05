@@ -269,9 +269,10 @@ describe("SyncClient apply queue", () => {
     const state = mockState();
     const client = makeClient(store, state);
     await client.setSeed(testEnclave());
-    const [head, st] = await client.insertRaw(
-      encode({ type: "note", body: { t: "hi" } }),
-    );
+    const [head, st] = await client.insert({
+      type: "note",
+      body: { t: "hi" },
+    });
     expect(st).toBe(Status.Success);
     expect(head).toBeDefined();
     expect(state.applied).toHaveLength(1);

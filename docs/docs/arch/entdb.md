@@ -12,11 +12,11 @@ In DIPLOMATIC, we call these application data objects "ents", short for "entitie
 
 EntDB adds concepts on top of the raw DIPLOMATIC protocol:
 
-1. "type" - Mandatory. Groups ents by their application-defined type.
+1. "type" - Mandatory. Groups ents by their application-defined type. Taken from the msg head `typ` (empty = untyped / single-type app).
 2. "pid" (parent ID) - Optional. Encodes a hierarchy amongst ents. One ent's `pid` is another ent's `eid`.
 3. "tags" - Optional `string[]`. Multi-value reverse index (like `pid`, but N:M). Opaque strings; EntDB does not parse semantics. Clients define conventions (e.g. `impl:${btob64(eid)}` for non-exclusive "implements" links, or `time-week-2026W01` for non-hierarchical grouping). Empty strings and duplicates are dropped on apply; omit or `[]` means no tags.
 
-These are [msgpack](https://msgpack.org)-encoded within the DIPLOMATIC msg body. The rest of the ent data lives alongside those, encoded the same way.
+`pid`, `tags`, and the application payload are [msgpack](https://msgpack.org)-encoded in the DIPLOMATIC msg body. `type` is not in the body; it lives on the [msg head](../api/push#message-head-data-structure).
 
 DIPLOMATIC comes with an EntDB implementation on IndexedDB for use in web browsers. Within IndexedDB, a live ent looks like this:
 

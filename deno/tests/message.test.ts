@@ -271,19 +271,7 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
   });
 
   await t.step("message head decode with invalid varint", async () => {
-    // Create encoded with invalid varint for ctr
-    const eidObj = { id: createFilledArray(8, 0x99), ts: new Date(0) };
-    const [eid, statEid] = makeEID(eidObj);
-    if (statEid !== Status.Success) {
-      assertEquals(statEid, Status.Success);
-      return;
-    }
-    const clkBytes = new Uint8Array(8);
-    new DataView(clkBytes.buffer).setBigUint64(
-      0,
-      BigInt(new Date().getTime()),
-      false,
-    );
+    // typ is first; an overlong varint fails before eid/off/ctr.
     const invalidVarint = new Uint8Array([
       0xff,
       0xff,
@@ -295,9 +283,8 @@ Deno.test("message encoding/decoding with var-int", async (t) => {
       0xff,
       0xff,
       0xff,
-    ]); // Too large varint
-    const encoded = concat(eid, concat(clkBytes, invalidVarint));
-    const dec = new Decoder(encoded);
+    ]);
+    const dec = new Decoder(invalidVarint);
     const [, status] = messageHeadCodec.decode(dec);
     assertEquals(status, Status.VarLimitExceeded);
   });

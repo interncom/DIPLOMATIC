@@ -1,14 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { decode, encode } from "@msgpack/msgpack";
-import { Exim } from "../src/shared/exim";
+import { hoistTyp } from "../../tools/hoist-typ/hoist-typ";
 import { makeEID } from "../src/shared/codecs/eid";
 import { Status } from "../src/shared/consts";
 import libsodiumCrypto from "../src/crypto";
 import type { IMessageHead } from "../src/shared/types";
 
-const codec = { encode, decode };
-
-describe("Exim.hoistTyp", () => {
+describe("hoistTyp", () => {
   test("moves body.type onto the msg head and strips it from the body", async () => {
     const [eid, st] = makeEID({
       id: new Uint8Array(8).fill(1),
@@ -30,10 +28,9 @@ describe("Exim.hoistTyp", () => {
       len: oldBody.length,
       hsh,
     };
-    const [out] = await Exim.hoistTyp(
+    const [out] = await hoistTyp(
       [{ head, body: oldBody }],
       libsodiumCrypto,
-      codec,
     );
     expect(out.head.typ).toBe("todo");
     expect(out.body).toBeDefined();
@@ -65,10 +62,9 @@ describe("Exim.hoistTyp", () => {
       typ: "",
       len: 0,
     };
-    const out = await Exim.hoistTyp(
+    const out = await hoistTyp(
       [{ head: rawHead, body: raw }, { head: delHead }],
       libsodiumCrypto,
-      codec,
     );
     expect(out[0].head.typ).toBe("");
     expect(out[0].body).toEqual(raw);
@@ -91,10 +87,9 @@ describe("Exim.hoistTyp", () => {
       typ: "note",
       len: body.length,
     };
-    const [out] = await Exim.hoistTyp(
+    const [out] = await hoistTyp(
       [{ head, body }],
       libsodiumCrypto,
-      codec,
     );
     expect(out.head.typ).toBe("note");
     expect(out.body).toEqual(body);

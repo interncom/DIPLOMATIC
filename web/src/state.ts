@@ -111,7 +111,7 @@ export class StateManager implements IStateManager {
       ops.push(op);
     }
 
-    // CachedEntDB.apply emits in its sync prefix before this await yields.
+    // CachedEntDB.apply patches mem and queues persist before this await.
     const { stats: applyStats, types, eids } = await this.applier(ops);
 
     const results: Status[] = [];
@@ -129,8 +129,9 @@ export class StateManager implements IStateManager {
       results.push(Status.Success);
     }
 
-    // Non-cache: notify here (applier had no subscribe). Cache: already
-    // notified from CachedEntDB.apply's sync prefix; emitting here is late.
+    // Non-cache: notify here (applier had no subscribe). Cache: notified
+    // from CachedEntDB subscribe (microtask after mem patch); emitting
+    // here would wait until durable IDB.
     if (!this.cacheDriven) {
       for (const type of types) {
         this.emitter.emit(type, null);

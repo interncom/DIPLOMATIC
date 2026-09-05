@@ -224,8 +224,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     },
   ): Promise<Status[]> {
     // Must run before any archive await. StateManager.apply is async but
-    // its first await is the EntDB applier; CachedEntDB.apply emits in that
-    // call's sync prefix, so subscribers fire before we hit messages.add.
+    // its first await is the EntDB applier; CachedEntDB.apply patches mem
+    // and queues durable persist in that call's sync prefix.
     const applyP = this.state.apply(msgsFromParts(parts));
 
     const hashes: Hash[] = [];

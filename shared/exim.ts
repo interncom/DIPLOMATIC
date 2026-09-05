@@ -206,18 +206,77 @@ export namespace Exim {
     enclaveOut: Enclave,
     transform: (
       msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
-    ) => Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+    ) =>
+      | Iterable<{ head: IMessageHead; body?: Uint8Array }>
+      | Promise<Iterable<{ head: IMessageHead; body?: Uint8Array }>>,
   ): Promise<ValStat<Uint8Array>> {
     const [msgs, stDec] = await decodeFile(file, crypto, enclaveIn);
     if (stDec !== Status.Success) return err(stDec);
     const [fileStruct, stFile] = fileCodec.decode(new Decoder(file));
     if (stFile !== Status.Success) return err(stFile);
+    const mapped = await transform(msgs);
     return encodeFile(
       fileStruct.head.lbl,
       fileStruct.head.idx,
-      transform(msgs),
+      mapped,
       crypto,
       enclaveOut,
     );
+  }
+
+  /** True if v is a non-array object. */
+  function isPlainObj(v: unknown): v is Record<string, unknown> {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+  }
+
+  // Lift IMsgEntBody.type onto the msg head and strip it from the msgpack body.
+  export async function hoistTyp(
+    msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+    crypto: ICrypto,
+    codec: {
+      encode: (source: unknown) => Uint8Array;
+      decode: (packed: Uint8Array) => unknown;
+    },
+  ): Promise<{ head: IMessageHead; body?: Uint8Array }[]> {
+    const out: { head: IMessageHead; body?: Uint8Array }[] = [];
+    for (const msg of msgs) {
+      const headTyp = msg.head.typ ?? "";
+      if (!msg.body || msg.body.length === 0) {
+        out.push({
+          head: { ...msg.head, typ: headTyp },
+          body: msg.body,
+        });
+        continue;
+      }
+      let decoded: unknown;
+      try {
+        decoded = codec.decode(msg.body);
+      } catch {
+        out.push({
+          head: { ...msg.head, typ: headTyp },
+          body: msg.body,
+        });
+        continue;
+      }
+      if (!isPlainObj(decoded) || typeof decoded.type !== "string") {
+        out.push({
+          head: { ...msg.head, typ: headTyp },
+          body: msg.body,
+        });
+        continue;
+      }
+      const typ = headTyp.length > 0 ? headTyp : decoded.type;
+      const rest: Record<string, unknown> = {};
+      for (const k of Object.keys(decoded)) {
+        if (k !== "type") rest[k] = decoded[k];
+      }
+      const body = codec.encode(rest);
+      const hsh = await crypto.blake3(body);
+      out.push({
+        head: { ...msg.head, typ, len: body.length, hsh },
+        body,
+      });
+    }
+    return out;
   }
 }

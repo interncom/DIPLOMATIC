@@ -498,7 +498,7 @@ export class WorkerClient implements IClient<URL> {
     await this.request({ id: this.allocId(), op: "disconnect" });
   }
 
-  /** Local UI write: archive + apply on main (cache notifies UI); sync via worker. */
+  /** Local UI write on main (cache notifies in apply's sync prefix); sync via worker. */
   async insertRaw(content: SerializedContent): Promise<ValStat<IMessageHead>> {
     return this.local.insertRaw(content);
   }

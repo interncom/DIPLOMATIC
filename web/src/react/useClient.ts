@@ -109,6 +109,11 @@ type UseClientBase = {
   seed?: Enclave;
   host?: IHostConnectionInfo<URL>;
   readyTimeoutMs?: number;
+  /**
+   * EntDB optimistic UI notify (default true). See {@link openEntDB}.
+   * Set false to notify only after durable commit.
+   */
+  optimistic?: boolean;
 };
 
 /**
@@ -141,7 +146,7 @@ export type UseClientOptions = UseClientWorkerOptions | UseClientMainOptions;
 
 export function useClient(opts: UseClientOptions = {}) {
   const clock = opts.clock ?? new Clock();
-  const { seed, host, readyTimeoutMs } = opts;
+  const { seed, host, readyTimeoutMs, optimistic } = opts;
   const useWorker = opts.worker === true;
   const store = "store" in opts ? opts.store : undefined;
 
@@ -159,7 +164,7 @@ export function useClient(opts: UseClientOptions = {}) {
     let dispose: (() => void) | undefined;
 
     (async () => {
-      const entDB = await openEntDB();
+      const entDB = await openEntDB({ optimistic });
       if (cancelled) return;
       const entMgr = entStateManager(entDB);
 
@@ -217,7 +222,7 @@ export function useClient(opts: UseClientOptions = {}) {
       cancelled = true;
       dispose?.();
     };
-  }, [clock, seed, host, useWorker, store, readyTimeoutMs]);
+  }, [clock, seed, host, useWorker, store, readyTimeoutMs, optimistic]);
 
   return diplomaticState;
 }

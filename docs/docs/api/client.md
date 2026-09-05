@@ -9,7 +9,8 @@ import {
   openDiplomaticClient,
 } from "@interncom/diplomatic";
 
-const entDB = await openEntDB(); // cache on by default
+const entDB = await openEntDB(); // cache + optimistic UI notify (default)
+// const entDB = await openEntDB({ optimistic: false }); // notify after durable
 // const entDB = await openEntDB({ cache: false }); // durable IDB only
 const state = entStateManager(entDB);
 // worker: true → library spawns embedded sync Worker (only supported path)
@@ -38,7 +39,7 @@ const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 
 ## Data
 
-Local writes build a message, optimistically apply it to the in-memory EntDB cache (when used), then durable-apply the **same** message through the sync pipeline (archive → exec → upload).
+Local writes build a message and call `state.apply` **before** waiting on the message archive. With the default EntDB cache, `apply` patches the in-memory layer and notifies UI subscribers synchronously, then persists to IndexedDB and reconciles. Pass `{ optimistic: false }` to notify only after that durable commit. The same message then continues through archive → exec completion → upload.
 
 Shared fields on write ops (msgpack body of the ent):
 

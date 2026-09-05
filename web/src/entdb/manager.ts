@@ -7,7 +7,9 @@ import type { IEntDB } from "./entdb";
 /**
  * Build a StateManager for an EntDB.
  * When `edb` is a {@link CachedEntDB}, type notifies come from the cache
- * (immediate apply + durable reconcile / peer ingest).
+ * subscribe path (optimistic apply + durable reconcile / peer ingest).
+ * cacheDriven: StateManager.apply must not emit after the applier Promise
+ * settles — that would delay UI until durable IDB. Subscribe is the notify.
  */
 export function entStateManager(edb: IEntDB): StateManager {
   if (edb instanceof CachedEntDB) {

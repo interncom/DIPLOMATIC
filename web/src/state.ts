@@ -74,8 +74,9 @@ export class StateManager implements IStateManager {
   /** Worker / peer: eids successfully applied to durable EntDB. */
   private onDirtyEids: ((eids: EntityID[]) => void) | undefined;
   /**
-   * When set (CachedEntDB), type events are driven by the cache's subscribe
-   * path (immediate + durable ingest). apply() does not re-emit.
+   * When set (CachedEntDB), type events come from cache.subscribe (optimistic
+   * mem patch + later reconcile). apply() must not emit after awaiting the
+   * applier — that Promise settles only after durable IDB.
    */
   private cacheDriven: boolean;
   private peerIngest: PeerIngestFn | undefined;
@@ -110,6 +111,7 @@ export class StateManager implements IStateManager {
       ops.push(op);
     }
 
+    // CachedEntDB.apply emits in its sync prefix before this await yields.
     const { stats: applyStats, types, eids } = await this.applier(ops);
 
     const results: Status[] = [];
@@ -127,7 +129,8 @@ export class StateManager implements IStateManager {
       results.push(Status.Success);
     }
 
-    // Non-cache appliers: emit type events here.
+    // Non-cache: notify here (applier had no subscribe). Cache: already
+    // notified from CachedEntDB.apply's sync prefix; emitting here is late.
     if (!this.cacheDriven) {
       for (const type of types) {
         this.emitter.emit(type, null);

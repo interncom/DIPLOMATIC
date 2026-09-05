@@ -2,12 +2,27 @@
 //
 // Architecture:
 //
-// 1. apply(ops) updates mem immediately and notifies subscribers (UI).
+// 1. apply(ops) patches mem and notifies subscribers (UI) synchronously,
+//    unless constructed with `{ optimistic: false }`.
 // 2. The same ops go to durable (authority) in the same call.
 // 3. After durable settles, mem is set from durable for those eids.
 //    If that changes mem, subscribers are notified again.
 // 4. Peer writes (e.g. sync worker) call ingestFromDurable(eids):
 //    pull those eids from durable; notify types only if mem changed.
+//
+// Optimistic notify (default) — do not regress:
+// - apply() must NOT be `async`. The first await would be durable IDB and
+//   the UI would wait on it. emit() runs in the synchronous prefix, then
+//   this.run() persists. Putting emit inside run(), or awaiting getRow /
+//   durable.apply before emit, is the failure mode we already hit twice.
+// - apply() returns a Promise that settles after durable+reconcile. Callers
+//   (StateManager.apply, SyncClient.doApply) may await that for stats, but
+//   subscribe listeners have already run. cacheDriven StateManager must not
+//   emit again after the applier Promise settles — that emit would be late.
+// - SyncClient.doApply must invoke state.apply before awaiting archive IDB
+//   so the cache's sync prefix runs before messages.add.
+// - Regression tests: "apply notifies and serves mem before durable.apply"
+//   (cached-entdb) and "insert notifies before archive IDB" (client).
 //
 // Reads always hit mem. First list/count of a type pulls durable once
 // under the write chain (merge, so it does not clobber a concurrent
@@ -52,16 +67,25 @@ export type OpenEntDBOptions = {
    * Ignored when `cache` is false.
    */
   indexes?: boolean;
+  /**
+   * Notify UI as soon as mem is patched, before durable IDB (default true).
+   * Set false to notify only after durable commit. Ignored when `cache` is false.
+   */
+  optimistic?: boolean;
 };
 
 export type CachedEntDBOptions = {
   /** Secondary mem indexes (default true). See {@link OpenEntDBOptions.indexes}. */
   indexes?: boolean;
+  /** Immediate mem notify (default true). See {@link OpenEntDBOptions.optimistic}. */
+  optimistic?: boolean;
 };
 
 /**
  * Open EntDB for the app (or worker). Single entry point.
- * Default: cached with mem indexes. Pass `{ cache: false }` for durable IDB only.
+ * Default: cached with mem indexes and optimistic notify.
+ * Pass `{ cache: false }` for durable IDB only.
+ * Pass `{ optimistic: false }` to notify only after durable commit.
  */
 export async function openEntDB(
   opts?: OpenEntDBOptions,
@@ -70,7 +94,10 @@ export async function openEntDB(
   if (opts?.cache === false) {
     return durable;
   }
-  return new CachedEntDB(durable, undefined, { indexes: opts?.indexes });
+  return new CachedEntDB(durable, undefined, {
+    indexes: opts?.indexes,
+    optimistic: opts?.optimistic,
+  });
 }
 
 export class CachedEntDB implements IEntDB {
@@ -79,6 +106,7 @@ export class CachedEntDB implements IEntDB {
   private warmed = new Set<string>();
   private listeners = new Set<EntChangeListener>();
   private chain: Promise<unknown> = Promise.resolve();
+  private optimistic: boolean;
 
   constructor(
     durable: IEntDB,
@@ -86,6 +114,7 @@ export class CachedEntDB implements IEntDB {
     opts?: CachedEntDBOptions,
   ) {
     this.durable = durable;
+    this.optimistic = opts?.optimistic !== false;
     this.mem = new EntDBMemory(init ?? [], { indexes: opts?.indexes });
     if (init) {
       for (const ent of init) {
@@ -118,15 +147,19 @@ export class CachedEntDB implements IEntDB {
   /**
    * Fan-out write: mem (immediate notify) + durable, then reconcile mem
    * from durable for the ops' eids (second notify only if something moved).
-   * Mem patch+emit is synchronous so notify does not wait on IDB (new insert
-   * included). Persist stays on the write chain.
+   * Not `async`: the mem patch+emit below must run before any await.
+   * `{ optimistic: false }`: skip the sync prefix; notify after durable.
    */
   apply(ops: IOp[]) {
-    this.emit(applyOps(this.mem, ops).types);
-    const snap = new Map<string, RowStamp | undefined>();
-    for (const op of ops) {
-      const key = btob64(op.eid);
-      snap.set(key, rowStamp(this.mem.ents.get(key)));
+    let snap: Map<string, RowStamp | undefined> | undefined;
+    if (this.optimistic) {
+      // Sync prefix: UI sees the write here. Do not move this into run().
+      this.emit(applyOps(this.mem, ops).types);
+      snap = new Map();
+      for (const op of ops) {
+        const key = btob64(op.eid);
+        snap.set(key, rowStamp(this.mem.ents.get(key)));
+      }
     }
 
     return this.run(async () => {
@@ -181,8 +214,9 @@ export class CachedEntDB implements IEntDB {
   /**
    * Install durable truth for each eid into mem (live or tombstone).
    * When `snap` is set (post-apply reconcile), skip eids whose mem stamp
-   * moved — a later apply owns them. Without snap (ingest), do not clobber
-   * a newer in-flight mem row.
+   * moved — a later apply owns them. Always skip if mem is newer than
+   * durable (overlapping optimistic apply). Never replace a newer in-flight
+   * mem row with older durable truth.
    */
   private async pullEids(
     eids: Iterable<EntityID>,
@@ -202,12 +236,12 @@ export class CachedEntDB implements IEntDB {
       }
 
       const curr = this.mem.ents.get(key);
+      // Never clobber a newer in-flight mem row with older durable truth.
+      if (curr !== undefined && row !== undefined && rowWins(curr, row)) {
+        continue;
+      }
       if (snap) {
         if (!stampEq(rowStamp(curr), snap.get(key))) continue;
-      } else if (
-        curr !== undefined && row !== undefined && rowWins(curr, row)
-      ) {
-        continue;
       }
 
       if (row) {

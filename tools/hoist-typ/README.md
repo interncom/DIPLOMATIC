@@ -6,7 +6,8 @@ msgpack body. The file is re-encrypted under the same labeled CLI master
 (`~/.diplomatic/<LABEL>`). Unlock with a YubiKey UV via `tools/keys`
 (hmac-secret).
 
-Use this to migrate exports created before protocol 0.20.0.
+Reads **0.19.x** heads (`eid, off, ctr, len, hsh`) and writes **0.20**
+heads (`typ` first). Use this on exports from protocol 0.19.x.
 
 ## Usage
 

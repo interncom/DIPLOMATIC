@@ -2,27 +2,30 @@
 //
 // Architecture:
 //
-// 1. apply(ops) patches mem and notifies subscribers (UI) synchronously,
-//    unless constructed with `{ optimistic: false }`.
-// 2. The same ops go to durable (authority) in the same call.
-// 3. After durable settles, mem is set from durable for those eids.
-//    If that changes mem, subscribers are notified again.
+// 1. apply(ops) patches mem synchronously, unless `{ optimistic: false }`.
+// 2. Durable persist is queued on the write chain immediately after that.
+// 3. Type subscribers are notified on a microtask (still before IDB
+//    completes). After durable settles, mem is reconciled; notify again
+//    only if something moved.
 // 4. Peer writes (e.g. sync worker) call ingestFromDurable(eids):
 //    pull those eids from durable; notify types only if mem changed.
 //
 // Optimistic notify (default) — do not regress:
 // - apply() must NOT be `async`. The first await would be durable IDB and
-//   the UI would wait on it. emit() runs in the synchronous prefix, then
-//   this.run() persists. Putting emit inside run(), or awaiting getRow /
-//   durable.apply before emit, is the failure mode we already hit twice.
+//   mem would not be patched before callers continue. Patch mem, then
+//   this.run() persist, then queueMicrotask(emit). Awaiting getRow /
+//   durable.apply before the mem patch is the failure mode we already hit.
+// - emit must not run in the sync prefix. Subscribe handlers (useStateWatcher
+//   getEntities) copy type lists; a cold list also this.run(warmType). Doing
+//   that before persist is queued stalls the save on a full type IDB load.
 // - apply() returns a Promise that settles after durable+reconcile. Callers
-//   (StateManager.apply, SyncClient.doApply) may await that for stats, but
-//   subscribe listeners have already run. cacheDriven StateManager must not
-//   emit again after the applier Promise settles — that emit would be late.
+//   may await that for stats. cacheDriven StateManager must not emit after
+//   that Promise settles — that emit would be late.
 // - SyncClient.doApply must invoke state.apply before awaiting archive IDB
-//   so the cache's sync prefix runs before messages.add.
-// - Regression tests: "apply notifies and serves mem before durable.apply"
-//   (cached-entdb) and "insert notifies before archive IDB" (client).
+//   so mem is patched and persist queued before messages.add.
+// - Regression tests: "apply notifies and serves mem before durable.apply",
+//   "subscribe handlers do not block durable.apply" (cached-entdb),
+//   "insert notifies before archive IDB" (client).
 //
 // Reads always hit mem. First list/count of a type pulls durable once
 // under the write chain (merge, so it does not clobber a concurrent
@@ -145,16 +148,16 @@ export class CachedEntDB implements IEntDB {
   }
 
   /**
-   * Fan-out write: mem (immediate notify) + durable, then reconcile mem
-   * from durable for the ops' eids (second notify only if something moved).
-   * Not `async`: the mem patch+emit below must run before any await.
-   * `{ optimistic: false }`: skip the sync prefix; notify after durable.
+   * Fan-out write: patch mem, queue durable, notify UI on a microtask,
+   * then reconcile. Not `async`: mem patch must run before any await.
+   * `{ optimistic: false }`: skip the mem prefix; notify after durable.
    */
   apply(ops: IOp[]) {
     let snap: Map<string, RowStamp | undefined> | undefined;
+    let types: Set<string> | undefined;
     if (this.optimistic) {
-      // Sync prefix: UI sees the write here. Do not move this into run().
-      this.emit(applyOps(this.mem, ops).types);
+      // Sync prefix: mem is patched here. Do not await; do not emit yet.
+      types = applyOps(this.mem, ops).types;
       snap = new Map();
       for (const op of ops) {
         const key = btob64(op.eid);
@@ -162,7 +165,9 @@ export class CachedEntDB implements IEntDB {
       }
     }
 
-    return this.run(async () => {
+    // Queue persist before notify so list watchers cannot jump the chain
+    // (cold getEntities → warmType would otherwise run first).
+    const persist = this.run(async () => {
       const durResult = await this.durable.apply(ops);
       // Authority for eids whose mem stamp still matches this apply.
       // Do not mark types warm: only these eids are in mem.
@@ -181,6 +186,12 @@ export class CachedEntDB implements IEntDB {
       }
       return durResult;
     });
+
+    if (types) {
+      const notify = types;
+      queueMicrotask(() => this.emit(notify));
+    }
+    return persist;
   }
 
   clear() {

@@ -39,7 +39,7 @@ const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 
 ## Data
 
-Local writes build a message and call `state.apply` **before** waiting on the message archive. With the default EntDB cache, `apply` patches the in-memory layer and notifies UI subscribers synchronously, then persists to IndexedDB and reconciles. Pass `{ optimistic: false }` to notify only after that durable commit. The same message then continues through archive → exec completion → upload.
+Local writes build a message and call `state.apply` **before** waiting on the message archive. With the default EntDB cache, `apply` patches the in-memory layer immediately, queues IndexedDB persist, then notifies UI subscribers (microtask) and reconciles. Pass `{ optimistic: false }` to notify only after that durable commit. The same message then continues through archive → exec completion → upload.
 
 Shared fields on write ops (msgpack body of the ent):
 

@@ -90,11 +90,12 @@ Use `btob64` / package helpers so binary eids encode stably across platforms.
 
 `openEntDB()` wraps IndexedDB in an in-memory cache (`CachedEntDB`). On `apply`:
 
-1. Patch mem and notify type subscribers **synchronously** (UI).
-2. Persist the same ops to IndexedDB on a write chain.
-3. Reconcile those eids from durable; notify again only if mem moved.
+1. Patch mem **synchronously**.
+2. Queue persist to IndexedDB on the write chain (immediately).
+3. Notify type subscribers on a microtask (UI still updates before IDB completes).
+4. Reconcile those eids from durable; notify again only if mem moved.
 
-`apply` is not `async`: an `await` before the mem patch would stall the UI on IndexedDB. Local writes (`insert` / `update` / `delete`) start `state.apply` before awaiting the message archive for the same reason. Pass `{ optimistic: false }` to skip step 1 and notify only after step 3. The sync worker opens `{ cache: false }` (durable only).
+`apply` is not `async`: an `await` before the mem patch would stall the save. Notify is deferred a microtask so list watchers cannot run ahead of persist (a cold `getEntities` would otherwise load the whole type from IDB first). Local writes (`insert` / `update` / `delete`) start `state.apply` before awaiting the message archive. Pass `{ optimistic: false }` to skip 1 and 3 and notify only after step 4. The sync worker opens `{ cache: false }` (durable only).
 
 ### Frontier checksum
 

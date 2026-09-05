@@ -259,7 +259,7 @@ describe("CachedEntDB", () => {
 
     const op1 = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
     const p1 = cache.apply([op1]);
-    expect(notifies.length).toBeGreaterThanOrEqual(1);
+    await waitNotifies(notifies, 1);
     expect(getRows).toBe(0);
     const [m1] = await cache.getEntities({ type: "note" });
     expect(m1).toHaveLength(1);
@@ -269,7 +269,7 @@ describe("CachedEntDB", () => {
 
     const op2 = await mutateOp({ n: 2 }, "note", new Date(1000), 50, 1, 1);
     const p2 = cache.apply([op2]);
-    expect(notifies.length).toBeGreaterThanOrEqual(2);
+    await waitNotifies(notifies, 2);
     expect(getRows).toBe(0);
     const [m2] = await cache.getEntities({ type: "note" });
     expect(m2?.[0]?.body).toEqual({ n: 2 });
@@ -316,6 +316,37 @@ describe("CachedEntDB", () => {
     await p2;
     const [after] = await durable.getEntities({ type: "note" });
     expect(after).toHaveLength(2);
+  });
+
+  // Persist must be queued before subscribe handlers run. Otherwise a
+  // cold getEntities in a listener this.run(warmType)s ahead of durable.apply.
+  test("subscribe handlers do not block durable.apply", async () => {
+    const durable = new EntDBMemory();
+    let applyStarted = 0;
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      applyStarted += 1;
+      await applyHold;
+      return origApply(ops);
+    };
+    const cache = new CachedEntDB(durable);
+    const heard: boolean[] = [];
+    cache.subscribe(() => {
+      heard.push(applyStarted > 0);
+    });
+
+    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const p = cache.apply([op]);
+    await waitNotifies(heard, 1);
+    expect(applyStarted).toBe(1);
+    expect(heard[0]).toBe(true);
+
+    releaseApply();
+    await p;
   });
 
   // Counterpart: with the flag off, mem and notify wait on durable.apply.

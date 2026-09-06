@@ -38,7 +38,7 @@ App API: `Enclave.pairRequest` / `PairRequest`, `enclave.pairAccept`, then `seal
 
 `Enclave.fromBytes` (web hex paste, CLI `DIP_SEED`). No WebAuthn. Session-only unless the app then binds with PRF or writes largeBlob.
 
-CLI paper backup: `Enclave.dumpToTty` writes 8 lines of `xxxx xxxx` plus a `#` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter (`tools/keys/hexdump.ts`). The fingerprint is BLAKE3 KDF of the master with context `DIPLOMATIC SEED FINGERPRINT`. Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` reads that paper (whitespace ignored) and `fromBytes` + first YubiKey bind; it prints the fingerprint for the user to check against the `#` line.
+CLI paper backup: `Enclave.dumpToTty` writes 8 lines of `n] xxxx xxxx` plus a `#` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter, erasing the previous line (`tools/keys/hexdump.ts`). The fingerprint is BLAKE3 KDF of the master with context `DIPLOMATIC SEED FINGERPRINT`. Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` reads that paper (whitespace ignored) and `fromBytes` + first YubiKey bind; it prints the fingerprint for the user to check against the `#` line.
 
 ## Platform support
 

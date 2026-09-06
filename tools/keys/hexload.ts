@@ -30,7 +30,7 @@ if (
     "Usage: bun run tools/keys/hexload.ts LABEL [--non-resident]",
   );
   console.error("");
-  console.error("  Read paper hex (xxxx xxxx lines), Enclave.fromBytes,");
+  console.error("  Read paper hex (`n] xxxx xxxx` lines), Enclave.fromBytes,");
   console.error("  bind the plugged YubiKey. Prints a fingerprint to check");
   console.error("  against the # line from hexdump. Whitespace ignored.");
   console.error("  Writes ~/.diplomatic/LABEL. Refuses if that file exists");
@@ -59,7 +59,10 @@ function parsePaper(text: string): string {
   for (const raw of text.split(/\r?\n/)) {
     const t = raw.trim();
     if (t.startsWith("#")) continue;
-    for (let i = 0; i < t.length; i++) {
+    let start = 0;
+    const brack = t.indexOf("]");
+    if (brack >= 0 && brack <= 2) start = brack + 1;
+    for (let i = start; i < t.length; i++) {
       const ch = t[i];
       if (ch === undefined || hex.length >= NEED) continue;
       if (/[0-9a-fA-F]/.test(ch)) hex += ch;
@@ -74,7 +77,7 @@ async function readPaperHex(): Promise<Uint8Array> {
   if (!process.stdin.isTTY) {
     chunks.push(readFileSync(0, "utf8"));
   } else {
-    console.error("Enter hex (xxxx xxxx). Space ignored.");
+    console.error("Enter hex (`n] xxxx xxxx`). Space and n] prefixes ignored.");
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stderr,

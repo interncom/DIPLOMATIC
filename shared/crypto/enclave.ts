@@ -772,7 +772,8 @@ export class Enclave {
   }
 
   /**
-   * Write `xxxx xxxx` hex lines plus a # check to /dev/tty (Enter between lines).
+   * Write numbered `n] xxxx xxxx` hex lines plus a # check to /dev/tty.
+   * Paced mode erases the previous line before the next (Enter between).
    * Web bundles set DIP_CLI_DUMP=false; the write is compiled out.
    */
   async dumpToTty(): Promise<Status> {
@@ -788,14 +789,33 @@ export class Enclave {
     const asciiLcA = 87; // 'a' - 10
     const asciiLf = 10;
     const asciiCr = 13;
+    const asciiEsc = 27;
+    const asciiLbrack = 91;
+    const asciiRbrack = 93;
+    const asciiA = 65;
+    const asciiK = 75;
     const nibbleMask = 15;
     const hexLines = 8;
     const bytesPerLine = 4;
     const hexGroup = 2; // bytes (4 hex chars) before the space
-    const rowLen = 10; // 4 hex + space + 4 hex + LF
+    const pfxLen = 3; // `n] `
+    const hexBody = 9; // 4 hex + space + 4 hex
+    const rowLen = pfxLen + hexBody;
     const chkLen = 11; // '#' + 4 hex + space + 4 hex + LF
     const chkBytes = 4;
     const blankAfter = 3; // last line of first half, if not paced
+    // CSI: up 1, erase line, CR — drops the hex line after Enter echo.
+    const erasePrev = new Uint8Array([
+      asciiEsc,
+      asciiLbrack,
+      asciiZero + 1,
+      asciiA,
+      asciiEsc,
+      asciiLbrack,
+      asciiZero + 2,
+      asciiK,
+      asciiCr,
+    ]);
     const hexDigit = (nib: number) =>
       nib < 10 ? asciiZero + nib : asciiLcA + nib;
 
@@ -840,7 +860,7 @@ export class Enclave {
       }
     }
     const paced = typeof inFd === "number";
-    const lineBuf = new Uint8Array(rowLen);
+    const lineBuf = new Uint8Array(rowLen + 1);
     const chkBuf = new Uint8Array(chkLen);
     const inByte = new Uint8Array(1);
     let fprint: Uint8Array | undefined;
@@ -849,6 +869,12 @@ export class Enclave {
       if (fprint === undefined) return Status.InternalError;
       for (let line = 0; line < hexLines; line++) {
         let pos = 0;
+        lineBuf[pos] = asciiZero + line + 1;
+        pos++;
+        lineBuf[pos] = asciiRbrack;
+        pos++;
+        lineBuf[pos] = asciiSpc;
+        pos++;
         for (let bi = 0; bi < bytesPerLine; bi++) {
           if (bi === hexGroup) {
             lineBuf[pos] = asciiSpc;
@@ -861,10 +887,9 @@ export class Enclave {
           lineBuf[pos] = hexDigit(byt & nibbleMask);
           pos++;
         }
-        lineBuf[pos] = asciiLf;
-        writeSync.call(fsMod, outFd, lineBuf);
-        lineBuf.fill(0);
         if (paced && typeof readSync === "function") {
+          writeSync.call(fsMod, outFd, lineBuf.subarray(0, rowLen));
+          lineBuf.fill(0);
           for (;;) {
             const nread = readSync.call(fsMod, inFd, inByte);
             if (typeof nread !== "number" || nread <= 0) break;
@@ -875,8 +900,14 @@ export class Enclave {
               break;
             }
           }
-        } else if (line === blankAfter) {
-          writeSync.call(fsMod, outFd, new Uint8Array([asciiLf]));
+          writeSync.call(fsMod, outFd, erasePrev);
+        } else {
+          lineBuf[pos] = asciiLf;
+          writeSync.call(fsMod, outFd, lineBuf.subarray(0, pos + 1));
+          lineBuf.fill(0);
+          if (line === blankAfter) {
+            writeSync.call(fsMod, outFd, new Uint8Array([asciiLf]));
+          }
         }
       }
       chkBuf[0] = asciiHash;

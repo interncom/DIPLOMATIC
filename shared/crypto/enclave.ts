@@ -801,7 +801,7 @@ export class Enclave {
     const pfxLen = 3; // `n] `
     const hexBody = 9; // 4 hex + space + 4 hex
     const rowLen = pfxLen + hexBody;
-    const chkLen = 11; // '#' + 4 hex + space + 4 hex + LF
+    const chkLen = 13; // `#] ` + 4 hex + space + 4 hex + LF
     const chkBytes = 4;
     const blankAfter = 3; // last line of first half, if not paced
     // CSI: up 1, erase line, CR — drops the hex line after Enter echo.
@@ -911,7 +911,9 @@ export class Enclave {
         }
       }
       chkBuf[0] = asciiHash;
-      let chkPos = 1;
+      chkBuf[1] = asciiRbrack;
+      chkBuf[2] = asciiSpc;
+      let chkPos = 3;
       for (let bi = 0; bi < chkBytes; bi++) {
         if (bi === hexGroup) {
           chkBuf[chkPos] = asciiSpc;

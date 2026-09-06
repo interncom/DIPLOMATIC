@@ -71,7 +71,7 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.
 
-- Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully.
+- Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully. Then `node check.mjs` from `pkg` (`prepublishOnly` / `publish.sh` also run it).
 
 - Run the benchmarks before and after as well, to check for meaningful regressions.
   - `deno bench` from `deno` dir.
@@ -85,4 +85,4 @@ Bump `pkg/package.json` `version` first (and commit). Then from the repo root:
 
     npm run publish-pkg
 
-That `clean`s and `build`s in `pkg/` (CLI `tsc` is a hard gate) and runs `npm publish`. `npm whoami` skips login when the session is still valid; otherwise `npm login` runs first. Both `npm login` and `npm publish` may print a URL — pass it to the human so they can open it on a device with their 2FA token. Wait for them to confirm before treating the step as done.
+That `clean`s, `build`s, and runs `pkg/check.mjs` in `pkg/` (CLI `tsc` is a hard gate) and runs `npm publish`. `check.mjs` also runs as `prepublishOnly`. `npm whoami` skips login when the session is still valid; otherwise `npm login` runs first. Both `npm login` and `npm publish` may print a URL — pass it to the human so they can open it on a device with their 2FA token. Wait for them to confirm before treating the step as done.

@@ -13,6 +13,13 @@
 // Callers may receive only: derived public handles (Identity, ciphers), AEAD
 // ciphertext, Status/booleans, and new Enclave instances from factories.
 //
+// dumpToTty (paper): 8×8 hex to /dev/tty, Status only. Fail closed: the write
+// runs only when DIP_CLI_DUMP is defined and true. Keep
+// `typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP` inlined in the method
+// — a helper blocks DCE and would ship the write in the web bundle.
+// Web/worker/pkg-cli: bun --define DIP_CLI_DUMP=false (DCE). tools/keys/hexdump
+// re-execs with DIP_CLI_DUMP=true. Missing define → NotImplemented.
+//
 // Browser WebAuthn: largeBlob create/read and PRF capability probe live in
 // shared/webauthn. PRF eval/create, CLI IKM seal/unseal, and largeBlob seed
 // write live here — PRF output is IKM that unseals a binding and must not
@@ -151,6 +158,10 @@ export type Identity = {
   /** Per-bag KDM mixed with this identity's private key (see bag seal). */
   kdmFor: (msgHeadEnc: Uint8Array) => Promise<Uint8Array>;
 };
+
+// bun --define DIP_CLI_DUMP=true to enable dumpToTty (hexdump.ts). Absent or
+// false → NotImplemented; web/worker/pkg-cli define false so the write is DCE'd.
+declare const DIP_CLI_DUMP: boolean | undefined;
 
 const SEAL_BIND_DOMAIN = new TextEncoder().encode("diplomatic.bind.v1");
 const BIND_TAG_DOMAIN = new TextEncoder().encode("diplomatic.bindtag.v1");
@@ -757,6 +768,77 @@ export class Enclave {
     opts?: LargeBlobRp,
   ): Promise<Status> {
     return writeLargeBlob(credId, new Uint8Array(MASTER_SEED_LEN), opts);
+  }
+
+  /**
+   * Write the master as 8 lines of 8 hex chars to /dev/tty (paper backup).
+   * Web bundles set DIP_CLI_DUMP=false; the write is compiled out.
+   */
+  async dumpToTty(): Promise<Status> {
+    if (!(typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP)) {
+      return Status.NotImplemented;
+    }
+    // Non-literal specifier: deno must not load npm:@types/node for this file.
+    const spec = "node:fs";
+    let mod: unknown;
+    try {
+      mod = await import(spec);
+    } catch {
+      return Status.NotImplemented;
+    }
+    if (mod === null || typeof mod !== "object") return Status.NotImplemented;
+    if (
+      !("openSync" in mod) || !("writeSync" in mod) || !("closeSync" in mod)
+    ) {
+      return Status.NotImplemented;
+    }
+    const openSync = mod.openSync;
+    const writeSync = mod.writeSync;
+    const closeSync = mod.closeSync;
+    if (
+      typeof openSync !== "function" || typeof writeSync !== "function" ||
+      typeof closeSync !== "function"
+    ) {
+      return Status.NotImplemented;
+    }
+    let fd: unknown;
+    try {
+      fd = openSync.call(mod, "/dev/tty", "w");
+    } catch {
+      return Status.NotImplemented;
+    }
+    if (typeof fd !== "number") return Status.NotImplemented;
+    const cols = 8;
+    const line = cols + 1;
+    const hex = new Uint8Array((MASTER_SEED_LEN * 2 / cols) * line);
+    try {
+      let o = 0;
+      for (let i = 0; i < MASTER_SEED_LEN; i++) {
+        const b = this.#seed[i];
+        if (b === undefined) return Status.InternalError;
+        const hi = b >> 4;
+        const lo = b & 15;
+        hex[o] = hi < 10 ? 48 + hi : 87 + hi;
+        o++;
+        hex[o] = lo < 10 ? 48 + lo : 87 + lo;
+        o++;
+        if (o % line === cols) {
+          hex[o] = 10;
+          o++;
+        }
+      }
+      writeSync.call(mod, fd, hex);
+      return Status.Success;
+    } catch {
+      return Status.InternalError;
+    } finally {
+      hex.fill(0);
+      try {
+        closeSync.call(mod, fd);
+      } catch {
+        // ignore close fail after write
+      }
+    }
   }
 
   /**

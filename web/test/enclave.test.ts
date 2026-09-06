@@ -547,6 +547,14 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(st).toBe(Status.Success);
     assertPermitted();
   },
+  async dumpToTty() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("dumpToTty", seed);
+    const st = await e.dumpToTty();
+    expect(st).toBe(Status.NotImplemented);
+    assertPermitted();
+  },
   async pairRequest() {
     const seed = randomSeed();
     arm("pairRequest", seed);

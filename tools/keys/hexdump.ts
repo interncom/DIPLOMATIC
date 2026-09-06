@@ -39,8 +39,8 @@ if (
   console.error("Usage: bun run tools/keys/hexdump.ts LABEL");
   console.error("");
   console.error("  Unlock ~/.diplomatic/LABEL with a bound YubiKey, then");
-  console.error("  print 8 hex lines (xxxx xxxx) plus a # check, one line at");
-  console.error("  a time (Enter for next). Space is not part of the key.");
+  console.error("  print `n] xxxx xxxx` plus a # check, one line at a time");
+  console.error("  (Enter for next; previous line is erased).");
   process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
 }
 
@@ -53,6 +53,6 @@ if (ring === undefined) die(`no keyring at ${path} (gen.ts ${label} first)`);
 const dev = fidoDev();
 console.error(`Unlocking with ${dev}`);
 const enc = await unlockRing(ring, dev);
-console.error("Write each line, then Enter. Space is not part of the key.");
+console.error("Write each `n] xxxx xxxx` line, then Enter. Previous line clears.");
 const st = await enc.dumpToTty();
 if (st !== Status.Success) die(`dumpToTty ${Status[st]} (${st})`);

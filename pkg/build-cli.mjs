@@ -9,7 +9,7 @@ const cliMetaFromRoot = "pkg/dist/cli/index.meta.json";
 const cliMetaFlag = verbose ? ` --metafile=${cliMetaFromRoot}` : "";
 
 execSync(
-  `bun build --target node --format esm --outfile pkg/dist/cli/index.mjs --external bun:sqlite --minify${cliMetaFlag} cli/src/index.ts`,
+  `bun build --target node --format esm --outfile pkg/dist/cli/index.mjs --external bun:sqlite --minify --define DIP_CLI_DUMP=false${cliMetaFlag} cli/src/index.ts`,
   { cwd: "..", stdio: "inherit" },
 );
 if (verbose) await printSizeBreakdown("dist/cli/index.meta.json", "cli/index.mjs");

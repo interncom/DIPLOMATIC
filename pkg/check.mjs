@@ -8,6 +8,13 @@ async function checkWebBundle() {
     if (content.length < 1000) throw new Error("Bundle too small");
     if (!content.includes("openDiplomaticClient")) throw new Error("openDiplomaticClient not found in bundle");
     if (!content.includes("SyncClient")) throw new Error("SyncClient not found in bundle");
+    if (content.includes("/dev/tty")) {
+      throw new Error("CLI tty dump leaked into web bundle");
+    }
+    const worker = await readFile("./dist/web/worker.mjs", "utf8");
+    if (worker.includes("/dev/tty")) {
+      throw new Error("CLI tty dump leaked into worker bundle");
+    }
     console.log("✓ Web bundle content verified");
   } catch (error) {
     console.error("✗ Web bundle check failed:", error.message);

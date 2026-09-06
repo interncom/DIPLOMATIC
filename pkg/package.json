@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "type": "module",
   "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
   "files": [
@@ -29,6 +29,7 @@
     "build:verbose": "bun run build-web.mjs --verbose && bun run build-cli.mjs --verbose",
 
     "check": "node check.mjs",
+    "prepublishOnly": "node check.mjs",
     "clean": "rm -rf dist",
     "release": "./publish.sh",
     "tsc": "tsc --project ../web/tsconfig.json && tsc --project tsconfig-cli.json --noEmit",

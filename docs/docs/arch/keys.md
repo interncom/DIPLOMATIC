@@ -34,9 +34,11 @@ In-person seed transfer to a device that does not share a passkey. See [Pairing]
 
 App API: `Enclave.pairRequest` / `PairRequest`, `enclave.pairAccept`, then `sealWithPasskey` on the enrollee.
 
-### Raw import
+### Raw import / paper (CLI)
 
 `Enclave.fromBytes` (web hex paste, CLI `DIP_SEED`). No WebAuthn. Session-only unless the app then binds with PRF or writes largeBlob.
+
+CLI paper backup: `Enclave.dumpToTty` writes 8 lines of 8 hex chars to `/dev/tty` (`tools/keys/hexdump.ts`). Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` reads the same 8×8 from the terminal and `fromBytes` + first YubiKey bind.
 
 ## Platform support
 
@@ -88,5 +90,6 @@ Other CTAP2.1 keys with hmac-secret and/or largeBlob work the same way when the 
 | Move identity to another device in person | QR pair (`pairRequest` / `pairAccept`), then PRF binding on the new device |
 | Survive a wiped profile / new machine without cloud passkeys | largeBlob on a YubiKey (desktop), then optional PRF bind |
 | CLI / tests | Raw seed |
+| Paper (CLI TTY) | `dumpToTty` / `tools/keys/hexdump.ts` |
 
 A typical app (see LIFE): platform PRF for daily unlock; optional `cross-platform` largeBlob write as a YubiKey backup; QR pair for a second device. On iPhone, only the platform PRF path is available after the pair.

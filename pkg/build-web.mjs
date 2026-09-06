@@ -11,8 +11,11 @@ const webMetaFlag = verbose ? ` --metafile=${webMetaFromRoot}` : "";
 const workerMetaFlag = verbose ? ` --metafile=${workerMetaFromRoot}` : "";
 
 // 1) Bundle worker first (self-contained ESM for blob spawn).
+// Must stay false: dumpToTty is fail-closed, and check.mjs rejects /dev/tty.
+const cliDumpOff = " --define DIP_CLI_DUMP=false";
+
 execSync(
-  `bun build --target browser --format esm --outfile pkg/dist/web/worker.mjs --minify${workerMetaFlag} web/src/worker/entry.ts`,
+  `bun build --target browser --format esm --outfile pkg/dist/web/worker.mjs --minify${cliDumpOff}${workerMetaFlag} web/src/worker/entry.ts`,
   { cwd: "..", stdio: "inherit" },
 );
 if (verbose) await printSizeBreakdown("dist/web/worker.meta.json", "web/worker.mjs");
@@ -39,7 +42,7 @@ if (verbose) {
 
 // 3) Main library bundle (includes embedded worker string).
 execSync(
-  `bun build --target browser --format esm --outfile pkg/dist/web/index.mjs --external react --minify${webMetaFlag} web/src/index.ts`,
+  `bun build --target browser --format esm --outfile pkg/dist/web/index.mjs --external react --minify${cliDumpOff}${webMetaFlag} web/src/index.ts`,
   { cwd: "..", stdio: "inherit" },
 );
 if (verbose) await printSizeBreakdown("dist/web/index.meta.json", "web/index.mjs");

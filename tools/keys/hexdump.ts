@@ -39,7 +39,7 @@ if (
   console.error("Usage: bun run tools/keys/hexdump.ts LABEL");
   console.error("");
   console.error("  Unlock ~/.diplomatic/LABEL with a bound YubiKey, then");
-  console.error("  print `n] xxxx xxxx` plus a # check, one line at a time");
+  console.error("  print `n] xxxx xxxx` plus `#] xxxx xxxx`, one line at a time");
   console.error("  (Enter for next; previous line is erased).");
   process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
 }

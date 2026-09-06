@@ -37,8 +37,7 @@ shows rp `diplomatic` / user `LABEL`, one RK slot. `--non-resident`
 skips the slot. `gen` / `pair request` refuse if `~/.diplomatic/LABEL`
 exists. `accept`: paste enrollee `DHKEReq`, paste printed resp into the
 web app. `request`: paste printed `DHKEReq` into the existing device,
-paste its `DHKEResp` back, then bind the plugged YubiKey. `hexdump`: 8 lines of `n] xxxx xxxx` plus a `#` check, one line per Enter
-(previous line erased),
-on the controlling TTY only (not stdout). `hexload`: type the hex lines
-back (whitespace ignored), prints the fingerprint to compare to `#`,
-bind a YubiKey; refuses if `~/.diplomatic/LABEL` exists.
+paste its `DHKEResp` back, then bind the plugged YubiKey. `hexdump`: 8 lines of `n] xxxx xxxx` plus `#] xxxx xxxx`, one line per
+Enter (previous line erased), on the controlling TTY only (not stdout).
+`hexload`: prompts `n] ` one line at a time (previous line erased), then
+`#]` to compare; bind a YubiKey; refuses if `~/.diplomatic/LABEL` exists.

@@ -31,8 +31,9 @@ if (
   );
   console.error("");
   console.error("  Read paper hex (`n] xxxx xxxx` lines), Enclave.fromBytes,");
-  console.error("  bind the plugged YubiKey. Prints a fingerprint to check");
-  console.error("  against the # line from hexdump. Whitespace ignored.");
+  console.error("  bind the plugged YubiKey. Prompts `n] ` one line at a");
+  console.error("  time (previous line erased), then shows `#]` to check");
+  console.error("  against hexdump. Whitespace ignored.");
   console.error("  Writes ~/.diplomatic/LABEL. Refuses if that file exists");
   console.error("  (use bind.ts to add a token).");
   process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
@@ -77,21 +78,31 @@ async function readPaperHex(): Promise<Uint8Array> {
   if (!process.stdin.isTTY) {
     chunks.push(readFileSync(0, "utf8"));
   } else {
-    console.error("Enter hex (`n] xxxx xxxx`). Space and n] prefixes ignored.");
+    console.error("Type each `xxxx xxxx` after the `n] ` prompt, then Enter.");
+    const erasePrev = "\x1b[1A\x1b[2K\r";
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stderr,
     });
     try {
       await new Promise<void>((resolve) => {
+        const showPfx = (n: number) => {
+          rl.setPrompt(`${n}] `);
+          rl.prompt();
+        };
         const onLine = (l: string) => {
           chunks.push(l);
-          if (parsePaper(chunks.join("\n")).length >= NEED) {
+          process.stderr.write(erasePrev);
+          const got = parsePaper(chunks.join("\n")).length;
+          if (got >= NEED) {
             rl.off("line", onLine);
             resolve();
+            return;
           }
+          showPfx(Math.floor(got / 8) + 1);
         };
         rl.on("line", onLine);
+        showPfx(1);
       });
     } finally {
       rl.close();
@@ -108,7 +119,7 @@ async function readPaperHex(): Promise<Uint8Array> {
   const got = btoh(fp.subarray(0, 4));
   fp.fill(0);
   const grp = got.slice(0, 4) + " " + got.slice(4);
-  console.error(`#${grp}`);
-  console.error("Check that against the # line on your paper, then continue.");
+  console.error(`#] ${grp}`);
+  console.error("Check that against the #] line on your paper, then continue.");
   return bytes;
 }

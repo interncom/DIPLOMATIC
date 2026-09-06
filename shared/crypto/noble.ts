@@ -5,6 +5,7 @@ import { b64urltob, btoh, bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { asX25519Sk, x25519, x25519Pub, type X25519Sk } from "./x25519.ts";
 import type {
+  Blake3Opts,
   DerivationSeed,
   Hash,
   ICrypto,
@@ -241,8 +242,9 @@ export class NobleCrypto implements ICrypto {
     }
   }
 
-  async blake3(data: Uint8Array): Promise<Hash> {
-    return blake3(data) as Hash;
+  async blake3(data: Uint8Array, opts?: Blake3Opts): Promise<Hash> {
+    if (opts === undefined) return blake3(data) as Hash;
+    return blake3(data, opts) as Hash;
   }
 
   // Makes an ephemeral X25519 pair from random entropy (not generateKey).

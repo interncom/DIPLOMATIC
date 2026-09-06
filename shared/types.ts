@@ -183,6 +183,14 @@ export interface IHostCrypto {
   ) => Promise<boolean>;
 }
 
+/** BLAKE3 hash / MAC / KDF (noble: `key` XOR `context`, not both). */
+export type Blake3Opts = {
+  /** 32-byte MAC key. */
+  key?: Uint8Array;
+  /** KDF context (hardcoded, app-specific). */
+  context?: Uint8Array | string;
+};
+
 export interface ICrypto extends IHostCrypto {
   genRandomBytes: (bytes: number) => Promise<Uint8Array>;
   gen256BitSecureRandomSeed: () => Promise<Uint8Array>;
@@ -200,7 +208,7 @@ export interface ICrypto extends IHostCrypto {
     message: Uint8Array | string,
     secKey: PrivateKey,
   ) => Promise<Uint8Array>;
-  blake3: (data: Uint8Array) => Promise<Hash>;
+  blake3: (data: Uint8Array, opts?: Blake3Opts) => Promise<Hash>;
 }
 
 export interface IMsgpackCodec {

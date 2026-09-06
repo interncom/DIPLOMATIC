@@ -39,8 +39,8 @@ if (
   console.error("Usage: bun run tools/keys/hexdump.ts LABEL");
   console.error("");
   console.error("  Unlock ~/.diplomatic/LABEL with a bound YubiKey, then");
-  console.error("  print the 32-byte master as 8 lines of 8 hex chars on the");
-  console.error("  controlling TTY for paper backup. Not written to stdout.");
+  console.error("  print 8 hex lines (xxxx xxxx) plus a # check, one line at");
+  console.error("  a time (Enter for next). Space is not part of the key.");
   process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
 }
 
@@ -53,6 +53,6 @@ if (ring === undefined) die(`no keyring at ${path} (gen.ts ${label} first)`);
 const dev = fidoDev();
 console.error(`Unlocking with ${dev}`);
 const enc = await unlockRing(ring, dev);
-console.error("Write down these 8 lines. They are the master seed.");
+console.error("Write each line, then Enter. Space is not part of the key.");
 const st = await enc.dumpToTty();
 if (st !== Status.Success) die(`dumpToTty ${Status[st]} (${st})`);

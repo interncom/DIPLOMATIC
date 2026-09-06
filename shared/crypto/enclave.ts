@@ -165,6 +165,7 @@ declare const DIP_CLI_DUMP: boolean | undefined;
 
 const SEAL_BIND_DOMAIN = new TextEncoder().encode("diplomatic.bind.v1");
 const BIND_TAG_DOMAIN = new TextEncoder().encode("diplomatic.bindtag.v1");
+const FP_MODE = new TextEncoder().encode("DIPLOMATIC SEED FINGERPRINT");
 const BIND_TAG_LEN = 32;
 const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
@@ -771,72 +772,148 @@ export class Enclave {
   }
 
   /**
-   * Write the master as 8 lines of 8 hex chars to /dev/tty (paper backup).
+   * Write `xxxx xxxx` hex lines plus a # check to /dev/tty (Enter between lines).
    * Web bundles set DIP_CLI_DUMP=false; the write is compiled out.
    */
   async dumpToTty(): Promise<Status> {
     if (!(typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP)) {
       return Status.NotImplemented;
     }
-    // Non-literal specifier: deno must not load npm:@types/node for this file.
-    const spec = "node:fs";
-    let mod: unknown;
+    const ttyPath = "/dev/tty";
+    // Non-literal: deno must not load npm:@types/node for this file.
+    const fsSpec = "node:fs";
+    const asciiSpc = 32;
+    const asciiHash = 35;
+    const asciiZero = 48;
+    const asciiLcA = 87; // 'a' - 10
+    const asciiLf = 10;
+    const asciiCr = 13;
+    const nibbleMask = 15;
+    const hexLines = 8;
+    const bytesPerLine = 4;
+    const hexGroup = 2; // bytes (4 hex chars) before the space
+    const rowLen = 10; // 4 hex + space + 4 hex + LF
+    const chkLen = 11; // '#' + 4 hex + space + 4 hex + LF
+    const chkBytes = 4;
+    const blankAfter = 3; // last line of first half, if not paced
+    const hexDigit = (nib: number) =>
+      nib < 10 ? asciiZero + nib : asciiLcA + nib;
+
+    let fsMod: unknown;
     try {
-      mod = await import(spec);
+      fsMod = await import(fsSpec);
     } catch {
       return Status.NotImplemented;
     }
-    if (mod === null || typeof mod !== "object") return Status.NotImplemented;
+    if (fsMod === null || typeof fsMod !== "object") {
+      return Status.NotImplemented;
+    }
     if (
-      !("openSync" in mod) || !("writeSync" in mod) || !("closeSync" in mod)
+      !("openSync" in fsMod) || !("writeSync" in fsMod) ||
+      !("closeSync" in fsMod)
     ) {
       return Status.NotImplemented;
     }
-    const openSync = mod.openSync;
-    const writeSync = mod.writeSync;
-    const closeSync = mod.closeSync;
+    const openSync = fsMod.openSync;
+    const writeSync = fsMod.writeSync;
+    const closeSync = fsMod.closeSync;
+    const readSync = "readSync" in fsMod ? fsMod.readSync : undefined;
     if (
       typeof openSync !== "function" || typeof writeSync !== "function" ||
       typeof closeSync !== "function"
     ) {
       return Status.NotImplemented;
     }
-    let fd: unknown;
+    let outFd: unknown;
+    let inFd: unknown;
     try {
-      fd = openSync.call(mod, "/dev/tty", "w");
+      outFd = openSync.call(fsMod, ttyPath, "w");
     } catch {
       return Status.NotImplemented;
     }
-    if (typeof fd !== "number") return Status.NotImplemented;
-    const cols = 8;
-    const line = cols + 1;
-    const hex = new Uint8Array((MASTER_SEED_LEN * 2 / cols) * line);
+    if (typeof outFd !== "number") return Status.NotImplemented;
+    if (typeof readSync === "function") {
+      try {
+        inFd = openSync.call(fsMod, ttyPath, "r");
+      } catch {
+        inFd = undefined;
+      }
+    }
+    const paced = typeof inFd === "number";
+    const lineBuf = new Uint8Array(rowLen);
+    const chkBuf = new Uint8Array(chkLen);
+    const inByte = new Uint8Array(1);
+    let fprint: Uint8Array | undefined;
     try {
-      let o = 0;
-      for (let i = 0; i < MASTER_SEED_LEN; i++) {
-        const b = this.#seed[i];
-        if (b === undefined) return Status.InternalError;
-        const hi = b >> 4;
-        const lo = b & 15;
-        hex[o] = hi < 10 ? 48 + hi : 87 + hi;
-        o++;
-        hex[o] = lo < 10 ? 48 + lo : 87 + lo;
-        o++;
-        if (o % line === cols) {
-          hex[o] = 10;
-          o++;
+      fprint = await this.#fingerprint();
+      if (fprint === undefined) return Status.InternalError;
+      for (let line = 0; line < hexLines; line++) {
+        let pos = 0;
+        for (let bi = 0; bi < bytesPerLine; bi++) {
+          if (bi === hexGroup) {
+            lineBuf[pos] = asciiSpc;
+            pos++;
+          }
+          const byt = this.#seed[line * bytesPerLine + bi];
+          if (byt === undefined) return Status.InternalError;
+          lineBuf[pos] = hexDigit(byt >> 4);
+          pos++;
+          lineBuf[pos] = hexDigit(byt & nibbleMask);
+          pos++;
+        }
+        lineBuf[pos] = asciiLf;
+        writeSync.call(fsMod, outFd, lineBuf);
+        lineBuf.fill(0);
+        if (paced && typeof readSync === "function") {
+          for (;;) {
+            const nread = readSync.call(fsMod, inFd, inByte);
+            if (typeof nread !== "number" || nread <= 0) break;
+            const ch = inByte[0];
+            if (ch === asciiLf) break;
+            if (ch === asciiCr) {
+              readSync.call(fsMod, inFd, inByte);
+              break;
+            }
+          }
+        } else if (line === blankAfter) {
+          writeSync.call(fsMod, outFd, new Uint8Array([asciiLf]));
         }
       }
-      writeSync.call(mod, fd, hex);
+      chkBuf[0] = asciiHash;
+      let chkPos = 1;
+      for (let bi = 0; bi < chkBytes; bi++) {
+        if (bi === hexGroup) {
+          chkBuf[chkPos] = asciiSpc;
+          chkPos++;
+        }
+        const byt = fprint[bi];
+        if (byt === undefined) return Status.InternalError;
+        chkBuf[chkPos] = hexDigit(byt >> 4);
+        chkPos++;
+        chkBuf[chkPos] = hexDigit(byt & nibbleMask);
+        chkPos++;
+      }
+      chkBuf[chkPos] = asciiLf;
+      writeSync.call(fsMod, outFd, chkBuf);
       return Status.Success;
     } catch {
       return Status.InternalError;
     } finally {
-      hex.fill(0);
+      lineBuf.fill(0);
+      chkBuf.fill(0);
+      inByte.fill(0);
+      fprint?.fill(0);
       try {
-        closeSync.call(mod, fd);
+        closeSync.call(fsMod, outFd);
       } catch {
         // ignore close fail after write
+      }
+      if (typeof inFd === "number") {
+        try {
+          closeSync.call(fsMod, inFd);
+        } catch {
+          // ignore
+        }
       }
     }
   }
@@ -955,6 +1032,11 @@ export class Enclave {
       sign: (message: Uint8Array | string) => this.#sign(path, index, message),
       kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(path, index, msgHeadEnc),
     });
+  }
+
+  // Fingerprint the master (BLAKE3 KDF, context FP_MODE).
+  async #fingerprint(): Promise<Uint8Array> {
+    return await noble.blake3(this.#seed, { context: FP_MODE });
   }
 
   // blake3(master ‖ bindtag domain ‖ credId). Not a global fingerprint.
@@ -1143,6 +1225,7 @@ export async function sealKeyFromPrf(
 }
 
 export {
+  FP_MODE,
   MASTER_SEED_LEN,
   MUSEC_MIN_LEN,
   SEAL_BIND_DOMAIN,

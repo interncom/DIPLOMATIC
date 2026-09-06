@@ -2,9 +2,14 @@
 
 import { readFileSync } from "node:fs";
 import readline from "node:readline";
-import { htob } from "../../shared/binary.ts";
+import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
-import { Enclave, MASTER_SEED_LEN } from "../../shared/crypto/enclave.ts";
+import {
+  Enclave,
+  FP_MODE,
+  MASTER_SEED_LEN,
+} from "../../shared/crypto/enclave.ts";
+import { NobleCrypto } from "../../shared/crypto/noble.ts";
 import {
   die,
   loadRing,
@@ -13,9 +18,8 @@ import {
   ringPath,
 } from "./cli-prf.ts";
 
-const LINES = 8;
-const COLS = 8;
-const HEX_LINE = /^[0-9a-fA-F]{8}$/;
+const NEED = MASTER_SEED_LEN * 2;
+const noble = new NobleCrypto();
 
 const argv = process.argv.slice(2);
 if (
@@ -26,10 +30,11 @@ if (
     "Usage: bun run tools/keys/hexload.ts LABEL [--non-resident]",
   );
   console.error("");
-  console.error("  Read 8 lines of 8 hex chars (paper backup) from the");
-  console.error("  terminal, Enclave.fromBytes, bind the plugged YubiKey.");
-  console.error("  Discoverable cred by default. Writes ~/.diplomatic/LABEL.");
-  console.error("  Refuses if that file exists (use bind.ts to add a token).");
+  console.error("  Read paper hex (xxxx xxxx lines), Enclave.fromBytes,");
+  console.error("  bind the plugged YubiKey. Prints a fingerprint to check");
+  console.error("  against the # line from hexdump. Whitespace ignored.");
+  console.error("  Writes ~/.diplomatic/LABEL. Refuses if that file exists");
+  console.error("  (use bind.ts to add a token).");
   process.exit(argv.includes("-h") || argv.includes("--help") ? 0 : 1);
 }
 
@@ -48,45 +53,59 @@ try {
   seed.fill(0);
 }
 
-// 8 lines of 8 hex chars from stdin (prompt on stderr if that is a TTY).
-async function readPaperHex(): Promise<Uint8Array> {
-  const rows: string[] = [];
-  if (!process.stdin.isTTY) {
-    const raw = readFileSync(0, "utf8");
-    for (const l of raw.split(/\r?\n/)) {
-      const t = l.trim();
-      if (t.length === 0) continue;
-      rows.push(t);
+// Pull seed hex from paper lines. Non-hex ignored; # lines skipped.
+function parsePaper(text: string): string {
+  let hex = "";
+  for (const raw of text.split(/\r?\n/)) {
+    const t = raw.trim();
+    if (t.startsWith("#")) continue;
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      if (ch === undefined || hex.length >= NEED) continue;
+      if (/[0-9a-fA-F]/.test(ch)) hex += ch;
     }
+  }
+  return hex;
+}
+
+// Paper hex from stdin (prompt on stderr if that is a TTY).
+async function readPaperHex(): Promise<Uint8Array> {
+  const chunks: string[] = [];
+  if (!process.stdin.isTTY) {
+    chunks.push(readFileSync(0, "utf8"));
   } else {
-    console.error(`Paste ${LINES} lines of ${COLS} hex chars, then Enter.`);
+    console.error("Enter hex (xxxx xxxx). Space ignored.");
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stderr,
     });
     try {
-      while (rows.length < LINES) {
-        const line = await new Promise<string>((resolve) => {
-          rl.once("line", (l) => resolve(l.trim()));
-        });
-        if (line.length === 0) continue;
-        rows.push(line);
-      }
+      await new Promise<void>((resolve) => {
+        const onLine = (l: string) => {
+          chunks.push(l);
+          if (parsePaper(chunks.join("\n")).length >= NEED) {
+            rl.off("line", onLine);
+            resolve();
+          }
+        };
+        rl.on("line", onLine);
+      });
     } finally {
       rl.close();
     }
   }
-  if (rows.length !== LINES) {
-    die(`need ${LINES} lines of ${COLS} hex chars, got ${rows.length}`);
-  }
-  let hex = "";
-  for (const row of rows) {
-    if (!HEX_LINE.test(row)) {
-      die(`each line must be ${COLS} hex chars, got ${JSON.stringify(row)}`);
-    }
-    hex += row;
+  const hex = parsePaper(chunks.join("\n"));
+  if (hex.length !== NEED) {
+    die(`need ${NEED} hex chars, got ${hex.length}`);
   }
   const bytes = htob(hex);
   if (bytes.byteLength !== MASTER_SEED_LEN) die("bad paper hex length");
+  // Must match Enclave.#fingerprint (BLAKE3 KDF, same context).
+  const fp = await noble.blake3(bytes, { context: FP_MODE });
+  const got = btoh(fp.subarray(0, 4));
+  fp.fill(0);
+  const grp = got.slice(0, 4) + " " + got.slice(4);
+  console.error(`#${grp}`);
+  console.error("Check that against the # line on your paper, then continue.");
   return bytes;
 }

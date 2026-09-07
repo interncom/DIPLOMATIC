@@ -711,6 +711,55 @@ describe("Client", () => {
       expect(stIns).toBe(Status.Success);
       expect(Array.from(await store.messages.list()).length).toBe(1);
     });
+
+    // Load-bearing: apply() kicks state.apply before applyChain, so a prior
+    // write's archive/persist cannot delay the next insert's list notify.
+    test("second insert notifies while first archive IDB is held", async () => {
+      const durable = new EntDBMemory();
+      const cache = new CachedEntDB(durable);
+      const stateMgr = entStateManager(cache);
+      const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
+
+      let releaseAdd = () => {};
+      const addHold = new Promise<void>((resolve) => {
+        releaseAdd = resolve;
+      });
+      const origAdd = store.messages.add.bind(store.messages);
+      let addCalls = 0;
+      store.messages.add = async (msgs) => {
+        addCalls += 1;
+        if (addCalls === 1) {
+          await addHold;
+        }
+        return origAdd(msgs);
+      };
+
+      const client = new SyncClient(
+        mockClock,
+        stateMgr,
+        store,
+        transport,
+        libsodiumCrypto,
+      );
+      await cache.getEntities({ type: "todo" });
+      const notifies: string[][] = [];
+      cache.subscribe((types) => notifies.push([...types]));
+
+      const p1 = client.insert({ type: "todo", body: { text: "a" } });
+      await waitNotifies(notifies, 1);
+      const p2 = client.insert({ type: "todo", body: { text: "b" } });
+      await waitNotifies(notifies, 2);
+      const [after] = await cache.getEntities({ type: "todo" });
+      expect(after).toHaveLength(2);
+      expect(Array.from(await store.messages.list()).length).toBe(0);
+
+      releaseAdd();
+      const [, st1] = await p1;
+      const [, st2] = await p2;
+      expect(st1).toBe(Status.Success);
+      expect(st2).toBe(Status.Success);
+      expect(Array.from(await store.messages.list()).length).toBe(2);
+    });
   });
 
   describe("sync", () => {

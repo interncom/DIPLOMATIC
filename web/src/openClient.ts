@@ -17,12 +17,18 @@ import type { IStateManager } from "./shared/types";
 import { openIDBStore } from "./stores/idb/store";
 import type { IClient, IStore } from "./types";
 import { WorkerClient } from "./worker/client";
+import { setVerbose } from "./verbose";
 
 type OpenDiplomaticClientBase = {
   state: IStateManager;
   clock?: IClock;
   /** Max wait for setSeed → Enclave.spawnSyncWorker handshake (default 15s). */
   readyTimeoutMs?: number;
+  /**
+   * Timed `[dip]` traces for local writes, EntDB, and watchers (default false).
+   * Process-wide; same flag as {@link openEntDB}.
+   */
+  verbose?: boolean;
   /**
    * Debounce local write → worker sync (default `defaultSyncDebounceMs`).
    * Use `0` in tests for an immediate upload-queue handoff.
@@ -82,6 +88,9 @@ const logPrefix = "[DIPLOMATIC]";
 export async function openDiplomaticClient(
   opts: OpenDiplomaticClientOptions,
 ): Promise<OpenedDiplomaticClient> {
+  if (opts.verbose !== undefined) {
+    setVerbose(opts.verbose);
+  }
   const clock = opts.clock ?? new Clock();
 
   if (opts.worker === true && customStore(opts) !== undefined) {

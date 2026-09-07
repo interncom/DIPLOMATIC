@@ -114,6 +114,11 @@ type UseClientBase = {
    * Set false to notify only after durable commit.
    */
   optimistic?: boolean;
+  /**
+   * Timed `[dip]` traces (default false). See {@link openEntDB} /
+   * {@link openDiplomaticClient}.
+   */
+  verbose?: boolean;
 };
 
 /**
@@ -146,7 +151,7 @@ export type UseClientOptions = UseClientWorkerOptions | UseClientMainOptions;
 
 export function useClient(opts: UseClientOptions = {}) {
   const clock = opts.clock ?? new Clock();
-  const { seed, host, readyTimeoutMs, optimistic } = opts;
+  const { seed, host, readyTimeoutMs, optimistic, verbose } = opts;
   const useWorker = opts.worker === true;
   const store = "store" in opts ? opts.store : undefined;
 
@@ -164,7 +169,7 @@ export function useClient(opts: UseClientOptions = {}) {
     let dispose: (() => void) | undefined;
 
     (async () => {
-      const entDB = await openEntDB({ optimistic });
+      const entDB = await openEntDB({ optimistic, verbose });
       if (cancelled) return;
       const entMgr = entStateManager(entDB);
 
@@ -175,12 +180,14 @@ export function useClient(opts: UseClientOptions = {}) {
           clock,
           worker: true,
           readyTimeoutMs,
+          verbose,
         })
         : await openDiplomaticClient({
           state: entMgr,
           clock,
           store,
           readyTimeoutMs,
+          verbose,
         });
       if (cancelled) {
         opened.dispose();
@@ -222,7 +229,16 @@ export function useClient(opts: UseClientOptions = {}) {
       cancelled = true;
       dispose?.();
     };
-  }, [clock, seed, host, useWorker, store, readyTimeoutMs, optimistic]);
+  }, [
+    clock,
+    seed,
+    host,
+    useWorker,
+    store,
+    readyTimeoutMs,
+    optimistic,
+    verbose,
+  ]);
 
   return diplomaticState;
 }

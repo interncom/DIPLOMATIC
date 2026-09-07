@@ -30,6 +30,7 @@ import type {
   SerializedContent,
 } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
+import { dipLog } from "../verbose";
 import type {
   ApldState,
   IClient,
@@ -326,6 +327,7 @@ export class WorkerClient implements IClient<URL> {
       }
       case "dirty": {
         // Worker wrote durable EntDB; cache pulls those eids, notifies types.
+        dipLog("worker dirty", { eids: msg.eids.length });
         void this.state.refresh(msg.eids.map(entityIDFromBytes));
         return;
       }

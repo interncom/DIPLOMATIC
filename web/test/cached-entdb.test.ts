@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { encode } from "@msgpack/msgpack";
 import { CachedEntDB } from "../src/entdb/cached";
 import { EntDBMemory } from "../src/entdb/memory";
+import { setVerbose } from "../src/verbose";
 import { revFromEntity } from "../src/entdb/entdb";
 import { msgToOp } from "../src/state";
 import { Status } from "../src/shared/consts";
@@ -59,8 +60,7 @@ describe("CachedEntDB", () => {
 
     const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
     await cache.apply([op]);
-
-    expect(notifies.length).toBeGreaterThanOrEqual(1);
+    await waitNotifies(notifies, 1);
     expect(notifies[0]).toContain("note");
 
     const [d] = await durable.getEntities({ type: "note" });
@@ -318,8 +318,8 @@ describe("CachedEntDB", () => {
     expect(after).toHaveLength(2);
   });
 
-  // Persist must be queued before subscribe handlers run. Otherwise a
-  // cold getEntities in a listener this.run(warmType)s ahead of durable.apply.
+  // Persist is queued before handlers. A cold list in a listener must not
+  // jump durable.apply (used to this.run(warmType) on the persist chain).
   test("subscribe handlers do not block durable.apply", async () => {
     const durable = new EntDBMemory();
     let applyStarted = 0;
@@ -336,17 +336,101 @@ describe("CachedEntDB", () => {
     const cache = new CachedEntDB(durable);
     const heard: boolean[] = [];
     cache.subscribe(() => {
-      heard.push(applyStarted > 0);
+      heard.push(true);
+      void cache.getEntities({ type: "note" });
     });
 
     const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
     const p = cache.apply([op]);
     await waitNotifies(heard, 1);
     expect(applyStarted).toBe(1);
-    expect(heard[0]).toBe(true);
 
     releaseApply();
     await p;
+  });
+
+  test("apply patches mem immediately; notify is not after durable", async () => {
+    const durable = new EntDBMemory();
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      await applyHold;
+      return origApply(ops);
+    };
+    const cache = new CachedEntDB(durable);
+    const notifies: string[][] = [];
+    cache.subscribe((types) => notifies.push([...types]));
+
+    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const p = cache.apply([op]);
+    const [ents] = await cache.getEntities({ type: "note" });
+    expect(ents).toHaveLength(1);
+    await waitNotifies(notifies, 1);
+    expect(notifies[0]).toContain("note");
+
+    releaseApply();
+    await p;
+  });
+
+  test("first list does not wait for ingestFromDurable", async () => {
+    const durable = new EntDBMemory();
+    const existing = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    await durable.apply([existing]);
+    let releaseGet = () => {};
+    const getHold = new Promise<void>((resolve) => {
+      releaseGet = resolve;
+    });
+    const origGetRow = durable.getRow.bind(durable);
+    durable.getRow = async (eid) => {
+      await getHold;
+      return origGetRow(eid);
+    };
+    const cache = new CachedEntDB(durable);
+    const ingestP = cache.ingestFromDurable([existing.eid]);
+    const [ents, st] = await cache.getEntities({ type: "note" });
+    expect(st).toBe(Status.Success);
+    expect(ents).toHaveLength(1);
+    releaseGet();
+    await ingestP;
+  });
+
+  test("list during in-flight write serves mem without waiting on durable", async () => {
+    const durable = new EntDBMemory();
+    let releaseApply = () => {};
+    const applyHold = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    const origApply = durable.apply.bind(durable);
+    durable.apply = async (ops) => {
+      await applyHold;
+      return origApply(ops);
+    };
+    const cache = new CachedEntDB(durable);
+    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const p = cache.apply([op]);
+    const [ents, st] = await cache.getEntities({ type: "note" });
+    expect(st).toBe(Status.Success);
+    expect(ents).toHaveLength(1);
+    expect(ents?.[0]?.body).toEqual({ n: 1 });
+    releaseApply();
+    await p;
+  });
+
+  test("successful durable apply does not re-read rows", async () => {
+    const durable = new EntDBMemory();
+    let getRows = 0;
+    const origGet = durable.getRow.bind(durable);
+    durable.getRow = async (eid) => {
+      getRows += 1;
+      return origGet(eid);
+    };
+    const cache = new CachedEntDB(durable);
+    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    await cache.apply([op]);
+    expect(getRows).toBe(0);
   });
 
   // Counterpart: with the flag off, mem and notify wait on durable.apply.
@@ -399,5 +483,19 @@ describe("CachedEntDB", () => {
       expect(st).toBe(Status.Success);
       expect(ents).toHaveLength(3);
     }
+  });
+
+  test("verbose logs apply; default is silent", async () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const durable = new EntDBMemory();
+    new CachedEntDB(durable);
+    expect(spy).not.toHaveBeenCalled();
+    setVerbose(true);
+    new CachedEntDB(durable);
+    expect(
+      spy.mock.calls.some((c) => String(c[0]).includes("CachedEntDB open")),
+    ).toBe(true);
+    setVerbose(false);
+    spy.mockRestore();
   });
 });

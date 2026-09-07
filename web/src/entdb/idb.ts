@@ -20,6 +20,7 @@ import {
   typesChanged,
 } from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
+import { dipLog } from "../verbose";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -241,6 +242,8 @@ export class EntIDB implements IEntDB {
   apply = async (ops: IOp[]) => {
     const types = new Set<string>();
     const eids: EntityID[] = [];
+    const t0 = performance.now();
+    dipLog("idb apply start", { ops: ops.length });
 
     let db: IDBDatabase;
     try {
@@ -266,6 +269,10 @@ export class EntIDB implements IEntDB {
       }
 
       tx.oncomplete = () => {
+        dipLog("idb apply complete", {
+          ops: ops.length,
+          ms: Math.round(performance.now() - t0),
+        });
         resolve({ stats: results, types, eids });
       };
       tx.onerror = () => {
@@ -524,7 +531,13 @@ export class EntIDB implements IEntDB {
   async getEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
+    const t0 = performance.now();
     const [ents, stat] = await this.getAllEntities<T>(query);
+    dipLog("idb getEntities", {
+      type: query.type,
+      n: ents?.length ?? 0,
+      ms: Math.round(performance.now() - t0),
+    });
     if (stat !== Status.Success) {
       return err(stat);
     }

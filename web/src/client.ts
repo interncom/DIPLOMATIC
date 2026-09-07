@@ -33,6 +33,7 @@ import { checksumSet } from "./shared/checksum";
 import { revFromHead } from "./entdb/entdb";
 import { err, ok, ValStat } from "./shared/valstat";
 import { CoalesceTail, Debounced, defaultSyncDebounceMs } from "./coalesce";
+import { dipLog } from "./verbose";
 import { sortByHlcDesc } from "./hlc";
 import {
   defaultPeekProgressEvery,
@@ -83,8 +84,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
 
   /**
-   * Serializes local mutates + exec so concurrent drainApplyQueue / apply do
-   * not interleave markApplied (each job runs fully, in order).
+   * Serializes archive + markApplied so concurrent drainApplyQueue / apply
+   * do not interleave those IDB writes. Mem notify is kicked before this
+   * chain so a prior persist cannot delay the list.
    */
   private applyChain: Promise<unknown> = Promise.resolve();
 
@@ -195,26 +197,28 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * Persist msgs (APLD_PENDING), exec into app state, then optionally enq upload.
    *
    * Order (do not invert — UI notify depends on it):
-   * 1) Kick off state.apply (CachedEntDB emits in the sync prefix of apply;
-   *    the returned Promise is durable EntDB + reconcile).
-   * 2) Durable archive (messages.add).
-   * 3) Await apply + mark APLD_APPLIED/APLD_ERROR.
-   * 4) Upload queue.
-   * Crash between 2–3 → drainApplyQueue recovers.
-   * Awaiting apply before archive makes the UI wait on EntDB IDB.
-   *
-   * Serialized on applyChain (with local mutates).
+   * 1) Kick state.apply *before* applyChain. CachedEntDB patches mem and
+   *    notifies after the next paint. A prior job's
+   *    archive / persist / markApplied must not delay the list.
+   * 2) Serialize archive (messages.add) + await apply + markApplied on
+   *    applyChain (crash between archive and mark → drainApplyQueue).
+   * 3) Upload queue.
+   * Awaiting apply before archive, or waiting on applyChain before kicking
+   * apply, makes the UI wait on IndexedDB.
    */
   private apply = (
     parts: IMsgParts[],
     options?: { enqueueUpload: boolean; triggerUpload: boolean },
   ): Promise<Status[]> => {
-    return this.enqueueApplyJob(() => this.doApply(parts, options));
+    dipLog("apply kick", { n: parts.length });
+    const applyP = this.state.apply(msgsFromParts(parts));
+    return this.enqueueApplyJob(() => this.doApply(parts, options, applyP));
   };
 
   /**
-   * Core apply without enqueue. Caller must already hold applyChain when
-   * composing makeUpdate + apply in one job.
+   * Archive + await a pre-kicked state.apply + markApplied.
+   * Caller must already hold applyChain. `applyP` is kicked first so mem
+   * notify is not serialized behind a prior job's IDB.
    */
   private async doApply(
     parts: IMsgParts[],
@@ -222,12 +226,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       enqueueUpload: true,
       triggerUpload: true,
     },
+    applyP: Promise<Status[]>,
   ): Promise<Status[]> {
-    // Must run before any archive await. StateManager.apply is async but
-    // its first await is the EntDB applier; CachedEntDB.apply patches mem
-    // and queues durable persist in that call's sync prefix.
-    const applyP = this.state.apply(msgsFromParts(parts));
-
     const hashes: Hash[] = [];
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
@@ -248,13 +248,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       storables.push({ key: hash, data });
     }
 
+    dipLog("doApply archive start");
     await this.store.messages.add(storables);
+    dipLog("doApply archive done");
 
     // Import / local write: drop any pending downloads for these heads so a
     // later sync does not re-PULL bags we already have in the archive.
     await deqDownloadsForHeadHashes(this.store, hashes, this.crypto);
 
+    dipLog("doApply await persist");
     const stats = await applyP;
+    dipLog("doApply persist done");
     await this.markApplyStats(hashes, stats);
 
     // Upload only after successful (or no-op) exec for each hash.
@@ -373,6 +377,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   public async insertRaw(bod: EncodedMessage, typ = "") {
+    dipLog("insertRaw");
     const { clock, crypto } = this;
     const now = clock.now();
     const [head, stat] = await genInsertHead({ now, bod, typ, crypto });
@@ -493,25 +498,26 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     force = this.forceSkewHandlingByDefault,
     typ = "",
   ): Promise<ValStat<IMessageHead>> {
+    dipLog("updateRaw");
     // prior was written "in the future" relative to this clock → skew path.
     if (prior.updatedAt.getTime() > this.clock.now().getTime()) {
       return this.updateWithSkew(prior, bod, force, typ);
     }
 
-    return this.enqueueApplyJob(async () => {
-      // prior is the app's latest observed rev (from cache / revFromEntity).
-      // Next ctr = prior.ctr + 1. Stale priors still produce a msg; LWW applies.
-      const [parts, stMake] = await this.makeUpdate(prior, bod, typ);
-      if (stMake !== Status.Success) {
-        return err<IMessageHead>(stMake);
-      }
-      const stats = await this.doApply([parts]);
-      const st = stats[0];
-      if (st !== Status.Success && st !== Status.NoChange) {
-        return err<IMessageHead>(st ?? Status.InternalError);
-      }
-      return ok(parts.head);
-    });
+    // makeUpdate is pure (clock + blake3). Do not hold applyChain for it —
+    // that would delay mem notify behind a prior archive/persist.
+    // prior is the app's latest observed rev (from cache / revFromEntity).
+    // Next ctr = prior.ctr + 1. Stale priors still produce a msg; LWW applies.
+    const [parts, stMake] = await this.makeUpdate(prior, bod, typ);
+    if (stMake !== Status.Success) {
+      return err<IMessageHead>(stMake);
+    }
+    const stats = await this.apply([parts]);
+    const st = stats[0];
+    if (st !== Status.Success && st !== Status.NoChange) {
+      return err<IMessageHead>(st ?? Status.InternalError);
+    }
+    return ok(parts.head);
   }
 
   public async insert<T = unknown>(op: IInsertParams<T>) {

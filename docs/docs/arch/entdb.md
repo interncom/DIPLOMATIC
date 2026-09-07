@@ -92,10 +92,10 @@ Use `btob64` / package helpers so binary eids encode stably across platforms.
 
 1. Patch mem **synchronously**.
 2. Queue persist to IndexedDB on the write chain (immediately).
-3. Notify type subscribers on a microtask (UI still updates before IDB completes).
-4. Reconcile those eids from durable; notify again only if mem moved.
+3. Notify type subscribers **after the next paint** (double `requestAnimationFrame`; not `setTimeout`: IDB macrotasks starve that and the list lags). Sync notify would copy type lists before the browser can paint `hide()`, so the creating modal stays up. List reads during the write serve mem and do not wait on persist.
+4. After durable apply, pull from IDB only eids that did not succeed (no body re-encode on the hot path).
 
-`apply` is not `async`: an `await` before the mem patch would stall the save. Notify is deferred a microtask so list watchers cannot run ahead of persist (a cold `getEntities` would otherwise load the whole type from IDB first). Local writes (`insert` / `update` / `delete`) start `state.apply` before awaiting the message archive. Pass `{ optimistic: false }` to skip 1 and 3 and notify only after step 4. The sync worker opens `{ cache: false }` (durable only).
+`apply` is not `async`: an `await` before the mem patch would stall the save. Local writes (`insert` / `update` / `delete`) kick `state.apply` before the persist queue **and** before the client's apply chain (a prior archive/persist must not delay the list). Pass `{ optimistic: false }` to skip 1 and 3 and notify only after durable commit. The sync worker opens `{ cache: false }` (durable only).
 
 ### Frontier checksum
 

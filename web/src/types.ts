@@ -404,7 +404,7 @@ export interface IClient<Handle extends HostHandle> {
   /** Install session enclave (master seed stays inside enclave). */
   setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void>;
 
-  link(host: IHostConnectionInfo<Handle>): Promise<void>;
+  link(host: IHostConnectionInfo<Handle>, connect?: boolean): Promise<void>;
   unlink(label: string): Promise<void>;
   /** Linked hosts from the protocol store (handle, label, lastSeq, …). */
   hosts(): Promise<IHostRow<Handle>[]>;

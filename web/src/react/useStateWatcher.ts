@@ -1,5 +1,6 @@
 import { use, useEffect, useRef, useState } from "react";
 import { IStateManager } from "../shared/types";
+import { dipLog } from "../verbose";
 
 export default function useStateWatcher<T>(
   mgr: IStateManager,
@@ -9,7 +10,12 @@ export default function useStateWatcher<T>(
   const [val, setVal] = useState<T>();
   useEffect(() => {
     async function update() {
+      const t0 = performance.now();
+      dipLog(`watcher ${opType} start`);
       const newVal = await callback();
+      dipLog(`watcher ${opType} setVal`, {
+        ms: Math.round(performance.now() - t0),
+      });
       setVal(newVal);
     }
     update();

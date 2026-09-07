@@ -562,17 +562,19 @@ describe("SyncClient apply queue", () => {
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
   });
 
-  test("serializes concurrent drainApplyQueue and insert", async () => {
+  test("serializes markApplied across concurrent drainApplyQueue and insert", async () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
-    let inApply = 0;
-    let maxConcurrent = 0;
-    const state = mockState(async (msgs) => {
-      inApply += 1;
-      maxConcurrent = Math.max(maxConcurrent, inApply);
+    const state = mockState();
+    let inMark = 0;
+    let maxMark = 0;
+    const origMark = store.messages.markApplied.bind(store.messages);
+    store.messages.markApplied = async (keys) => {
+      inMark += 1;
+      maxMark = Math.max(maxMark, inMark);
       await new Promise((r) => setTimeout(r, 20));
-      inApply -= 1;
-      return msgs.map(() => Status.Success);
-    });
+      inMark -= 1;
+      return origMark(keys);
+    };
     const client = makeClient(store, state);
     await client.setSeed(testEnclave());
 
@@ -583,7 +585,7 @@ describe("SyncClient apply queue", () => {
       client.drainApplyQueue(),
       client.insertRaw(encode({ type: "t", body: 1 })),
     ]);
-    expect(maxConcurrent).toBe(1);
+    expect(maxMark).toBe(1);
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
   });
 

@@ -138,7 +138,7 @@ export class StateManager implements IStateManager {
     }
 
     // Non-cache: notify here (applier had no subscribe). Cache: notified
-    // from CachedEntDB subscribe (microtask after mem patch); emitting
+    // from CachedEntDB subscribe (after paint); emitting
     // here would wait until durable IDB.
     if (!this.cacheDriven) {
       for (const type of types) {

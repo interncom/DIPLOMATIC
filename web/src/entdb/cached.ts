@@ -4,32 +4,41 @@
 //
 // 1. apply(ops) patches mem synchronously, unless `{ optimistic: false }`.
 // 2. Durable persist is queued on the write chain immediately after that.
-// 3. Type subscribers are notified on a microtask (still before IDB
-//    completes). After durable settles, mem is reconciled; notify again
-//    only if something moved.
-// 4. Peer writes (e.g. sync worker) call ingestFromDurable(eids):
-//    pull those eids from durable; notify types only if mem changed.
+// 3. Type subscribers are notified after the next paint (double rAF). Sync
+//    emit blocks paint of hide(); setTimeout(0) loses to IDB. List reads
+//    during an in-flight write serve mem and must not wait on the write chain.
+// 4. After durable.apply, pull/reconcile only eids that did not Success
+//    (NoChange / error). Do not re-read or re-encode bodies that mem
+//    already holds. Peer ingest still pulls by eid.
 //
 // Optimistic notify (default) — do not regress:
 // - apply() must NOT be `async`. The first await would be durable IDB and
-//   mem would not be patched before callers continue. Patch mem, then
-//   this.run() persist, then queueMicrotask(emit). Awaiting getRow /
-//   durable.apply before the mem patch is the failure mode we already hit.
-// - emit must not run in the sync prefix. Subscribe handlers (useStateWatcher
-//   getEntities) copy type lists; a cold list also this.run(warmType). Doing
-//   that before persist is queued stalls the save on a full type IDB load.
-// - apply() returns a Promise that settles after durable+reconcile. Callers
-//   may await that for stats. cacheDriven StateManager must not emit after
+//   mem would not be patched before callers continue.
+// - Patch mem, queue persist, then afterPaint(emit). Persist's first work
+//   is a microtask (chain.then) then IDB. Sync emit runs list watchers
+//   before paint, so a fire-and-forget save+hide keeps the modal up until
+//   every type list is copied. setTimeout(0) shares the macrotask queue
+//   with IDB and the list updates only after persist. Cold getEntities
+//   must not this.run(warmType): that shares the chain with ingestFromDurable
+//   (worker dirty eids) and blocks first hydration until every dirty getRow
+//   finishes. First list uses beginWarm (off-chain). While a local write is
+//   in flight, return mem immediately. Handlers may list; they must not
+//   jump the persist chain.
+// - apply() returns a Promise that settles after durable. Callers may
+//   await that for stats. cacheDriven StateManager must not emit after
 //   that Promise settles — that emit would be late.
-// - SyncClient.doApply must invoke state.apply before awaiting archive IDB
-//   so mem is patched and persist queued before messages.add.
+// - SyncClient.apply kicks state.apply before applyChain (and before
+//   archive IDB) so a prior persist cannot delay the list.
 // - Regression tests: "apply notifies and serves mem before durable.apply",
-//   "subscribe handlers do not block durable.apply" (cached-entdb),
+//   "apply patches mem immediately; notify is not after durable",
+//   "subscribe handlers do not block durable.apply",
+//   "list during in-flight write serves mem",
+//   "first list does not wait for ingestFromDurable" (cached-entdb),
 //   "insert notifies before archive IDB" (client).
 //
 // Reads always hit mem. First list/count of a type pulls durable once
-// under the write chain (merge, so it does not clobber a concurrent
-// in-flight apply's mem state). After a type is warm, list/count serve
+// off the persist/ingest chain (merge via rowWins with concurrent ingest).
+// After a type is warm, list/count serve
 // mem without the chain so concurrent queries are not serialized
 // (stale-until-notify, same as hot getEnt).
 //
@@ -55,6 +64,25 @@ import {
 } from "./entdb";
 import { openEntIDB } from "./idb";
 import { EntDBMemory } from "./memory";
+import { dipLog, setVerbose } from "../verbose";
+
+/**
+ * Run `fn` after the next paint. Sync/microtask emit copies type lists and
+ * re-renders before the browser can paint hide(); the modal stays up until
+ * that work finishes. setTimeout(0) shares the macrotask queue with IDB and
+ * the list waits on persist. Double rAF is the rendering pipeline, not IDB.
+ * Node tests have no rAF — fall back to a microtask.
+ */
+function afterPaint(fn: () => void) {
+  const raf = globalThis.requestAnimationFrame;
+  if (typeof raf !== "function") {
+    queueMicrotask(fn);
+    return;
+  }
+  raf(() => {
+    raf(fn);
+  });
+}
 
 export type EntChangeListener = (types: Set<string>) => void;
 
@@ -75,6 +103,11 @@ export type OpenEntDBOptions = {
    * Set false to notify only after durable commit. Ignored when `cache` is false.
    */
   optimistic?: boolean;
+  /**
+   * Timed `[dip]` traces for apply / list / persist (default false).
+   * Process-wide; also accepted on openDiplomaticClient / useClient.
+   */
+  verbose?: boolean;
 };
 
 export type CachedEntDBOptions = {
@@ -89,10 +122,14 @@ export type CachedEntDBOptions = {
  * Default: cached with mem indexes and optimistic notify.
  * Pass `{ cache: false }` for durable IDB only.
  * Pass `{ optimistic: false }` to notify only after durable commit.
+ * Pass `{ verbose: true }` for `[dip]` timings (apply, list, persist).
  */
 export async function openEntDB(
   opts?: OpenEntDBOptions,
 ): Promise<IEntDB> {
+  if (opts?.verbose !== undefined) {
+    setVerbose(opts.verbose);
+  }
   const durable = await openEntIDB();
   if (opts?.cache === false) {
     return durable;
@@ -110,6 +147,10 @@ export class CachedEntDB implements IEntDB {
   private listeners = new Set<EntChangeListener>();
   private chain: Promise<unknown> = Promise.resolve();
   private optimistic: boolean;
+  /** Optimistic applies whose durable persist has not finished. */
+  private inflight = 0;
+  /** In-flight warmType per type (not on the persist/ingest chain). */
+  private warmP = new Map<string, Promise<Status>>();
 
   constructor(
     durable: IEntDB,
@@ -118,6 +159,7 @@ export class CachedEntDB implements IEntDB {
   ) {
     this.durable = durable;
     this.optimistic = opts?.optimistic !== false;
+    dipLog("CachedEntDB open", { optimistic: this.optimistic });
     this.mem = new EntDBMemory(init ?? [], { indexes: opts?.indexes });
     if (init) {
       for (const ent of init) {
@@ -136,9 +178,15 @@ export class CachedEntDB implements IEntDB {
 
   private emit(types: Set<string>) {
     if (types.size < 1) return;
+    const t0 = performance.now();
+    dipLog("emit start", {
+      types: [...types],
+      listeners: this.listeners.size,
+    });
     for (const fn of this.listeners) {
       fn(types);
     }
+    dipLog("emit done", { ms: Math.round(performance.now() - t0) });
   }
 
   private run<T>(fn: () => Promise<T>): Promise<T> {
@@ -148,8 +196,8 @@ export class CachedEntDB implements IEntDB {
   }
 
   /**
-   * Fan-out write: patch mem, queue durable, notify UI on a microtask,
-   * then reconcile. Not `async`: mem patch must run before any await.
+   * Fan-out write: patch mem, queue durable, notify UI after the next paint.
+   * Not `async`: mem patch must run before any await.
    * `{ optimistic: false }`: skip the mem prefix; notify after durable.
    */
   apply(ops: IOp[]) {
@@ -163,33 +211,73 @@ export class CachedEntDB implements IEntDB {
         const key = btob64(op.eid);
         snap.set(key, rowStamp(this.mem.ents.get(key)));
       }
+      this.inflight += 1;
+      dipLog("apply mem patched", {
+        ops: ops.length,
+        types: types ? [...types] : [],
+        inflight: this.inflight,
+      });
     }
 
-    // Queue persist before notify so list watchers cannot jump the chain
-    // (cold getEntities → warmType would otherwise run first).
+    // Queue persist before notify so list watchers cannot jump the chain.
     const persist = this.run(async () => {
-      const durResult = await this.durable.apply(ops);
-      // Authority for eids whose mem stamp still matches this apply.
-      // Do not mark types warm: only these eids are in mem.
-      const { changed, status } = await this.pullEids(
-        ops.map((o) => o.eid),
-        snap,
-      );
-      this.emit(changed);
-
-      if (status !== Status.Success) {
-        return {
-          stats: ops.map(() => status),
-          types: durResult.types,
-          eids: durResult.eids,
-        };
+      dipLog("persist start", { ops: ops.length });
+      try {
+        const tDur = performance.now();
+        const durResult = await this.durable.apply(ops);
+        dipLog("persist durable.apply done", {
+          ms: Math.round(performance.now() - tDur),
+        });
+        if (!this.optimistic) {
+          const { changed, status } = await this.pullEids(
+            ops.map((o) => o.eid),
+          );
+          this.emit(changed);
+          if (status !== Status.Success) {
+            return {
+              stats: ops.map(() => status),
+              types: durResult.types,
+              eids: durResult.eids,
+            };
+          }
+          return durResult;
+        }
+        // Mem already has successful ops. Only pull eids durable rejected
+        // (NoChange / error) — skip getRow + body re-encode on the hot path.
+        const pull: EntityID[] = [];
+        for (let i = 0; i < ops.length; i++) {
+          if (durResult.stats[i] !== Status.Success) {
+            pull.push(ops[i].eid);
+          }
+        }
+        if (pull.length > 0) {
+          dipLog("persist pull rejected eids", { n: pull.length });
+          const { changed, status } = await this.pullEids(pull, snap);
+          this.emit(changed);
+          if (status !== Status.Success) {
+            return {
+              stats: ops.map(() => status),
+              types: durResult.types,
+              eids: durResult.eids,
+            };
+          }
+        }
+        dipLog("persist done");
+        return durResult;
+      } finally {
+        if (this.optimistic) {
+          this.inflight -= 1;
+        }
       }
-      return durResult;
     });
 
     if (types) {
-      const notify = types;
-      queueMicrotask(() => this.emit(notify));
+      // Persist is already queued (chain.then). Emit after paint so hide()
+      // can close the modal in this frame. setTimeout(0) loses to IDB.
+      afterPaint(() => {
+        dipLog("emit after paint");
+        this.emit(types);
+      });
     }
     return persist;
   }
@@ -215,8 +303,16 @@ export class CachedEntDB implements IEntDB {
    * Pull only those eids from durable; notify coalesced types if mem changed.
    */
   ingestFromDurable(eids: Iterable<EntityID>) {
+    const n = [...eids].length;
+    dipLog("ingest queued", { eids: n });
     return this.run(async () => {
+      const t0 = performance.now();
+      dipLog("ingest start", { eids: n });
       const { changed, status } = await this.pullEids(eids);
+      dipLog("ingest done", {
+        ms: Math.round(performance.now() - t0),
+        changed: [...changed],
+      });
       this.emit(changed);
       return status;
     });
@@ -280,6 +376,8 @@ export class CachedEntDB implements IEntDB {
     if (this.warmed.has(type)) {
       return Status.Success;
     }
+    const t0 = performance.now();
+    dipLog("warmType start", { type });
     const [ents, st] = await this.durable.getEntities({ type });
     if (st !== Status.Success) {
       return st;
@@ -294,7 +392,43 @@ export class CachedEntDB implements IEntDB {
       }
     }
     this.warmed.add(type);
+    dipLog("warmType done", {
+      type,
+      n: ents?.length ?? 0,
+      ms: Math.round(performance.now() - t0),
+    });
     return Status.Success;
+  }
+
+  /**
+   * Load a type from durable into mem. Not on the persist/ingest chain —
+   * first UI list must not wait for dirty-eid pull after worker sync.
+   */
+  private beginWarm(type: string): Promise<Status> {
+    if (this.warmed.has(type)) {
+      return Promise.resolve(Status.Success);
+    }
+    const hit = this.warmP.get(type);
+    if (hit) {
+      return hit;
+    }
+    const p = this.warmType(type).finally(() => {
+      this.warmP.delete(type);
+    });
+    this.warmP.set(type, p);
+    return p;
+  }
+
+  /** Background warm + notify. Does not block the caller. */
+  private ensureWarm(type: string) {
+    if (this.warmed.has(type)) {
+      return;
+    }
+    void this.beginWarm(type).then((st) => {
+      if (st === Status.Success) {
+        this.emit(new Set([type]));
+      }
+    });
   }
 
   async getRow<T>(
@@ -304,19 +438,18 @@ export class CachedEntDB implements IEntDB {
     if (this.mem.ents.has(key)) {
       return this.mem.getRow<T>(eid);
     }
-    return this.run(async () => {
-      if (this.mem.ents.has(key)) {
-        return this.mem.getRow<T>(eid);
-      }
-      const [row, st] = await this.durable.getRow<T>(eid);
-      if (st !== Status.Success) {
-        return err(st);
-      }
-      if (row) {
+    // Off the persist/ingest chain — same reason as first getEntities.
+    const [row, st] = await this.durable.getRow<T>(eid);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    if (row) {
+      const curr = this.mem.ents.get(key);
+      if (!curr || rowWins(row, curr)) {
         this.mem.put(row);
       }
-      return ok(row);
-    });
+    }
+    return this.mem.getRow<T>(eid);
   }
 
   async getEnt<T>(
@@ -335,24 +468,39 @@ export class CachedEntDB implements IEntDB {
   async getEntities<T>(
     query: EntitiesQuery,
   ): Promise<ValStat<IEntity<T>[]>> {
-    // Warm types: serve mem without the write chain so concurrent list
-    // queries do not serialize (same stale-until-notify model as hot getEnt).
-    // Cold types: warm under run() so first IDB load does not race apply/ingest.
-    if (!this.warmed.has(query.type)) {
-      const st = await this.run(() => this.warmType(query.type));
-      if (st !== Status.Success) {
-        return err(st);
-      }
+    // Warm: mem only.
+    // In-flight local write: serve mem now (optimistic row); warm in background.
+    // Cold: load this type from durable *off* the persist/ingest chain so a
+    // worker dirty-eid ingest cannot block first UI hydration.
+    if (this.warmed.has(query.type)) {
+      dipLog("getEntities mem", { type: query.type });
+      return this.mem.getEntities<T>(query);
     }
+    if (this.inflight > 0) {
+      dipLog("getEntities inflight-mem", { type: query.type });
+      this.ensureWarm(query.type);
+      return this.mem.getEntities<T>(query);
+    }
+    dipLog("getEntities beginWarm", { type: query.type });
+    const st = await this.beginWarm(query.type);
+    if (st !== Status.Success) {
+      return err(st);
+    }
+    dipLog("getEntities afterWarm", { type: query.type });
     return this.mem.getEntities<T>(query);
   }
 
   async countEntities({ type }: { type: string }): Promise<ValStat<number>> {
-    if (!this.warmed.has(type)) {
-      const st = await this.run(() => this.warmType(type));
-      if (st !== Status.Success) {
-        return err(st);
-      }
+    if (this.warmed.has(type)) {
+      return this.mem.countEntities({ type });
+    }
+    if (this.inflight > 0) {
+      this.ensureWarm(type);
+      return this.mem.countEntities({ type });
+    }
+    const st = await this.beginWarm(type);
+    if (st !== Status.Success) {
+      return err(st);
     }
     return this.mem.countEntities({ type });
   }

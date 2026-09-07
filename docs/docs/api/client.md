@@ -12,9 +12,12 @@ import {
 const entDB = await openEntDB(); // cache + optimistic UI notify (default)
 // const entDB = await openEntDB({ optimistic: false }); // notify after durable
 // const entDB = await openEntDB({ cache: false }); // durable IDB only
+// const entDB = await openEntDB({ verbose: true }); // [dip] apply/list/persist timings
 const state = entStateManager(entDB);
 // worker: true → library spawns embedded sync Worker (only supported path)
 const { client, dispose } = await openDiplomaticClient({ state, worker: true });
+// openDiplomaticClient({ state, worker: true, verbose: true }) — same traces
+// useClient({ worker: true, verbose: true }) — same
 ```
 
 ## Client State
@@ -39,7 +42,7 @@ const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 
 ## Data
 
-Local writes build a message and call `state.apply` **before** waiting on the message archive. With the default EntDB cache, `apply` patches the in-memory layer immediately, queues IndexedDB persist, then notifies UI subscribers (microtask) and reconciles. Pass `{ optimistic: false }` to notify only after that durable commit. The same message then continues through archive → exec completion → upload.
+Local writes build a message and call `state.apply` **before** the persist queue, the apply chain, and the message archive. With the default EntDB cache, `apply` patches mem immediately, queues IndexedDB persist, then notifies UI subscribers after the next paint (before IDB callbacks). That lets a fire-and-forget save close its modal in the current frame; a prior write's archive/persist cannot delay the notify. Pass `{ optimistic: false }` to notify only after that durable commit. Archive → mark applied → upload still run after.
 
 Shared fields on write ops. `type` is stored on the msg head (`typ`); `body` / `pid` / `tags` are msgpack in the msg body:
 

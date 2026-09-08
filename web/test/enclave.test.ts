@@ -65,7 +65,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
     src: "c87390f5b54c28fe7c228a7325c42aee",
-    callerSrc: "cdfce786b8a930761560a451f0f38fb6",
+    callerSrc: "15c714ee7997250617bf3f215eef15b3",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {
@@ -570,7 +570,9 @@ const traces: Record<string, () => void | Promise<void>> = {
     const [req, rst] = asDHKEReq(new Uint8Array(32).fill(3));
     expect(rst).toBe(Status.Success);
     if (req === undefined) return;
-    const [resp, st] = await e.pairAccept(req, []);
+    const [resp, st] = await e.pairAccept(req, [], {
+      userControlsBothSidesOfPair: true,
+    });
     expect(st).toBe(Status.Success);
     expect(resp).toBeDefined();
     assertPermitted();

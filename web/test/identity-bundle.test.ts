@@ -625,6 +625,8 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
   });
 });
 
+const pairAck = { userControlsBothSidesOfPair: true } as const;
+
 async function mustReq(): Promise<PairRequest> {
   const [req, st] = await Enclave.pairRequest();
   if (st !== Status.Success || req === undefined) {
@@ -642,7 +644,7 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
     const req = await mustReq();
     expect(req.dhkeReq.byteLength).toBe(32);
 
-    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, hosts);
+    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, hosts, pairAck);
     expect(ast).toBe(Status.Success);
     expect(dhkeResp).toBeDefined();
     if (dhkeResp === undefined) return;
@@ -663,7 +665,7 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
     const [req, cst] = await Enclave.pairRequest();
     expect(cst).toBe(Status.Success);
     if (req === undefined) return;
-    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, []);
+    const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, [], pairAck);
     expect(ast).toBe(Status.Success);
     if (dhkeResp === undefined) return;
     const [opened, ost] = await req.finish(dhkeResp);
@@ -678,6 +680,7 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
     const [dhkeResp, ast] = await enclaveOf(1).pairAccept(
       (await mustReq()).dhkeReq,
       [],
+      pairAck,
     );
     expect(ast).toBe(Status.Success);
     if (dhkeResp === undefined) return;
@@ -710,7 +713,7 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
     expect(a).not.toBe(b);
     a.fill(0);
     expect(req.dhkeReq).toEqual(b);
-    const [dhkeResp, ast] = await enclaveOf(4).pairAccept(b, []);
+    const [dhkeResp, ast] = await enclaveOf(4).pairAccept(b, [], pairAck);
     expect(ast).toBe(Status.Success);
     if (dhkeResp === undefined) return;
     const [opened, ost] = await req.finish(dhkeResp);
@@ -735,7 +738,11 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
 
   it("tampered resp body fails closed", async () => {
     const req = await mustReq();
-    const [dhkeResp, ast] = await enclaveOf(2).pairAccept(req.dhkeReq, []);
+    const [dhkeResp, ast] = await enclaveOf(2).pairAccept(
+      req.dhkeReq,
+      [],
+      pairAck,
+    );
     expect(ast).toBe(Status.Success);
     if (dhkeResp === undefined) return;
     const dirty = dhkeResp.slice();
@@ -749,7 +756,11 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
 
   it("second finish fails after wipe", async () => {
     const req = await mustReq();
-    const [dhkeResp, ast] = await enclaveOf(6).pairAccept(req.dhkeReq, []);
+    const [dhkeResp, ast] = await enclaveOf(6).pairAccept(
+      req.dhkeReq,
+      [],
+      pairAck,
+    );
     expect(ast).toBe(Status.Success);
     if (dhkeResp === undefined) return;
     const [opened, ost] = await req.finish(dhkeResp);

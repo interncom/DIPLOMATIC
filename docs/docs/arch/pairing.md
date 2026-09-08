@@ -7,7 +7,7 @@ This is not host sync and not the old shared-passkey `dip1:` flow. The two devic
 ## Flow
 
 1. Enrollee `Enclave.pairRequest()` — ephemeral X25519. Carry `dhkeReq` (32-byte public key) to the enroller (QR, audio, paste, …).
-2. Enroller `enclave.pairAccept(dhkeReq, hosts)` — ephemeral X25519, ECDH, AEAD-seal seed + hosts. Carry `dhkeResp` back.
+2. Enroller `enclave.pairAccept(dhkeReq, hosts, acks)` — ephemeral X25519, ECDH, AEAD-seal seed + hosts. Carry `dhkeResp` back. `acks.userControlsBothSidesOfPair` is required (`true`): the user controls both devices (not an attacker-supplied `dhkeReq`).
 3. Enrollee `req.finish(dhkeResp)` — ECDH, decrypt, and construct Enclave inside the enclave module. Then `sealWithPasskey` for IDB.
 
 Presence (looking at the other screen) is the only authentication. ECDH is unauthenticated.
@@ -65,7 +65,7 @@ Same-vendor backdoor-to-backdoor is ignored.
 | Who | Call |
 | --- | --- |
 | Enrollee | `Enclave.pairRequest()` → show `dhkeReq` |
-| Enroller | `enclave.pairAccept(dhkeReq, hosts)` → `dhkeResp` |
+| Enroller | `enclave.pairAccept(dhkeReq, hosts, { userControlsBothSidesOfPair: true })` → `dhkeResp` |
 | Enrollee | `req.finish(dhkeResp)` → `{ enclave, hosts }`, then `sealWithPasskey` |
 | Enrollee | `req.wipe()` if the user abandons before finish |
 

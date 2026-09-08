@@ -575,16 +575,6 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(resp).toBeDefined();
     assertPermitted();
   },
-  fromPairPlain() {
-    const seed = randomSeed();
-    const wire = new Uint8Array(33);
-    wire.set(seed, 0);
-    arm("fromPairPlain", seed);
-    const [out, st] = Enclave.fromPairPlain(wire);
-    expect(st).toBe(Status.Success);
-    expect(out).toBeDefined();
-    assertPermitted();
-  },
   spawnSyncWorker() {
     const seed = randomSeed();
     const e = enclaveOf(seed);

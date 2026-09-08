@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 
 const SKIP = new Set(["constructor", "prototype", "length", "name"]);
@@ -33,4 +34,14 @@ Deno.test("Enclave instance methods are locked", () => {
   const keys = fnKeys(Enclave.prototype);
   assert(keys.length > 0, "expected instance methods");
   for (const k of keys) assertLocked(Enclave.prototype, k, "Enclave.prototype");
+});
+
+Deno.test("pairRequest instance methods are locked", async () => {
+  const [req, st] = await Enclave.pairRequest();
+  assertEquals(st, Status.Success);
+  assert(req !== undefined);
+  const proto = Object.getPrototypeOf(req);
+  const keys = fnKeys(proto);
+  assert(keys.length > 0, "expected instance methods");
+  for (const k of keys) assertLocked(proto, k, "pairRequest");
 });

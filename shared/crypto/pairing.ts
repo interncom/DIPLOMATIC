@@ -1,10 +1,9 @@
-// Enrollee half of DHKE pair. Ephemeral X25519 priv never leaves this module.
+// DHKE pair helpers. Enrollee session lives on Enclave (pairRequest handle)
+// so seed-bearing pair plaintext never exists outside that file.
 
 import { concat } from "../binary.ts";
-import type { BundleHost } from "../codecs/bundleHost.ts";
 import { Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { Enclave } from "./enclave.ts";
 import { NobleCrypto } from "./noble.ts";
 import type { X25519Sk } from "./x25519.ts";
 
@@ -65,80 +64,5 @@ export async function pairKey(
     }
   } finally {
     shared.fill(0);
-  }
-}
-
-// Enrollee pairing session: holds ephemeral X25519 priv until finish.
-export class PairRequest {
-  #priv: X25519Sk;
-  #dhkeReq: DHKEReq;
-
-  private constructor(priv: X25519Sk, dhkeReq: DHKEReq) {
-    this.#priv = priv;
-    this.#dhkeReq = dhkeReq;
-  }
-
-  // Starts an enrollee pairing session. Carry dhkeReq to the enroller.
-  static async create(): Promise<ValStat<PairRequest>> {
-    let priv: X25519Sk | undefined;
-    try {
-      const pair = await noble.genX25519();
-      priv = pair.priv;
-      const [dhkeReq, qst] = asDHKEReq(pair.pub);
-      if (qst !== Status.Success) return err(qst);
-      if (dhkeReq === undefined) return err(Status.InvalidParam);
-      const req = new PairRequest(priv, dhkeReq);
-      priv = undefined;
-      return ok(req);
-    } catch {
-      return err(Status.CryptoError);
-    } finally {
-      priv?.fill(0);
-    }
-  }
-
-  // Drops the ephemeral scalar. Call if the user abandons pairing.
-  wipe(): void {
-    this.#priv.fill(0);
-  }
-
-  // Returns a copy of the enrollee X25519 pub to send as the DHKE request.
-  get dhkeReq(): DHKEReq {
-    const [q, st] = asDHKEReq(this.#dhkeReq.slice());
-    if (q === undefined) throw new Error(`dhkeReq ${st}`);
-    return q;
-  }
-
-  // Decrypts the enroller's DHKE response into a new Enclave + hosts.
-  // Then call sealWithPasskey for a durable binding.
-  async finish(
-    dhkeResp: DHKEResp,
-  ): Promise<ValStat<{ enclave: Enclave; hosts: BundleHost[] }>> {
-    const respPub = dhkeResp.subarray(0, X25519_PUB_LEN);
-    const body = dhkeResp.subarray(X25519_PUB_LEN);
-    const [key, kst] = await pairKey(
-      this.#priv,
-      respPub,
-      this.#dhkeReq,
-      respPub,
-    );
-    if (kst !== Status.Success) return err(kst);
-    if (key === undefined) return err(Status.InternalError);
-    let plain: Uint8Array | undefined;
-    try {
-      try {
-        plain = await noble.decryptXSalsa20Poly1305Combined(body, key);
-      } catch {
-        return err(Status.DecryptionError);
-      }
-      const [opened, ost] = Enclave.fromPairPlain(plain);
-      if (ost !== Status.Success) return err(ost);
-      if (opened === undefined) return err(Status.InternalError);
-      this.wipe();
-      return ok(opened);
-    } finally {
-      key.fill(0);
-      plain?.fill(0);
-    }
   }
 }

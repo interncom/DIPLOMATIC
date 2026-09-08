@@ -1,6 +1,6 @@
 // DHKE pair: request (enrollee) or accept (enroller).
 
-import { readFileSync } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
 import readline from "node:readline";
 import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
@@ -24,7 +24,8 @@ function usage(code: number): never {
   console.error("");
   console.error("  request: enrollee. Print DHKEReq, read DHKEResp, bind");
   console.error("  the plugged YubiKey (new ~/.diplomatic/LABEL).");
-  console.error("  accept: enroller. Unlock LABEL, print DHKEResp.");
+  console.error("  accept: enroller. Confirm both devices, unlock LABEL,");
+  console.error("  print DHKEResp.");
   process.exit(code);
 }
 
@@ -68,6 +69,35 @@ async function readLine(prompt: string): Promise<string> {
   return line;
 }
 
+/** One line from the controlling TTY (not a pipe). */
+async function readTtyLine(prompt: string): Promise<string> {
+  console.error(prompt);
+  const tty = createReadStream("/dev/tty");
+  const rl = readline.createInterface({ input: tty });
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      rl.once("line", (l) => resolve(l.trim()));
+      tty.once("error", reject);
+    });
+  } catch {
+    die("pair accept needs a TTY to confirm you control both devices");
+  } finally {
+    rl.close();
+    tty.destroy();
+  }
+}
+
+// Returns true only after the user types yes on the TTY.
+async function ackBothSides(): Promise<true> {
+  const line = await readTtyLine(
+    "Confirm you control both devices in this pairing. Type yes:",
+  );
+  if (line.toLowerCase() !== "yes") {
+    die("aborted (type yes if you control both devices)");
+  }
+  return true;
+}
+
 async function runRequest(label: string, resident: boolean): Promise<void> {
   const path = ringPath(label);
   if (loadRing(path) !== undefined) {
@@ -106,12 +136,15 @@ async function runAccept(label: string, reqHex: string | undefined): Promise<voi
   const [dhkeReq, qst] = asDHKEReq(htob(hex));
   if (qst !== Status.Success || dhkeReq === undefined) die(`DHKEReq ${qst}`);
 
+  const userControlsBothSidesOfPair = await ackBothSides();
   const ring = loadRing(path);
   if (ring === undefined) die(`no keyring at ${path}`);
   const dev = fidoDev();
   console.error(`Using ${dev}`);
   const enc = await unlockRing(ring, dev);
-  const [resp, ast] = await enc.pairAccept(dhkeReq, []);
+  const [resp, ast] = await enc.pairAccept(dhkeReq, [], {
+    userControlsBothSidesOfPair,
+  });
   if (ast !== Status.Success || resp === undefined) {
     if (ast === Status.CryptoError) await noteDhkeErr(dhkeReq);
     die(`pairAccept ${Status[ast]} (${ast})`);

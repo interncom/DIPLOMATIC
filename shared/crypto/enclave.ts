@@ -1031,12 +1031,25 @@ export class Enclave {
     return PairRequest.create();
   }
 
-  // Seals this enclave's seed + hosts for the enrollee's DHKE request.
-  // Returns dhkeResp to send back.
+  /**
+   * Seals seed+hosts for dhkeReq. Returns dhkeResp to send back.
+   * @param acks Set fields only after explicit user affirmation (e.g. a checkbox).
+   *   Do not default these to `true` in application code.
+   */
   async pairAccept(
     dhkeReq: DHKEReq,
     hosts: BundleHost[],
+    acks: {
+      /**
+       * Set `true` only after the user explicitly affirms they control both
+       * devices in this pair. Never hard-code in a client.
+       */
+      userControlsBothSidesOfPair: true;
+    },
   ): Promise<ValStat<DHKEResp>> {
+    if (acks.userControlsBothSidesOfPair !== true) {
+      return err(Status.InvalidParam);
+    }
     let eph: { priv: X25519Sk; pub: Uint8Array }; // ephemeral X25519 pair
     try {
       eph = await noble.genX25519();

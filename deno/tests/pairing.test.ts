@@ -31,6 +31,8 @@ async function reqOf() {
   return r;
 }
 
+const pairAck = { userControlsBothSidesOfPair: true } as const;
+
 function brandReq(bytes: Uint8Array) {
   const [q, st] = asDHKEReq(bytes);
   if (st !== Status.Success || q === undefined) throw new Error(`req ${st}`);
@@ -110,7 +112,7 @@ Deno.test("DHKE round-trips seed and hosts", async () => {
   ];
   const req = await reqOf();
   assertEquals(req.dhkeReq.byteLength, X25519_PUB_LEN);
-  const [resp, ast] = await enc.pairAccept(req.dhkeReq, hosts);
+  const [resp, ast] = await enc.pairAccept(req.dhkeReq, hosts, pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   assert(resp.byteLength > DHKE_RESP_MIN);
@@ -128,7 +130,7 @@ Deno.test("DHKE empty hosts", async () => {
   const [req, cst] = await Enclave.pairRequest();
   assertEquals(cst, Status.Success);
   assert(req !== undefined);
-  const [resp, ast] = await enc.pairAccept(req.dhkeReq, []);
+  const [resp, ast] = await enc.pairAccept(req.dhkeReq, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const [opened, ost] = await req.finish(resp);
@@ -140,7 +142,7 @@ Deno.test("finish after mutating getter copy still works", async () => {
   const enc = encOf(4);
   const req = await reqOf();
   const shown = req.dhkeReq;
-  const [resp, ast] = await enc.pairAccept(shown, []);
+  const [resp, ast] = await enc.pairAccept(shown, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   shown.fill(0);
@@ -150,7 +152,11 @@ Deno.test("finish after mutating getter copy still works", async () => {
 });
 
 Deno.test("wrong PairRequest cannot finish", async () => {
-  const [resp, ast] = await encOf(1).pairAccept((await reqOf()).dhkeReq, []);
+  const [resp, ast] = await encOf(1).pairAccept(
+    (await reqOf()).dhkeReq,
+    [],
+    pairAck,
+  );
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const [, ost] = await (await reqOf()).finish(resp);
@@ -159,7 +165,7 @@ Deno.test("wrong PairRequest cannot finish", async () => {
 
 Deno.test("tampered resp body fails closed", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(2).pairAccept(req.dhkeReq, []);
+  const [resp, ast] = await encOf(2).pairAccept(req.dhkeReq, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const dirty = resp.slice();
@@ -173,7 +179,7 @@ Deno.test("tampered resp body fails closed", async () => {
 
 Deno.test("tampered respPub fails closed", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(5).pairAccept(req.dhkeReq, []);
+  const [resp, ast] = await encOf(5).pairAccept(req.dhkeReq, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const dirty = resp.slice();
@@ -187,7 +193,7 @@ Deno.test("tampered respPub fails closed", async () => {
 
 Deno.test("finish wipes priv (second finish fails)", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(6).pairAccept(req.dhkeReq, []);
+  const [resp, ast] = await encOf(6).pairAccept(req.dhkeReq, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const [opened, ost] = await req.finish(resp);
@@ -199,7 +205,7 @@ Deno.test("finish wipes priv (second finish fails)", async () => {
 
 Deno.test("wipe abandons the session", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(8).pairAccept(req.dhkeReq, []);
+  const [resp, ast] = await encOf(8).pairAccept(req.dhkeReq, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   req.wipe();
@@ -209,6 +215,10 @@ Deno.test("wipe abandons the session", async () => {
 });
 
 Deno.test("pairAccept rejects an all-zero enrollee pub", async () => {
-  const [, ast] = await encOf(7).pairAccept(brandReq(new Uint8Array(32)), []);
+  const [, ast] = await encOf(7).pairAccept(
+    brandReq(new Uint8Array(32)),
+    [],
+    pairAck,
+  );
   assert(ast !== Status.Success);
 });

@@ -8,12 +8,12 @@ import {
   MUSEC_MIN_LEN,
   sealKeyFromPrf,
 } from "../src/shared/crypto/enclave";
+import type { PairRequest } from "../src/shared/crypto/enclave";
 import {
   asDHKEReq,
   asDHKEResp,
   DHKE_RESP_MIN,
   pairKey,
-  PairRequest,
 } from "../src/shared/crypto/pairing";
 import { NobleCrypto } from "../src/shared/crypto/noble";
 import crypto from "../src/crypto";
@@ -660,7 +660,7 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
 
   it("round-trips empty hosts", async () => {
     const enc = enclaveOf(3);
-    const [req, cst] = await PairRequest.create();
+    const [req, cst] = await Enclave.pairRequest();
     expect(cst).toBe(Status.Success);
     if (req === undefined) return;
     const [dhkeResp, ast] = await enc.pairAccept(req.dhkeReq, []);

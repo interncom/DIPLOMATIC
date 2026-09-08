@@ -32,7 +32,7 @@ App API: `Enclave.persistToLargeBlob` / `fromLargeBlob` / `clearLargeBlob`. Prob
 
 In-person seed transfer to a device that does not share a passkey. See [Pairing](./pairing) for the request/response flow, threat model, and why the X25519 scalar is ours (`getRandomValues`) rather than `subtle.generateKey`.
 
-App API: `Enclave.pairRequest` / `PairRequest`, `enclave.pairAccept`, then `sealWithPasskey` on the enrollee.
+App API: `Enclave.pairRequest` / `enclave.pairAccept`, then `sealWithPasskey` on the enrollee.
 
 ### Raw import / paper (CLI)
 

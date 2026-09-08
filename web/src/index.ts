@@ -69,6 +69,7 @@ import {
   IUpdateParams,
 } from "./shared/types";
 import { Enclave } from "./shared/crypto/enclave";
+import type { PairRequest } from "./shared/crypto/enclave";
 import { nullStateManager, StateManager } from "./state";
 import { IDBSeedStore } from "./stores/idb/seed";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -129,7 +130,7 @@ import type {
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
-import { asDHKEReq, asDHKEResp, PairRequest } from "./shared/crypto/pairing";
+import { asDHKEReq, asDHKEResp } from "./shared/crypto/pairing";
 import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
 import {
   checksumEntRevs,
@@ -212,7 +213,6 @@ export {
   openDiplomaticClient,
   openEntDB,
   openIDBStore,
-  PairRequest,
   PasskeySeedStore,
   prfCapable,
   PrfSeedStore,
@@ -275,6 +275,7 @@ export type {
   OpenDiplomaticClientWorkerOptions,
   OpenedDiplomaticClient,
   OpenEntDBOptions,
+  PairRequest,
   PasskeySeedStoreOpts,
   PersistKeyring,
   PrfRp,

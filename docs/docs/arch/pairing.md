@@ -6,9 +6,9 @@ This is not host sync and not the old shared-passkey `dip1:` flow. The two devic
 
 ## Flow
 
-1. Enrollee `Enclave.pairRequest()` / `PairRequest.create()` — ephemeral X25519. Carry `dhkeReq` (32-byte public key) to the enroller (QR, audio, paste, …).
+1. Enrollee `Enclave.pairRequest()` — ephemeral X25519. Carry `dhkeReq` (32-byte public key) to the enroller (QR, audio, paste, …).
 2. Enroller `enclave.pairAccept(dhkeReq, hosts)` — ephemeral X25519, ECDH, AEAD-seal seed + hosts. Carry `dhkeResp` back.
-3. Enrollee `req.finish(dhkeResp)` — ECDH, decrypt, `Enclave.fromBytes`. Then `sealWithPasskey` for IDB.
+3. Enrollee `req.finish(dhkeResp)` — ECDH, decrypt, and construct Enclave inside the enclave module. Then `sealWithPasskey` for IDB.
 
 Presence (looking at the other screen) is the only authentication. ECDH is unauthenticated.
 
@@ -64,9 +64,9 @@ Same-vendor backdoor-to-backdoor is ignored.
 
 | Who | Call |
 | --- | --- |
-| Enrollee | `Enclave.pairRequest()` / `PairRequest.create()` → show `dhkeReq` |
+| Enrollee | `Enclave.pairRequest()` → show `dhkeReq` |
 | Enroller | `enclave.pairAccept(dhkeReq, hosts)` → `dhkeResp` |
 | Enrollee | `req.finish(dhkeResp)` → `{ enclave, hosts }`, then `sealWithPasskey` |
 | Enrollee | `req.wipe()` if the user abandons before finish |
 
-`sk` never leaves `PairRequest` / `pairAccept`. Failed `genX25519` (RNG) is `Status.CryptoError`, not `HostError`.
+`sk` never leaves the enclave (`pairRequest` / `pairAccept`). Pair AEAD plaintext (seed‖hosts) is absorbed there and never returned. Failed `genX25519` (RNG) is `Status.CryptoError`, not `HostError`.

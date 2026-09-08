@@ -10,7 +10,6 @@ import {
   asDHKEResp,
   DHKE_RESP_MIN,
   pairKey,
-  PairRequest,
   X25519_PUB_LEN,
 } from "../../shared/crypto/pairing.ts";
 
@@ -27,7 +26,7 @@ function encOf(fill: number) {
 }
 
 async function reqOf() {
-  const [r, st] = await PairRequest.create();
+  const [r, st] = await Enclave.pairRequest();
   if (st !== Status.Success || r === undefined) throw new Error(`req ${st}`);
   return r;
 }

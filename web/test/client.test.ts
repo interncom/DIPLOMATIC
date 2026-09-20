@@ -280,11 +280,12 @@ describe("Client", () => {
     });
 
     test("delete survives rebuild (tombstone blocks older mutate)", async () => {
+      const clock = new MockClock(new Date(0));
       const entDB = new EntDBMemory();
       const stateMgr = entStateManager(entDB);
       const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
       const client = new SyncClient(
-        mockClock,
+        clock,
         stateMgr,
         store,
         transport,
@@ -302,6 +303,8 @@ describe("Client", () => {
       const [prior, stRev] = revFromHead(head);
       expect(stRev).toBe(Status.Success);
       if (!prior) throw new Error("prior");
+      // LWW is by updatedAt; same-ms delete is NoChange and leaves the live row.
+      clock.set(new Date(1000));
       const [delHead, stDel] = await client.delete({ prior });
       expect(stDel).toBe(Status.Success);
       if (!delHead) throw new Error("del head");

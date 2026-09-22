@@ -1,6 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { htob } from "../../shared/binary.ts";
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { genX25519, x25519Shared } from "../../shared/crypto/noble.ts";
 import { asX25519Sk, x25519, x25519Pub } from "../../shared/crypto/x25519.ts";
 import { Status } from "../../shared/consts.ts";
 
@@ -37,12 +37,11 @@ Deno.test("x25519 RFC 7748 alice/bob", () => {
 });
 
 Deno.test("x25519 gen checks pub; ECDH agrees", async () => {
-  const n = new NobleCrypto();
-  const a = await n.genX25519();
-  const b = await n.genX25519();
+  const a = await genX25519();
+  const b = await genX25519();
   assertEquals(a.pub, x25519Pub(a.priv));
-  const s1 = await n.x25519Shared(a.priv, b.pub);
-  const s2 = await n.x25519Shared(b.priv, a.pub);
+  const s1 = await x25519Shared(a.priv, b.pub);
+  const s2 = await x25519Shared(b.priv, a.pub);
   assertEquals(s1, s2);
 });
 
@@ -72,9 +71,8 @@ Deno.test("x25519 RFC 7748 §5.2", () => {
 });
 
 Deno.test("x25519Shared matches RFC 7748 alice/bob", async () => {
-  const n = new NobleCrypto();
-  const s1 = await n.x25519Shared(skOf(ALICE), BOB_PUB);
-  const s2 = await n.x25519Shared(skOf(BOB), ALICE_PUB);
+  const s1 = await x25519Shared(skOf(ALICE), BOB_PUB);
+  const s2 = await x25519Shared(skOf(BOB), ALICE_PUB);
   assertEquals(s1, SHARED);
   assertEquals(s2, SHARED);
 });

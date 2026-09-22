@@ -5,7 +5,7 @@ import { concat } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import { type ChildKey, deriveKey, Purpose } from "./derivation.ts";
-import { NobleCrypto } from "./noble.ts";
+import { x25519Shared } from "./noble.ts";
 import type { X25519Sk } from "./x25519.ts";
 
 export const X25519_PUB_LEN = 32;
@@ -31,8 +31,6 @@ export function asDHKEResp(bytes: Uint8Array): ValStat<DHKEResp> {
   return ok(bytes as DHKEResp);
 }
 
-const noble = new NobleCrypto();
-
 // Derives the pairing AEAD key from ECDH and both sides' public keys.
 export async function pairKey(
   sk: X25519Sk, // local X25519 priv
@@ -43,7 +41,7 @@ export async function pairKey(
   if (peer.byteLength !== X25519_PUB_LEN) return err(Status.InvalidParam);
   let shared: Uint8Array;
   try {
-    shared = await noble.x25519Shared(sk, peer);
+    shared = await x25519Shared(sk, peer);
   } catch {
     return err(Status.CryptoError);
   }

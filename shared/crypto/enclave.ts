@@ -51,7 +51,15 @@ import {
   nullKDM,
   Purpose,
 } from "./derivation.ts";
-import { NobleCrypto } from "./noble.ts";
+import {
+  blake3,
+  decryptXSalsa20Poly1305Combined,
+  deriveEd25519KeyPair,
+  encryptXSalsa20Poly1305Combined,
+  gen256BitSecureRandomSeed,
+  genX25519,
+  signEd25519,
+} from "./noble.ts";
 import {
   asDHKEReq,
   asDHKEResp,
@@ -176,9 +184,6 @@ const SEAL_PRF_MIN_LEN = 16;
 /** Minimum musec length (Mandatory User-Space Entropy Contribution). */
 const MUSEC_MIN_LEN = 32;
 
-// Bound at load — not an Enclave constructor argument (no caller ICrypto).
-const noble = new NobleCrypto();
-
 // Host rows for IdentityBundle wire (idx defaults to 0).
 function bundleHosts(hosts: BundleHost[]): BundleHost[] {
   return hosts.map((h) => ({
@@ -228,7 +233,7 @@ class PairRequest {
   static async create(): Promise<ValStat<PairRequest>> {
     let priv: X25519Sk | undefined;
     try {
-      const pair = await noble.genX25519();
+      const pair = await genX25519();
       priv = pair.priv;
       const [dhkeReq, qst] = asDHKEReq(pair.pub);
       if (qst !== Status.Success) return err(qst);
@@ -273,7 +278,7 @@ class PairRequest {
     let plain: Uint8Array | undefined;
     try {
       try {
-        plain = await noble.decryptXSalsa20Poly1305Combined(body, key);
+        plain = await decryptXSalsa20Poly1305Combined(body, key);
       } catch {
         return err(Status.DecryptionError);
       }
@@ -581,10 +586,10 @@ export class Enclave {
    */
   static async fromRandom(musec: Uint8Array): Promise<ValStat<Enclave>> {
     if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
-    const os = await noble.gen256BitSecureRandomSeed();
+    const os = await gen256BitSecureRandomSeed();
     const mix = concat(os, musec);
     try {
-      const hashed = await noble.blake3(mix);
+      const hashed = await blake3(mix);
       const [seed, st] = asMasterSeed(hashed);
       if (st !== Status.Success) return err(st);
       return ok(new Enclave(seed));
@@ -1057,7 +1062,7 @@ export class Enclave {
     }
     let eph: { priv: X25519Sk; pub: Uint8Array }; // ephemeral X25519 pair
     try {
-      eph = await noble.genX25519();
+      eph = await genX25519();
     } catch {
       return err(Status.CryptoError);
     }
@@ -1068,7 +1073,7 @@ export class Enclave {
         const [plainBytes, pst] = this.#encodeSeedHosts(hosts);
         if (pst !== Status.Success) return err(pst);
         try {
-          const body = await noble.encryptXSalsa20Poly1305Combined(
+          const body = await encryptXSalsa20Poly1305Combined(
             plainBytes,
             key,
           );
@@ -1202,7 +1207,7 @@ export class Enclave {
     const [key, kst] = await sealKeyFromPrf(prf);
     if (kst !== Status.Success) return err(kst);
     try {
-      const sealed = await noble.encryptXSalsa20Poly1305Combined(
+      const sealed = await encryptXSalsa20Poly1305Combined(
         this.#seed,
         key,
       );
@@ -1226,7 +1231,7 @@ export class Enclave {
     let plain: Uint8Array | undefined;
     try {
       try {
-        plain = await noble.decryptXSalsa20Poly1305Combined(sealed, key);
+        plain = await decryptXSalsa20Poly1305Combined(sealed, key);
       } catch {
         return err(Status.DecryptionError);
       }
@@ -1264,7 +1269,7 @@ export class Enclave {
     if (st !== Status.Success) return err(st);
     try {
       try {
-        return ok(await noble.encryptXSalsa20Poly1305Combined(data, key));
+        return ok(await encryptXSalsa20Poly1305Combined(data, key));
       } catch {
         return err(Status.CryptoError);
       }
@@ -1281,7 +1286,7 @@ export class Enclave {
     if (st !== Status.Success) return err(st);
     try {
       try {
-        return ok(await noble.decryptXSalsa20Poly1305Combined(data, key));
+        return ok(await decryptXSalsa20Poly1305Combined(data, key));
       } catch {
         return err(Status.DecryptionError);
       }
@@ -1319,7 +1324,7 @@ export class Enclave {
     if (st !== Status.Success) return err(st);
     try {
       try {
-        return ok(await noble.deriveEd25519KeyPair(asDerivSeed(seed)));
+        return ok(await deriveEd25519KeyPair(asDerivSeed(seed)));
       } catch {
         return err(Status.CryptoError);
       }
@@ -1338,7 +1343,7 @@ export class Enclave {
     if (st !== Status.Success) return err(st);
     try {
       try {
-        return ok(await noble.signEd25519(message, keys.privateKey));
+        return ok(await signEd25519(message, keys.privateKey));
       } catch {
         return err(Status.CryptoError);
       }

@@ -21,7 +21,7 @@ import {
   DHKE_RESP_MIN,
   pairKey,
 } from "../src/shared/crypto/pairing";
-import { NobleCrypto } from "../src/shared/crypto/noble";
+import { genX25519 } from "../src/shared/crypto/noble";
 import type { MasterSeed } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
@@ -735,9 +735,8 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
   });
 
   it("pairKey agrees and binds both pubs", async () => {
-    const n = new NobleCrypto();
-    const e = await n.genX25519();
-    const r = await n.genX25519();
+    const e = await genX25519();
+    const r = await genX25519();
     const [k1, s1] = await pairKey(e.priv, r.pub, e.pub, r.pub);
     const [k2, s2] = await pairKey(r.priv, e.pub, e.pub, r.pub);
     expect(s1).toBe(Status.Success);

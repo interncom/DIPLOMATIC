@@ -4,7 +4,7 @@ import {
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { Status } from "../../shared/consts.ts";
 import { asMasterSeed, Enclave } from "../../shared/crypto/enclave.ts";
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { genX25519 } from "../../shared/crypto/noble.ts";
 import {
   asDHKEReq,
   asDHKEResp,
@@ -82,9 +82,8 @@ Deno.test("dhkeReq returns an independent copy", async () => {
 });
 
 Deno.test("pairKey agrees; binds both pubs", async () => {
-  const n = new NobleCrypto();
-  const e = await n.genX25519();
-  const r = await n.genX25519();
+  const e = await genX25519();
+  const r = await genX25519();
   const [k1, s1] = await pairKey(e.priv, r.pub, e.pub, r.pub);
   const [k2, s2] = await pairKey(r.priv, e.pub, e.pub, r.pub);
   assertEquals(s1, Status.Success);
@@ -99,16 +98,14 @@ Deno.test("pairKey agrees; binds both pubs", async () => {
 });
 
 Deno.test("pairKey rejects a short peer pub", async () => {
-  const n = new NobleCrypto();
-  const e = await n.genX25519();
+  const e = await genX25519();
   const [k, st] = await pairKey(e.priv, new Uint8Array(16), e.pub, e.pub);
   assertEquals(st, Status.InvalidParam);
   assertEquals(k, undefined);
 });
 
 Deno.test("pairKey rejects an all-zero peer pub", async () => {
-  const n = new NobleCrypto();
-  const e = await n.genX25519();
+  const e = await genX25519();
   const [k, st] = await pairKey(e.priv, new Uint8Array(32), e.pub, e.pub);
   assert(st !== Status.Success);
   assertEquals(k, undefined);

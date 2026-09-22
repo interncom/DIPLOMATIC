@@ -2,7 +2,7 @@
 // framed plaintext (seed bytes embedded in a larger buffer).
 // File-local / #private calls are invisible. ESM named imports are only
 // intercepted if the spy is installed via vi.mock (hoisted).
-// Class methods (Encoder, NobleCrypto) are wrapped via prototype spies.
+// Class methods (Encoder) are wrapped via prototype spies.
 
 import { blake3 } from "@noble/hashes/blake3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,6 @@ import { btoh, bytesEqual } from "../src/shared/binary";
 import { Encoder } from "../src/shared/codec";
 import { Status } from "../src/shared/consts";
 import { asMasterSeed, Enclave } from "../src/shared/crypto/enclave";
-import { NobleCrypto } from "../src/shared/crypto/noble";
 import { asDHKEReq } from "../src/shared/crypto/pairing";
 import {
   asSealedMasterKey,
@@ -40,7 +39,7 @@ const permits: Permit[] = [
     caller: "sealWithPasskey",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
+    src: "079455f96cc75fbb6626d0377048af4f",
     callerSrc: "10c1d7ef9ba6148e5aa1c586e3cf1c00",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
@@ -48,7 +47,7 @@ const permits: Permit[] = [
     caller: "fingerprint",
     callee: "derivation.deriveKey",
     how: "exact",
-    src: "51115c6a0e15348eb89f0440052efe39",
+    src: "0de5207b092b952756705bc0fc7f250d",
     callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
     why: "To derive the paper-check digest from the master via the fingerprint PDK.",
   },
@@ -56,7 +55,7 @@ const permits: Permit[] = [
     caller: "fingerprint",
     callee: "NobleCrypto.blake3",
     how: "exact",
-    src: "e2107efe0223faa942612680e9173a79",
+    src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
     why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -64,7 +63,7 @@ const permits: Permit[] = [
     caller: "deriveIdentity",
     callee: "derivation.deriveKey",
     how: "exact",
-    src: "51115c6a0e15348eb89f0440052efe39",
+    src: "0de5207b092b952756705bc0fc7f250d",
     callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
     why: "To derive an identity child from the master via the identity PDK and KDM.",
   },
@@ -72,7 +71,7 @@ const permits: Permit[] = [
     caller: "deriveIdentity",
     callee: "NobleCrypto.blake3",
     how: "exact",
-    src: "e2107efe0223faa942612680e9173a79",
+    src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
     why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -88,15 +87,15 @@ const permits: Permit[] = [
     caller: "pairAccept",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
-    callerSrc: "916d24916ce9e44d540ad91275570b8e",
+    src: "079455f96cc75fbb6626d0377048af4f",
+    callerSrc: "f5b34952f9511057940f52aa5d62a59a",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {
     caller: "bind",
     callee: "derivation.deriveKey",
     how: "exact",
-    src: "51115c6a0e15348eb89f0440052efe39",
+    src: "0de5207b092b952756705bc0fc7f250d",
     callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
     why: "To derive a bind-tag child from the master (PDK keyed by credId).",
   },
@@ -104,7 +103,7 @@ const permits: Permit[] = [
     caller: "bind",
     callee: "NobleCrypto.blake3",
     how: "exact",
-    src: "e2107efe0223faa942612680e9173a79",
+    src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
     why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -112,7 +111,7 @@ const permits: Permit[] = [
     caller: "bind",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
+    src: "079455f96cc75fbb6626d0377048af4f",
     callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
     why: "To encrypt the master with KEK derived from passkey PRF.",
   },
@@ -120,7 +119,7 @@ const permits: Permit[] = [
     caller: "sealWithIkm",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
-    src: "c87390f5b54c28fe7c228a7325c42aee",
+    src: "079455f96cc75fbb6626d0377048af4f",
     callerSrc: "a40b76baa8edc592ba346492c6d3bb67",
     why: "To encrypt the master with a KEK derived from caller-supplied PRF IKM.",
   },
@@ -128,8 +127,8 @@ const permits: Permit[] = [
     caller: "fromRandom",
     callee: "NobleCrypto.blake3",
     how: "embedded",
-    src: "e2107efe0223faa942612680e9173a79",
-    callerSrc: "59128a7f9e171eb2269aa5d8966a8a76",
+    src: "ac2d00162c47b0171aee8576da4a9689",
+    callerSrc: "41b560c907d44ad9a1cef043cf24e1c9",
     why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
 ];
@@ -139,10 +138,12 @@ const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
     seed: Uint8Array | undefined;
     caller: string | undefined;
     hits: Hit[];
+    osSeed: Uint8Array | undefined;
   } = {
     seed: undefined,
     caller: undefined,
     hits: [],
+    osSeed: undefined,
   };
   const origByFn = new Map<string, (...args: never[]) => unknown>();
 
@@ -377,6 +378,19 @@ vi.mock("../src/shared/crypto/entropy", async (importOriginal) => {
   return wrapFns("entropy", orig);
 });
 
+vi.mock("../src/shared/crypto/noble", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/noble")
+  >();
+  return wrapFns("NobleCrypto", orig, {
+    gen256BitSecureRandomSeed: async () => {
+      const os = trace.osSeed;
+      if (os !== undefined) return os;
+      return await orig.gen256BitSecureRandomSeed();
+    },
+  });
+});
+
 function randomSeed(): MasterSeed {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -473,8 +487,7 @@ const traces: Record<string, () => void | Promise<void>> = {
   async fromRandom() {
     const seed = randomSeed();
     arm("fromRandom", seed);
-    vi.spyOn(NobleCrypto.prototype, "gen256BitSecureRandomSeed")
-      .mockResolvedValue(seed);
+    trace.osSeed = seed;
     const musec = new Uint8Array(32).fill(9);
     const [e, st] = await Enclave.fromRandom(musec);
     expect(st).toBe(Status.Success);
@@ -656,13 +669,13 @@ describe("Enclave imported-callee seed trace", () => {
 
   beforeEach(() => {
     wrapProto("Encoder", Encoder.prototype);
-    wrapProto("NobleCrypto", NobleCrypto.prototype);
   });
 
   afterEach(() => {
     trace.seed = undefined;
     trace.caller = undefined;
     trace.hits = [];
+    trace.osSeed = undefined;
     vi.restoreAllMocks();
   });
 

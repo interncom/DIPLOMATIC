@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { btoh, bytesEqual, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { blake3 } from "../../shared/crypto/noble.ts";
 import { asSealedMasterKey } from "../../shared/seed.ts";
 
 export const CLI_RP_ID = "diplomatic";
@@ -16,7 +16,6 @@ export const CLI_USER = "diplomatic-cli";
 const SALT_DOM = new TextEncoder().encode("diplomatic.cli.prf.v1");
 const MIN_KEYS = 16;
 const KEYRING_MAX = 8;
-const noble = new NobleCrypto();
 
 export type CliEntry = {
   type: "prf";
@@ -213,7 +212,7 @@ export function fidoDev(): string {
 
 /** 32-byte hmac-secret salt for CLI bindings. */
 export async function cliSalt(): Promise<Uint8Array> {
-  return await noble.blake3(SALT_DOM);
+  return await blake3(SALT_DOM);
 }
 
 /** Create a hmac-secret cred; returns cred id. `-r` when resident. */

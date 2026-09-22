@@ -1,6 +1,6 @@
 import { randomBytes } from "@noble/ciphers/webcrypto";
 import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
-import { blake3 } from "@noble/hashes/blake3";
+import { blake3 as blake3hash } from "@noble/hashes/blake3";
 import { b64urltob, bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { asX25519Sk, x25519, x25519Pub, type X25519Sk } from "./x25519.ts";
@@ -88,235 +88,255 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return ab;
 }
 
-/**
- * ICrypto: noble for XSalsa20 + blake3; WebCrypto Ed25519 + X25519
- * (our scalar; RFC 7748 check before trusting pub/DH).
- */
-export class NobleCrypto implements ICrypto {
-  async genRandomBytes(bytes: number): Promise<Uint8Array> {
-    return randomBytes(bytes);
-  }
+// XSalsa20 and BLAKE3 via noble; Ed25519 and X25519 via WebCrypto.
+export async function genRandomBytes(bytes: number): Promise<Uint8Array> {
+  return randomBytes(bytes);
+}
 
-  async gen256BitSecureRandomSeed(): Promise<Uint8Array> {
-    return randomBytes(32);
-  }
+export async function gen256BitSecureRandomSeed(): Promise<Uint8Array> {
+  return randomBytes(32);
+}
 
-  async encryptXSalsa20Poly1305Combined(
-    data: Uint8Array,
-    key: Uint8Array,
-  ): Promise<Uint8Array> {
-    const nonce = randomBytes(24); // XSalsa20 nonce size
-    const cipher = xsalsa20poly1305(key, nonce);
-    const ciphertext = cipher.encrypt(data);
-    // Combine nonce + ciphertext like libsodium crypto_secretbox
-    return new Uint8Array([...nonce, ...ciphertext]);
-  }
+export async function encryptXSalsa20Poly1305Combined(
+  data: Uint8Array,
+  key: Uint8Array,
+): Promise<Uint8Array> {
+  const nonce = randomBytes(24); // XSalsa20 nonce size
+  const cipher = xsalsa20poly1305(key, nonce);
+  const ciphertext = cipher.encrypt(data);
+  // Combine nonce + ciphertext like libsodium crypto_secretbox
+  return new Uint8Array([...nonce, ...ciphertext]);
+}
 
-  async decryptXSalsa20Poly1305Combined(
-    data: Uint8Array,
-    key: Uint8Array,
-  ): Promise<Uint8Array> {
-    const nonce = data.slice(0, 24);
-    const ciphertext = data.slice(24);
-    const cipher = xsalsa20poly1305(key, nonce);
-    return cipher.decrypt(ciphertext);
-  }
+export async function decryptXSalsa20Poly1305Combined(
+  data: Uint8Array,
+  key: Uint8Array,
+): Promise<Uint8Array> {
+  const nonce = data.slice(0, 24);
+  const ciphertext = data.slice(24);
+  const cipher = xsalsa20poly1305(key, nonce);
+  return cipher.decrypt(ciphertext);
+}
 
-  async deriveEd25519KeyPair(derivationSeed: DerivationSeed): Promise<KeyPair> {
-    const seed = derivationSeed; // 32-byte seed
-    // Extractable CryptoKey only to read JWK x. Never cache it — that was a
-    // process-wide copy of the signing key, often keyed by hex(seed).
-    const pkcs8 = ed25519Pkcs8FromSeed(seed);
-    const pkcs8Ab = toArrayBuffer(pkcs8);
-    let jwk: JsonWebKey;
-    try {
-      const priv = await globalThis.crypto.subtle.importKey(
-        "pkcs8",
-        pkcs8Ab,
-        { name: "Ed25519" },
-        true,
-        ["sign"],
-      );
-      jwk = await globalThis.crypto.subtle.exportKey("jwk", priv);
-    } finally {
-      // PKCS#8 is seed in a wrapper; wipe both views (toArrayBuffer copies).
-      pkcs8.fill(0);
-      new Uint8Array(pkcs8Ab).fill(0);
-    }
-    if (typeof jwk.x !== "string") {
-      throw new Error("Ed25519 JWK missing x");
-    }
-    const x = jwk.x;
-    // Drop d so we do not keep a handle to the private scalar (string still GC).
-    jwk.d = undefined;
-    const pubCryptoKey = await globalThis.crypto.subtle.importKey(
-      "jwk",
-      { kty: "OKP", crv: "Ed25519", x },
+export async function deriveEd25519KeyPair(
+  derivationSeed: DerivationSeed,
+): Promise<KeyPair> {
+  const seed = derivationSeed; // 32-byte seed
+  // Extractable CryptoKey only to read JWK x. Never cache it — that was a
+  // process-wide copy of the signing key, often keyed by hex(seed).
+  const pkcs8 = ed25519Pkcs8FromSeed(seed);
+  const pkcs8Ab = toArrayBuffer(pkcs8);
+  let jwk: JsonWebKey;
+  try {
+    const priv = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8Ab,
       { name: "Ed25519" },
       true,
-      ["verify"],
+      ["sign"],
     );
-    const publicKey = new Uint8Array(
-      await globalThis.crypto.subtle.exportKey("raw", pubCryptoKey),
-    );
-    // Libsodium format: privateKey = seed + publicKey (64 bytes total)
-    const privateKey = new Uint8Array(64);
-    privateKey.set(seed, 0);
-    privateKey.set(publicKey, 32);
-    return {
-      keyType: "ed25519",
-      privateKey: privateKey as PrivateKey,
-      publicKey: publicKey as PublicKey,
-    };
+    jwk = await globalThis.crypto.subtle.exportKey("jwk", priv);
+  } finally {
+    // PKCS#8 is seed in a wrapper; wipe both views (toArrayBuffer copies).
+    pkcs8.fill(0);
+    new Uint8Array(pkcs8Ab).fill(0);
   }
-
-  private async importSignKey(secKey: Uint8Array): Promise<CryptoKey> {
-    // Libsodium-format secret key: first 32 bytes are the seed.
-    // Non-extractable, not cached: no hex-seed Map and no exportable CryptoKey.
-    const seed = secKey.subarray(0, 32);
-    const pkcs8 = ed25519Pkcs8FromSeed(seed);
-    const pkcs8Ab = toArrayBuffer(pkcs8);
-    try {
-      return await globalThis.crypto.subtle.importKey(
-        "pkcs8",
-        pkcs8Ab,
-        { name: "Ed25519" },
-        false,
-        ["sign"],
-      );
-    } finally {
-      pkcs8.fill(0);
-      new Uint8Array(pkcs8Ab).fill(0);
-    }
+  if (typeof jwk.x !== "string") {
+    throw new Error("Ed25519 JWK missing x");
   }
+  const x = jwk.x;
+  // Drop d so we do not keep a handle to the private scalar (string still GC).
+  jwk.d = undefined;
+  const pubCryptoKey = await globalThis.crypto.subtle.importKey(
+    "jwk",
+    { kty: "OKP", crv: "Ed25519", x },
+    { name: "Ed25519" },
+    true,
+    ["verify"],
+  );
+  const publicKey = new Uint8Array(
+    await globalThis.crypto.subtle.exportKey("raw", pubCryptoKey),
+  );
+  // Libsodium format: privateKey = seed + publicKey (64 bytes total)
+  const privateKey = new Uint8Array(64);
+  privateKey.set(seed, 0);
+  privateKey.set(publicKey, 32);
+  return {
+    keyType: "ed25519",
+    privateKey: privateKey as PrivateKey,
+    publicKey: publicKey as PublicKey,
+  };
+}
 
-  // Imports an Ed25519 verify key. Reuse it across a batch of checks.
-  async importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {
+async function importSignKey(secKey: Uint8Array): Promise<CryptoKey> {
+  // Libsodium-format secret key: first 32 bytes are the seed.
+  // Non-extractable, not cached: no hex-seed Map and no exportable CryptoKey.
+  const seed = secKey.subarray(0, 32);
+  const pkcs8 = ed25519Pkcs8FromSeed(seed);
+  const pkcs8Ab = toArrayBuffer(pkcs8);
+  try {
     return await globalThis.crypto.subtle.importKey(
-      "raw",
-      toArrayBuffer(pubKey),
+      "pkcs8",
+      pkcs8Ab,
       { name: "Ed25519" },
       false,
-      ["verify"],
+      ["sign"],
     );
-  }
-
-  async signEd25519(
-    message: Uint8Array | string,
-    secKey: Uint8Array,
-  ): Promise<Uint8Array> {
-    const msg = toBytes(message);
-    const key = await this.importSignKey(secKey);
-    const sig = await globalThis.crypto.subtle.sign(
-      { name: "Ed25519" },
-      key,
-      toArrayBuffer(msg),
-    );
-    return new Uint8Array(sig);
-  }
-
-  async checkSigEd25519(
-    sig: Uint8Array,
-    message: Uint8Array | string,
-    verifyKey: CryptoKey,
-  ): Promise<boolean> {
-    const msg = toBytes(message);
-    try {
-      return await globalThis.crypto.subtle.verify(
-        { name: "Ed25519" },
-        verifyKey,
-        toArrayBuffer(sig),
-        toArrayBuffer(msg),
-      );
-    } catch {
-      // subtle.verify throws on a bad key or unsupported algorithm.
-      return false;
-    }
-  }
-
-  async blake3(data: Uint8Array, opts?: Blake3Opts): Promise<Hash> {
-    if (opts === undefined) return blake3(data) as Hash;
-    return blake3(data, opts) as Hash;
-  }
-
-  // Makes an ephemeral X25519 pair from random entropy (not generateKey).
-  // Throws if WebCrypto's exported pub disagrees with RFC 7748.
-  async genX25519(): Promise<{ priv: X25519Sk; pub: Uint8Array }> {
-    const raw = await randomBytes(32);
-    raw[0] &= 248;
-    raw[31] &= 127;
-    raw[31] |= 64;
-    const [priv, pst] = asX25519Sk(raw);
-    if (pst !== Status.Success || priv === undefined) {
-      raw.fill(0);
-      throw new Error("X25519 scalar brand failed");
-    }
-    const want = x25519Pub(priv);
-    const pkcs8 = x25519Pkcs8FromSk(priv);
-    const pkcs8Ab = toArrayBuffer(pkcs8);
-    try {
-      const key = await globalThis.crypto.subtle.importKey(
-        "pkcs8",
-        pkcs8Ab,
-        { name: "X25519" },
-        true,
-        ["deriveBits"],
-      );
-      const jwk = await globalThis.crypto.subtle.exportKey("jwk", key);
-      if (typeof jwk.x !== "string") {
-        throw new Error("X25519 JWK missing x");
-      }
-      const got = b64urltob(jwk.x);
-      jwk.d = undefined;
-      if (!bytesEqual(got, want)) {
-        throw new Error("X25519 WebCrypto pub != RFC 7748");
-      }
-      return { priv, pub: want };
-    } catch (e) {
-      priv.fill(0);
-      throw e;
-    } finally {
-      pkcs8.fill(0);
-      new Uint8Array(pkcs8Ab).fill(0);
-    }
-  }
-
-  // Computes ECDH via WebCrypto deriveBits on our imported scalar.
-  // Some CLI SubtleCrypto builds import X25519 PKCS#8 (genX25519) but reject
-  // raw-pub ECDH ("The algorithm is not supported"); then RFC 7748 ladder.
-  async x25519Shared(
-    priv: X25519Sk,
-    peerPub: Uint8Array,
-  ): Promise<Uint8Array> {
-    const pkcs8 = x25519Pkcs8FromSk(priv);
-    const pkcs8Ab = toArrayBuffer(pkcs8);
-    try {
-      const key = await globalThis.crypto.subtle.importKey(
-        "pkcs8",
-        pkcs8Ab,
-        { name: "X25519" },
-        false,
-        ["deriveBits"],
-      );
-      const pubKey = await globalThis.crypto.subtle.importKey(
-        "raw",
-        toArrayBuffer(peerPub),
-        { name: "X25519" },
-        false,
-        [],
-      );
-      const bits = await globalThis.crypto.subtle.deriveBits(
-        { name: "X25519", public: pubKey },
-        key,
-        256,
-      );
-      return new Uint8Array(bits);
-    } catch {
-      // Fall back to TypeScript x25519 implementation if crypto.subtle's is not available.
-      return x25519(priv, peerPub);
-    } finally {
-      pkcs8.fill(0);
-      new Uint8Array(pkcs8Ab).fill(0);
-    }
+  } finally {
+    pkcs8.fill(0);
+    new Uint8Array(pkcs8Ab).fill(0);
   }
 }
+
+// Imports an Ed25519 verify key. Reuse it across a batch of checks.
+export async function importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {
+  return await globalThis.crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(pubKey),
+    { name: "Ed25519" },
+    false,
+    ["verify"],
+  );
+}
+
+export async function signEd25519(
+  message: Uint8Array | string,
+  secKey: Uint8Array,
+): Promise<Uint8Array> {
+  const msg = toBytes(message);
+  const key = await importSignKey(secKey);
+  const sig = await globalThis.crypto.subtle.sign(
+    { name: "Ed25519" },
+    key,
+    toArrayBuffer(msg),
+  );
+  return new Uint8Array(sig);
+}
+
+export async function checkSigEd25519(
+  sig: Uint8Array,
+  message: Uint8Array | string,
+  verifyKey: CryptoKey,
+): Promise<boolean> {
+  const msg = toBytes(message);
+  try {
+    return await globalThis.crypto.subtle.verify(
+      { name: "Ed25519" },
+      verifyKey,
+      toArrayBuffer(sig),
+      toArrayBuffer(msg),
+    );
+  } catch {
+    // subtle.verify throws on a bad key or unsupported algorithm.
+    return false;
+  }
+}
+
+export async function blake3(
+  data: Uint8Array,
+  opts?: Blake3Opts,
+): Promise<Hash> {
+  if (opts === undefined) return blake3hash(data) as Hash;
+  return blake3hash(data, opts) as Hash;
+}
+
+// Makes an ephemeral X25519 pair from random entropy (not generateKey).
+// Throws if WebCrypto's exported pub disagrees with RFC 7748.
+export async function genX25519(): Promise<
+  { priv: X25519Sk; pub: Uint8Array }
+> {
+  const raw = await randomBytes(32);
+  raw[0] &= 248;
+  raw[31] &= 127;
+  raw[31] |= 64;
+  const [priv, pst] = asX25519Sk(raw);
+  if (pst !== Status.Success || priv === undefined) {
+    raw.fill(0);
+    throw new Error("X25519 scalar brand failed");
+  }
+  const want = x25519Pub(priv);
+  const pkcs8 = x25519Pkcs8FromSk(priv);
+  const pkcs8Ab = toArrayBuffer(pkcs8);
+  try {
+    const key = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8Ab,
+      { name: "X25519" },
+      true,
+      ["deriveBits"],
+    );
+    const jwk = await globalThis.crypto.subtle.exportKey("jwk", key);
+    if (typeof jwk.x !== "string") {
+      throw new Error("X25519 JWK missing x");
+    }
+    const got = b64urltob(jwk.x);
+    jwk.d = undefined;
+    if (!bytesEqual(got, want)) {
+      throw new Error("X25519 WebCrypto pub != RFC 7748");
+    }
+    return { priv, pub: want };
+  } catch (e) {
+    priv.fill(0);
+    throw e;
+  } finally {
+    pkcs8.fill(0);
+    new Uint8Array(pkcs8Ab).fill(0);
+  }
+}
+
+// Computes ECDH via WebCrypto deriveBits on our imported scalar.
+// Some CLI SubtleCrypto builds import X25519 PKCS#8 (genX25519) but reject
+// raw-pub ECDH ("The algorithm is not supported"); then RFC 7748 ladder.
+export async function x25519Shared(
+  priv: X25519Sk,
+  peerPub: Uint8Array,
+): Promise<Uint8Array> {
+  const pkcs8 = x25519Pkcs8FromSk(priv);
+  const pkcs8Ab = toArrayBuffer(pkcs8);
+  try {
+    const key = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8Ab,
+      { name: "X25519" },
+      false,
+      ["deriveBits"],
+    );
+    const pubKey = await globalThis.crypto.subtle.importKey(
+      "raw",
+      toArrayBuffer(peerPub),
+      { name: "X25519" },
+      false,
+      [],
+    );
+    const bits = await globalThis.crypto.subtle.deriveBits(
+      { name: "X25519", public: pubKey },
+      key,
+      256,
+    );
+    return new Uint8Array(bits);
+  } catch {
+    // Fall back to TypeScript x25519 implementation if crypto.subtle's is not available.
+    return x25519(priv, peerPub);
+  } finally {
+    pkcs8.fill(0);
+    new Uint8Array(pkcs8Ab).fill(0);
+  }
+}
+
+// ICrypto handle. Frozen so a page script cannot replace these functions.
+function lockCrypto(c: ICrypto): ICrypto {
+  Object.freeze(c);
+  return c;
+}
+
+export const noble = lockCrypto({
+  genRandomBytes,
+  gen256BitSecureRandomSeed,
+  encryptXSalsa20Poly1305Combined,
+  decryptXSalsa20Poly1305Combined,
+  deriveEd25519KeyPair,
+  signEd25519,
+  importVerifyKey,
+  checkSigEd25519,
+  blake3,
+});

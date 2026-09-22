@@ -1,9 +1,7 @@
 // Ed25519 verify: one imported key reused, vs importKey on every check.
 // Message is 128 bytes, about a sealed bag head.
 
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
-
-const noble = new NobleCrypto();
+import { noble } from "../../shared/crypto/noble.ts";
 const msg = new Uint8Array(128);
 crypto.getRandomValues(msg);
 

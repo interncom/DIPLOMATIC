@@ -1,4 +1,3 @@
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { noble } from "../../shared/crypto/noble.ts";
 
-const crypto = new NobleCrypto();
-export default crypto;
+export default noble;

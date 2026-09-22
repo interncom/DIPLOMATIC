@@ -5,7 +5,7 @@ import readline from "node:readline";
 import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
+import { genX25519, x25519Shared } from "../../shared/crypto/noble.ts";
 import { asDHKEReq, asDHKEResp, DHKE_RESP_MIN } from "../../shared/crypto/pairing.ts";
 import {
   die,
@@ -31,11 +31,10 @@ function usage(code: number): never {
 
 /** Which X25519 step threw (pairAccept swallows this into CryptoError). */
 async function noteDhkeErr(peer: Uint8Array): Promise<void> {
-  const n = new NobleCrypto();
   try {
-    const eph = await n.genX25519();
+    const eph = await genX25519();
     try {
-      const s = await n.x25519Shared(eph.priv, peer);
+      const s = await x25519Shared(eph.priv, peer);
       s.fill(0);
       console.error("genX25519 and x25519Shared succeeded on retry");
     } catch (e) {

@@ -2,7 +2,7 @@ import { Encoder } from "../codec.ts";
 import { type IKDM, kdmCodec } from "../codecs/kdm.ts";
 import { hashBytes, Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { NobleCrypto } from "./noble.ts";
+import { blake3 as hashBlake3 } from "./noble.ts";
 
 // Purpose tags domain-separate PDKs to limit the damage of a stolen key.
 export const Purpose = {
@@ -28,8 +28,6 @@ export type ChildKey<P extends Purpose> = Uint8Array & {
 
 // Null KDM: default child of a PDK (empty label, index 0).
 export const nullKDM: IKDM = Object.freeze({ label: "", index: 0 });
-
-const noble = new NobleCrypto();
 
 function asPDK<P extends Purpose>(
   b: Uint8Array,
@@ -66,7 +64,7 @@ async function blake3(
   opts: { context: string } | { key: Uint8Array },
 ): Promise<ValStat<Uint8Array>> {
   try {
-    return ok(await noble.blake3(data, opts));
+    return ok(await hashBlake3(data, opts));
   } catch {
     return err(Status.CryptoError);
   }

@@ -42,8 +42,15 @@ import {
   type MasterSeed,
   type SealedMasterKey,
 } from "../seed.ts";
-import type { DerivationSeed, ICrypto, KeyPair, PublicKey } from "../types.ts";
+import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
+import {
+  asChildKey,
+  type ChildKey,
+  deriveKey,
+  nullKDM,
+  Purpose,
+} from "./derivation.ts";
 import { NobleCrypto } from "./noble.ts";
 import {
   asDHKEReq,
@@ -120,20 +127,20 @@ export type PrfSealedMaster = PrfCeremony & {
 /** One existing keyring member used to prove this enclave matches the list. */
 export type BindPrior = {
   credId: Uint8Array;
-  tag: Uint8Array;
+  tag: ChildKey<typeof Purpose.BindTag>;
 };
 
 /** Seal + bind-tag from {@link Enclave.bind} (tag is not a global fingerprint). */
 export type PrfBound = PrfSealedMaster & {
-  tag: Uint8Array;
+  tag: ChildKey<typeof Purpose.BindTag>;
 };
 
 export type EncryptCipher = {
-  encrypt: (data: Uint8Array) => Promise<Uint8Array>;
+  encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
 };
 
 export type DecryptCipher = {
-  decrypt: (data: Uint8Array) => Promise<Uint8Array>;
+  decrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
 };
 
 /** Encrypt + decrypt capability for one KDM. */
@@ -150,25 +157,21 @@ export type CipherForUsage<U extends CipherUsage> = {
 }[U];
 
 /**
- * Path-scoped signing identity: public key is public; sign/kdmFor re-enter
+ * KDM-scoped signing identity: public key is public; sign/kdmFor re-enter
  * the enclave so the private key never leaves. Used for hosts, export files, etc.
  */
 export type Identity = {
   readonly publicKey: PublicKey;
-  sign: (message: Uint8Array | string) => Promise<Uint8Array>;
-  /** Per-bag KDM mixed with this identity's private key (see bag seal). */
-  kdmFor: (msgHeadEnc: Uint8Array) => Promise<Uint8Array>;
+  sign: (message: Uint8Array | string) => Promise<ValStat<Uint8Array>>;
+  /** Per-bag 8-byte KDM (bag-kdm PDK child keyed by the encoded head). */
+  kdmFor: (msgHeadEnc: Uint8Array) => Promise<ValStat<Uint8Array>>;
 };
 
 // bun --define DIP_CLI_DUMP=true to enable dumpToTty (hexdump.ts). Absent or
 // false → NotImplemented; web/worker/pkg-cli define false so the write is DCE'd.
 declare const DIP_CLI_DUMP: boolean | undefined;
 
-const SEAL_BIND_DOMAIN = new TextEncoder().encode("diplomatic.bind.v1");
-const BIND_TAG_DOMAIN = new TextEncoder().encode("diplomatic.bindtag.v1");
-const FP_MODE = new TextEncoder().encode("DIPLOMATIC SEED FINGERPRINT");
 const BIND_TAG_LEN = 32;
-const SEAL_KEY_LEN = 32;
 const SEAL_PRF_MIN_LEN = 16;
 /** Minimum musec length (Mandatory User-Space Entropy Contribution). */
 const MUSEC_MIN_LEN = 32;
@@ -205,7 +208,6 @@ function fromSeedHosts(
   if (!dec.done()) return err(Status.InvalidMessage);
   const [enclave, est] = Enclave.fromBytes(seedRaw);
   if (est !== Status.Success) return err(est);
-  if (enclave === undefined) return err(Status.InternalError);
   return ok({
     enclave,
     hosts: rows.hosts.map((h) => ({ ...h })),
@@ -230,7 +232,6 @@ class PairRequest {
       priv = pair.priv;
       const [dhkeReq, qst] = asDHKEReq(pair.pub);
       if (qst !== Status.Success) return err(qst);
-      if (dhkeReq === undefined) return err(Status.InvalidParam);
       const req = new PairRequest(priv, dhkeReq);
       priv = undefined;
       return ok(req);
@@ -246,11 +247,13 @@ class PairRequest {
     this.#priv.fill(0);
   }
 
-  // Returns a copy of the enrollee X25519 pub to send as the DHKE request.
-  get dhkeReq(): DHKEReq {
-    const [q, st] = asDHKEReq(this.#dhkeReq.slice());
-    if (q === undefined) throw new Error(`dhkeReq ${st}`);
-    return q;
+  // Copy of the enrollee X25519 public key to send to the enroller.
+  // Branding the copy checks the length. On failure the private field stays put.
+  dhkeReq(): ValStat<DHKEReq> {
+    const copy = this.#dhkeReq.slice();
+    const [branded, st] = asDHKEReq(copy);
+    if (st !== Status.Success) return err(st);
+    return ok(branded);
   }
 
   // Decrypts the enroller's DHKE response into a new Enclave + hosts.
@@ -267,7 +270,6 @@ class PairRequest {
       respPub,
     );
     if (kst !== Status.Success) return err(kst);
-    if (key === undefined) return err(Status.InternalError);
     let plain: Uint8Array | undefined;
     try {
       try {
@@ -328,9 +330,17 @@ async function writeLargeBlob(
     try {
       cred = await navigator.credentials.get(req);
     } catch (e) {
-      if (!webAuthnNotFocused(e)) throw e;
+      if (!webAuthnNotFocused(e)) {
+        noteWebAuthnError(e);
+        return Status.WebAuthnError;
+      }
       tryFocus();
-      cred = await navigator.credentials.get(req);
+      try {
+        cred = await navigator.credentials.get(req);
+      } catch (e2) {
+        noteWebAuthnError(e2);
+        return Status.WebAuthnError;
+      }
     }
   } catch (e) {
     noteWebAuthnError(e);
@@ -577,7 +587,6 @@ export class Enclave {
       const hashed = await noble.blake3(mix);
       const [seed, st] = asMasterSeed(hashed);
       if (st !== Status.Success) return err(st);
-      if (seed === undefined) return err(Status.InternalError);
       return ok(new Enclave(seed));
     } finally {
       os.fill(0);
@@ -594,10 +603,8 @@ export class Enclave {
   static fromBytes(bytes: Uint8Array): ValStat<Enclave> {
     const [seed, st] = asMasterSeed(bytes);
     if (st !== Status.Success) return err(st);
-    if (seed === undefined) return err(Status.InvalidParam);
     const [owned, ost] = asMasterSeed(seed.slice());
     if (ost !== Status.Success) return err(ost);
-    if (owned === undefined) return err(Status.InvalidParam);
     return ok(new Enclave(owned));
   }
 
@@ -648,7 +655,6 @@ export class Enclave {
       try {
         const [sealedMaster, sst] = await this.#sealUnderPrf(prf);
         if (sst !== Status.Success) return err(sst);
-        if (sealedMaster === undefined) return err(Status.InternalError);
         return ok({
           sealedMaster,
           salt: salt.slice(),
@@ -689,7 +695,7 @@ export class Enclave {
   }
 
   /**
-   * UV + PRF seal, plus a per-cred bind tag (blake3(master ‖ domain ‖ credId)).
+   * UV + PRF seal, plus a per-cred bind tag (bindtag PDK child keyed by credId).
    * Tag compute and compare stay in the enclave. If `prior` is non-empty, every
    * stored tag must match this master or bind fails (one keyring, one master).
    */
@@ -706,8 +712,8 @@ export class Enclave {
     }
     const [sealed, sst] = await this.sealWithPasskey(opts);
     if (sst !== Status.Success) return err(sst);
-    if (sealed === undefined) return err(Status.InternalError);
-    const tag = await this.#bindTag(sealed.credId);
+    const [tag, tst] = await this.#bindTag(sealed.credId);
+    if (tst !== Status.Success) return err(tst);
     return ok({ ...sealed, tag });
   }
 
@@ -803,7 +809,6 @@ export class Enclave {
 
     const [encoded, est] = this.#encodeSeedHosts(hosts);
     if (est !== Status.Success) return err(est);
-    if (encoded === undefined) return err(Status.InternalError);
     try {
       const wst = await writeLargeBlob(credId, encoded, opts);
       if (wst !== Status.Success) return err(wst);
@@ -831,7 +836,6 @@ export class Enclave {
     try {
       const [out, st] = fromSeedHosts(raw.blob);
       if (st !== Status.Success) return err(st);
-      if (out === undefined) return err(Status.InternalError);
       return ok({ ...out, credId: raw.credId });
     } finally {
       raw.blob.fill(0);
@@ -940,8 +944,9 @@ export class Enclave {
     const inByte = new Uint8Array(1);
     let fprint: Uint8Array | undefined;
     try {
-      fprint = await this.#fingerprint();
-      if (fprint === undefined) return Status.InternalError;
+      const [fp, fst] = await this.fingerprint();
+      if (fst !== Status.Success) return fst;
+      fprint = fp;
       for (let line = 0; line < hexLines; line++) {
         let pos = 0;
         lineBuf[pos] = asciiZero + line + 1;
@@ -1059,11 +1064,9 @@ export class Enclave {
     try {
       const [key, kst] = await pairKey(eph.priv, dhkeReq, dhkeReq, eph.pub);
       if (kst !== Status.Success) return err(kst);
-      if (key === undefined) return err(Status.InternalError);
       try {
         const [plainBytes, pst] = this.#encodeSeedHosts(hosts);
         if (pst !== Status.Success) return err(pst);
-        if (plainBytes === undefined) return err(Status.InternalError);
         try {
           const body = await noble.encryptXSalsa20Poly1305Combined(
             plainBytes,
@@ -1128,47 +1131,57 @@ export class Enclave {
   }
 
   /**
-   * Path-scoped identity (label+index). Private key stays in the enclave; only
-   * publicKey and capability methods are returned (frozen).
+   * Identity from the identity PDK + KDM {label: keyPath, index}. Private key
+   * stays in the enclave; only publicKey and capability methods are returned.
    */
-  async deriveIdentity(keyPath: string, idx = 0): Promise<Identity> {
+  async deriveIdentity(
+    keyPath: string,
+    idx = 0,
+  ): Promise<ValStat<Identity>> {
     const path = keyPath;
     const index = idx;
-    const keys = await this.#deriveSubkeys(path, index);
+    const [keys, st] = await this.#deriveSubkeys(path, index);
+    if (st !== Status.Success) return err(st);
     const publicKey = keys.publicKey;
     // Handle only needs the pub; priv would outlive this call on the Identity.
     keys.privateKey.fill(0);
-    return Object.freeze({
+    return ok(Object.freeze({
       publicKey,
       sign: (message: Uint8Array | string) => this.#sign(path, index, message),
       kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(path, index, msgHeadEnc),
+    }));
+  }
+
+  // Paper-check digest (null-KDM child of the fingerprint PDK).
+  async fingerprint(): Promise<
+    ValStat<ChildKey<typeof Purpose.Fingerprint>>
+  > {
+    return await deriveKey({
+      parent: this.#seed,
+      purpose: Purpose.Fingerprint,
+      kdm: nullKDM,
     });
   }
 
-  // Fingerprint the master (BLAKE3 KDF, context FP_MODE).
-  async #fingerprint(): Promise<Uint8Array> {
-    return await noble.blake3(this.#seed, { context: FP_MODE });
-  }
-
-  // blake3(master ‖ bindtag domain ‖ credId). Not a global fingerprint.
-  async #bindTag(credId: Uint8Array): Promise<Uint8Array> {
-    const mix = new Uint8Array(
-      this.#seed.byteLength + BIND_TAG_DOMAIN.byteLength + credId.byteLength,
-    );
-    mix.set(this.#seed, 0);
-    mix.set(BIND_TAG_DOMAIN, this.#seed.byteLength);
-    mix.set(credId, this.#seed.byteLength + BIND_TAG_DOMAIN.byteLength);
-    try {
-      return await noble.blake3(mix);
-    } finally {
-      mix.fill(0);
-    }
+  // Bind-tag child keyed by credId. Not a global fingerprint.
+  async #bindTag(
+    credId: Uint8Array,
+  ): Promise<ValStat<ChildKey<typeof Purpose.BindTag>>> {
+    return await deriveKey({
+      parent: this.#seed,
+      purpose: Purpose.BindTag,
+      kdm: credId,
+    });
   }
 
   // Constant-time match of a stored tag against this master + credId.
-  async #tagMatches(credId: Uint8Array, tag: Uint8Array): Promise<boolean> {
+  async #tagMatches(
+    credId: Uint8Array,
+    tag: ChildKey<typeof Purpose.BindTag>,
+  ): Promise<boolean> {
     if (tag.byteLength !== BIND_TAG_LEN) return false;
-    const got = await this.#bindTag(credId);
+    const [got, gst] = await this.#bindTag(credId);
+    if (gst !== Status.Success) return false;
     try {
       if (got.byteLength !== tag.byteLength) return false;
       let d = 0;
@@ -1186,9 +1199,8 @@ export class Enclave {
 
   /** AEAD-seal master under KDF(PRF). PRF must stay inside Enclave methods. */
   async #sealUnderPrf(prf: Uint8Array): Promise<ValStat<SealedMasterKey>> {
-    const [key, kst] = await sealKeyFromPrf(noble, prf);
+    const [key, kst] = await sealKeyFromPrf(prf);
     if (kst !== Status.Success) return err(kst);
-    if (key === undefined) return err(Status.InternalError);
     try {
       const sealed = await noble.encryptXSalsa20Poly1305Combined(
         this.#seed,
@@ -1209,9 +1221,8 @@ export class Enclave {
   ): Promise<ValStat<Enclave>> {
     const [, sst] = asSealedMasterKey(sealed);
     if (sst !== Status.Success) return err(sst);
-    const [key, kst] = await sealKeyFromPrf(noble, prf);
+    const [key, kst] = await sealKeyFromPrf(prf);
     if (kst !== Status.Success) return err(kst);
-    if (key === undefined) return err(Status.InternalError);
     let plain: Uint8Array | undefined;
     try {
       try {
@@ -1245,47 +1256,73 @@ export class Enclave {
     return [out, Status.Success];
   }
 
-  async #encrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
-    const key = await this.#keyFromKDM(kdm);
+  async #encrypt(
+    kdm: Uint8Array,
+    data: Uint8Array,
+  ): Promise<ValStat<Uint8Array>> {
+    const [key, st] = await this.#keyFromKDM(kdm);
+    if (st !== Status.Success) return err(st);
     try {
-      return await noble.encryptXSalsa20Poly1305Combined(data, key);
+      try {
+        return ok(await noble.encryptXSalsa20Poly1305Combined(data, key));
+      } catch {
+        return err(Status.CryptoError);
+      }
     } finally {
       key.fill(0);
     }
   }
 
-  async #decrypt(kdm: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
-    const key = await this.#keyFromKDM(kdm);
+  async #decrypt(
+    kdm: Uint8Array,
+    data: Uint8Array,
+  ): Promise<ValStat<Uint8Array>> {
+    const [key, st] = await this.#keyFromKDM(kdm);
+    if (st !== Status.Success) return err(st);
     try {
-      return await noble.decryptXSalsa20Poly1305Combined(data, key);
+      try {
+        return ok(await noble.decryptXSalsa20Poly1305Combined(data, key));
+      } catch {
+        return err(Status.DecryptionError);
+      }
     } finally {
       key.fill(0);
     }
   }
 
-  async #keyFromKDM(kdm: Uint8Array): Promise<Uint8Array> {
-    const mix = new Uint8Array(this.#seed.byteLength + kdm.byteLength);
-    mix.set(this.#seed, 0);
-    mix.set(kdm, this.#seed.byteLength);
-    try {
-      return await noble.blake3(mix);
-    } finally {
-      mix.fill(0);
-    }
+  async #keyFromKDM(
+    kdm: Uint8Array,
+  ): Promise<ValStat<ChildKey<typeof Purpose.Cipher>>> {
+    return await deriveKey({
+      parent: this.#seed,
+      purpose: Purpose.Cipher,
+      kdm,
+    });
   }
 
-  async #deriveSeed(keyPath: string, idx: number): Promise<DerivationSeed> {
-    const keyPathBytes = new TextEncoder().encode(keyPath);
-    const indexBytes = new Uint8Array(8);
-    new DataView(indexBytes.buffer).setBigUint64(0, BigInt(idx), false);
-    const seed = await this.#keyFromKDM(concat(keyPathBytes, indexBytes));
-    return seed as Uint8Array as DerivationSeed;
+  async #deriveSeed(
+    keyPath: string,
+    idx: number,
+  ): Promise<ValStat<ChildKey<typeof Purpose.Identity>>> {
+    return await deriveKey({
+      parent: this.#seed,
+      purpose: Purpose.Identity,
+      kdm: { label: keyPath, index: idx },
+    });
   }
 
-  async #deriveSubkeys(keyPath: string, idx: number): Promise<KeyPair> {
-    const seed = await this.#deriveSeed(keyPath, idx);
+  async #deriveSubkeys(
+    keyPath: string,
+    idx: number,
+  ): Promise<ValStat<KeyPair>> {
+    const [seed, st] = await this.#deriveSeed(keyPath, idx);
+    if (st !== Status.Success) return err(st);
     try {
-      return await noble.deriveEd25519KeyPair(seed);
+      try {
+        return ok(await noble.deriveEd25519KeyPair(asDerivSeed(seed)));
+      } catch {
+        return err(Status.CryptoError);
+      }
     } finally {
       // Pair already holds seed‖pub; this 32-byte deriv must not linger.
       seed.fill(0);
@@ -1296,10 +1333,15 @@ export class Enclave {
     keyPath: string,
     idx: number,
     message: Uint8Array | string,
-  ): Promise<Uint8Array> {
-    const keys = await this.#deriveSubkeys(keyPath, idx);
+  ): Promise<ValStat<Uint8Array>> {
+    const [keys, st] = await this.#deriveSubkeys(keyPath, idx);
+    if (st !== Status.Success) return err(st);
     try {
-      return await noble.signEd25519(message, keys.privateKey);
+      try {
+        return ok(await noble.signEd25519(message, keys.privateKey));
+      } catch {
+        return err(Status.CryptoError);
+      }
     } finally {
       // Re-derived per sign so the caller never holds a long-lived priv.
       keys.privateKey.fill(0);
@@ -1310,37 +1352,53 @@ export class Enclave {
     keyPath: string,
     idx: number,
     msgHeadEnc: Uint8Array,
-  ): Promise<Uint8Array> {
-    const keys = await this.#deriveSubkeys(keyPath, idx);
-    const kdmSource = concat(keys.privateKey, msgHeadEnc);
-    // concat copied priv; wipe the source first so only kdmSource remains.
-    keys.privateKey.fill(0);
+  ): Promise<ValStat<Uint8Array>> {
+    const [idSeed, st] = await this.#deriveSeed(keyPath, idx);
+    if (st !== Status.Success) return err(st);
     try {
-      const kdmHash = await noble.blake3(kdmSource);
-      return kdmHash.slice(0, kdmBytes);
+      const [child, cst] = await deriveKey({
+        parent: idSeed,
+        purpose: Purpose.BagKdm,
+        kdm: msgHeadEnc,
+      });
+      if (cst !== Status.Success) return err(cst);
+      try {
+        return ok(child.slice(0, kdmBytes));
+      } finally {
+        child.fill(0);
+      }
     } finally {
-      kdmSource.fill(0);
+      idSeed.fill(0);
     }
   }
 }
 
-/** Derive seal key from PRF output (domain-separated). Used by enclave seal/unseal. */
+// Brands an identity child as the Ed25519 derivation seed for that identity.
+function asDerivSeed(
+  child: ChildKey<typeof Purpose.Identity>,
+): DerivationSeed {
+  return child as Uint8Array as DerivationSeed;
+}
+
+/** Derive seal KEK from PRF IKM (null-KDM child of the bind PDK). */
 export async function sealKeyFromPrf(
-  crypto: ICrypto,
   prf: Uint8Array,
-  domain: Uint8Array = SEAL_BIND_DOMAIN,
-): Promise<ValStat<Uint8Array>> {
+): Promise<ValStat<ChildKey<typeof Purpose.Bind>>> {
   if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
-  const hash = await crypto.blake3(concat(prf, domain));
-  return ok(hash.slice(0, SEAL_KEY_LEN));
+  return deriveKey({
+    parent: prf,
+    purpose: Purpose.Bind,
+    kdm: nullKDM,
+  });
 }
 
 export {
-  FP_MODE,
+  asChildKey,
+  type ChildKey,
   MASTER_SEED_LEN,
   MUSEC_MIN_LEN,
-  SEAL_BIND_DOMAIN,
-  SEAL_KEY_LEN,
+  nullKDM,
+  Purpose,
   SEAL_PRF_MIN_LEN,
 };
 

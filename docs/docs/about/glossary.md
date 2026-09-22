@@ -20,7 +20,7 @@ Short for *revision*. Snapshot of an ent's latest observed state, used as the ba
 
 ## identity
 
-Path-scoped cryptographic persona derived from the master seed via a string path and numeric index (e.g. a host label, or an export-file key label). Exposed as a frozen capability handle (`Identity`): **publicKey** (public), plus **sign** and **kdmFor**, which re-enter the enclave so the private key never leaves. Used to authenticate to hosts, seal bags, and sign export files. Not a host-specific concept—hosts are one common path among others.
+Cryptographic persona derived from the master seed via the identity PDK and KDM `{label, index}` (e.g. a host label, or an export-file key label). Exposed as a frozen capability handle (`Identity`): **publicKey** (public), plus **sign** and **kdmFor**, which re-enter the enclave so the private key never leaves. Used to authenticate to hosts, seal bags, and sign export files. Not a host-specific concept—hosts are one common label among others.
 
 In code, prefer **`idnt`** (or **`hostIdnt`** when the path is a host) over **`id` / `hostId`**, which read as “identifier” rather than “identity.”
 
@@ -30,7 +30,7 @@ Boundary for master-seed access and seed-derived private material. Callers get o
 
 ## ikm
 
-Input keying material. Secret bytes fed to a KDF to derive keys — not used as a cipher key itself. Here, the 32-byte WebAuthn PRF / hmac-secret output. The enclave does `blake3(IKM ‖ diplomatic.bind.v1)` to get the KEK that seals the master.
+Input keying material. Secret bytes fed to a KDF to derive keys — not used as a cipher key itself. Here, the 32-byte WebAuthn PRF / hmac-secret output. The enclave derives a bind PDK from the IKM (`diplomatic.bind.v1`) then a null-KDM child KEK that seals the master.
 
 ## seal
 
@@ -50,8 +50,9 @@ On-device list of bindings. Not synced.
 
 ## Other abbreviations
 
+- **pdk** — purpose-derived key. Intermediate key from a parent (e.g. master seed) and a protocol purpose tag. Child keys are derived from a PDK so a bug in one purpose cannot expose the parent or another purpose.
 - **ikm** — input keying material (PRF output; see above).
-- **kdm** — key derivation material (public bag field; mixed with identity private key when sealing).
+- **kdm** — key derivation material. Structured KDM is `{label, index}`: a user-significant label plus a 0-based rotation index (empty label / index 0 is the null KDM). Also the 8-byte public bag field, a truncated child of the bag-kdm PDK keyed by the message head.
 - **cph** (suffix) — encrypted, e.g. `headCph`.
 - **enc** (suffix) — binary-encoded, e.g. `bagEnc`. Also *encoder* (`enc` / `dec` = encoder / decoder).
 - **deriv** — derivation.

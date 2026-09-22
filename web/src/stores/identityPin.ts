@@ -9,8 +9,10 @@
 // pin rows cannot correlate them as the same master.
 
 import { btoh } from "../shared/binary";
+import { Status } from "../shared/consts";
 import type { Enclave } from "../shared/crypto/enclave";
 import type { ICrypto } from "../shared/types";
+import { err, ok, type ValStat } from "../shared/valstat";
 
 /**
  * Prefix so pin paths never collide with user host labels ("host", …).
@@ -33,19 +35,21 @@ export async function idPinDigest(
   crypto: ICrypto,
   enclave: Enclave,
   nonce: Uint8Array,
-): Promise<Uint8Array> {
-  const idnt = await enclave.deriveIdentity(idPinPath(nonce), 0);
+): Promise<ValStat<Uint8Array>> {
+  const [idnt, st] = await enclave.deriveIdentity(idPinPath(nonce), 0);
+  if (st !== Status.Success) return err(st);
   // Hash so durable meta is never a raw pubkey (host-shaped or otherwise).
-  return crypto.blake3(idnt.publicKey);
+  return ok(await crypto.blake3(idnt.publicKey));
 }
 
 export async function makeIdPin(
   crypto: ICrypto,
   enclave: Enclave,
-): Promise<IdPin> {
+): Promise<ValStat<IdPin>> {
   const n = await crypto.gen256BitSecureRandomSeed();
-  const h = await idPinDigest(crypto, enclave, n);
-  return { n, h };
+  const [h, st] = await idPinDigest(crypto, enclave, n);
+  if (st !== Status.Success) return err(st);
+  return ok({ n, h });
 }
 
 export async function idPinMatches(
@@ -53,7 +57,8 @@ export async function idPinMatches(
   enclave: Enclave,
   pin: IdPin,
 ): Promise<boolean> {
-  const h = await idPinDigest(crypto, enclave, pin.n);
+  const [h, st] = await idPinDigest(crypto, enclave, pin.n);
+  if (st !== Status.Success) return false;
   return bytesEq(h, pin.h);
 }
 

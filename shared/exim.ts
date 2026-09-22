@@ -59,7 +59,8 @@ export namespace Exim {
     crypto: ICrypto,
     enclave: Enclave,
   ): Promise<ValStat<Uint8Array>> {
-    const identity = await enclave.deriveIdentity(keyLbl, keyIdx);
+    const [identity, ist] = await enclave.deriveIdentity(keyLbl, keyIdx);
+    if (ist !== Status.Success) return err(ist);
 
     const encIndex = new Encoder();
     const encBody = new Encoder();
@@ -72,12 +73,17 @@ export namespace Exim {
       if (statHeadEnc !== Status.Success) return err(statHeadEnc);
       const headEnc = encHead.result();
 
-      const kdm = await identity.kdmFor(headEnc);
+      const [kdm, kst] = await identity.kdmFor(headEnc);
+      if (kst !== Status.Success) return err(kst);
       const cipher = enclave.deriveCipher(kdm, "encrypt");
-      const headCph = await cipher.encrypt(headEnc);
-      const bodyCph = msg.body
-        ? await cipher.encrypt(msg.body)
-        : new Uint8Array(0);
+      const [headCph, hst] = await cipher.encrypt(headEnc);
+      if (hst !== Status.Success) return err(hst);
+      let bodyCph: Uint8Array = new Uint8Array(0);
+      if (msg.body) {
+        const [cph, bst] = await cipher.encrypt(msg.body);
+        if (bst !== Status.Success) return err(bst);
+        bodyCph = cph;
+      }
 
       const lenBody = msg.head.len > 0 && msg.head.hsh !== undefined
         ? bodyCph.length
@@ -107,7 +113,8 @@ export namespace Exim {
     const hsh = await crypto.blake3(indexEnc);
 
     // Sign the hash to prove ownership (private key stays in enclave).
-    const sig = await identity.sign(hsh);
+    const [sig, sst] = await identity.sign(hsh);
+    if (sst !== Status.Success) return err(sst);
 
     const head: IFileHead = {
       lbl: keyLbl,
@@ -134,7 +141,8 @@ export namespace Exim {
     if (statDecode !== Status.Success) return err(statDecode);
     const { head, indexEnc, bodyEnc } = fileStruct;
 
-    const identity = await enclave.deriveIdentity(head.lbl, head.idx);
+    const [identity, ist] = await enclave.deriveIdentity(head.lbl, head.idx);
+    if (ist !== Status.Success) return err(ist);
 
     // Check that hash signature is valid.
     const sigValid = await crypto.checkSigEd25519(
@@ -162,12 +170,8 @@ export namespace Exim {
     const messages: { head: IMessageHead; body?: Uint8Array }[] = [];
     for (const item of items) {
       const cipher = enclave.deriveCipher(item.kdm, "decrypt");
-      let headEnc: Uint8Array;
-      try {
-        headEnc = await cipher.decrypt(item.headCph);
-      } catch {
-        return err(Status.DecryptionError);
-      }
+      const [headEnc, dst] = await cipher.decrypt(item.headCph);
+      if (dst !== Status.Success) return err(dst);
       const [msgHead, headStatus] = messageHeadCodec.decode(
         new Decoder(headEnc),
       );
@@ -180,11 +184,9 @@ export namespace Exim {
           item.offBody,
           item.offBody + item.lenBody,
         );
-        try {
-          itemBodyEnc = await cipher.decrypt(itemBodyCph);
-        } catch {
-          return err(Status.DecryptionError);
-        }
+        const [bod, bdst] = await cipher.decrypt(itemBodyCph);
+        if (bdst !== Status.Success) return err(bdst);
+        itemBodyEnc = bod;
         const hashItemBody = await crypto.blake3(itemBodyEnc);
         if (!bytesEqual(hashItemBody, msgHead.hsh)) {
           return err(Status.HashMismatch);

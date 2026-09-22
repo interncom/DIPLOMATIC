@@ -210,7 +210,7 @@ export async function openPulled<Handle extends HostHandle>(
     const { head, kdm, seq, host } = dl;
     // Prefer headEnc/hash from peek (avoids re-encode + double blake3).
     const [resolved, headStat] = await resolveHeadEnc(dl, crypto);
-    if (headStat !== Status.Success || !resolved) {
+    if (headStat !== Status.Success) {
       const seqs = deqByHost.get(host) ?? [];
       seqs.push(seq);
       deqByHost.set(host, seqs);
@@ -225,7 +225,7 @@ export async function openPulled<Handle extends HostHandle>(
       crypto,
       headEncHash,
     );
-    if (openStat !== Status.Success || !contents) {
+    if (openStat !== Status.Success) {
       // Unopenable bag: drop from download queue (no retry). TODO: per-row open errors.
       const seqs = deqByHost.get(host) ?? [];
       seqs.push(seq);
@@ -313,7 +313,7 @@ export async function deqDownloadsForHeadHashes<Handle extends HostHandle>(
       hashB64 = btob64(d.headEncHash);
     } else {
       const [resolved, st] = await resolveHeadEnc(d, crypto);
-      if (st !== Status.Success || !resolved) continue;
+      if (st !== Status.Success) continue;
       hashB64 = btob64(resolved.headEncHash);
     }
     if (!want.has(hashB64)) continue;
@@ -339,7 +339,8 @@ export async function syncPeek<Handle extends HostHandle>(
     peekConcurrency,
   }: ISyncParams<Handle>,
 ): Promise<Status> {
-  const hostIdnt = await conn.identity();
+  const [hostIdnt, ist] = await conn.identity();
+  if (ist !== Status.Success) return ist;
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(host.lastSeq);
   if (peekStatus !== Status.Success) {
@@ -363,7 +364,7 @@ export async function syncPeek<Handle extends HostHandle>(
       crypto,
     );
     let result: PeekCryptoResult;
-    if (stat !== Status.Success || !itemDec) {
+    if (stat !== Status.Success) {
       result = { ok: false, seq: item.seq, stat };
     } else {
       const headEncHash = await crypto.blake3(itemDec.headEnc);
@@ -569,7 +570,7 @@ export async function syncPull<Handle extends HostHandle>(
 
   for (let i = 0; i < batches.length; i++) {
     const [pulled, pullStat] = await nextPull;
-    if (pullStat !== Status.Success || !pulled) {
+    if (pullStat !== Status.Success) {
       return pullStat;
     }
     done += batches[i].length;
@@ -634,7 +635,8 @@ export async function handleNotif<Handle extends HostHandle>(
   scheduleSync: () => void,
 ) {
   const label = host.label;
-  const hostIdnt = await conn.identity();
+  const [hostIdnt, ist] = await conn.identity();
+  if (ist !== Status.Success) return;
 
   const dec = new Decoder(bytes);
   const [notifItems, statBatch] = dec.readStructs(notifItemCodec);
@@ -781,7 +783,8 @@ export async function reconcileHost<Handle extends HostHandle>(
     peekConcurrency,
   } = params;
 
-  const hostIdnt = await conn.identity();
+  const [hostIdnt, ist] = await conn.identity();
+  if (ist !== Status.Success) return err(ist);
   // Full inventory: ignore local cursor.
   const [items, peekStatus] = await conn.peek(0);
   if (peekStatus !== Status.Success) {
@@ -804,7 +807,7 @@ export async function reconcileHost<Handle extends HostHandle>(
       crypto,
     );
     let result: PeekCryptoResult;
-    if (stat !== Status.Success || !itemDec) {
+    if (stat !== Status.Success) {
       result = { ok: false, seq: item.seq, stat };
     } else {
       const headEncHash = await crypto.blake3(itemDec.headEnc);

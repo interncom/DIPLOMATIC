@@ -50,15 +50,23 @@ export async function sealBag(
   const headEnc = enc.result();
 
   // KDM via identity (private key stays in enclave); cipher is opaque.
-  const kdm = await identity.kdmFor(headEnc);
+  const [kdm, kst] = await identity.kdmFor(headEnc);
+  if (kst !== Status.Success) return err(kst);
   const cipher = enclave.deriveCipher(kdm, "encrypt");
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-  const headCph = await cipher.encrypt(headEnc);
-  const bodyCph = msg.bod ? await cipher.encrypt(msg.bod) : new Uint8Array(0);
+  const [headCph, hst] = await cipher.encrypt(headEnc);
+  if (hst !== Status.Success) return err(hst);
+  let bodyCph: Uint8Array = new Uint8Array(0);
+  if (msg.bod) {
+    const [cph, bst] = await cipher.encrypt(msg.bod);
+    if (bst !== Status.Success) return err(bst);
+    bodyCph = cph;
+  }
 
   // Sign ciphertext (private key stays in enclave).
-  const sig = await identity.sign(headCph);
+  const [sig, sst] = await identity.sign(headCph);
+  if (sst !== Status.Success) return err(sst);
   return ok({
     sig,
     kdm,
@@ -89,12 +97,10 @@ export async function openBagBody(
 
   // Decrypt body, if any (key stays in the enclave via cipher).
   let msgBody: Uint8Array | undefined;
-  try {
-    msgBody = bodyCph && bodyCph.length > 0
-      ? await cipher.decrypt(bodyCph)
-      : undefined;
-  } catch {
-    return err(Status.DecryptionError);
+  if (bodyCph && bodyCph.length > 0) {
+    const [bod, dst] = await cipher.decrypt(bodyCph);
+    if (dst !== Status.Success) return err(dst);
+    msgBody = bod;
   }
 
   // Check body hash.
@@ -131,12 +137,8 @@ export async function openBag(
   const cipher = enclave.deriveCipher(bag.kdm, "decrypt");
 
   // Decrypt head (key stays in the enclave via cipher).
-  let msgHeadEnc: Uint8Array;
-  try {
-    msgHeadEnc = await cipher.decrypt(bag.headCph);
-  } catch {
-    return err(Status.DecryptionError);
-  }
+  const [msgHeadEnc, dst] = await cipher.decrypt(bag.headCph);
+  if (dst !== Status.Success) return err(dst);
 
   // Use openBagBody for the rest.
   const [contents, status] = await openBagBody(

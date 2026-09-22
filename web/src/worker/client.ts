@@ -409,9 +409,10 @@ export class WorkerClient implements IClient<URL> {
    * Persist seed on main, then Enclave.spawnSyncWorker (only worker spawn path).
    * Awaits the worker's setSeed reply (worker boots, then applies seed).
    */
-  async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void> {
+  async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<Status> {
     // Shared IDB (if persist); worker gets seed only via Enclave factory.
-    await this.local.setSeed(enclave, opts);
+    const st = await this.local.setSeed(enclave, opts);
+    if (st !== Status.Success) return st;
     // New worker is not connected; hasSeed/hasHost come from the local store.
     await this.loadSession(false);
     this.clientState.emit();
@@ -453,6 +454,7 @@ export class WorkerClient implements IClient<URL> {
     } catch {
       // Offline / mock workers may not implement getXferState.
     }
+    return Status.Success;
   }
 
   async link(

@@ -15,27 +15,33 @@ import {
 
 function seedOf(fill: number) {
   const [s, st] = asMasterSeed(new Uint8Array(32).fill(fill));
-  if (st !== Status.Success || s === undefined) throw new Error(`seed ${st}`);
+  if (st !== Status.Success) throw new Error(`seed ${st}`);
   return s;
 }
 
 function encOf(fill: number) {
   const [e, st] = Enclave.fromBytes(seedOf(fill));
-  if (st !== Status.Success || e === undefined) throw new Error(`enc ${st}`);
+  if (st !== Status.Success) throw new Error(`enc ${st}`);
   return e;
 }
 
 async function reqOf() {
   const [r, st] = await Enclave.pairRequest();
-  if (st !== Status.Success || r === undefined) throw new Error(`req ${st}`);
+  if (st !== Status.Success) throw new Error(`req ${st}`);
   return r;
+}
+
+function dhkePub(req: Awaited<ReturnType<typeof reqOf>>) {
+  const [pub, st] = req.dhkeReq();
+  if (st !== Status.Success) throw new Error(`dhkeReq ${st}`);
+  return pub;
 }
 
 const pairAck = { userControlsBothSidesOfPair: true } as const;
 
 function brandReq(bytes: Uint8Array) {
   const [q, st] = asDHKEReq(bytes);
-  if (st !== Status.Success || q === undefined) throw new Error(`req ${st}`);
+  if (st !== Status.Success) throw new Error(`req ${st}`);
   return q;
 }
 
@@ -61,14 +67,18 @@ Deno.test("asDHKEResp brands >= DHKE_RESP_MIN", () => {
   assertEquals(sShort, Status.InvalidParam);
 });
 
-Deno.test("dhkeReq getter is a copy", async () => {
+Deno.test("dhkeReq returns an independent copy", async () => {
   const req = await reqOf();
-  const a = req.dhkeReq;
-  const b = req.dhkeReq;
+  const [a, ast] = req.dhkeReq();
+  const [b, bst] = req.dhkeReq();
+  assertEquals(ast, Status.Success);
+  assertEquals(bst, Status.Success);
   assertEquals(a, b);
   assert(a !== b);
   a.fill(0);
-  assertEquals(req.dhkeReq, b);
+  const [again, gst] = req.dhkeReq();
+  assertEquals(gst, Status.Success);
+  assertEquals(again, b);
 });
 
 Deno.test("pairKey agrees; binds both pubs", async () => {
@@ -92,7 +102,7 @@ Deno.test("pairKey rejects a short peer pub", async () => {
   const n = new NobleCrypto();
   const e = await n.genX25519();
   const [k, st] = await pairKey(e.priv, new Uint8Array(16), e.pub, e.pub);
-  assertEquals(st, Status.CryptoError);
+  assertEquals(st, Status.InvalidParam);
   assertEquals(k, undefined);
 });
 
@@ -111,17 +121,17 @@ Deno.test("DHKE round-trips seed and hosts", async () => {
     { handle: "https://b.example.com", label: "backup", idx: 1 },
   ];
   const req = await reqOf();
-  assertEquals(req.dhkeReq.byteLength, X25519_PUB_LEN);
-  const [resp, ast] = await enc.pairAccept(req.dhkeReq, hosts, pairAck);
+  assertEquals(dhkePub(req).byteLength, X25519_PUB_LEN);
+  const [resp, ast] = await enc.pairAccept(dhkePub(req), hosts, pairAck);
   assertEquals(ast, Status.Success);
-  assert(resp !== undefined);
   assert(resp.byteLength > DHKE_RESP_MIN);
   const [opened, ost] = await req.finish(resp);
   assertEquals(ost, Status.Success);
-  assert(opened !== undefined);
   assertEquals(opened.hosts, hosts);
-  const a = await enc.deriveIdentity("test", 0);
-  const b = await opened.enclave.deriveIdentity("test", 0);
+  const [a, ida] = await enc.deriveIdentity("test", 0);
+  const [b, idb] = await opened.enclave.deriveIdentity("test", 0);
+  assertEquals(ida, Status.Success);
+  assertEquals(idb, Status.Success);
   assertEquals(b.publicKey, a.publicKey);
 });
 
@@ -130,7 +140,7 @@ Deno.test("DHKE empty hosts", async () => {
   const [req, cst] = await Enclave.pairRequest();
   assertEquals(cst, Status.Success);
   assert(req !== undefined);
-  const [resp, ast] = await enc.pairAccept(req.dhkeReq, [], pairAck);
+  const [resp, ast] = await enc.pairAccept(dhkePub(req), [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const [opened, ost] = await req.finish(resp);
@@ -141,7 +151,7 @@ Deno.test("DHKE empty hosts", async () => {
 Deno.test("finish after mutating getter copy still works", async () => {
   const enc = encOf(4);
   const req = await reqOf();
-  const shown = req.dhkeReq;
+  const shown = dhkePub(req);
   const [resp, ast] = await enc.pairAccept(shown, [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
@@ -153,7 +163,7 @@ Deno.test("finish after mutating getter copy still works", async () => {
 
 Deno.test("wrong PairRequest cannot finish", async () => {
   const [resp, ast] = await encOf(1).pairAccept(
-    (await reqOf()).dhkeReq,
+    dhkePub(await reqOf()),
     [],
     pairAck,
   );
@@ -165,7 +175,7 @@ Deno.test("wrong PairRequest cannot finish", async () => {
 
 Deno.test("tampered resp body fails closed", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(2).pairAccept(req.dhkeReq, [], pairAck);
+  const [resp, ast] = await encOf(2).pairAccept(dhkePub(req), [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const dirty = resp.slice();
@@ -179,7 +189,7 @@ Deno.test("tampered resp body fails closed", async () => {
 
 Deno.test("tampered respPub fails closed", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(5).pairAccept(req.dhkeReq, [], pairAck);
+  const [resp, ast] = await encOf(5).pairAccept(dhkePub(req), [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const dirty = resp.slice();
@@ -193,7 +203,7 @@ Deno.test("tampered respPub fails closed", async () => {
 
 Deno.test("finish wipes priv (second finish fails)", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(6).pairAccept(req.dhkeReq, [], pairAck);
+  const [resp, ast] = await encOf(6).pairAccept(dhkePub(req), [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   const [opened, ost] = await req.finish(resp);
@@ -205,7 +215,7 @@ Deno.test("finish wipes priv (second finish fails)", async () => {
 
 Deno.test("wipe abandons the session", async () => {
   const req = await reqOf();
-  const [resp, ast] = await encOf(8).pairAccept(req.dhkeReq, [], pairAck);
+  const [resp, ast] = await encOf(8).pairAccept(dhkePub(req), [], pairAck);
   assertEquals(ast, Status.Success);
   assert(resp !== undefined);
   req.wipe();

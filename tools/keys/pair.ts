@@ -105,7 +105,12 @@ async function runRequest(label: string, resident: boolean): Promise<void> {
   }
   const [req, rst] = await Enclave.pairRequest();
   if (rst !== Status.Success || req === undefined) die(`pairRequest ${rst}`);
-  const reqHex = btoh(req.dhkeReq);
+  const [pub, qst] = req.dhkeReq();
+  if (qst !== Status.Success) {
+    req.wipe();
+    die(`dhkeReq ${qst}`);
+  }
+  const reqHex = btoh(pub);
   console.error("DHKEReq (paste into the other device):");
   process.stdout.write(reqHex + "\n");
   const raw = await readLine("Paste DHKEResp hex, then Enter.");

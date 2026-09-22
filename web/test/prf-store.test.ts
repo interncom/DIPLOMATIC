@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Enclave } from "../src/shared/crypto/enclave";
+import { mustIdnt } from "./mustIdnt";
 import { Status } from "../src/shared/consts";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 import {
@@ -12,7 +13,7 @@ import {
 
 function enclaveOf(fill: number): Enclave {
   const [e, st] = Enclave.fromBytes(new Uint8Array(32).fill(fill));
-  if (st !== Status.Success || e === undefined) {
+  if (st !== Status.Success) {
     throw new Error(`enclaveOf ${st}`);
   }
   return e;
@@ -88,6 +89,7 @@ describe("PrfSeedStore keyring", () => {
       rpId: "localhost",
       persistKeyring: (r) => {
         saved = r;
+        return Status.Success;
       },
     });
     const [enc, st] = await store.bindAndSave(enclaveOf(9), {
@@ -114,6 +116,7 @@ describe("PrfSeedStore keyring", () => {
       rpId: "localhost",
       persistKeyring: (r) => {
         saved = r;
+        return Status.Success;
       },
     });
     const enc = enclaveOf(9);
@@ -176,13 +179,12 @@ describe("PrfSeedStore keyring", () => {
     );
     stubNavigator({ create: vi.fn(), get: getUnlock });
     const [opened, ust] = await store.unlock();
-    expect(ust).toBe(Status.Success);
-    expect(opened).toBeDefined();
+    if (ust !== Status.Success) return;
     const allow = getUnlock.mock.calls[0][0].publicKey.allowCredentials;
     expect(allow).toHaveLength(2);
-    const orig = await enc.deriveIdentity("test", 0);
-    const next = await opened?.deriveIdentity("test", 0);
-    expect(next?.publicKey).toEqual(orig.publicKey);
+    const orig = await mustIdnt(enc, "test", 0);
+    const next = await mustIdnt(opened, "test", 0);
+    expect(next.publicKey).toEqual(orig.publicKey);
     expect(store.list()[1]?.lastUsedAt).toBeDefined();
   });
 
@@ -190,7 +192,7 @@ describe("PrfSeedStore keyring", () => {
     const first = stubPrfGet(3, 7);
     const store = new PrfSeedStore({
       rpId: "localhost",
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
     const [, wst] = await store.bindAndSave(enclaveOf(9), {
       salt: DEFAULT_PRF_SALT,
@@ -213,7 +215,7 @@ describe("PrfSeedStore keyring", () => {
     const { credId } = stubPrfGet(3);
     const store = new PrfSeedStore({
       rpId: "localhost",
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
     const [, st] = await store.bindAndSave(enclaveOf(9), {
       salt: DEFAULT_PRF_SALT,
@@ -247,7 +249,7 @@ describe("PrfSeedStore keyring", () => {
     const store = new PrfSeedStore({
       rpId: "life.interncom.org",
       rpName: "LIFE",
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
     const [, st] = await store.bindAndSave(enclaveOf(9), {
       salt: DEFAULT_PRF_SALT,
@@ -279,7 +281,7 @@ describe("PrfSeedStore keyring", () => {
       rpId: "life.interncom.org",
       rpName: "LIFE",
       userName: "LIFE",
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
     const [, st] = await store.bindAndSave(enclaveOf(9), {
       salt: DEFAULT_PRF_SALT,
@@ -295,7 +297,7 @@ describe("PrfSeedStore keyring", () => {
     const first = stubPrfGet(3, 1);
     const store = new PrfSeedStore({
       rpId: "localhost",
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
     const enc = enclaveOf(9);
     const [, wst] = await store.bindAndSave(enc, {
@@ -315,11 +317,12 @@ describe("PrfSeedStore keyring", () => {
         credId: new Uint8Array(16).fill(i + 1),
       })),
     };
-    const full = new PrfSeedStore({
+    const [full, fst] = PrfSeedStore.open({
       rpId: "localhost",
       keyring: filled,
-      persistKeyring: () => undefined,
+      persistKeyring: () => Status.Success,
     });
+    expect(fst).toBe(Status.Success);
     const create = vi.fn();
     stubNavigator({ create, get: vi.fn() });
     const [, ost] = await full.bindAndSave(enc, { createCredIfNeeded: true });

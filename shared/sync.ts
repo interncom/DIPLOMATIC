@@ -31,12 +31,7 @@ export async function decryptPeekItem(
     return err(Status.InvalidSignature);
   }
   const cipher = enclave.deriveCipher(kdm, "decrypt");
-  let headEnc: Uint8Array;
-  try {
-    headEnc = await cipher.decrypt(headCph);
-  } catch {
-    // Decryption failed, skip
-    return err(Status.DecryptionError);
-  }
+  const [headEnc, dst] = await cipher.decrypt(headCph);
+  if (dst !== Status.Success) return err(dst);
   return ok({ kdm, headEnc });
 }

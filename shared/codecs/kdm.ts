@@ -7,7 +7,7 @@ import { err, ok } from "../valstat.ts";
 // The label is some string that has significance to the user.
 // The index (also called "counter") is a number starting at 0.
 // Increment the index to rotate keys without changing the label.
-// For a default value, we use the empty string label.
+// Null KDM (the default) is the empty-string label at index 0.
 export interface IKDM {
   label: string;
   index: number;

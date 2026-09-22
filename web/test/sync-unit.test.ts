@@ -21,17 +21,18 @@ import {
   IDownloadMessage,
   IStoredMessageData } from "../src/types";
 import { bytesEqual } from "../src/shared/binary";
+import { mustConnIdnt, mustIdnt } from "./mustIdnt";
 
 // Fixed seed for deterministic key derivation
 const testSeedBytes = new Uint8Array(32).fill(0x42);
 function testEnclave(): Enclave {
   const [e, st] = Enclave.fromBytes(testSeedBytes);
-  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  if (st !== Status.Success) throw new Error(`enclave ${st}`);
   return e;
 }
 
 async function createTestBag(message: IMessage, enclave: Enclave) {
-  const hostIdnt = await enclave.deriveIdentity("test", 1);
+  const hostIdnt = await mustIdnt(enclave, "test", 1);
   return sealBag(message, hostIdnt, libsodiumCrypto, enclave);
 }
 
@@ -88,7 +89,7 @@ describe("syncPeek", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
@@ -109,7 +110,7 @@ describe("syncPeek", () => {
       bod: new Uint8Array([1, 2, 3, 4]) };
 
     // Seal bag using same host identity that conn will use, and put on host.
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const [bag, statBag] = await sealBag(
       message,
       hostIdnt,
@@ -188,7 +189,7 @@ describe("syncPeek", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await isolatedConn.identity();
+    const hostIdnt = await mustConnIdnt(isolatedConn);
     await isolatedHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: isolatedHost, idx: 1 });
 
@@ -217,7 +218,7 @@ describe("syncPeek download de-dupe", () => {
   let hostRow: { label: string; idx: number; lastSeq: number };
   let lpcHost: DiplomaticLPCServer;
   let conn: DiplomaticClientAPI<HostHandle>;
-  let hostIdnt: Awaited<ReturnType<Enclave["deriveIdentity"]>>;
+  let hostIdnt: Awaited<ReturnType<typeof mustIdnt>>;
 
   async function msgHash(m: IMessage): Promise<Hash> {
     let hsh: Uint8Array | undefined;
@@ -257,7 +258,7 @@ describe("syncPeek download de-dupe", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    hostIdnt = await conn.identity();
+    hostIdnt = await mustConnIdnt(conn);
     await lpcHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
@@ -339,13 +340,13 @@ describe("reconcileHost", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     await lpcHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
 
   test("returns bag tallies and reports set differences", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
 
     // Two bags, same head (duplicate on host).
     const message: IMessage = {
@@ -415,7 +416,7 @@ describe("reconcileHost", () => {
   });
 
   test("pull false does not enqueue downloads", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const message: IMessage = {
       eid: new Uint8Array(16).fill(5),
       off: 0,
@@ -442,7 +443,7 @@ describe("reconcileHost", () => {
   });
 
   test("host msgcheck matches checksum of distinct msgs", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const msgA: IMessage = {
       eid: new Uint8Array(16).fill(6),
       off: 0,
@@ -527,7 +528,7 @@ describe("syncPush", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
@@ -621,7 +622,7 @@ describe("syncPull", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
@@ -641,7 +642,7 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await enclave.deriveIdentity("test", 1);
+    const keys = await mustIdnt(enclave, "test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -732,7 +733,7 @@ describe("syncPull", () => {
     expect(statBag).toBe(Status.Success);
     if (statBag !== Status.Success || !bag) return;
 
-    const keys = await enclave.deriveIdentity("test", 1);
+    const keys = await mustIdnt(enclave, "test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -807,7 +808,7 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await enclave.deriveIdentity("test", 1);
+    const keys = await mustIdnt(enclave, "test", 1);
     const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
@@ -837,7 +838,7 @@ describe("syncPull", () => {
   });
 
   test("drains download queue under a tight maxPullBytes budget", async () => {
-    const keys = await enclave.deriveIdentity("test", 1);
+    const keys = await mustIdnt(enclave, "test", 1);
     const downloads: IDownloadMessage[] = [];
 
     for (let i = 0; i < 3; i++) {

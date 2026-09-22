@@ -9,12 +9,13 @@ import { ok, err } from "../src/shared/valstat";
 import { APLD_PENDING } from "../src/types";
 import type { IDownloadMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
+import { mustIdnt } from "./mustIdnt";
 import type { IMessage } from "../src/shared/types";
 
 const testSeedBytes = new Uint8Array(32).fill(0x42);
 function testEnclave(): Enclave {
   const [e, st] = Enclave.fromBytes(testSeedBytes);
-  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  if (st !== Status.Success) throw new Error(`enclave ${st}`);
   return e;
 }
 
@@ -130,7 +131,7 @@ describe("pullBodies + openPulled", () => {
   test("pull then open archives msg and deqs download", async () => {
     const store = new MemoryStore<HostHandle>(libsodiumCrypto);
     const enclave = testEnclave();
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
 
     const body = new Uint8Array([1, 2, 3, 4]);
     const message: IMessage = {

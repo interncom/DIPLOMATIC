@@ -2,7 +2,13 @@
 // Session handle is always an Enclave. PRF bytes never leave Enclave methods.
 // WebAuthn “authenticator” = binding key (IKM for the seal, not authn/authz).
 
-import { Enclave, type PasskeyPrfOpts } from "../shared/crypto/enclave";
+import {
+  asChildKey,
+  type ChildKey,
+  Enclave,
+  type PasskeyPrfOpts,
+  Purpose,
+} from "../shared/crypto/enclave";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
@@ -25,8 +31,8 @@ export type KeyringEntry = {
   type: "prf";
   sealedMaster: SealedMasterKey;
   credId: Uint8Array;
-  /** blake3(master ‖ bindtag ‖ credId); check-only, not a display fingerprint. */
-  tag: Uint8Array;
+  /** Bind-tag PDK child keyed by credId; check-only, not a display fingerprint. */
+  tag: ChildKey<typeof Purpose.BindTag>;
   userId?: Uint8Array;
   nick?: string;
   enrolledAt: number;
@@ -63,7 +69,7 @@ export type KeyringRow = {
  */
 export type PersistKeyring = (
   ring: Keyring | undefined,
-) => void | Promise<void>;
+) => Status | Promise<Status>;
 
 export type PrfSeedStoreOpts = PrfRp & {
   persistKeyring: PersistKeyring;
@@ -85,20 +91,28 @@ export class PrfSeedStore implements ISeedStore {
   #userName: string;
   #persist: PersistKeyring;
 
-  constructor(opts: PrfSeedStoreOpts) {
+  constructor(opts: Omit<PrfSeedStoreOpts, "keyring">) {
     this.#persist = opts.persistKeyring;
     this.#rp = { rpId: opts.rpId, rpName: opts.rpName };
     this.#userName = opts.userName ?? opts.rpId ?? opts.rpName ??
       DEFAULT_PRF_USER_NAME;
-    if (opts.keyring !== undefined) {
-      this.#keyring = cloneKeyring(opts.keyring);
-    }
+  }
+
+  // Copies `opts.keyring` in. Fails instead of starting with an empty ring.
+  static open(opts: PrfSeedStoreOpts): ValStat<PrfSeedStore> {
+    const store = new PrfSeedStore(opts);
+    if (opts.keyring === undefined) return ok(store);
+    const [ring, st] = cloneKeyring(opts.keyring);
+    if (st !== Status.Success) return err(st);
+    store.#keyring = ring;
+    return ok(store);
   }
 
   get keyring(): Keyring | undefined {
-    return this.#keyring === undefined
-      ? undefined
-      : cloneKeyring(this.#keyring);
+    if (this.#keyring === undefined) return undefined;
+    const [ring, st] = cloneKeyring(this.#keyring);
+    if (st !== Status.Success) return undefined;
+    return ring;
   }
 
   /** Public rows (no sealed master). */
@@ -107,16 +121,13 @@ export class PrfSeedStore implements ISeedStore {
     return this.#keyring.entries.map(toRow);
   }
 
-  async save(enclave: Enclave, opts?: SetSeedOpts): Promise<Enclave> {
-    if (opts?.persist === true) {
-      return Promise.reject(
-        new Error(
-          "prf-store: use bindAndSave(enclave) to persist a binding",
-        ),
-      );
-    }
+  async save(
+    enclave: Enclave,
+    opts?: SetSeedOpts,
+  ): Promise<ValStat<Enclave>> {
+    if (opts?.persist === true) return err(Status.InvalidParam);
     this.#enclave = enclave;
-    return this.#enclave;
+    return ok(this.#enclave);
   }
 
   /**
@@ -170,7 +181,6 @@ export class PrfSeedStore implements ISeedStore {
       hints: opts?.hints,
     }, prior);
     if (bst !== Status.Success) return err(bst);
-    if (bound === undefined) return err(Status.InternalError);
 
     const now = Date.now();
     const next: KeyringEntry = {
@@ -187,12 +197,15 @@ export class PrfSeedStore implements ISeedStore {
       aaguid: bound.aaguid,
       enrolledOs: enrolledOsHere(),
     };
-    const prev = ring === undefined
+    const base: Keyring = ring === undefined
       ? { salt: bound.salt.slice(), entries: [] }
-      : cloneKeyring(ring);
-    this.#keyring = upsertEntry(prev, next);
+      : ring;
+    const [stored, ust] = upsertEntry(base, next);
+    if (ust !== Status.Success) return err(ust);
+    const pst = await this.#persist(stored);
+    if (pst !== Status.Success) return err(pst);
+    this.#keyring = stored;
     this.#enclave = enclave;
-    await this.#persist(cloneKeyring(this.#keyring));
     return ok(this.#enclave);
   }
 
@@ -215,10 +228,12 @@ export class PrfSeedStore implements ISeedStore {
     );
     if (ust !== Status.Success) return err(ust);
     this.#enclave = out.enclave;
-    const next = touchEntry(ring, out.credId);
+    const [next, tst] = touchEntry(ring, out.credId);
+    if (tst !== Status.Success) return err(tst);
     if (next !== undefined) {
+      const pst = await this.#persist(next);
+      if (pst !== Status.Success) return err(pst);
       this.#keyring = next;
-      await this.#persist(cloneKeyring(next));
     }
     return ok(out.enclave);
   }
@@ -229,14 +244,16 @@ export class PrfSeedStore implements ISeedStore {
     if (ring === undefined) return err(Status.MissingSeed);
     const i = ring.entries.findIndex((e) => bytesEqual(e.credId, credId));
     if (i < 0) return err(Status.NotFound);
-    const entries = ring.entries.map(cloneEntry);
+    const [entries, est] = cloneEntries(ring.entries);
+    if (est !== Status.Success) return err(est);
     const cur = entries[i];
     if (cur === undefined) return err(Status.NotFound);
     const trimmed = trimNick(nick);
     entries[i] = { ...cur, nick: trimmed };
     const next: Keyring = { salt: ring.salt.slice(), entries };
+    const pst = await this.#persist(next);
+    if (pst !== Status.Success) return err(pst);
     this.#keyring = next;
-    await this.#persist(cloneKeyring(next));
     return ok(undefined);
   }
 
@@ -250,16 +267,17 @@ export class PrfSeedStore implements ISeedStore {
     const entries = ring.entries.filter((e) => !bytesEqual(e.credId, credId));
     if (entries.length === ring.entries.length) return err(Status.NotFound);
     if (entries.length === 0) {
+      const pst = await this.#persist(undefined);
+      if (pst !== Status.Success) return err(pst);
       this.#keyring = undefined;
-      await this.#persist(undefined);
       return ok(undefined);
     }
-    const next: Keyring = {
-      salt: ring.salt.slice(),
-      entries: entries.map(cloneEntry),
-    };
+    const [copied, cst] = cloneEntries(entries);
+    if (cst !== Status.Success) return err(cst);
+    const next: Keyring = { salt: ring.salt.slice(), entries: copied };
+    const pst = await this.#persist(next);
+    if (pst !== Status.Success) return err(pst);
     this.#keyring = next;
-    await this.#persist(cloneKeyring(next));
     return ok(undefined);
   }
 
@@ -281,15 +299,17 @@ function enrolledOsHere(): EnrolledOs | undefined {
   return enrolledOsFromUA(navigator.userAgent);
 }
 
-function cloneEntry(e: KeyringEntry): KeyringEntry {
-  const [sealedMaster, st] = asSealedMasterKey(e.sealedMaster.slice());
-  return {
+// Copies one entry. Fails the clone if the sealed master or bind tag does not re-brand.
+function cloneEntry(e: KeyringEntry): ValStat<KeyringEntry> {
+  const [sealedMaster, sst] = asSealedMasterKey(e.sealedMaster.slice());
+  if (sst !== Status.Success) return err(sst);
+  const [tag, tst] = asChildKey(e.tag.slice(), Purpose.BindTag);
+  if (tst !== Status.Success) return err(tst);
+  return ok({
     type: "prf",
-    sealedMaster: st === Status.Success && sealedMaster !== undefined
-      ? sealedMaster
-      : e.sealedMaster,
+    sealedMaster,
     credId: e.credId.slice(),
-    tag: e.tag.slice(),
+    tag,
     userId: e.userId === undefined ? undefined : e.userId.slice(),
     nick: e.nick,
     enrolledAt: e.enrolledAt,
@@ -298,14 +318,23 @@ function cloneEntry(e: KeyringEntry): KeyringEntry {
     transports: e.transports === undefined ? undefined : [...e.transports],
     aaguid: e.aaguid === undefined ? undefined : e.aaguid.slice(),
     enrolledOs: e.enrolledOs,
-  };
+  });
 }
 
-export function cloneKeyring(r: Keyring): Keyring {
-  return {
-    salt: r.salt.slice(),
-    entries: r.entries.map(cloneEntry),
-  };
+function cloneEntries(entries: KeyringEntry[]): ValStat<KeyringEntry[]> {
+  const out: KeyringEntry[] = [];
+  for (const e of entries) {
+    const [c, st] = cloneEntry(e);
+    if (st !== Status.Success) return err(st);
+    out.push(c);
+  }
+  return ok(out);
+}
+
+export function cloneKeyring(r: Keyring): ValStat<Keyring> {
+  const [entries, st] = cloneEntries(r.entries);
+  if (st !== Status.Success) return err(st);
+  return ok({ salt: r.salt.slice(), entries });
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -318,14 +347,15 @@ function decodeEntry(raw: unknown): KeyringEntry | undefined {
     !(raw.sealedMaster instanceof Uint8Array) ||
     !(raw.credId instanceof Uint8Array) ||
     !(raw.tag instanceof Uint8Array) ||
-    raw.tag.byteLength !== 32 ||
     typeof raw.enrolledAt !== "number" ||
     !Number.isFinite(raw.enrolledAt)
   ) {
     return undefined;
   }
   const [sealedMaster, st] = asSealedMasterKey(raw.sealedMaster);
-  if (st !== Status.Success || sealedMaster === undefined) return undefined;
+  if (st !== Status.Success) return undefined;
+  const [tag, tst] = asChildKey(raw.tag.slice(), Purpose.BindTag);
+  if (tst !== Status.Success) return undefined;
   const attachment = raw.attachment === "platform" ||
       raw.attachment === "cross-platform"
     ? raw.attachment
@@ -343,7 +373,7 @@ function decodeEntry(raw: unknown): KeyringEntry | undefined {
     type: "prf",
     sealedMaster,
     credId: raw.credId.slice(),
-    tag: raw.tag.slice(),
+    tag,
     userId: raw.userId instanceof Uint8Array ? raw.userId.slice() : undefined,
     nick: typeof raw.nick === "string" ? raw.nick : undefined,
     enrolledAt: raw.enrolledAt,
@@ -398,8 +428,9 @@ export function keyringCredIds(ring: Keyring | undefined): Uint8Array[] {
     .map((e) => e.credId.slice());
 }
 
-function upsertEntry(ring: Keyring, next: KeyringEntry): Keyring {
-  const entries = ring.entries.map(cloneEntry);
+function upsertEntry(ring: Keyring, next: KeyringEntry): ValStat<Keyring> {
+  const [entries, st] = cloneEntries(ring.entries);
+  if (st !== Status.Success) return err(st);
   const i = entries.findIndex((e) => bytesEqual(e.credId, next.credId));
   if (i >= 0) {
     const prev = entries[i];
@@ -411,18 +442,22 @@ function upsertEntry(ring: Keyring, next: KeyringEntry): Keyring {
   } else {
     entries.push(next);
   }
-  return { salt: ring.salt.slice(), entries };
+  return ok({ salt: ring.salt.slice(), entries });
 }
 
-function touchEntry(ring: Keyring, credId: Uint8Array): Keyring | undefined {
-  if (credId.byteLength === 0) return undefined;
+function touchEntry(
+  ring: Keyring,
+  credId: Uint8Array,
+): ValStat<Keyring | undefined> {
+  if (credId.byteLength === 0) return ok(undefined);
   const i = ring.entries.findIndex((e) => bytesEqual(e.credId, credId));
-  if (i < 0) return undefined;
-  const entries = ring.entries.map(cloneEntry);
+  if (i < 0) return ok(undefined);
+  const [entries, st] = cloneEntries(ring.entries);
+  if (st !== Status.Success) return err(st);
   const cur = entries[i];
-  if (cur === undefined) return undefined;
+  if (cur === undefined) return err(Status.NotFound);
   entries[i] = { ...cur, lastUsedAt: Date.now() };
-  return { salt: ring.salt.slice(), entries };
+  return ok({ salt: ring.salt.slice(), entries });
 }
 
 // Well-known AAGUIDs (unverified — display only).

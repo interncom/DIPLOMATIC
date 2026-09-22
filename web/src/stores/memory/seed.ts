@@ -1,5 +1,7 @@
+import { Status } from "../../shared/consts";
 import type { Enclave } from "../../shared/crypto/enclave";
 import type { ICrypto } from "../../shared/types";
+import { err, ok, type ValStat } from "../../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
   cloneIdPin,
@@ -17,19 +19,21 @@ export class MemorySeedStore implements ISeedStore {
     this.#crypto = crypto;
   }
 
-  async save(enclave: Enclave, _opts?: SetSeedOpts) {
+  async save(
+    enclave: Enclave,
+    _opts?: SetSeedOpts,
+  ): Promise<ValStat<Enclave>> {
     if (this.#pin !== undefined) {
       if (!(await idPinMatches(this.#crypto, enclave, this.#pin))) {
-        throw new Error(
-          "[DIPLOMATIC] seed does not match this device's identity " +
-            "(local data was created with a different master seed)",
-        );
+        return err(Status.HashMismatch);
       }
     } else {
-      this.#pin = await makeIdPin(this.#crypto, enclave);
+      const [pin, pst] = await makeIdPin(this.#crypto, enclave);
+      if (pst !== Status.Success) return err(pst);
+      this.#pin = pin;
     }
     this.#enclave = enclave;
-    return this.#enclave;
+    return ok(this.#enclave);
   }
 
   async load() {

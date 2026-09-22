@@ -7,6 +7,7 @@ import {
 import { largeBlobCreateCred } from "../src/shared/webauthn/largeBlob";
 import crypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
+import { mustIdnt } from "./mustIdnt";
 import { Status } from "../src/shared/consts";
 
 describe("defaultWebAuthnRpId", () => {
@@ -48,7 +49,7 @@ function persistBlob(fill: number): ArrayBuffer {
 
 function enclaveOf(fill: number): Enclave {
   const [e, st] = Enclave.fromBytes(seedBytes(fill));
-  if (st !== Status.Success || e === undefined) {
+  if (st !== Status.Success) {
     throw new Error(`enclaveOf failed ${st}`);
   }
   return e;
@@ -276,8 +277,8 @@ describe("Enclave largeBlob seed boundary", () => {
     if (out === undefined) return;
     expect(out.credId).toEqual(credId);
     // Round-trip identity: same seed as enclaveOf(9) would derive.
-    const expected = await enclaveOf(9).deriveIdentity("test", 0);
-    const got = await out.enclave.deriveIdentity("test", 0);
+    const expected = await mustIdnt(enclaveOf(9), "test", 0);
+    const got = await mustIdnt(out.enclave, "test", 0);
     expect(got.publicKey).toEqual(expected.publicKey);
   });
 
@@ -296,8 +297,8 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(out).toBeDefined();
     if (out === undefined) return;
     expect(out.credId).toEqual(credId);
-    const expected = await enclaveOf(4).deriveIdentity("test", 0);
-    const got = await out.enclave.deriveIdentity("test", 0);
+    const expected = await mustIdnt(enclaveOf(4), "test", 0);
+    const got = await mustIdnt(out.enclave, "test", 0);
     expect(got.publicKey).toEqual(expected.publicKey);
     expect(get).toHaveBeenCalledTimes(2);
     const pick = get.mock.calls[0][0];
@@ -366,8 +367,8 @@ describe("Enclave largeBlob seed boundary", () => {
     stubNav({ create, get });
 
     const store = new PasskeySeedStore({ rpId: "localhost" });
-    const enc1 = await store.save(enc0, { persist: true });
-    expect(enc1).toBeDefined();
+    const [enc1, sst] = await store.save(enc0, { persist: true });
+    expect(sst).toBe(Status.Success);
     expect(store.credId).toEqual(credId);
     expect(await store.load()).toBe(enc1);
 

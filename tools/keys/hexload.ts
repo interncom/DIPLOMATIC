@@ -6,10 +6,8 @@ import { btoh, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import {
   Enclave,
-  FP_MODE,
   MASTER_SEED_LEN,
 } from "../../shared/crypto/enclave.ts";
-import { NobleCrypto } from "../../shared/crypto/noble.ts";
 import {
   die,
   loadRing,
@@ -19,7 +17,6 @@ import {
 } from "./cli-prf.ts";
 
 const NEED = MASTER_SEED_LEN * 2;
-const noble = new NobleCrypto();
 
 const argv = process.argv.slice(2);
 if (
@@ -48,7 +45,14 @@ if (loadRing(path) !== undefined) {
 const seed = await readPaperHex();
 try {
   const [enc, est] = Enclave.fromBytes(seed);
-  if (est !== Status.Success || enc === undefined) die(`enclave ${est}`);
+  if (est !== Status.Success) die(`enclave ${est}`);
+  const [fp, fst] = await enc.fingerprint();
+  if (fst !== Status.Success) die(`fingerprint ${fst}`);
+  const got = btoh(fp.subarray(0, 4));
+  fp.fill(0);
+  const grp = got.slice(0, 4) + " " + got.slice(4);
+  console.error(`#] ${grp}`);
+  console.error("Check that against the #] line on your paper, then continue.");
   await persistNewLabel(enc, label, resident);
 } finally {
   seed.fill(0);
@@ -114,12 +118,5 @@ async function readPaperHex(): Promise<Uint8Array> {
   }
   const bytes = htob(hex);
   if (bytes.byteLength !== MASTER_SEED_LEN) die("bad paper hex length");
-  // Must match Enclave.#fingerprint (BLAKE3 KDF, same context).
-  const fp = await noble.blake3(bytes, { context: FP_MODE });
-  const got = btoh(fp.subarray(0, 4));
-  fp.fill(0);
-  const grp = got.slice(0, 4) + " " + got.slice(4);
-  console.error(`#] ${grp}`);
-  console.error("Check that against the #] line on your paper, then continue.");
   return bytes;
 }

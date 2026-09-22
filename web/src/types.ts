@@ -85,7 +85,7 @@ export type WipeOpts = {
 
 // ISeedStore: session/durable access via Enclave (master seed never leaves enclave.ts).
 export interface ISeedStore {
-  save: (enclave: Enclave, opts?: SetSeedOpts) => Promise<Enclave>;
+  save: (enclave: Enclave, opts?: SetSeedOpts) => Promise<ValStat<Enclave>>;
   load: () => Promise<Enclave | void>;
   /**
    * Clear durable seed material for this store (IDB row, largeBlob overwrite, …)
@@ -402,7 +402,7 @@ export interface IStateEmitter<T> {
 
 export interface IClient<Handle extends HostHandle> {
   /** Install session enclave (master seed stays inside enclave). */
-  setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<void>;
+  setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<Status>;
 
   link(host: IHostConnectionInfo<Handle>, connect?: boolean): Promise<void>;
   unlink(label: string): Promise<void>;

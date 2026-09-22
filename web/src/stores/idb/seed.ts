@@ -8,8 +8,10 @@
 // SealedMasterKey AEAD, key from KDF(passphrase, salt)) in a parallel meta
 // row — unlock prompts for passphrase, then Enclave.unseal*; still no plain seed.
 
+import { Status } from "../../shared/consts";
 import { Enclave } from "../../shared/crypto/enclave";
 import type { ICrypto } from "../../shared/types";
+import { err, ok, type ValStat } from "../../shared/valstat";
 import type { ISeedStore, SetSeedOpts } from "../../types";
 import {
   cloneKeyring,
@@ -56,10 +58,14 @@ export class IDBSeedStore implements ISeedStore {
    * bind API) should seal under a passphrase KDF and write sealed meta here —
    * same shape as a keyring entry, not a return of raw seed.
    */
-  async save(enclave: Enclave, _opts?: SetSeedOpts) {
-    await this.#assertAndPinIdentity(enclave);
+  async save(
+    enclave: Enclave,
+    _opts?: SetSeedOpts,
+  ): Promise<ValStat<Enclave>> {
+    const st = await this.#assertAndPinIdentity(enclave);
+    if (st !== Status.Success) return err(st);
     this.#enclave = enclave;
-    return this.#enclave;
+    return ok(this.#enclave);
   }
 
   async load() {
@@ -100,18 +106,24 @@ export class IDBSeedStore implements ISeedStore {
     });
   }
 
-  async persistKeyring(ring: Keyring | undefined): Promise<void> {
+  async persistKeyring(ring: Keyring | undefined): Promise<Status> {
+    let copy: Keyring | undefined;
+    if (ring !== undefined) {
+      const [cloned, st] = cloneKeyring(ring);
+      if (st !== Status.Success) return st;
+      copy = cloned;
+    }
     const tx = this.db.transaction(SEED_META_TABLE, "readwrite");
     const store = tx.objectStore(SEED_META_TABLE);
     return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => resolve(Status.Success);
       tx.onerror = () => reject(tx.error);
       store.delete(K_PRF_META);
-      if (ring === undefined) {
+      if (copy === undefined) {
         store.delete(K_KEYRING);
         return;
       }
-      store.put(cloneKeyring(ring), K_KEYRING);
+      store.put(copy, K_KEYRING);
     });
   }
 
@@ -122,9 +134,9 @@ export class IDBSeedStore implements ISeedStore {
 
   async openPrfStore(
     opts: Omit<PrfSeedStoreOpts, "persistKeyring" | "keyring">,
-  ): Promise<PrfSeedStore> {
+  ): Promise<ValStat<PrfSeedStore>> {
     const keyring = await this.loadKeyring();
-    return new PrfSeedStore({
+    return PrfSeedStore.open({
       rpId: opts.rpId,
       rpName: opts.rpName,
       userName: opts.userName,
@@ -133,21 +145,20 @@ export class IDBSeedStore implements ISeedStore {
     });
   }
 
-  async #assertAndPinIdentity(enclave: Enclave): Promise<void> {
+  async #assertAndPinIdentity(enclave: Enclave): Promise<Status> {
     // Drop short-lived raw idPub if any (never store host-like pubkeys on disk).
     await this.#deleteKey(K_ID_PUB_LEGACY);
     const prev = await this.#loadIdPin();
     if (prev !== undefined) {
       if (!(await idPinMatches(this.#crypto, enclave, prev))) {
-        throw new Error(
-          "[DIPLOMATIC] seed does not match this device's identity " +
-            "(local data was created with a different master seed)",
-        );
+        return Status.HashMismatch;
       }
-      return;
+      return Status.Success;
     }
-    const pin = await makeIdPin(this.#crypto, enclave);
+    const [pin, pst] = await makeIdPin(this.#crypto, enclave);
+    if (pst !== Status.Success) return pst;
     await this.#persistIdPin(pin);
+    return Status.Success;
   }
 
   #loadIdPin(): Promise<IdPin | undefined> {

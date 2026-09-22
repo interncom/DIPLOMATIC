@@ -155,9 +155,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   };
 
-  public async setSeed(enclave: Enclave, opts?: SetSeedOpts) {
-    await this.store.seed.save(enclave, opts);
-    this.clientState.emit();
+  public async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<Status> {
+    const [, st] = await this.store.seed.save(enclave, opts);
+    if (st === Status.Success) this.clientState.emit();
+    return st;
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {

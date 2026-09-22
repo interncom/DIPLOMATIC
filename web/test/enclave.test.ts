@@ -41,23 +41,47 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "c87390f5b54c28fe7c228a7325c42aee",
-    callerSrc: "57da7bb62e3e99db1d2ad0770581d37e",
+    callerSrc: "10c1d7ef9ba6148e5aa1c586e3cf1c00",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
+  },
+  {
+    caller: "fingerprint",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "51115c6a0e15348eb89f0440052efe39",
+    callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
+    why: "To derive the paper-check digest from the master via the fingerprint PDK.",
+  },
+  {
+    caller: "fingerprint",
+    callee: "NobleCrypto.blake3",
+    how: "exact",
+    src: "e2107efe0223faa942612680e9173a79",
+    callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+  },
+  {
+    caller: "deriveIdentity",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "51115c6a0e15348eb89f0440052efe39",
+    callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
+    why: "To derive an identity child from the master via the identity PDK and KDM.",
   },
   {
     caller: "deriveIdentity",
     callee: "NobleCrypto.blake3",
-    how: "embedded",
+    how: "exact",
     src: "e2107efe0223faa942612680e9173a79",
-    callerSrc: "0585bc2e74dc906e302e01e4e7fe51eb",
-    why: "To derive a sub-key from the provided KDM (keypath and index).",
+    callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "spawnSyncWorker",
     callee: "spawn.postToDiplomaticWorker",
     how: "exact",
     src: "5af866aa6e511c9ee3df323202b50e08",
-    callerSrc: "17a2b199cf2fafcab70f195b0fd1e096",
+    callerSrc: "71ce459744d6cb669f64751e8cfaa706",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
   {
@@ -65,23 +89,31 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
     src: "c87390f5b54c28fe7c228a7325c42aee",
-    callerSrc: "15c714ee7997250617bf3f215eef15b3",
+    callerSrc: "916d24916ce9e44d540ad91275570b8e",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {
     caller: "bind",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "51115c6a0e15348eb89f0440052efe39",
+    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
+    why: "To derive a bind-tag child from the master (PDK keyed by credId).",
+  },
+  {
+    caller: "bind",
     callee: "NobleCrypto.blake3",
-    how: "embedded",
+    how: "exact",
     src: "e2107efe0223faa942612680e9173a79",
-    callerSrc: "a1adaf7c1ae3d8a06d34592d420eb434",
-    why: "To check hashed fingerprints of each provided binding to ensure the current seed matches.",
+    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "bind",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "c87390f5b54c28fe7c228a7325c42aee",
-    callerSrc: "a1adaf7c1ae3d8a06d34592d420eb434",
+    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
     why: "To encrypt the master with KEK derived from passkey PRF.",
   },
   {
@@ -97,7 +129,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "embedded",
     src: "e2107efe0223faa942612680e9173a79",
-    callerSrc: "762997b92091bc1bfead1b6017062c21",
+    callerSrc: "59128a7f9e171eb2269aa5d8966a8a76",
     why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
 ];
@@ -331,6 +363,13 @@ vi.mock("../src/shared/crypto/pairing", async (importOriginal) => {
   return wrapFns("pairing", orig);
 });
 
+vi.mock("../src/shared/crypto/derivation", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/derivation")
+  >();
+  return wrapFns("derivation", orig);
+});
+
 vi.mock("../src/shared/crypto/entropy", async (importOriginal) => {
   const orig = await importOriginal<
     typeof import("../src/shared/crypto/entropy")
@@ -342,9 +381,7 @@ function randomSeed(): MasterSeed {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   const [seed, st] = asMasterSeed(bytes);
-  if (st !== Status.Success || seed === undefined) {
-    throw new Error(`seed ${st}`);
-  }
+  if (st !== Status.Success) throw new Error(`seed ${st}`);
   return seed;
 }
 
@@ -355,9 +392,7 @@ function arm(caller: string, seed: MasterSeed) {
 
 function enclaveOf(seed: MasterSeed): Enclave {
   const [e, st] = Enclave.fromBytes(seed);
-  if (st !== Status.Success || e === undefined) {
-    throw new Error(`enclave ${st}`);
-  }
+  if (st !== Status.Success) throw new Error(`enclave ${st}`);
   return e;
 }
 
@@ -555,6 +590,15 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(st).toBe(Status.NotImplemented);
     assertPermitted();
   },
+  async fingerprint() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("fingerprint", seed);
+    const [fp, st] = await e.fingerprint();
+    expect(st).toBe(Status.Success);
+    expect(fp).toBeDefined();
+    assertPermitted();
+  },
   async pairRequest() {
     const seed = randomSeed();
     arm("pairRequest", seed);
@@ -597,8 +641,9 @@ const traces: Record<string, () => void | Promise<void>> = {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("deriveIdentity", seed);
-    const idnt = await e.deriveIdentity("test", 0);
-    expect(idnt.publicKey).toBeDefined();
+    const [idnt, ist] = await e.deriveIdentity("test", 0);
+    expect(ist).toBe(Status.Success);
+    expect(idnt?.publicKey).toBeDefined();
     assertPermitted();
   },
 };

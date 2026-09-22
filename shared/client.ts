@@ -42,7 +42,8 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     const { endpoint, name } = apiCall;
 
     // Form request.
-    const id = await this.identity();
+    const [id, ist] = await this.identity();
+    if (ist !== Status.Success) return err(ist);
     const now = clock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp(id, now);
     if (statAuthTS !== Status.Success) {
@@ -96,14 +97,15 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     return respVS;
   }
 
-  identity = (): Promise<Identity> => {
+  identity = (): Promise<ValStat<Identity>> => {
     const { host, enclave } = this;
     return enclave.deriveIdentity(host.label, host.idx ?? 0);
   };
 
   seal = async (msg: IMessage): Promise<ValStat<IBag>> => {
     const { crypto, enclave } = this;
-    const id = await this.identity();
+    const [id, st] = await this.identity();
+    if (st !== Status.Success) return err(st);
     return sealBag(msg, id, crypto, enclave);
   };
 
@@ -120,7 +122,8 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
   ) => {
     const { clock, transport } = this;
     const { listener } = transport;
-    const id = await this.identity();
+    const [id, ist] = await this.identity();
+    if (ist !== Status.Success) return ist;
     const now = clock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp(id, now);
     if (statAuthTS !== Status.Success) {

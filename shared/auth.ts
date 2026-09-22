@@ -25,7 +25,8 @@ export async function makeAuthTimestamp(
     return err(statTs);
   }
   const encodedTs = enc.result();
-  const sig = await identity.sign(encodedTs);
+  const [sig, sst] = await identity.sign(encodedTs);
+  if (sst !== Status.Success) return err(sst);
   return ok({
     pubKey: identity.publicKey,
     sig,

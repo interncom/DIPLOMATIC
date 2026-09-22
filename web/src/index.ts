@@ -68,8 +68,14 @@ import {
   ITransport,
   IUpdateParams,
 } from "./shared/types";
-import { Enclave } from "./shared/crypto/enclave";
-import type { PairRequest } from "./shared/crypto/enclave";
+import { asChildKey, Enclave, nullKDM, Purpose } from "./shared/crypto/enclave";
+import type {
+  BindPrior,
+  ChildKey,
+  Identity,
+  PairRequest,
+  PrfBound,
+} from "./shared/crypto/enclave";
 import { nullStateManager, StateManager } from "./state";
 import { IDBSeedStore } from "./stores/idb/seed";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
@@ -159,6 +165,7 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
+  asChildKey,
   asDHKEReq,
   asDHKEResp,
   asSealedMasterKey,
@@ -209,6 +216,7 @@ export {
   MemoryStore,
   normalizeTags,
   nullEntDB,
+  nullKDM,
   nullStateManager,
   openDiplomaticClient,
   openEntDB,
@@ -216,6 +224,7 @@ export {
   PasskeySeedStore,
   prfCapable,
   PrfSeedStore,
+  Purpose,
   revFromEntity,
   revFromHead,
   SEALED_MASTER_KEY_LEN,
@@ -238,8 +247,10 @@ export {
 export type {
   ApldState,
   Applier,
+  BindPrior,
   BundleHost,
   CachedEntDBOptions,
+  ChildKey,
   DateSpec,
   DHKEReq,
   DHKEResp,
@@ -250,6 +261,7 @@ export type {
   ICrypto,
   IDateRange,
   IDeleteParams,
+  Identity,
   IDiplomaticClientState,
   IEntRev,
   IEntRow,
@@ -278,6 +290,7 @@ export type {
   PairRequest,
   PasskeySeedStoreOpts,
   PersistKeyring,
+  PrfBound,
   PrfRp,
   PrfSeedStoreOpts,
   ReconcileOpts,

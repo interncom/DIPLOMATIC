@@ -5,6 +5,7 @@ import { Database } from "bun:sqlite";
 import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
+import { ok } from "../src/shared/valstat";
 import { Enclave } from "../src/shared/crypto/enclave";
 import type {
   EntityID,
@@ -126,7 +127,7 @@ class SqliteSeedStore implements ISeedStore {
 
   async save(enclave: Enclave, _opts?: { persist?: boolean }) {
     this.#enclave = enclave;
-    return enclave;
+    return ok(enclave);
   }
 
   async load() {

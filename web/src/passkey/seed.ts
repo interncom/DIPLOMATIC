@@ -38,22 +38,23 @@ export class PasskeySeedStore implements ISeedStore {
     this.#credId = credId === undefined ? undefined : credId.slice();
   }
 
-  async save(enclave: Enclave, opts?: SetSeedOpts): Promise<Enclave> {
+  async save(
+    enclave: Enclave,
+    opts?: SetSeedOpts,
+  ): Promise<ValStat<Enclave>> {
     if (opts?.persist !== true) {
       this.#enclave = enclave;
-      return this.#enclave;
+      return ok(this.#enclave);
     }
     const [id, st] = await enclave.persistToLargeBlob([], {
       rpId: this.#rpId,
       rpName: this.#rpName,
       credId: this.#credId,
     });
-    if (st !== Status.Success || id === undefined) {
-      return Promise.reject(new Error(`persistToLargeBlob status ${st}`));
-    }
+    if (st !== Status.Success) return err(st);
     this.#credId = id;
     this.#enclave = enclave;
-    return this.#enclave;
+    return ok(this.#enclave);
   }
 
   async load(): Promise<Enclave | void> {

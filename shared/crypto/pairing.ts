@@ -4,16 +4,13 @@
 import { concat } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
+import { type ChildKey, deriveKey, Purpose } from "./derivation.ts";
 import { NobleCrypto } from "./noble.ts";
 import type { X25519Sk } from "./x25519.ts";
 
-export const SEAL_PAIR_DOMAIN = new TextEncoder().encode(
-  "diplomatic.qrpair.v1",
-);
 export const X25519_PUB_LEN = 32;
 /** respPub (32) ‖ XSalsa nonce (24) ‖ tag (16); plaintext follows in the ct. */
 export const DHKE_RESP_MIN = X25519_PUB_LEN + 24 + 16;
-const SEAL_KEY_LEN = 32;
 
 const dhkeReqSymbol = Symbol("DHKEReq");
 const dhkeRespSymbol = Symbol("DHKEResp");
@@ -42,7 +39,8 @@ export async function pairKey(
   peer: Uint8Array, // ECDH peer pub (enroller: dhkeReq; enrollee: respPub)
   reqPub: Uint8Array, // enrollee pub, bound into KDF
   respPub: Uint8Array, // enroller pub, bound into KDF
-): Promise<ValStat<Uint8Array>> {
+): Promise<ValStat<ChildKey<typeof Purpose.Pair>>> {
+  if (peer.byteLength !== X25519_PUB_LEN) return err(Status.InvalidParam);
   let shared: Uint8Array;
   try {
     shared = await noble.x25519Shared(sk, peer);
@@ -53,14 +51,17 @@ export async function pairKey(
     if (shared.byteLength !== X25519_PUB_LEN || shared.every((b) => b === 0)) {
       return err(Status.InvalidParam);
     }
-    const head = concat(shared, SEAL_PAIR_DOMAIN); // S ‖ domain
-    const mix = concat(head, concat(reqPub, respPub));
+    const pubs = concat(reqPub, respPub);
     try {
-      const hash = await noble.blake3(mix);
-      return ok(hash.slice(0, SEAL_KEY_LEN));
+      const [key, st] = await deriveKey({
+        parent: shared,
+        purpose: Purpose.Pair,
+        kdm: pubs,
+      });
+      if (st !== Status.Success) return err(st);
+      return ok(key);
     } finally {
-      head.fill(0);
-      mix.fill(0);
+      pubs.fill(0);
     }
   } finally {
     shared.fill(0);

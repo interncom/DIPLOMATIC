@@ -341,6 +341,12 @@ export async function syncPeek<Handle extends HostHandle>(
 ): Promise<Status> {
   const [hostIdnt, ist] = await conn.identity();
   if (ist !== Status.Success) return ist;
+  let verifyKey: CryptoKey;
+  try {
+    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
+  } catch {
+    return Status.CryptoError;
+  }
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(host.lastSeq);
   if (peekStatus !== Status.Success) {
@@ -359,7 +365,7 @@ export async function syncPeek<Handle extends HostHandle>(
   const cryptoResults = await mapPool(items, conc, async (item) => {
     const [itemDec, stat] = await decryptPeekItem(
       item,
-      hostIdnt.publicKey,
+      verifyKey,
       enclave,
       crypto,
     );
@@ -637,6 +643,13 @@ export async function handleNotif<Handle extends HostHandle>(
   const label = host.label;
   const [hostIdnt, ist] = await conn.identity();
   if (ist !== Status.Success) return;
+  let verifyKey: CryptoKey;
+  try {
+    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
+  } catch (e) {
+    console.error("Failed importing host verify key", e);
+    return;
+  }
 
   const dec = new Decoder(bytes);
   const [notifItems, statBatch] = dec.readStructs(notifItemCodec);
@@ -661,7 +674,7 @@ export async function handleNotif<Handle extends HostHandle>(
   for (const item of notifItems) {
     const [peekItem, s2] = await decryptPeekItem(
       { seq: item.seq, headCph: item.headCph },
-      hostIdnt.publicKey,
+      verifyKey,
       enclave,
       crypto,
     );
@@ -785,6 +798,12 @@ export async function reconcileHost<Handle extends HostHandle>(
 
   const [hostIdnt, ist] = await conn.identity();
   if (ist !== Status.Success) return err(ist);
+  let verifyKey: CryptoKey;
+  try {
+    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
+  } catch {
+    return err(Status.CryptoError);
+  }
   // Full inventory: ignore local cursor.
   const [items, peekStatus] = await conn.peek(0);
   if (peekStatus !== Status.Success) {
@@ -802,7 +821,7 @@ export async function reconcileHost<Handle extends HostHandle>(
   const cryptoResults = await mapPool(items, conc, async (item) => {
     const [itemDec, stat] = await decryptPeekItem(
       item,
-      hostIdnt.publicKey,
+      verifyKey,
       enclave,
       crypto,
     );

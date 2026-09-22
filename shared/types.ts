@@ -176,10 +176,12 @@ export type HostSpecificKeyPair = KeyPair & {
 export type Hash = Uint8Array & { readonly [hashSymbol]: true };
 
 export interface IHostCrypto {
+  // Imports an Ed25519 verify key. Reuse it across a batch of checks.
+  importVerifyKey: (pubKey: PublicKey) => Promise<CryptoKey>;
   checkSigEd25519: (
     sig: Uint8Array,
     message: Uint8Array | string,
-    pubKey: PublicKey,
+    verifyKey: CryptoKey,
   ) => Promise<boolean>;
 }
 

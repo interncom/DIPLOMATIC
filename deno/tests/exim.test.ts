@@ -67,10 +67,20 @@ class MockCrypto implements ICrypto {
     return new Uint8Array(32).fill(0x99) as Hash;
   }
 
+  async importVerifyKey(pubKey: PublicKey): Promise<CryptoKey> {
+    return await crypto.subtle.importKey(
+      "raw",
+      pubKey,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+  }
+
   async checkSigEd25519(
     _sig: Uint8Array,
     _message: Uint8Array | string,
-    _pubKey: PublicKey,
+    _verifyKey: CryptoKey,
   ): Promise<boolean> {
     return true;
   }

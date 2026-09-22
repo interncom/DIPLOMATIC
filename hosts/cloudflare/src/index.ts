@@ -48,20 +48,23 @@ function logStorageError(
 }
 
 const cloudflareCrypto: IHostCrypto = {
-  async checkSigEd25519(sig, message, pubKey) {
-    const cryptoKey = await crypto.subtle.importKey(
+  // Imports an Ed25519 verify key. Reuse it across a batch of checks.
+  async importVerifyKey(pubKey) {
+    return await crypto.subtle.importKey(
       "raw",
       pubKey,
       "ED25519",
       true,
       ["verify"],
     );
+  },
+  async checkSigEd25519(sig, message, verifyKey) {
     if (typeof message === "string") {
       const encoder = new TextEncoder();
       const encMsg = encoder.encode(message);
-      return await crypto.subtle.verify("ED25519", cryptoKey, sig, encMsg);
+      return await crypto.subtle.verify("ED25519", verifyKey, sig, encMsg);
     }
-    return await crypto.subtle.verify("ED25519", cryptoKey, sig, message);
+    return await crypto.subtle.verify("ED25519", verifyKey, sig, message);
   },
 };
 

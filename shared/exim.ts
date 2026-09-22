@@ -145,10 +145,16 @@ export namespace Exim {
     if (ist !== Status.Success) return err(ist);
 
     // Check that hash signature is valid.
+    let verifyKey: CryptoKey;
+    try {
+      verifyKey = await crypto.importVerifyKey(identity.publicKey);
+    } catch {
+      return err(Status.CryptoError);
+    }
     const sigValid = await crypto.checkSigEd25519(
       head.sig,
       head.hsh,
-      identity.publicKey,
+      verifyKey,
     );
     if (!sigValid) return err(Status.InvalidSignature);
 

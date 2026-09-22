@@ -3,7 +3,7 @@ import { IBagPeekItem } from "./codecs/peekItem.ts";
 import { peekItemHeadCodec } from "./codecs/peekItemHead.ts";
 import { Status } from "./consts.ts";
 import { Enclave } from "./crypto/enclave.ts";
-import { ICrypto, PublicKey } from "./types.ts";
+import { ICrypto } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
 export interface IDecryptedBagPeekItem {
@@ -12,7 +12,7 @@ export interface IDecryptedBagPeekItem {
 }
 export async function decryptPeekItem(
   item: IBagPeekItem,
-  pubKey: PublicKey,
+  verifyKey: CryptoKey,
   enclave: Enclave,
   crypto: ICrypto,
 ): Promise<ValStat<IDecryptedBagPeekItem>> {
@@ -25,7 +25,7 @@ export async function decryptPeekItem(
   const valid = await crypto.checkSigEd25519(
     sig,
     headCph,
-    pubKey,
+    verifyKey,
   );
   if (!valid) {
     return err(Status.InvalidSignature);

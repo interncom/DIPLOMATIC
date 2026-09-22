@@ -25,10 +25,18 @@ export const baseMockStorage: IStorage = {
 
 // Base mock crypto
 export const baseMockCrypto = {
+  importVerifyKey: (pubKey: PublicKey) =>
+    crypto.subtle.importKey(
+      "raw",
+      pubKey,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    ),
   checkSigEd25519: (
     _sig: Uint8Array,
     _message: Uint8Array | string,
-    _pubKey: PublicKey,
+    _verifyKey: CryptoKey,
   ) => Promise.resolve(true),
   blake3: () => Promise.resolve(new Uint8Array(32)),
 };

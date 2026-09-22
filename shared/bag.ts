@@ -19,15 +19,14 @@ import type {
   IHostCrypto,
   IMessage,
   IMessageWithHash,
-  PublicKey,
 } from "./types.ts";
 
 export function bagSigValid(
   bag: IBag,
-  pubKey: PublicKey,
+  verifyKey: CryptoKey,
   crypto: IHostCrypto,
 ): Promise<boolean> {
-  return crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
+  return crypto.checkSigEd25519(bag.sig, bag.headCph, verifyKey);
 }
 
 export async function sealBag(
@@ -124,12 +123,16 @@ export async function openBagBody(
 
 export async function openBag(
   bag: IBag,
-  pubKey: PublicKey,
+  verifyKey: CryptoKey,
   crypto: ICrypto,
   enclave: Enclave,
 ): Promise<ValStat<IMessageWithHash>> {
   // Check sig.
-  const sigValid = await crypto.checkSigEd25519(bag.sig, bag.headCph, pubKey);
+  const sigValid = await crypto.checkSigEd25519(
+    bag.sig,
+    bag.headCph,
+    verifyKey,
+  );
   if (!sigValid) {
     return err(Status.InvalidSignature);
   }

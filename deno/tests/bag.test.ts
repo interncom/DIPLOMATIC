@@ -103,9 +103,10 @@ Deno.test("bag", async (t) => {
     }
 
     // Open the bag
+    const verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
     const [openedMsg, status] = await openBag(
       bag,
-      hostIdnt.publicKey,
+      verifyKey,
       crypto,
       enclave,
     );

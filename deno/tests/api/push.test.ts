@@ -47,7 +47,7 @@ Deno.test("pushEnd.handleReq - success", async () => {
     checkSigEd25519: (
       _sig: Uint8Array,
       _message: Uint8Array | string,
-      _pubKey: PublicKey,
+      _verifyKey: CryptoKey,
     ) => Promise.resolve(true),
   };
   const mockNotifier: IPushNotifier = {
@@ -112,7 +112,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
     checkSigEd25519: (
       _sig: Uint8Array,
       message: Uint8Array | string,
-      _pubKey: PublicKey,
+      _verifyKey: CryptoKey,
     ) => Promise.resolve((message as Uint8Array).length === 6), // NOTE: this depends on the varint encoding of the tsAuth Date
   };
   const mockHost = createMockHost({

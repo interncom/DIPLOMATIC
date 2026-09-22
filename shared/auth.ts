@@ -48,10 +48,16 @@ export async function validateAuthTimestamp(
   const enc = new Encoder();
   enc.writeDate(authTS.timestamp);
   const data = enc.result();
+  let verifyKey: CryptoKey;
+  try {
+    verifyKey = await crypto.importVerifyKey(authTS.pubKey);
+  } catch {
+    return Status.CryptoError;
+  }
   const sigValid = await crypto.checkSigEd25519(
     authTS.sig,
     data,
-    authTS.pubKey,
+    verifyKey,
   );
   if (!sigValid) {
     return Status.InvalidSignature;

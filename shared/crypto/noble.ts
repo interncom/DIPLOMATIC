@@ -1,7 +1,7 @@
 import { randomBytes } from "@noble/ciphers/webcrypto";
 import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 import { blake3 } from "@noble/hashes/blake3";
-import { b64urltob, btoh, bytesEqual } from "../binary.ts";
+import { b64urltob, bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import { asX25519Sk, x25519, x25519Pub, type X25519Sk } from "./x25519.ts";
 import type {
@@ -93,8 +93,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  * (our scalar; RFC 7748 check before trusting pub/DH).
  */
 export class NobleCrypto implements ICrypto {
-  private verifyKeys = new Map<string, CryptoKey>();
-
   async genRandomBytes(bytes: number): Promise<Uint8Array> {
     return randomBytes(bytes);
   }
@@ -161,7 +159,6 @@ export class NobleCrypto implements ICrypto {
     const publicKey = new Uint8Array(
       await globalThis.crypto.subtle.exportKey("raw", pubCryptoKey),
     );
-    this.verifyKeys.set(btoh(publicKey), pubCryptoKey);
     // Libsodium format: privateKey = seed + publicKey (64 bytes total)
     const privateKey = new Uint8Array(64);
     privateKey.set(seed, 0);
@@ -193,19 +190,15 @@ export class NobleCrypto implements ICrypto {
     }
   }
 
-  private async importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {
-    const cacheKey = btoh(pubKey);
-    const cached = this.verifyKeys.get(cacheKey);
-    if (cached) return cached;
-    const key = await globalThis.crypto.subtle.importKey(
+  // Imports an Ed25519 verify key. Reuse it across a batch of checks.
+  async importVerifyKey(pubKey: Uint8Array): Promise<CryptoKey> {
+    return await globalThis.crypto.subtle.importKey(
       "raw",
       toArrayBuffer(pubKey),
       { name: "Ed25519" },
       false,
       ["verify"],
     );
-    this.verifyKeys.set(cacheKey, key);
-    return key;
   }
 
   async signEd25519(
@@ -225,19 +218,18 @@ export class NobleCrypto implements ICrypto {
   async checkSigEd25519(
     sig: Uint8Array,
     message: Uint8Array | string,
-    pubKey: Uint8Array,
+    verifyKey: CryptoKey,
   ): Promise<boolean> {
     const msg = toBytes(message);
     try {
-      const key = await this.importVerifyKey(pubKey);
       return await globalThis.crypto.subtle.verify(
         { name: "Ed25519" },
-        key,
+        verifyKey,
         toArrayBuffer(sig),
         toArrayBuffer(msg),
       );
     } catch {
-      // Invalid key material / unsupported algorithm → not a valid signature.
+      // subtle.verify throws on a bad key or unsupported algorithm.
       return false;
     }
   }

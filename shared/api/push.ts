@@ -42,12 +42,20 @@ export const pushEnd: IAuthenticatedEndpoint<
 
     console.info(`PUSH: ${bags.length} bags`);
 
+    // One verify key for every bag in this push.
+    let verifyKey: CryptoKey;
+    try {
+      verifyKey = await crypto.importVerifyKey(pubKey);
+    } catch {
+      return Status.CryptoError;
+    }
+
     // Verify sigs first; store valid bags in one storage batch.
     const validIdx: number[] = [];
     const validBags: IBag[] = [];
     for (let idx = 0; idx < bags.length; idx++) {
       const bag = bags[idx];
-      const sigValid = await bagSigValid(bag, pubKey, crypto);
+      const sigValid = await bagSigValid(bag, verifyKey, crypto);
       if (!sigValid) {
         const item: IBagPushItem = { idx, status: Status.InvalidSignature };
         const itemStatus = respEnc.writeStruct(pushItemCodec, item);

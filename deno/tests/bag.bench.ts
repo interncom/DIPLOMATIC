@@ -55,6 +55,7 @@ async function bench(size: number, suffix: string) {
     await fullyEncodeBag(op);
   });
   const bagEnc = await fullyEncodeBag(op);
+  const verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
   Deno.bench(`open bag (${suffix})`, async () => {
     const decoder = new Decoder(bagEnc);
     const [bag, stat] = decoder.readStruct(bagCodec);
@@ -63,7 +64,7 @@ async function bench(size: number, suffix: string) {
     }
     const [, openStat] = await openBag(
       bag,
-      hostIdnt.publicKey,
+      verifyKey,
       crypto,
       enclave,
     );

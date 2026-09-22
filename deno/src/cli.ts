@@ -96,9 +96,15 @@ export class CLIClient<Handle extends HostHandle> {
 
     const [hostIdnt, ist] = await this.conn.identity();
     if (ist !== Status.Success) return err(ist);
+    let verifyKey: CryptoKey;
+    try {
+      verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
+    } catch {
+      return err(Status.CryptoError);
+    }
     const [itemDec, statPeekItem] = await decryptPeekItem(
       peekItem,
-      hostIdnt.publicKey,
+      verifyKey,
       this.enclave,
       crypto,
     );

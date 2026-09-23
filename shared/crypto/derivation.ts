@@ -13,6 +13,9 @@ export const Purpose = {
   Fingerprint: "diplomatic.fingerprint.v1",
   Pair: "diplomatic.qrpair.v1",
   BagKdm: "diplomatic.bagkdm.v1",
+  Account: "diplomatic.account.v1",
+  App: "diplomatic.app.v1",
+  Realm: "diplomatic.realm.v1",
 } as const;
 export type Purpose = typeof Purpose[keyof typeof Purpose];
 

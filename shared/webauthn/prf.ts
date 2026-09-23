@@ -1,6 +1,6 @@
 // WebAuthn PRF types, defaults, and capability probe.
-// PRF eval/create lives in enclave.ts — PRF output is IKM that unseals a
-// binding and must not leave that file.
+// PRF eval/create lives in crypto/prf.ts and only Enclave imports it.
+// PRF output is IKM that unseals a binding.
 // WebAuthn “authenticator” = binding key: IKM only, not authn/authz.
 
 import {

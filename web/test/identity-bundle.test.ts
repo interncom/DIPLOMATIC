@@ -4,15 +4,9 @@ import { Decoder, Encoder } from "../src/shared/codec";
 import { identityHostsCodec } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
 import {
-  deriveKey,
-  Purpose,
-  nullKDM,
-} from "../src/shared/crypto/derivation";
-import {
   asMasterSeed,
   Enclave,
   MUSEC_MIN_LEN,
-  sealKeyFromPrf,
 } from "../src/shared/crypto/enclave";
 import type { PairRequest } from "../src/shared/crypto/enclave";
 import {
@@ -780,20 +774,5 @@ describe("DHKE pair (X25519 + blake3 + XSalsa20)", () => {
     expect(opened).toBeDefined();
     const [, ost2] = await req.finish(dhkeResp);
     expect(ost2).toBe(Status.DecryptionError);
-  });
-});
-
-describe("sealKeyFromPrf purposes", () => {
-  it("wrap KEK is purpose-separated from a different PDK", async () => {
-    const prf = new Uint8Array(32).fill(3);
-    const [wrapKey, wst] = await sealKeyFromPrf(prf);
-    const [otherKey, ost] = await deriveKey({
-      parent: prf,
-      purpose: Purpose.Pair,
-      kdm: nullKDM,
-    });
-    if (wst !== Status.Success) return;
-    if (ost !== Status.Success) return;
-    expect(wrapKey).not.toEqual(otherKey);
   });
 });

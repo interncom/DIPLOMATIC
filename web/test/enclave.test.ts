@@ -40,7 +40,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "10c1d7ef9ba6148e5aa1c586e3cf1c00",
+    callerSrc: "2f08bcbb698f690222b1ea295fa41007",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
   {
@@ -80,7 +80,7 @@ const permits: Permit[] = [
     callee: "spawn.postToDiplomaticWorker",
     how: "exact",
     src: "5af866aa6e511c9ee3df323202b50e08",
-    callerSrc: "71ce459744d6cb669f64751e8cfaa706",
+    callerSrc: "ac9c234ca401c9d8d693380da277cbb1",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
   {
@@ -136,7 +136,7 @@ const permits: Permit[] = [
     callee: "cryptoLargeBlob.writeLargeBlob",
     how: "embedded",
     src: "9c8cd6b0f93d95f04895afc1ee35606a",
-    callerSrc: "d103cc60a7379516a76ebba8bfd217e3",
+    callerSrc: "59c864c694ccad8ca9dcf98af73736fc",
     why: "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
   },
 ];
@@ -391,6 +391,13 @@ vi.mock("../src/shared/crypto/largeBlob", async (importOriginal) => {
     typeof import("../src/shared/crypto/largeBlob")
   >();
   return wrapFns("cryptoLargeBlob", orig);
+});
+
+vi.mock("../src/shared/crypto/prf", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/prf")
+  >();
+  return wrapFns("cryptoPrf", orig);
 });
 
 vi.mock("../src/shared/crypto/noble", async (importOriginal) => {

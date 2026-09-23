@@ -69,13 +69,8 @@ import {
   IUpdateParams,
 } from "./shared/types";
 import { asChildKey, Enclave, nullKDM, Purpose } from "./shared/crypto/enclave";
-import type {
-  BindPrior,
-  ChildKey,
-  Identity,
-  PairRequest,
-  PrfBound,
-} from "./shared/crypto/enclave";
+import type { ChildKey, Identity, PairRequest } from "./shared/crypto/enclave";
+import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
 import { IDBSeedStore } from "./stores/idb/seed";
 import { IDBStore, openIDBStore } from "./stores/idb/store";

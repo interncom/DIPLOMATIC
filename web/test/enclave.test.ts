@@ -88,7 +88,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "f5b34952f9511057940f52aa5d62a59a",
+    callerSrc: "510716230290ba6595b037290e2735f5",
     why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {

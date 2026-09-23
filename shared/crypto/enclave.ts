@@ -8,8 +8,9 @@
 //   3. If an operation needs the seed (largeBlob persist, pair-package AEAD, …),
 //      Enclave performs it and returns only Enclave / ciphertext / Status.
 //      crypto/largeBlob.ts may receive seed-bearing wire only from Enclave;
-//      that handoff is pinned in web/test/enclave.test.ts. crypto/prf.ts
-//      returns PRF IKM to Enclave and must not receive the seed.
+//      that handoff is pinned in web/test/enclave.test.ts. sealPair returns
+//      the pair key; Enclave encrypts the seed wire. crypto/prf.ts returns
+//      PRF IKM to Enclave and must not receive the seed.
 //      Do not export a seed helper for outer layers.
 //
 // Callers may receive only: derived public handles (Identity, ciphers), AEAD
@@ -61,31 +62,21 @@ import {
   deriveEd25519KeyPair,
   encryptXSalsa20Poly1305Combined,
   gen256BitSecureRandomSeed,
-  genX25519,
   signEd25519,
 } from "./noble.ts";
 import {
-  asDHKEReq,
   asDHKEResp,
   type DHKEReq,
   type DHKEResp,
-  pairKey,
-  X25519_PUB_LEN,
+  PairRequest,
+  sealPair,
 } from "./pairing.ts";
-import type { X25519Sk } from "./x25519.ts";
 import {
   type LargeBlobCreateOpts,
   largeBlobRead,
   type LargeBlobRp,
 } from "../webauthn/largeBlob.ts";
-import {
-  DEFAULT_PRF_SALT,
-  DEFAULT_PRF_USER_NAME,
-  type PrfCeremony,
-  type PrfCreateOpts,
-  type PrfEvalOpts,
-  type PrfRp,
-} from "../webauthn/prf.ts";
+import { DEFAULT_PRF_SALT, DEFAULT_PRF_USER_NAME } from "../webauthn/prf.ts";
 import {
   postToDiplomaticWorker,
   spawnDiplomaticSyncWorker,
@@ -93,40 +84,18 @@ import {
 // Stay last. Seed-trace pins hash Vite's import index, so a module inserted
 // earlier renumbers later imports and their pins.
 import { largeBlobCredId, wipeLargeBlob, writeLargeBlob } from "./largeBlob.ts";
-import { createPrfCred, evalPrf } from "./prf.ts";
+import {
+  type BindPrior,
+  createPrfCred,
+  evalPrf,
+  type PasskeyPrfOpts,
+  type PrfBinding,
+  type PrfBound,
+  type PrfCeremony,
+  type PrfSealedMaster,
+} from "./prf.ts";
 
 export type { LargeBlobCreateOpts, LargeBlobRp };
-export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
-
-/** Options for PRF seal/unseal ceremonies (no raw PRF bytes). */
-export type PasskeyPrfOpts = PrfCreateOpts & {
-  credId?: Uint8Array | readonly Uint8Array[];
-  /** Seal only: create a PRF credential first when no credId is known. */
-  createCredIfNeeded?: boolean;
-};
-
-/** One binding to try on unseal (cred id + sealed master). */
-export type PrfBinding = {
-  sealedMaster: SealedMasterKey;
-  credId: Uint8Array;
-};
-
-/** Durable PRF-sealed master + public ceremony facts (never includes PRF output). */
-export type PrfSealedMaster = PrfCeremony & {
-  sealedMaster: SealedMasterKey;
-  salt: Uint8Array;
-};
-
-/** One existing keyring member used to prove this enclave matches the list. */
-export type BindPrior = {
-  credId: Uint8Array;
-  tag: ChildKey<typeof Purpose.BindTag>;
-};
-
-/** Seal + bind-tag from {@link Enclave.bind} (tag is not a global fingerprint). */
-export type PrfBound = PrfSealedMaster & {
-  tag: ChildKey<typeof Purpose.BindTag>;
-};
 
 export type EncryptCipher = {
   encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
@@ -180,7 +149,8 @@ function bundleHosts(hosts: BundleHost[]): BundleHost[] {
 }
 
 // Absorb seed‖hosts wire. Encoder/Decoder see only the host list.
-function fromSeedHosts(
+// fromLargeBlob calls this in-file. PairRequest.finish imports it.
+export function fromSeedHosts(
   buf: Uint8Array,
 ): ValStat<{ enclave: Enclave; hosts: BundleHost[] }> {
   if (buf.byteLength === 0 || buf.every((b) => b === 0)) {
@@ -205,78 +175,6 @@ function fromSeedHosts(
   });
 }
 
-// Enrollee pairing session. Not exported; obtain via Enclave.pairRequest.
-class PairRequest {
-  #priv: X25519Sk;
-  #dhkeReq: DHKEReq;
-
-  private constructor(priv: X25519Sk, dhkeReq: DHKEReq) {
-    this.#priv = priv;
-    this.#dhkeReq = dhkeReq;
-  }
-
-  // Starts an enrollee pairing session. Carry dhkeReq to the enroller.
-  static async create(): Promise<ValStat<PairRequest>> {
-    let priv: X25519Sk | undefined;
-    try {
-      const pair = await genX25519();
-      priv = pair.priv;
-      const [dhkeReq, qst] = asDHKEReq(pair.pub);
-      if (qst !== Status.Success) return err(qst);
-      const req = new PairRequest(priv, dhkeReq);
-      priv = undefined;
-      return ok(req);
-    } catch {
-      return err(Status.CryptoError);
-    } finally {
-      priv?.fill(0);
-    }
-  }
-
-  // Drops the ephemeral scalar. Call if the user abandons pairing.
-  wipe(): void {
-    this.#priv.fill(0);
-  }
-
-  // Copy of the enrollee X25519 public key to send to the enroller.
-  // Branding the copy checks the length. On failure the private field stays put.
-  dhkeReq(): ValStat<DHKEReq> {
-    const copy = this.#dhkeReq.slice();
-    const [branded, st] = asDHKEReq(copy);
-    if (st !== Status.Success) return err(st);
-    return ok(branded);
-  }
-
-  // Decrypts the enroller's DHKE response into a new Enclave + hosts.
-  // Then call sealWithPasskey for a durable binding.
-  async finish(
-    dhkeResp: DHKEResp,
-  ): Promise<ValStat<{ enclave: Enclave; hosts: BundleHost[] }>> {
-    const respPub = dhkeResp.subarray(0, X25519_PUB_LEN);
-    const body = dhkeResp.subarray(X25519_PUB_LEN);
-    const [key, kst] = await pairKey(
-      this.#priv,
-      respPub,
-      this.#dhkeReq,
-      respPub,
-    );
-    if (kst !== Status.Success) return err(kst);
-    let plain: Uint8Array | undefined;
-    try {
-      try {
-        plain = await decryptXSalsa20Poly1305Combined(body, key);
-      } catch {
-        return err(Status.DecryptionError);
-      }
-      const out = fromSeedHosts(plain);
-      if (out[1] === Status.Success) this.wipe();
-      return out;
-    } finally {
-      key.fill(0);
-      plain?.fill(0);
-    }
-  }
-}
 export type { PairRequest };
 
 /** Brand `bytes` as {@link MasterSeed} only if length is {@link MASTER_SEED_LEN}. */
@@ -766,34 +664,26 @@ export class Enclave {
     if (acks.userControlsBothSidesOfPair !== true) {
       return err(Status.InvalidParam);
     }
-    let eph: { priv: X25519Sk; pub: Uint8Array }; // ephemeral X25519 pair
+    const [seal, sst] = await sealPair(dhkeReq);
+    if (sst !== Status.Success) return err(sst);
     try {
-      eph = await genX25519();
-    } catch {
-      return err(Status.CryptoError);
-    }
-    try {
-      const [key, kst] = await pairKey(eph.priv, dhkeReq, dhkeReq, eph.pub);
-      if (kst !== Status.Success) return err(kst);
+      const [plain, pst] = this.#encodeSeedHosts(hosts);
+      if (pst !== Status.Success) return err(pst);
       try {
-        const [plainBytes, pst] = this.#encodeSeedHosts(hosts);
-        if (pst !== Status.Success) return err(pst);
         try {
           const body = await encryptXSalsa20Poly1305Combined(
-            plainBytes,
-            key,
+            plain,
+            seal.key,
           );
-          return asDHKEResp(concat(eph.pub, body));
+          return asDHKEResp(concat(seal.pub, body));
         } catch {
           return err(Status.InternalError);
-        } finally {
-          plainBytes.fill(0);
         }
       } finally {
-        key.fill(0);
+        plain.fill(0);
       }
     } finally {
-      eph.priv.fill(0);
+      seal.key.fill(0);
     }
   }
 
@@ -1130,5 +1020,3 @@ function lockAll(obj: object): void {
 
 lockAll(Enclave);
 lockAll(Enclave.prototype);
-lockAll(PairRequest);
-lockAll(PairRequest.prototype);

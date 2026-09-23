@@ -1,9 +1,11 @@
-// WebAuthn PRF eval/create. Only enclave.ts may import this module.
-// These functions may return PRF output; they must not receive the master
-// seed. Enclave derives the seal KEK and wipes the IKM.
+// WebAuthn PRF eval/create, plus the binding types Enclave returns.
+// Only enclave.ts may call createPrfCred and evalPrf. Those return PRF
+// output and must not receive the master seed. Enclave wipes the IKM.
 
 import { Status } from "../consts.ts";
+import type { SealedMasterKey } from "../seed.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
+import { type ChildKey, Purpose } from "./derivation.ts";
 import { randomBytesArrayBuffer } from "./entropy.ts";
 import {
   asPublicKeyCredential,
@@ -30,6 +32,38 @@ import {
   type PrfCreateOpts,
   type PrfEvalOpts,
 } from "../webauthn/prf.ts";
+
+export type { PrfCeremony, PrfCreateOpts, PrfEvalOpts };
+
+/** Options for PRF seal/unseal ceremonies (no raw PRF bytes). */
+export type PasskeyPrfOpts = PrfCreateOpts & {
+  credId?: Uint8Array | readonly Uint8Array[];
+  /** Seal only: create a PRF credential first when no credId is known. */
+  createCredIfNeeded?: boolean;
+};
+
+/** One binding to try on unseal (cred id + sealed master). */
+export type PrfBinding = {
+  sealedMaster: SealedMasterKey;
+  credId: Uint8Array;
+};
+
+/** Durable PRF-sealed master + public ceremony facts (never includes PRF output). */
+export type PrfSealedMaster = PrfCeremony & {
+  sealedMaster: SealedMasterKey;
+  salt: Uint8Array;
+};
+
+/** One existing keyring member used to prove this enclave matches the list. */
+export type BindPrior = {
+  credId: Uint8Array;
+  tag: ChildKey<typeof Purpose.BindTag>;
+};
+
+/** Seal + bind-tag from {@link Enclave.bind} (tag is not a global fingerprint). */
+export type PrfBound = PrfSealedMaster & {
+  tag: ChildKey<typeof Purpose.BindTag>;
+};
 
 const PRF_OUTPUT_LEN = 32;
 

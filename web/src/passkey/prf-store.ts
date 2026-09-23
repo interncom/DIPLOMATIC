@@ -6,9 +6,9 @@ import {
   asChildKey,
   type ChildKey,
   Enclave,
-  type PasskeyPrfOpts,
   Purpose,
 } from "../shared/crypto/enclave";
+import type { PasskeyPrfOpts } from "../shared/crypto/prf";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";

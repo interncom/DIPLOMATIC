@@ -6,9 +6,10 @@
 //   1. Never return unencrypted seed (or seed-bearing plaintext wire) to callers.
 //   2. Never accept a callback/function that is invoked with unencrypted seed.
 //   3. If an operation needs the seed (largeBlob persist, pair-package AEAD, …),
-//      that entire operation lives on Enclave (or is static and returns only
-//      Enclave / ciphertext / Status). Move the call site into this boundary;
-//      do not export a "handle seed data" helper for outer layers.
+//      Enclave performs it and returns only Enclave / ciphertext / Status.
+//      crypto/largeBlob.ts may receive seed-bearing wire only from Enclave;
+//      that handoff is pinned in web/test/enclave.test.ts. Do not export a
+//      seed helper for outer layers.
 //
 // Callers may receive only: derived public handles (Identity, ciphers), AEAD
 // ciphertext, Status/booleans, and new Enclave instances from factories.
@@ -21,9 +22,10 @@
 // re-execs with DIP_CLI_DUMP=true. Missing define → NotImplemented.
 //
 // Browser WebAuthn: largeBlob create/read and PRF capability probe live in
-// shared/webauthn. PRF eval/create, CLI IKM seal/unseal, and largeBlob seed
-// write live here — PRF output is IKM that unseals a binding and must not
-// leave this file. Sealed ciphertext on disk is useless without a ceremony
+// shared/webauthn. PRF eval/create and CLI IKM seal/unseal live here — PRF
+// output is IKM that unseals a binding and must not leave this file.
+// largeBlob UV write of seed wire lives in crypto/largeBlob.ts (only this
+// file imports it). Sealed ciphertext on disk is useless without a ceremony
 // Enclave itself initiates (or caller-supplied IKM that is wiped here).
 // WebAuthn “authenticator” = binding key (IKM source, not authn/authz).
 //
@@ -81,18 +83,14 @@ import {
   readAttachment,
   readTransports,
   resolveWebAuthnRpId,
-  tryFocus,
   WEBAUTHN_CHAL_LEN,
   WEBAUTHN_CRED_TYPE,
   WEBAUTHN_PUB_KEY_PARAMS,
   webAuthnCreate,
   webAuthnGet,
   type WebAuthnHint,
-  webAuthnNotFocused,
-  whenVisible,
 } from "../webauthn/common.ts";
 import {
-  largeBlobCreateCred,
   type LargeBlobCreateOpts,
   largeBlobRead,
   type LargeBlobRp,
@@ -109,6 +107,9 @@ import {
   postToDiplomaticWorker,
   spawnDiplomaticSyncWorker,
 } from "../worker/spawn.ts";
+// Stay last. Seed-trace pins hash Vite's import index, so a module inserted
+// earlier renumbers later imports and their pins.
+import { largeBlobCredId, wipeLargeBlob, writeLargeBlob } from "./largeBlob.ts";
 
 export type { LargeBlobCreateOpts, LargeBlobRp };
 export type { PrfCreateOpts, PrfEvalOpts, PrfRp };
@@ -292,77 +293,6 @@ class PairRequest {
   }
 }
 export type { PairRequest };
-
-// DOM lib used by pkg/cli tsc lags largeBlob (see webauthn-largeblob.d.ts).
-type LbIn = AuthenticationExtensionsClientInputs & {
-  largeBlob?: { write?: BufferSource };
-};
-type LbOut = AuthenticationExtensionsClientOutputs & {
-  largeBlob?: { written?: boolean };
-};
-
-// UV write of largeBlob bytes. File-local (Iron Law). credId is not seed;
-// data may be IdentityBundle wire.
-async function writeLargeBlob(
-  credId: Uint8Array,
-  data: Uint8Array,
-  opts?: LargeBlobRp,
-): Promise<Status> {
-  const wst = checkWebAuthn();
-  if (wst !== Status.Success) return wst;
-  const [rpId, rst] = resolveWebAuthnRpId(opts);
-  if (rst !== Status.Success) return rst;
-  if (rpId === undefined) return Status.MissingParam;
-
-  await whenVisible();
-  const write = new Uint8Array(data.byteLength);
-  write.set(data);
-  const extensions: LbIn = { largeBlob: { write: write.buffer } };
-  const req: CredentialRequestOptions = {
-    publicKey: {
-      challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
-      rpId,
-      allowCredentials: [
-        { type: WEBAUTHN_CRED_TYPE, id: copyToArrayBuffer(credId) },
-      ],
-      userVerification: "required",
-      extensions,
-      ...(opts?.hints !== undefined ? { hints: opts.hints } : {}),
-    },
-  };
-  let cred: Credential | null;
-  try {
-    try {
-      cred = await navigator.credentials.get(req);
-    } catch (e) {
-      if (!webAuthnNotFocused(e)) {
-        noteWebAuthnError(e);
-        return Status.WebAuthnError;
-      }
-      tryFocus();
-      try {
-        cred = await navigator.credentials.get(req);
-      } catch (e2) {
-        noteWebAuthnError(e2);
-        return Status.WebAuthnError;
-      }
-    }
-  } catch (e) {
-    noteWebAuthnError(e);
-    return Status.WebAuthnError;
-  } finally {
-    write.fill(0);
-  }
-
-  const [pk, pst] = asPublicKeyCredential(cred);
-  if (pst !== Status.Success) return pst;
-  if (pk === undefined) return Status.InvalidResponse;
-  const ext: LbOut = pk.getClientExtensionResults();
-  if (ext.largeBlob?.written !== true) {
-    return Status.WebAuthnError;
-  }
-  return Status.Success;
-}
 
 const PRF_OUTPUT_LEN = 32;
 
@@ -793,8 +723,8 @@ export class Enclave {
 
   /**
    * UV + write IdentityBundle (seed + hosts) to largeBlob.
-   * Encode and WebAuthn write complete inside this method; nothing seed-bearing
-   * is returned. Prefer empty `hosts` for seed-only backup.
+   * Encode stays here; {@link writeLargeBlob} does the UV write. Nothing
+   * seed-bearing is returned. Prefer empty `hosts` for seed-only backup.
    *
    * Pass `opts.credId` to write an existing credential (one UV). Omit it to
    * create a largeBlob-capable credential then write (two UV). Returns the
@@ -804,14 +734,8 @@ export class Enclave {
     hosts: BundleHost[] = [],
     opts?: LargeBlobCreateOpts & { credId?: Uint8Array },
   ): Promise<ValStat<Uint8Array>> {
-    let credId = opts?.credId;
-    if (credId === undefined) {
-      const [created, cst] = await largeBlobCreateCred(opts);
-      if (cst !== Status.Success) return err(cst);
-      if (created === undefined) return err(Status.WebAuthnError);
-      credId = created;
-    }
-
+    const [credId, cst] = await largeBlobCredId(opts);
+    if (cst !== Status.Success) return err(cst);
     const [encoded, est] = this.#encodeSeedHosts(hosts);
     if (est !== Status.Success) return err(est);
     try {
@@ -837,7 +761,6 @@ export class Enclave {
   > {
     const [raw, rst] = await largeBlobRead(opts?.credId, opts);
     if (rst !== Status.Success) return err(rst);
-    if (raw === undefined) return err(Status.MissingBody);
     try {
       const [out, st] = fromSeedHosts(raw.blob);
       if (st !== Status.Success) return err(st);
@@ -848,11 +771,11 @@ export class Enclave {
   }
 
   /** UV + overwrite largeBlob with zeros (destroys stored seed material). */
-  static async clearLargeBlob(
+  static clearLargeBlob(
     credId: Uint8Array,
     opts?: LargeBlobRp,
   ): Promise<Status> {
-    return writeLargeBlob(credId, new Uint8Array(MASTER_SEED_LEN), opts);
+    return wipeLargeBlob(credId, opts);
   }
 
   /**

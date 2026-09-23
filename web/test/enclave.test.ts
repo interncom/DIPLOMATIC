@@ -131,6 +131,14 @@ const permits: Permit[] = [
     callerSrc: "41b560c907d44ad9a1cef043cf24e1c9",
     why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
+  {
+    caller: "persistToLargeBlob",
+    callee: "cryptoLargeBlob.writeLargeBlob",
+    how: "embedded",
+    src: "9c8cd6b0f93d95f04895afc1ee35606a",
+    callerSrc: "d103cc60a7379516a76ebba8bfd217e3",
+    why: "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
+  },
 ];
 
 const { trace, wrapFns, wrapProto, origByFn, srcHex } = vi.hoisted(() => {
@@ -376,6 +384,13 @@ vi.mock("../src/shared/crypto/entropy", async (importOriginal) => {
     typeof import("../src/shared/crypto/entropy")
   >();
   return wrapFns("entropy", orig);
+});
+
+vi.mock("../src/shared/crypto/largeBlob", async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import("../src/shared/crypto/largeBlob")
+  >();
+  return wrapFns("cryptoLargeBlob", orig);
 });
 
 vi.mock("../src/shared/crypto/noble", async (importOriginal) => {

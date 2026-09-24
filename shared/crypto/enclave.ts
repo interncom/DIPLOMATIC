@@ -141,9 +141,10 @@ function bundleHosts(hosts: BundleHost[]): BundleHost[] {
 
 // Absorb seed‖hosts wire. Encoder/Decoder see only the host list.
 // fromLargeBlob calls this in-file. PairRequest.finish imports it.
-export function fromSeedHosts(
-  buf: Uint8Array,
-): ValStat<{ enclave: Enclave; hosts: BundleHost[] }> {
+export function fromSeedHosts(buf: Uint8Array): ValStat<{
+  enclave: Enclave;
+  hosts: BundleHost[];
+}> {
   if (buf.byteLength === 0 || buf.every((b) => b === 0)) {
     return err(Status.MissingSeed);
   }
@@ -491,10 +492,7 @@ export class Enclave {
    * Identity from the identity PDK + KDM {label: keyPath, index}. Private key
    * stays in the enclave; only publicKey and capability methods are returned.
    */
-  async deriveIdentity(
-    keyPath: string,
-    idx = 0,
-  ): Promise<ValStat<Identity>> {
+  async deriveIdentity(keyPath: string, idx = 0): Promise<ValStat<Identity>> {
     const path = keyPath;
     const index = idx;
     const [keys, st] = await this.#deriveSubkeys(path, index);
@@ -510,9 +508,7 @@ export class Enclave {
   }
 
   // Paper-check digest (null-KDM child of the fingerprint PDK).
-  async fingerprint(): Promise<
-    ValStat<PDK["Fingerprint"]>
-  > {
+  async fingerprint(): Promise<ValStat<PDK["Fingerprint"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Fingerprint,
@@ -521,9 +517,7 @@ export class Enclave {
   }
 
   // Bind-tag child keyed by credId. Not a global fingerprint.
-  async #bindTag(
-    credId: Uint8Array,
-  ): Promise<ValStat<PDK["BindTag"]>> {
+  async #bindTag(credId: Uint8Array): Promise<ValStat<PDK["BindTag"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.BindTag,
@@ -532,10 +526,7 @@ export class Enclave {
   }
 
   // Constant-time match of a stored tag against this master + credId.
-  async #tagMatches(
-    credId: Uint8Array,
-    tag: PDK["BindTag"],
-  ): Promise<boolean> {
+  async #tagMatches(credId: Uint8Array, tag: PDK["BindTag"]): Promise<boolean> {
     if (tag.byteLength !== BIND_TAG_LEN) return false;
     const [got, gst] = await this.#bindTag(credId);
     if (gst !== Status.Success) return false;
@@ -555,9 +546,7 @@ export class Enclave {
   }
 
   // Derive seal KEK from PRF IKM (null-KDM child of the bind PDK).
-  static async #sealKeyFromPrf(
-    prf: Uint8Array,
-  ): Promise<ValStat<PDK["Bind"]>> {
+  static async #sealKeyFromPrf(prf: Uint8Array): Promise<ValStat<PDK["Bind"]>> {
     if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
     return deriveKey({
       parent: prf,
@@ -659,9 +648,7 @@ export class Enclave {
     }
   }
 
-  async #keyFromKDM(
-    kdm: Uint8Array,
-  ): Promise<ValStat<PDK["Cipher"]>> {
+  async #keyFromKDM(kdm: Uint8Array): Promise<ValStat<PDK["Cipher"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Cipher,

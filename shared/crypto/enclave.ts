@@ -730,9 +730,7 @@ export class Enclave {
 }
 
 // Brands an identity child as the Ed25519 derivation seed for that identity.
-function asDerivSeed(
-  child: PDK["Identity"],
-): DerivationSeed {
+function asDerivSeed(child: PDK["Identity"]): DerivationSeed {
   return child as Uint8Array as DerivationSeed;
 }
 

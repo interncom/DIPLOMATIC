@@ -3,6 +3,9 @@
 // File-local / #private calls are invisible. ESM named imports are only
 // intercepted if the spy is installed via vi.mock (hoisted).
 // Class methods (Encoder) are wrapped via prototype spies.
+// crypto/tty.ts is a dynamic import behind DIP_CLI_DUMP, which web tests
+// compile to false, so the tracer never sees that seed handoff. It is
+// pinned by source hash below instead.
 
 import { blake3 } from "@noble/hashes/blake3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -683,10 +686,28 @@ const traces: Record<string, () => void | Promise<void>> = {
   },
 };
 
+// dumpToTty passes the raw seed into crypto/tty.ts. The runtime tracer cannot
+// see it: the call sits behind DIP_CLI_DUMP, compiled false in web tests.
+// src is tty.dumpToTty; callerSrc is Enclave.dumpToTty (the handoff).
+const ttyDumpPin = {
+  src: "a9e0ad51a81876ee798582226c2f0a2c",
+  callerSrc: "e4bea6201fd77ebb3b553b01d160af4e",
+  why: "To print the master seed as paper-backup hex on /dev/tty.",
+};
+
 describe("Enclave imported-callee seed trace", () => {
   it("covers every public method", () => {
     const pub = [...publicFns(Enclave), ...publicFns(Enclave.prototype)].sort();
     expect(Object.keys(traces).sort()).toEqual(pub);
+  });
+
+  it("pins tty dumpToTty, which receives the raw seed", async () => {
+    const tty = await import("../src/shared/crypto/tty");
+    const caller = enclaveFn("dumpToTty");
+    if (caller === undefined) throw new Error("Enclave.dumpToTty missing");
+    const src = srcHex(tty.dumpToTty);
+    const callerSrc = srcHex(caller);
+    expect({ src, callerSrc, why: ttyDumpPin.why }).toEqual(ttyDumpPin);
   });
 
   beforeEach(() => {

@@ -13,7 +13,10 @@ const crypto = libsodiumCrypto;
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const [enclave, est] = Enclave.fromBytes(seed);
 if (est !== Status.Success) throw new Error(`enclave ${est}`);
-const [hostIdnt, ist] = await enclave.deriveIdentity("benchmark-host", 0);
+const [hostIdnt, ist] = await enclave.deriveIdentity({
+  label: "benchmark-host",
+  index: 0,
+});
 if (ist !== Status.Success) throw new Error(`idnt ${ist}`);
 
 function createBod(size: number): Uint8Array {

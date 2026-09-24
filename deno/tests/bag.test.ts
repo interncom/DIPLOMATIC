@@ -74,7 +74,10 @@ Deno.test("bag", async (t) => {
     const seed = await crypto.gen256BitSecureRandomSeed();
     const [enclave, est] = Enclave.fromBytes(seed);
     if (est !== Status.Success) throw new Error(`enclave ${est}`);
-    const [hostIdnt, ist] = await enclave.deriveIdentity("test-host", 0);
+    const [hostIdnt, ist] = await enclave.deriveIdentity({
+      label: "test-host",
+      index: 0,
+    });
     if (ist !== Status.Success) throw new Error(`idnt ${ist}`);
 
     // Create a test message

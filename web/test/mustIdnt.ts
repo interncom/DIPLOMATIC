@@ -10,7 +10,7 @@ export async function mustIdnt(
   path = "test",
   idx = 0,
 ): Promise<Identity> {
-  const [id, st] = await e.deriveIdentity(path, idx);
+  const [id, st] = await e.deriveIdentity({ label: path, index: idx });
   if (st !== Status.Success) {
     throw new Error(`deriveIdentity ${st}`);
   }

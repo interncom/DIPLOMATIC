@@ -138,6 +138,7 @@ import type {
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
+import { type IKDM } from "./shared/codecs/kdm";
 import { asDHKEReq, asDHKEResp } from "./shared/crypto/pairing";
 import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
 import {
@@ -269,6 +270,7 @@ export type {
   IEntRow,
   IHostConnectionInfo,
   IHostRow,
+  IKDM,
   IMessage,
   IMutateOp,
   IOp,

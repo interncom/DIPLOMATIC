@@ -59,7 +59,10 @@ export namespace Exim {
     crypto: ICrypto,
     enclave: Enclave,
   ): Promise<ValStat<Uint8Array>> {
-    const [identity, ist] = await enclave.deriveIdentity(keyLbl, keyIdx);
+    const [identity, ist] = await enclave.deriveIdentity({
+      label: keyLbl,
+      index: keyIdx,
+    });
     if (ist !== Status.Success) return err(ist);
 
     const encIndex = new Encoder();
@@ -141,7 +144,10 @@ export namespace Exim {
     if (statDecode !== Status.Success) return err(statDecode);
     const { head, indexEnc, bodyEnc } = fileStruct;
 
-    const [identity, ist] = await enclave.deriveIdentity(head.lbl, head.idx);
+    const [identity, ist] = await enclave.deriveIdentity({
+      label: head.lbl,
+      index: head.idx,
+    });
     if (ist !== Status.Success) return err(ist);
 
     // Check that hash signature is valid.

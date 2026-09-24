@@ -41,6 +41,7 @@ import { concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
+import type { IKDM } from "../codecs/kdm.ts";
 import { kdmBytes, Status } from "../consts.ts";
 import {
   asSealedMasterKey,
@@ -489,21 +490,20 @@ export class Enclave {
   }
 
   /**
-   * Identity from the identity PDK + KDM {label: keyPath, index}. Private key
-   * stays in the enclave; only publicKey and capability methods are returned.
+   * Identity from the identity PDK + KDM. Private key stays in the enclave;
+   * only publicKey and capability methods are returned.
    */
-  async deriveIdentity(keyPath: string, idx = 0): Promise<ValStat<Identity>> {
-    const path = keyPath;
-    const index = idx;
-    const [keys, st] = await this.#deriveSubkeys(path, index);
+  async deriveIdentity(kdm: IKDM): Promise<ValStat<Identity>> {
+    const kdmBound: IKDM = { label: kdm.label, index: kdm.index };
+    const [keys, st] = await this.#deriveSubkeys(kdmBound);
     if (st !== Status.Success) return err(st);
     const publicKey = keys.publicKey;
     // Handle only needs the pub; priv would outlive this call on the Identity.
     keys.privateKey.fill(0);
     return ok(Object.freeze({
       publicKey,
-      sign: (message: Uint8Array | string) => this.#sign(path, index, message),
-      kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(path, index, msgHeadEnc),
+      sign: (message: Uint8Array | string) => this.#sign(kdmBound, message),
+      kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(kdmBound, msgHeadEnc),
     }));
   }
 
@@ -656,22 +656,16 @@ export class Enclave {
     });
   }
 
-  async #deriveSeed(
-    keyPath: string,
-    idx: number,
-  ): Promise<ValStat<PDK["Identity"]>> {
+  async #deriveSeed(kdm: IKDM): Promise<ValStat<PDK["Identity"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Identity,
-      kdm: { label: keyPath, index: idx },
+      kdm,
     });
   }
 
-  async #deriveSubkeys(
-    keyPath: string,
-    idx: number,
-  ): Promise<ValStat<KeyPair>> {
-    const [seed, st] = await this.#deriveSeed(keyPath, idx);
+  async #deriveSubkeys(kdm: IKDM): Promise<ValStat<KeyPair>> {
+    const [seed, st] = await this.#deriveSeed(kdm);
     if (st !== Status.Success) return err(st);
     try {
       try {
@@ -686,11 +680,10 @@ export class Enclave {
   }
 
   async #sign(
-    keyPath: string,
-    idx: number,
+    kdm: IKDM,
     message: Uint8Array | string,
   ): Promise<ValStat<Uint8Array>> {
-    const [keys, st] = await this.#deriveSubkeys(keyPath, idx);
+    const [keys, st] = await this.#deriveSubkeys(kdm);
     if (st !== Status.Success) return err(st);
     try {
       try {
@@ -705,11 +698,10 @@ export class Enclave {
   }
 
   async #kdmFor(
-    keyPath: string,
-    idx: number,
+    kdm: IKDM,
     msgHeadEnc: Uint8Array,
   ): Promise<ValStat<Uint8Array>> {
-    const [idSeed, st] = await this.#deriveSeed(keyPath, idx);
+    const [idSeed, st] = await this.#deriveSeed(kdm);
     if (st !== Status.Success) return err(st);
     try {
       const [child, cst] = await deriveKey({

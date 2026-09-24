@@ -67,7 +67,7 @@ const permits: Permit[] = [
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
+    callerSrc: "f3ece8cacc6142574a55e99349dce84a",
     why: "To derive an identity child from the master via the identity PDK and KDM.",
   },
   {
@@ -75,7 +75,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "faf6a0c3cf88a0658f668bad4f5383ed",
+    callerSrc: "f3ece8cacc6142574a55e99349dce84a",
     why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
@@ -679,7 +679,7 @@ const traces: Record<string, () => void | Promise<void>> = {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     arm("deriveIdentity", seed);
-    const [idnt, ist] = await e.deriveIdentity("test", 0);
+    const [idnt, ist] = await e.deriveIdentity({ label: "test", index: 0 });
     expect(ist).toBe(Status.Success);
     expect(idnt?.publicKey).toBeDefined();
     assertPermitted();

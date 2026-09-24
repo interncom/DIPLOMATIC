@@ -99,7 +99,10 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
 
   identity = (): Promise<ValStat<Identity>> => {
     const { host, enclave } = this;
-    return enclave.deriveIdentity(host.label, host.idx ?? 0);
+    return enclave.deriveIdentity({
+      label: host.label,
+      index: host.idx ?? 0,
+    });
   };
 
   seal = async (msg: IMessage): Promise<ValStat<IBag>> => {

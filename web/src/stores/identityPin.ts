@@ -2,7 +2,7 @@
 // storing host public keys or any seed material.
 //
 // Stored: random nonce n + blake3(pinPub).
-// pinPub = deriveIdentity(pathFromNonce(n), 0).publicKey
+// pinPub = deriveIdentity({ label: pathFromNonce(n), index: 0 }).publicKey
 //
 // The derive path is the nonce (hex), not a fixed string — so two devices of
 // the same user get different pin pubs and digests; an attacker with both
@@ -26,7 +26,7 @@ export type IdPin = {
   h: Uint8Array;
 };
 
-/** keyPath for deriveIdentity from the stored nonce. */
+/** KDM label for deriveIdentity from the stored nonce. */
 export function idPinPath(nonce: Uint8Array): string {
   return ID_PIN_PATH_PREFIX + btoh(nonce);
 }
@@ -36,7 +36,10 @@ export async function idPinDigest(
   enclave: Enclave,
   nonce: Uint8Array,
 ): Promise<ValStat<Uint8Array>> {
-  const [idnt, st] = await enclave.deriveIdentity(idPinPath(nonce), 0);
+  const [idnt, st] = await enclave.deriveIdentity({
+    label: idPinPath(nonce),
+    index: 0,
+  });
   if (st !== Status.Success) return err(st);
   // Hash so durable meta is never a raw pubkey (host-shaped or otherwise).
   return ok(await crypto.blake3(idnt.publicKey));

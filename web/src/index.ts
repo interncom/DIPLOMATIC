@@ -68,8 +68,15 @@ import {
   ITransport,
   IUpdateParams,
 } from "./shared/types";
-import { asChildKey, Enclave, nullKDM, Purpose } from "./shared/crypto/enclave";
-import type { ChildKey, Identity, PairRequest } from "./shared/crypto/enclave";
+import { Enclave } from "./shared/crypto/enclave";
+import type { Identity } from "./shared/crypto/enclave";
+import {
+  asChildKey,
+  type ChildKey,
+  nullKDM,
+  Purpose,
+} from "./shared/crypto/derivation";
+import type { PairRequest } from "./shared/crypto/pairing";
 import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
 import { IDBSeedStore } from "./stores/idb/seed";

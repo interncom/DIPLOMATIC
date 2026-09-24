@@ -50,7 +50,6 @@ import {
 import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import {
-  asChildKey,
   type ChildKey,
   deriveKey,
   nullKDM,
@@ -93,8 +92,6 @@ import {
   unsealPRF,
 } from "./prf.ts";
 
-export type { LargeBlobCreateOpts, LargeBlobRp };
-
 export type EncryptCipher = {
   encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
 };
@@ -135,7 +132,7 @@ const BIND_TAG_LEN = 32;
 /** Minimum PRF IKM length accepted when deriving the seal KEK. */
 const SEAL_PRF_MIN_LEN = 16;
 /** Minimum musec length (Mandatory User-Space Entropy Contribution). */
-const MUSEC_MIN_LEN = 32;
+export const MUSEC_MIN_LEN = 32;
 
 // Host rows for IdentityBundle wire (idx defaults to 0).
 function bundleHosts(hosts: BundleHost[]): BundleHost[] {
@@ -172,8 +169,6 @@ export function fromSeedHosts(
     hosts: rows.hosts.map((h) => ({ ...h })),
   });
 }
-
-export type { PairRequest };
 
 /** Brand `bytes` as {@link MasterSeed} only if length is {@link MASTER_SEED_LEN}. */
 export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
@@ -918,15 +913,6 @@ function asDerivSeed(
 ): DerivationSeed {
   return child as Uint8Array as DerivationSeed;
 }
-
-export {
-  asChildKey,
-  type ChildKey,
-  MASTER_SEED_LEN,
-  MUSEC_MIN_LEN,
-  nullKDM,
-  Purpose,
-};
 
 const LOCK_SKIP = new Set(["constructor", "prototype", "length", "name"]);
 

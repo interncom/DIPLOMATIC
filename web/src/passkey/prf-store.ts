@@ -2,12 +2,12 @@
 // Session handle is always an Enclave. PRF bytes never leave Enclave methods.
 // WebAuthn “authenticator” = binding key (IKM for the seal, not authn/authz).
 
+import { Enclave } from "../shared/crypto/enclave";
 import {
   asChildKey,
   type ChildKey,
-  Enclave,
   Purpose,
-} from "../shared/crypto/enclave";
+} from "../shared/crypto/derivation";
 import type { PasskeyPrfOpts } from "../shared/crypto/prf";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";

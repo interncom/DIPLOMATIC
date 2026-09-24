@@ -35,8 +35,6 @@ import {
   type PrfEvalOpts,
 } from "../webauthn/prf.ts";
 
-export type { PrfCeremony, PrfCreateOpts, PrfEvalOpts };
-
 /** Options for PRF seal/unseal ceremonies (no raw PRF bytes). */
 export type PasskeyPrfOpts = PrfCreateOpts & {
   credId?: Uint8Array | readonly Uint8Array[];

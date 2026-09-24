@@ -8,7 +8,7 @@ import {
   Enclave,
   MUSEC_MIN_LEN,
 } from "../src/shared/crypto/enclave";
-import type { PairRequest } from "../src/shared/crypto/enclave";
+import type { PairRequest } from "../src/shared/crypto/pairing";
 import {
   asDHKEReq,
   asDHKEResp,
@@ -402,7 +402,10 @@ describe("enclave seal/unseal via passkey PRF ceremony", () => {
       mockCred(credId.buffer, {
         prf: {
           results: {
-            first: getPrf.buffer.slice(getPrf.byteOffset, getPrf.byteOffset + 32),
+            first: getPrf.buffer.slice(
+              getPrf.byteOffset,
+              getPrf.byteOffset + 32,
+            ),
           },
         },
       }),

@@ -31,6 +31,10 @@ function gcd(a, b) {
 
 Prefer branded types over raw Uint8Array bytes. Those bytes will need some explanation of their purpose so we might as well make it explicit with a branded type rather than relying on comments.
 
+## Exports
+
+Do not re-export a symbol from a module that only imports it. Callers import it from the file that defines it. The only re-export surface is `web/src/index.ts`, the public package API.
+
 ## Security
 
 When handling security-critical data like private keys, always ensure that they are zero-ed out ASAP to minimize the time window in which they can be caught by inspecting memory.

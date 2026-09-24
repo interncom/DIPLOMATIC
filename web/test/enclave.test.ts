@@ -40,7 +40,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "2f08bcbb698f690222b1ea295fa41007",
+    callerSrc: "80447fde624aed325b9266f5576bbb5a",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
   {
@@ -80,7 +80,7 @@ const permits: Permit[] = [
     callee: "spawn.postToDiplomaticWorker",
     how: "exact",
     src: "5af866aa6e511c9ee3df323202b50e08",
-    callerSrc: "ac9c234ca401c9d8d693380da277cbb1",
+    callerSrc: "ce33febf07d7ee4fba3860e13225e5d7",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
   {
@@ -136,7 +136,7 @@ const permits: Permit[] = [
     callee: "cryptoLargeBlob.writeLargeBlob",
     how: "embedded",
     src: "9c8cd6b0f93d95f04895afc1ee35606a",
-    callerSrc: "59c864c694ccad8ca9dcf98af73736fc",
+    callerSrc: "04806d6ab018ed0aacf1b548aead1e60",
     why: "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
   },
 ];

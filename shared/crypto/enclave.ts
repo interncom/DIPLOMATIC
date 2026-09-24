@@ -9,8 +9,8 @@
 //      Enclave performs it and returns only Enclave / ciphertext / Status.
 //      crypto/largeBlob.ts may receive seed-bearing wire only from Enclave;
 //      that handoff is pinned in web/test/enclave.test.ts. sealPair returns
-//      the pair key; Enclave encrypts the seed wire. crypto/prf.ts returns
-//      PRF IKM to Enclave and must not receive the seed.
+//      the pair key; Enclave encrypts the seed wire. crypto/prf.ts seal and
+//      unseal ceremonies return PRF IKM; Enclave seals, unseals, and wipes it.
 //      Do not export a seed helper for outer layers.
 //
 // Callers may receive only: derived public handles (Identity, ciphers), AEAD
@@ -36,7 +36,7 @@
 // fill(0)'d before return. JS cannot OPENSSL_cleanse, but an uncleared buffer
 // is a standing copy a heap dump can steal without another UV.
 
-import { bytesEqual, concat } from "../binary.ts";
+import { concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
@@ -76,7 +76,6 @@ import {
   largeBlobRead,
   type LargeBlobRp,
 } from "../webauthn/largeBlob.ts";
-import { DEFAULT_PRF_SALT, DEFAULT_PRF_USER_NAME } from "../webauthn/prf.ts";
 import {
   postToDiplomaticWorker,
   spawnDiplomaticSyncWorker,
@@ -86,13 +85,12 @@ import {
 import { largeBlobCredId, wipeLargeBlob, writeLargeBlob } from "./largeBlob.ts";
 import {
   type BindPrior,
-  createPrfCred,
-  evalPrf,
   type PasskeyPrfOpts,
   type PrfBinding,
   type PrfBound,
-  type PrfCeremony,
   type PrfSealedMaster,
+  sealPRF,
+  unsealPRF,
 } from "./prf.ts";
 
 export type { LargeBlobCreateOpts, LargeBlobRp };
@@ -234,80 +232,23 @@ export class Enclave {
   async sealWithPasskey(
     opts?: PasskeyPrfOpts,
   ): Promise<ValStat<PrfSealedMaster>> {
-    const salt = opts?.salt ?? DEFAULT_PRF_SALT;
-    const known = opts?.credId;
-    let credId: Uint8Array | readonly Uint8Array[] | undefined = known;
-    const needCreate = opts?.createCredIfNeeded === true &&
-      (known === undefined ||
-        !(known instanceof Uint8Array) && known.length === 0);
-
-    let created: PrfCeremony | undefined;
-    let createPrf: Uint8Array | undefined;
-    if (needCreate) {
-      const [c, cst] = await createPrfCred({
-        rpId: opts?.rpId,
-        rpName: opts?.rpName,
-        userName: opts?.userName ?? DEFAULT_PRF_USER_NAME,
-        displayName: opts?.displayName,
-        authenticatorAttachment: opts?.authenticatorAttachment,
-        hints: opts?.hints,
-        excludeCredentials: opts?.excludeCredentials,
-        salt,
+    const [out, ost] = await sealPRF(opts);
+    if (ost !== Status.Success) return err(ost);
+    try {
+      const [sealedMaster, sst] = await this.#sealUnderPrf(out.prf);
+      if (sst !== Status.Success) return err(sst);
+      return ok({
+        sealedMaster,
+        salt: out.salt,
+        credId: out.credId,
+        userId: out.userId,
+        attachment: out.attachment,
+        transports: out.transports,
+        aaguid: out.aaguid,
       });
-      if (cst !== Status.Success) return err(cst);
-      if (c === undefined) return err(Status.WebAuthnError);
-      if (!c.prfEnabled) return err(Status.WebAuthnError);
-      credId = c.credId;
-      created = c;
-      createPrf = c.prf;
+    } finally {
+      out.prf.fill(0);
     }
-
-    const finish = async (
-      prf: Uint8Array,
-      evCredId: Uint8Array,
-      evAttachment?: PrfCeremony["attachment"],
-      evTransports?: string[],
-    ): Promise<ValStat<PrfSealedMaster>> => {
-      try {
-        const [sealedMaster, sst] = await this.#sealUnderPrf(prf);
-        if (sst !== Status.Success) return err(sst);
-        return ok({
-          sealedMaster,
-          salt: salt.slice(),
-          credId: evCredId.slice(),
-          userId: created?.userId === undefined
-            ? undefined
-            : created.userId.slice(),
-          attachment: evAttachment ?? created?.attachment,
-          transports: evTransports ?? created?.transports,
-          aaguid: created?.aaguid === undefined
-            ? undefined
-            : created.aaguid.slice(),
-        });
-      } finally {
-        prf.fill(0);
-      }
-    };
-
-    if (createPrf !== undefined && created !== undefined) {
-      return finish(
-        createPrf,
-        created.credId,
-        created.attachment,
-        created.transports,
-      );
-    }
-
-    const [ev, est] = await evalPrf({
-      rpId: opts?.rpId,
-      rpName: opts?.rpName,
-      credId,
-      salt,
-      hints: opts?.hints,
-    });
-    if (est !== Status.Success) return err(est);
-    if (ev === undefined) return err(Status.MissingBody);
-    return finish(ev.prf, ev.credId, ev.attachment, ev.transports);
   }
 
   /**
@@ -342,36 +283,21 @@ export class Enclave {
     opts: PasskeyPrfOpts & { salt: Uint8Array },
   ): Promise<ValStat<{ enclave: Enclave; credId: Uint8Array }>> {
     if (bindings.length === 0) return err(Status.MissingSeed);
-    const credIds: Uint8Array[] = [];
-    for (const w of bindings) {
-      if (w.credId.byteLength > 0) credIds.push(w.credId);
-    }
-    const [ev, est] = await evalPrf({
-      rpId: opts.rpId,
-      rpName: opts.rpName,
-      hints: opts.hints,
-      credId: credIds.length > 0 ? credIds : undefined,
-      salt: opts.salt,
-    });
-    if (est !== Status.Success) return err(est);
-    if (ev === undefined) return err(Status.MissingBody);
-    const hit = bindings.find((w) => bytesEqual(w.credId, ev.credId));
-    const order = hit === undefined
-      ? bindings
-      : [hit, ...bindings.filter((w) => w !== hit)];
+    const [out, ost] = await unsealPRF(bindings, opts);
+    if (ost !== Status.Success) return err(ost);
     try {
-      for (const w of order) {
+      for (const w of out.order) {
         const [enclave] = await Enclave.#unsealUnderPrf(
           w.sealedMaster,
-          ev.prf,
+          out.prf,
         );
         if (enclave !== undefined) {
-          return ok({ enclave, credId: ev.credId.slice() });
+          return ok({ enclave, credId: out.credId });
         }
       }
       return err(Status.DecryptionError);
     } finally {
-      ev.prf.fill(0);
+      out.prf.fill(0);
     }
   }
 

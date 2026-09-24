@@ -1,7 +1,9 @@
 // WebAuthn PRF eval/create, plus the binding types Enclave returns.
-// Only enclave.ts may call createPrfCred and evalPrf. Those return PRF
-// output and must not receive the master seed. Enclave wipes the IKM.
+// sealPRF and unsealPRF return the PRF value to Enclave, which seals,
+// unseals, and wipes those bytes. bind's tag checks stay on Enclave.
+// Only enclave.ts may call these.
 
+import { bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import type { SealedMasterKey } from "../seed.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
@@ -118,7 +120,6 @@ export async function createPrfCred(
   if (wst !== Status.Success) return err(wst);
   const [rpId, rst] = resolveWebAuthnRpId(opts);
   if (rst !== Status.Success) return err(rst);
-  if (rpId === undefined) return err(Status.MissingParam);
 
   const name = opts?.userName ?? DEFAULT_PRF_USER_NAME;
   const displayName = opts?.displayName ?? name;
@@ -191,7 +192,6 @@ export async function createPrfCred(
 
   const [pk, pst] = asPublicKeyCredential(cred);
   if (pst !== Status.Success) return err(pst);
-  if (pk === undefined) return err(Status.InvalidResponse);
   const ext = pk.getClientExtensionResults() as {
     prf?: { enabled?: boolean; results?: { first?: BufferSource } };
   };
@@ -218,7 +218,6 @@ export async function evalPrf(
   if (wst !== Status.Success) return err(wst);
   const [rpId, rst] = resolveWebAuthnRpId(opts);
   if (rst !== Status.Success) return err(rst);
-  if (rpId === undefined) return err(Status.MissingParam);
 
   const salt = opts?.salt ?? DEFAULT_PRF_SALT;
   const saltBuf = copyToArrayBuffer(salt);
@@ -251,7 +250,6 @@ export async function evalPrf(
 
   const [pk, pst] = asPublicKeyCredential(cred);
   if (pst !== Status.Success) return err(pst);
-  if (pk === undefined) return err(Status.InvalidResponse);
   const results = (
     pk.getClientExtensionResults() as {
       prf?: { results?: { first?: BufferSource } };
@@ -266,4 +264,107 @@ export async function evalPrf(
     attachment: readAttachment(pk.authenticatorAttachment),
     transports: readTransports(pk),
   });
+}
+
+// UV + PRF ceremony for seal. Returns PRF output and public ceremony facts.
+// Caller wipes `prf`.
+export async function sealPRF(
+  opts: PasskeyPrfOpts | undefined,
+): Promise<ValStat<PrfCeremony & { prf: Uint8Array; salt: Uint8Array }>> {
+  const salt = opts?.salt ?? DEFAULT_PRF_SALT;
+  const known = opts?.credId;
+  let credId: Uint8Array | readonly Uint8Array[] | undefined = known;
+  const needCreate = opts?.createCredIfNeeded === true &&
+    (known === undefined ||
+      !(known instanceof Uint8Array) && known.length === 0);
+
+  let created: PrfCeremony | undefined;
+  let createPrf: Uint8Array | undefined;
+  if (needCreate) {
+    const [c, cst] = await createPrfCred({
+      rpId: opts?.rpId,
+      rpName: opts?.rpName,
+      userName: opts?.userName ?? DEFAULT_PRF_USER_NAME,
+      displayName: opts?.displayName,
+      authenticatorAttachment: opts?.authenticatorAttachment,
+      hints: opts?.hints,
+      excludeCredentials: opts?.excludeCredentials,
+      salt,
+    });
+    if (cst !== Status.Success) return err(cst);
+    if (!c.prfEnabled) return err(Status.WebAuthnError);
+    credId = c.credId;
+    created = c;
+    createPrf = c.prf;
+  }
+
+  const pack = (
+    prf: Uint8Array,
+    evCredId: Uint8Array,
+    evAttachment?: PrfCeremony["attachment"],
+    evTransports?: string[],
+  ) =>
+    ok({
+      prf,
+      salt: salt.slice(),
+      credId: evCredId.slice(),
+      userId: created?.userId === undefined
+        ? undefined
+        : created.userId.slice(),
+      attachment: evAttachment ?? created?.attachment,
+      transports: evTransports ?? created?.transports,
+      aaguid: created?.aaguid === undefined
+        ? undefined
+        : created.aaguid.slice(),
+    });
+
+  if (createPrf !== undefined && created !== undefined) {
+    return pack(
+      createPrf,
+      created.credId,
+      created.attachment,
+      created.transports,
+    );
+  }
+
+  const [ev, est] = await evalPrf({
+    rpId: opts?.rpId,
+    rpName: opts?.rpName,
+    credId,
+    salt,
+    hints: opts?.hints,
+  });
+  if (est !== Status.Success) return err(est);
+  return pack(ev.prf, ev.credId, ev.attachment, ev.transports);
+}
+
+// UV + PRF for unseal. Returns the PRF output, the asserted cred id, and
+// bindings to try (matching cred first). Caller wipes `prf`.
+export async function unsealPRF(
+  bindings: readonly PrfBinding[],
+  opts: PasskeyPrfOpts & { salt: Uint8Array },
+): Promise<
+  ValStat<{
+    prf: Uint8Array;
+    credId: Uint8Array;
+    order: readonly PrfBinding[];
+  }>
+> {
+  const credIds: Uint8Array[] = [];
+  for (const w of bindings) {
+    if (w.credId.byteLength > 0) credIds.push(w.credId);
+  }
+  const [ev, est] = await evalPrf({
+    rpId: opts.rpId,
+    rpName: opts.rpName,
+    hints: opts.hints,
+    credId: credIds.length > 0 ? credIds : undefined,
+    salt: opts.salt,
+  });
+  if (est !== Status.Success) return err(est);
+  const match = bindings.find((w) => bytesEqual(w.credId, ev.credId));
+  const order = match === undefined
+    ? bindings
+    : [match, ...bindings.filter((w) => w !== match)];
+  return ok({ prf: ev.prf, credId: ev.credId.slice(), order });
 }

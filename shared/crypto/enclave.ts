@@ -50,7 +50,7 @@ import {
 } from "../seed.ts";
 import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { type ChildKey, deriveKey, nullKDM, Purpose } from "./derivation.ts";
+import { deriveKey, nullKDM, type PDK, Purpose } from "./derivation.ts";
 import {
   blake3,
   decryptXSalsa20Poly1305Combined,
@@ -511,7 +511,7 @@ export class Enclave {
 
   // Paper-check digest (null-KDM child of the fingerprint PDK).
   async fingerprint(): Promise<
-    ValStat<ChildKey<typeof Purpose.Fingerprint>>
+    ValStat<PDK["Fingerprint"]>
   > {
     return await deriveKey({
       parent: this.#seed,
@@ -523,7 +523,7 @@ export class Enclave {
   // Bind-tag child keyed by credId. Not a global fingerprint.
   async #bindTag(
     credId: Uint8Array,
-  ): Promise<ValStat<ChildKey<typeof Purpose.BindTag>>> {
+  ): Promise<ValStat<PDK["BindTag"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.BindTag,
@@ -534,7 +534,7 @@ export class Enclave {
   // Constant-time match of a stored tag against this master + credId.
   async #tagMatches(
     credId: Uint8Array,
-    tag: ChildKey<typeof Purpose.BindTag>,
+    tag: PDK["BindTag"],
   ): Promise<boolean> {
     if (tag.byteLength !== BIND_TAG_LEN) return false;
     const [got, gst] = await this.#bindTag(credId);
@@ -557,7 +557,7 @@ export class Enclave {
   // Derive seal KEK from PRF IKM (null-KDM child of the bind PDK).
   static async #sealKeyFromPrf(
     prf: Uint8Array,
-  ): Promise<ValStat<ChildKey<typeof Purpose.Bind>>> {
+  ): Promise<ValStat<PDK["Bind"]>> {
     if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
     return deriveKey({
       parent: prf,
@@ -661,7 +661,7 @@ export class Enclave {
 
   async #keyFromKDM(
     kdm: Uint8Array,
-  ): Promise<ValStat<ChildKey<typeof Purpose.Cipher>>> {
+  ): Promise<ValStat<PDK["Cipher"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Cipher,
@@ -672,7 +672,7 @@ export class Enclave {
   async #deriveSeed(
     keyPath: string,
     idx: number,
-  ): Promise<ValStat<ChildKey<typeof Purpose.Identity>>> {
+  ): Promise<ValStat<PDK["Identity"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Identity,
@@ -744,7 +744,7 @@ export class Enclave {
 
 // Brands an identity child as the Ed25519 derivation seed for that identity.
 function asDerivSeed(
-  child: ChildKey<typeof Purpose.Identity>,
+  child: PDK["Identity"],
 ): DerivationSeed {
   return child as Uint8Array as DerivationSeed;
 }

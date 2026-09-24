@@ -3,11 +3,7 @@
 // WebAuthn “authenticator” = binding key (IKM for the seal, not authn/authz).
 
 import { Enclave } from "../shared/crypto/enclave";
-import {
-  asChildKey,
-  type ChildKey,
-  Purpose,
-} from "../shared/crypto/derivation";
+import { asChildKey, type PDK, Purpose } from "../shared/crypto/derivation";
 import type { PasskeyPrfOpts } from "../shared/crypto/prf";
 import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
@@ -32,7 +28,7 @@ export type KeyringEntry = {
   sealedMaster: SealedMasterKey;
   credId: Uint8Array;
   /** Bind-tag PDK child keyed by credId; check-only, not a display fingerprint. */
-  tag: ChildKey<typeof Purpose.BindTag>;
+  tag: PDK["BindTag"];
   userId?: Uint8Array;
   nick?: string;
   enrolledAt: number;

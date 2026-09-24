@@ -7,7 +7,7 @@ import { concat } from "../binary.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
 import { Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { type ChildKey, deriveKey, Purpose } from "./derivation.ts";
+import { deriveKey, type PDK, Purpose } from "./derivation.ts";
 import type { Enclave } from "./enclave.ts";
 import {
   decryptXSalsa20Poly1305Combined,
@@ -45,7 +45,7 @@ export async function pairKey(
   peer: Uint8Array, // ECDH peer pub (enroller: dhkeReq; enrollee: respPub)
   reqPub: Uint8Array, // enrollee pub, bound into KDF
   respPub: Uint8Array, // enroller pub, bound into KDF
-): Promise<ValStat<ChildKey<typeof Purpose.Pair>>> {
+): Promise<ValStat<PDK["Pair"]>> {
   if (peer.byteLength !== X25519_PUB_LEN) return err(Status.InvalidParam);
   let shared: Uint8Array;
   try {
@@ -78,7 +78,7 @@ export async function pairKey(
 // enroller pub. Wipes the ephemeral scalar. Caller wipes `key`.
 export async function sealPair(
   dhkeReq: DHKEReq,
-): Promise<ValStat<{ key: ChildKey<typeof Purpose.Pair>; pub: Uint8Array }>> {
+): Promise<ValStat<{ key: PDK["Pair"]; pub: Uint8Array }>> {
   let eph: { priv: X25519Sk; pub: Uint8Array } | undefined;
   try {
     eph = await genX25519();

@@ -1,5 +1,5 @@
-import { RealmKey } from "./realms";
+import { PDK } from "./derivation";
 
 export class BagManager {
-  constructor(private realmKey: RealmKey) {}
+  constructor(private realmKey: PDK["RealmKey"]) {}
 }

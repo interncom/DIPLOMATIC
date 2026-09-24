@@ -7,7 +7,7 @@ import { bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import type { SealedMasterKey } from "../seed.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { type ChildKey, Purpose } from "./derivation.ts";
+import { type PDK } from "./derivation.ts";
 import { randomBytesArrayBuffer } from "./entropy.ts";
 import {
   asPublicKeyCredential,
@@ -57,12 +57,12 @@ export type PrfSealedMaster = PrfCeremony & {
 /** One existing keyring member used to prove this enclave matches the list. */
 export type BindPrior = {
   credId: Uint8Array;
-  tag: ChildKey<typeof Purpose.BindTag>;
+  tag: PDK["BindTag"];
 };
 
 /** Seal + bind-tag from {@link Enclave.bind} (tag is not a global fingerprint). */
 export type PrfBound = PrfSealedMaster & {
-  tag: ChildKey<typeof Purpose.BindTag>;
+  tag: PDK["BindTag"];
 };
 
 const PRF_OUTPUT_LEN = 32;

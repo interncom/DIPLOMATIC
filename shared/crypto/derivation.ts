@@ -30,6 +30,11 @@ export type ChildKey<P extends Purpose> = Uint8Array & {
   readonly [childKeySymbol]: P;
 };
 
+// Child key for a purpose name. PDK["Fingerprint"] is ChildKey<typeof Purpose.Fingerprint>.
+export type PDK = {
+  [K in keyof typeof Purpose]: ChildKey<(typeof Purpose)[K]>;
+};
+
 // Null KDM: default child of a PDK (empty label, index 0).
 export const nullKDM: IKDM = Object.freeze({ label: "", index: 0 });
 

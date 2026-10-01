@@ -158,14 +158,14 @@ async function main() {
 
   // --- uploader client (SQLite archive + queues) ---
   const upStore = new SqliteStore<IProtoHost>(clientUpDb, libsodiumCrypto);
-  await upStore.seed.save(SEED(), { persist: true });
+  await upStore.account.save(SEED(), { persist: true });
   await upStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
     idx: HOST_IDX,
   });
 
-  const enclave = await upStore.seed.load();
+  const enclave = await upStore.account.load();
   if (!enclave) throw new Error("missing seed");
 
   const upHost = await upStore.hosts.get(HOST_LABEL);
@@ -226,13 +226,13 @@ async function main() {
   // --- downloader client (same seed, empty SQLite archive) ---
   console.log("\n=== 3. sync from host (peek → pull/open/exec) ===");
   const downStore = new SqliteStore<IProtoHost>(clientDownDb, libsodiumCrypto);
-  await downStore.seed.save(SEED(), { persist: true });
+  await downStore.account.save(SEED(), { persist: true });
   await downStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
     idx: HOST_IDX,
   });
-  const downEnclave = await downStore.seed.load();
+  const downEnclave = await downStore.account.load();
   if (!downEnclave) throw new Error("missing seed");
   const downHostRow = await downStore.hosts.get(HOST_LABEL);
   if (!downHostRow) throw new Error("missing host");

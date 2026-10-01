@@ -9,6 +9,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
+import { accountLabel } from "./stores/label";
 import { Exim } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import type { Enclave } from "./shared/crypto/enclave";
@@ -66,6 +67,7 @@ import {
   IStoredMessage,
   IStoredMessageWrite,
   ListMsgsOpts,
+  OpenAccount,
   ReconcileOpts,
   ReconcileReport,
   SetSeedOpts,
@@ -82,6 +84,8 @@ function msgsFromParts(parts: IMsgParts[]): IMessage[] {
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
+  /** Account this client is operating as. The account store is only the list. */
+  #account?: OpenAccount<Handle>;
 
   /**
    * Serializes archive + markApplied so concurrent drainApplyQueue / apply
@@ -155,15 +159,56 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.xferState.emit();
   };
 
+  /** Account this client is operating as, if one is open. */
+  selected(): OpenAccount<Handle> | undefined {
+    return this.#account;
+  }
+
+  // Records the key tag, then opens that account.
   public async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<Status> {
-    const [, st] = await this.store.seed.save(enclave, opts);
-    if (st === Status.Success) this.clientState.emit();
-    return st;
+    const [label, lst] = accountLabel(opts?.label);
+    if (lst !== Status.Success || label === undefined) {
+      return Status.InvalidParam;
+    }
+    const [, st] = await this.store.account.save(enclave, opts);
+    if (st !== Status.Success) return st;
+    await this.#open(label, enclave);
+    this.clientState.emit();
+    return Status.Success;
+  }
+
+  // Opens an account whose key tag was already recorded. Used by the sync worker.
+  async adopt(enclave: Enclave): Promise<void> {
+    await this.#open("", enclave);
+    this.clientState.emit();
+  }
+
+  #enclave(): Enclave | undefined {
+    return this.#account?.enclave;
+  }
+
+  async #hostRows(): Promise<IHostRow<Handle>[]> {
+    return Array.from(await this.store.hosts.list());
+  }
+
+  // Copies the host list onto the open account.
+  async #pullHosts(): Promise<void> {
+    if (this.#account === undefined) return;
+    this.#account.hosts = await this.#hostRows();
+  }
+
+  async #open(label: string, enclave: Enclave): Promise<void> {
+    this.#account = {
+      label,
+      enclave,
+      hosts: await this.#hostRows(),
+      realms: [],
+    };
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {
     const { store, connections } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     const hosts = await store.hosts.list();
 
     // Use the per-connection isConnected() which respects listener state
@@ -601,7 +646,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   private async doSync(): Promise<Status> {
     const { connections, crypto, store } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) {
       return Status.MissingSeed;
     }
@@ -728,7 +773,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await this.syncRuns.flush();
 
     const { connections, crypto, store } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) return err(Status.MissingSeed);
 
     let host = await store.hosts.get(hostLabel);
@@ -801,7 +846,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    */
   private async repull(): Promise<Status> {
     const { connections, crypto, store } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) {
       return Status.MissingSeed;
     }
@@ -932,7 +977,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       await store.messages.wipe();
     }
     if (seed) {
-      await store.seed.wipe();
+      await store.account.wipe();
+      this.#account = undefined;
+    } else if (meta) {
+      await this.#pullHosts();
     }
     if (ents) {
       await this.state.clear();
@@ -949,9 +997,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       onProgress?: (index: number, total: number, status: Status) => void;
     },
   ): Promise<Status> => {
-    const { crypto, store } = this;
+    const { crypto } = this;
     const onProgress = options?.onProgress;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) return Status.MissingSeed;
 
     console.time("import: decoding file...");
@@ -1022,7 +1070,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   /** Encode the local message archive; used by worker path (main saves file). */
   public async exportBytes(): Promise<ValStat<Uint8Array>> {
     const { crypto, store } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) return err(Status.MissingSeed);
 
     const msgs = await store.messages.list();
@@ -1042,6 +1090,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   // Manage stored host connections.
   public async link(host: IHostConnectionInfo<Handle>, connect = true) {
     await this.store.hosts.add(host);
+    await this.#pullHosts();
     this.clientState.emit();
 
     if (connect) {
@@ -1054,6 +1103,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
   public async unlink(label: string) {
     await this.store.hosts.del(label);
+    await this.#pullHosts();
     this.clientState.emit();
   }
 
@@ -1083,7 +1133,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       connections.delete(host.label);
     }
 
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) return;
 
     console.info(`Connecting to ${host.handle} (${host.label})`);
@@ -1093,7 +1143,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       host,
       clock,
       transport(host),
-      (meta) => store.hosts.set(host.label, meta),
+      async (meta) => {
+        const st = await store.hosts.set(host.label, meta);
+        await this.#pullHosts();
+        return st;
+      },
     );
     await conn.register();
 
@@ -1129,7 +1183,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   // Manage active host connections.
   public async connect(listen = true, sync = true) {
     const { connectToHost, scheduleSync, store } = this;
-    const enclave = await store.seed.load();
+    const enclave = this.#enclave();
     if (!enclave) {
       return;
     }

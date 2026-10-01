@@ -13,8 +13,6 @@ export const Purpose = {
   Fingerprint: "diplomatic.fingerprint.v1",
   Pair: "diplomatic.qrpair.v1",
   BagKdm: "diplomatic.bagkdm.v1",
-  AccountKey: "diplomatic.accountKey.v1",
-  AppKey: "diplomatic.appKey.v1",
   RealmKey: "diplomatic.realmKey.v1",
   RealmID: "diplomatic.realmID.v1",
 } as const;

@@ -3,7 +3,7 @@
 // unseals, and wipes those bytes. bind's tag checks stay on Enclave.
 // Only enclave.ts may call these.
 
-import { bytesEqual } from "../binary.ts";
+import { btob64url, bytesEqual } from "../binary.ts";
 import { Status } from "../consts.ts";
 import type { SealedMasterKey } from "../seed.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
@@ -46,6 +46,8 @@ export type PasskeyPrfOpts = PrfCreateOpts & {
 export type PrfBinding = {
   sealedMaster: SealedMasterKey;
   credId: Uint8Array;
+  /** PRF salt for this cred. Omitted salts use the ceremony salt. */
+  salt?: Uint8Array;
 };
 
 /** Durable PRF-sealed master + public ceremony facts (never includes PRF output). */
@@ -219,15 +221,23 @@ export async function evalPrf(
 
   const salt = opts?.salt ?? DEFAULT_PRF_SALT;
   const saltBuf = copyToArrayBuffer(salt);
+  const input: AuthenticationExtensionsPRFInputs = {
+    eval: { first: saltBuf },
+  };
+  const perCred = opts?.salts;
+  if (perCred !== undefined && perCred.length > 0) {
+    const byCred: Record<string, AuthenticationExtensionsPRFValues> = {};
+    for (const row of perCred) {
+      if (row.credId.byteLength === 0) continue;
+      byCred[btob64url(row.credId)] = { first: copyToArrayBuffer(row.salt) };
+    }
+    input.evalByCredential = byCred;
+  }
   const publicKey: PrfGetOpts = {
     challenge: randomBytesArrayBuffer(WEBAUTHN_CHAL_LEN),
     rpId,
     userVerification: "preferred",
-    extensions: {
-      prf: {
-        eval: { first: saltBuf },
-      },
-    },
+    extensions: { prf: input },
   };
   if (opts?.hints !== undefined) publicKey.hints = opts.hints;
   const allow = credIdList(opts?.credId);
@@ -349,8 +359,14 @@ export async function unsealPRF(
   }>
 > {
   const credIds: Uint8Array[] = [];
+  const salts: { credId: Uint8Array; salt: Uint8Array }[] = [];
+  let mixed = false;
   for (const w of bindings) {
-    if (w.credId.byteLength > 0) credIds.push(w.credId);
+    if (w.credId.byteLength === 0) continue;
+    credIds.push(w.credId);
+    const salt = w.salt ?? opts.salt;
+    if (!bytesEqual(salt, opts.salt)) mixed = true;
+    salts.push({ credId: w.credId, salt });
   }
   const [ev, est] = await evalPrf({
     rpId: opts.rpId,
@@ -358,6 +374,7 @@ export async function unsealPRF(
     hints: opts.hints,
     credId: credIds.length > 0 ? credIds : undefined,
     salt: opts.salt,
+    salts: mixed ? salts : undefined,
   });
   if (est !== Status.Success) return err(est);
   const match = bindings.find((w) => bytesEqual(w.credId, ev.credId));

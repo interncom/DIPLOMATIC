@@ -5,7 +5,8 @@ import { Database } from "bun:sqlite";
 import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
 import { Status } from "../src/shared/consts";
-import { ok } from "../src/shared/valstat";
+import { err, ok } from "../src/shared/valstat";
+import { singleAccountLabel } from "../src/stores/label";
 import { Enclave } from "../src/shared/crypto/enclave";
 import type {
   EntityID,
@@ -19,12 +20,12 @@ import type {
 import type {
   ApldState,
   HostStatsUpdate,
+  IAccountStore,
   IDownloadMessage,
   IDownloadQueue,
   IHostRow,
   IHostStore,
   IMessageStore,
-  ISeedStore,
   IStorableMessage,
   IStore,
   IStoredMessage,
@@ -120,12 +121,22 @@ function openDb(path: string): Database {
  * Session-only seed handle for perf harness. Does not write raw seed to SQLite
  * (Enclave is a one-way door). Durable identity in production uses PRF seal.
  */
-class SqliteSeedStore implements ISeedStore {
+class SqliteAccountStore implements IAccountStore {
   #enclave?: Enclave;
+  #label?: string;
 
   constructor(private db: Database, private crypto: ICrypto) {}
 
-  async save(enclave: Enclave, _opts?: { persist?: boolean }) {
+  async save(enclave: Enclave, opts?: { persist?: boolean; label?: string }) {
+    const [label, lst] = singleAccountLabel(
+      this.#label,
+      opts?.label,
+      this.#enclave !== undefined,
+    );
+    if (lst !== Status.Success || label === undefined) {
+      return err(Status.InvalidParam);
+    }
+    this.#label = label;
     this.#enclave = enclave;
     return ok(enclave);
   }
@@ -136,6 +147,7 @@ class SqliteSeedStore implements ISeedStore {
 
   async wipe() {
     this.#enclave = undefined;
+    this.#label = undefined;
     // Drop any legacy seed rows from older harness builds.
     this.db.exec("DELETE FROM seed");
   }
@@ -613,7 +625,7 @@ class SqliteMessageStore implements IMessageStore {
 }
 
 export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
-  seed: SqliteSeedStore;
+  account: SqliteAccountStore;
   hosts: SqliteHostStore<Handle>;
   uploads: SqliteUploadQueue;
   downloads: SqliteDownloadQueue;
@@ -622,7 +634,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
 
   constructor(path: string, crypto: ICrypto = libsodiumCrypto) {
     this.db = openDb(path);
-    this.seed = new SqliteSeedStore(this.db, crypto);
+    this.account = new SqliteAccountStore(this.db, crypto);
     this.hosts = new SqliteHostStore<Handle>(this.db);
     this.uploads = new SqliteUploadQueue(this.db);
     this.downloads = new SqliteDownloadQueue(this.db);
@@ -630,7 +642,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
   }
 
   async wipe() {
-    // Match IDBStore: do not call seed.wipe (identity separate from protocol data).
+    // Match IDBStore: do not call account.wipe (identity separate from protocol data).
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();

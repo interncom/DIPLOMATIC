@@ -381,4 +381,63 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(ust).toBe(Status.Success);
     expect(await store.load()).toBe(enc2);
   });
+
+  it("each account keeps its own largeBlob", async () => {
+    const workId = new Uint8Array(16).fill(1);
+    const homeId = new Uint8Array(16).fill(2);
+    const workBuf = workId.buffer.slice(
+      workId.byteOffset,
+      workId.byteOffset + workId.byteLength,
+    );
+    const homeBuf = homeId.buffer.slice(
+      homeId.byteOffset,
+      homeId.byteOffset + homeId.byteLength,
+    );
+    const create = vi.fn()
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { supported: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(homeBuf, { largeBlob: { supported: true } }),
+      );
+    const get = vi.fn()
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { written: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(homeBuf, { largeBlob: { written: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { blob: persistBlob(4) } }),
+      );
+    stubNav({ create, get });
+
+    const store = new PasskeySeedStore({ rpId: "localhost" });
+    const work = enclaveOf(4);
+    const [, wst] = await store.save(work, { label: "work", persist: true });
+    expect(wst).toBe(Status.Success);
+    expect(store.credId).toEqual(workId);
+    const [, hst] = await store.save(enclaveOf(5), {
+      label: "home",
+      persist: true,
+    });
+    expect(hst).toBe(Status.Success);
+    expect(store.credId).toEqual(homeId);
+    expect(create).toHaveBeenCalledTimes(2);
+    const allowId = (call: number) => {
+      const id = get.mock.calls[call][0].publicKey.allowCredentials[0].id;
+      return new Uint8Array(id);
+    };
+    expect(allowId(0)).toEqual(workId);
+    expect(allowId(1)).toEqual(homeId);
+
+    const [opened, ust] = await store.unlock({ label: "work" });
+    expect(ust).toBe(Status.Success);
+    if (opened === undefined) return;
+    const expected = await mustIdnt(work, "test", 0);
+    const got = await mustIdnt(opened, "test", 0);
+    expect(got.publicKey).toEqual(expected.publicKey);
+    expect(store.credId).toEqual(workId);
+    expect(allowId(2)).toEqual(workId);
+  });
 });

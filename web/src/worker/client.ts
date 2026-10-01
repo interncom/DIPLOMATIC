@@ -241,7 +241,7 @@ export class WorkerClient implements IClient<URL> {
 
   /** Seed + host from the local store. Worker never owns these. */
   private async loadSession(connected: boolean): Promise<void> {
-    const enclave = await this.store.seed.load();
+    const enclave = this.local.selected()?.enclave;
     const hosts = await this.store.hosts.list();
     this.cachedClientState = {
       hasSeed: enclave !== undefined,

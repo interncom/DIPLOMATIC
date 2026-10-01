@@ -14,7 +14,12 @@ export interface SerializedHost {
 
 export type WorkerCmd =
   | { id: number; op: "ping" }
-  | { id: number; op: "setSeed"; seed: Uint8Array; persist?: boolean }
+  | {
+    id: number;
+    op: "setSeed";
+    seed: Uint8Array;
+    persist?: boolean;
+  }
   | {
     id: number;
     op: "link";

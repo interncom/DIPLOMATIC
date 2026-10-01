@@ -188,6 +188,24 @@ describe("PrfSeedStore keyring", () => {
     expect(store.list()[1]?.lastUsedAt).toBeDefined();
   });
 
+  it("save names one account", async () => {
+    const store = new PrfSeedStore({
+      rpId: "localhost",
+      persistKeyring: () => Status.Success,
+    });
+    const work = enclaveOf(9);
+    expect((await store.save(work, { label: "work" }))[1]).toBe(Status.Success);
+    expect(await store.load()).toBe(work);
+    expect((await store.save(enclaveOf(1), { label: "home" }))[1]).toBe(
+      Status.InvalidParam,
+    );
+    expect(await store.load()).toBe(work);
+    await store.wipe();
+    expect((await store.save(enclaveOf(2), { label: "home" }))[1]).toBe(
+      Status.Success,
+    );
+  });
+
   it("bindAndSave refuses a different master", async () => {
     const first = stubPrfGet(3, 7);
     const store = new PrfSeedStore({

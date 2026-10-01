@@ -1,4 +1,5 @@
 import type { SyncProgressEvent } from "./progress";
+import type { IKDM } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/crypto/enclave";
 import type { EncodedMessage } from "./shared/message";
@@ -52,13 +53,18 @@ export type SetSeedOpts = {
    * When true, request durable storage **if the store supports a non-plaintext
    * durable form** (e.g. passkey largeBlob as IdentityBundle wire).
    * IDB holds the enclave in memory only — durable identity is the PRF keyring
-   * via {@link IDBSeedStore.openPrfStore}, never plain seed.
+   * via {@link IDBAccountStore.openPrfStore}, never plain seed.
    * Default false (session enclave only).
    *
    * Future: when PRF is unavailable, durable path is passphrase-sealed meta
    * (KDF + AEAD inside Enclave), not plain seed on disk.
    */
   persist?: boolean;
+  /**
+   * Account to install into. Omitted means the default account, "".
+   * A new label creates that account. An existing key tag must match.
+   */
+  label?: string;
 };
 
 /**
@@ -77,22 +83,32 @@ export type WipeOpts = {
   /** Hosts + upload/download queues. Default true. */
   meta?: boolean;
   /**
-   * Seed / identity ({@link ISeedStore.wipe}). Default **false**.
+   * Seed / identity ({@link IAccountStore.wipe}). Default **false**.
    * When true, passkey stores overwrite largeBlob (UV ceremony).
    */
   seed?: boolean;
 };
 
-// ISeedStore: session/durable access via Enclave (master seed never leaves enclave.ts).
-export interface ISeedStore {
+// Account list. The open account lives on the client, not in this store.
+export interface IAccountStore {
+  /** Record this enclave's key tag under `opts.label`. Does not open the account. */
   save: (enclave: Enclave, opts?: SetSeedOpts) => Promise<ValStat<Enclave>>;
-  load: () => Promise<Enclave | void>;
   /**
-   * Clear durable seed material for this store (IDB row, largeBlob overwrite, …)
-   * and drop the in-memory enclave. Called only when client.wipe({ seed: true }).
+   * Clear durable account material (IDB rows, largeBlob overwrite, …).
+   * Called only when client.wipe({ seed: true }).
    */
   wipe: () => Promise<void>;
 }
+
+/** Account the client is operating as. */
+export type OpenAccount<H extends HostHandle> = {
+  label: string;
+  enclave: Enclave;
+  /** Host rows as of the last open, link, or unlink. */
+  hosts: IHostRow<H>[];
+  /** TODO(realms): realm list discovered when this account is unlocked. */
+  realms: IKDM[];
+};
 
 export interface IHostRow<Handle extends HostHandle>
   extends IHostConnectionInfo<Handle>, Partial<IHostMetadata> {
@@ -382,13 +398,13 @@ export interface IMessageStore {
 }
 
 export interface IStore<Handle extends HostHandle> {
-  seed: ISeedStore;
+  account: IAccountStore;
   hosts: IHostStore<Handle>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
   /**
-   * Clear protocol tables (hosts, queues, messages). Does not call seed.wipe.
+   * Clear protocol tables (hosts, queues, messages). Does not call account.wipe.
    */
   wipe(): Promise<void>;
 }

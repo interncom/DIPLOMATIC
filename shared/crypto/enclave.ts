@@ -507,12 +507,15 @@ export class Enclave {
     }));
   }
 
-  // Paper-check digest (null-KDM child of the fingerprint PDK).
-  async fingerprint(): Promise<ValStat<PDK["Fingerprint"]>> {
+  // Fingerprint-PDK child. No kdm is the paper check (null KDM).
+  // A raw nonce is the per-account master check.
+  async fingerprint(
+    kdm: Uint8Array | IKDM = nullKDM,
+  ): Promise<ValStat<PDK["Fingerprint"]>> {
     return await deriveKey({
       parent: this.#seed,
       purpose: Purpose.Fingerprint,
-      kdm: nullKDM,
+      kdm,
     });
   }
 

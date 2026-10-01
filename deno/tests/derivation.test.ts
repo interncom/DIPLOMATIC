@@ -107,6 +107,24 @@ Deno.test("Enclave.fingerprint matches null-KDM fingerprint child", async () => 
   assert(bytesEqual(fp, child));
 });
 
+Deno.test("Enclave.fingerprint(nonce) is the fingerprint child of that nonce", async () => {
+  const nonce = new Uint8Array(32).fill(9);
+  const [enc, est] = Enclave.fromBytes(parent);
+  assertEquals(est, Status.Success);
+  const [fp, st] = await enc.fingerprint(nonce);
+  const [child, cst] = await deriveKey({
+    parent,
+    purpose: Purpose.Fingerprint,
+    kdm: nonce,
+  });
+  assertEquals(st, Status.Success);
+  assertEquals(cst, Status.Success);
+  assert(bytesEqual(fp, child));
+  const [paper, pst] = await enc.fingerprint();
+  assertEquals(pst, Status.Success);
+  assert(!bytesEqual(fp, paper));
+});
+
 Deno.test("KDM codec roundtrip", () => {
   const original = { label: "host", index: 3 };
   const enc = new Encoder();

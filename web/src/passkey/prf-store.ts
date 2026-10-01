@@ -9,7 +9,8 @@ import { Status } from "../shared/consts";
 import { bytesEqual } from "../shared/binary";
 import { asSealedMasterKey, type SealedMasterKey } from "../shared/seed";
 import { err, ok, type ValStat } from "../shared/valstat";
-import type { ISeedStore, SetSeedOpts } from "../types";
+import { singleAccountLabel } from "../stores/label";
+import type { IAccountStore, SetSeedOpts } from "../types";
 import { DEFAULT_PRF_USER_NAME, type PrfRp } from "../shared/webauthn/prf";
 import {
   type AuthenticatorAttachmentName,
@@ -70,6 +71,13 @@ export type PersistKeyring = (
 export type PrfSeedStoreOpts = PrfRp & {
   persistKeyring: PersistKeyring;
   keyring?: Keyring;
+  /**
+   * When set, unlock runs this instead of the keyring held here.
+   * The account store uses it to pick the row by the asserted credId.
+   */
+  unlockAccount?: () => Promise<
+    ValStat<{ enclave: Enclave; keyring?: Keyring }>
+  >;
 };
 
 /**
@@ -79,19 +87,23 @@ export type PrfSeedStoreOpts = PrfRp & {
  * - {@link bindAndSave} creates a binding and appends/upserts a keyring entry.
  * - {@link unlock} runs PRF UV inside Enclave and returns a new enclave.
  */
-export class PrfSeedStore implements ISeedStore {
+export class PrfSeedStore implements IAccountStore {
   #enclave: Enclave | undefined;
   #keyring: Keyring | undefined;
   #rp: PrfRp;
   /** WebAuthn user.name — rpId (hostname) so the binding key is app-specific. */
   #userName: string;
   #persist: PersistKeyring;
+  #unlockAccount?: PrfSeedStoreOpts["unlockAccount"];
+  /** The one account this keyring belongs to. */
+  #label?: string;
 
   constructor(opts: Omit<PrfSeedStoreOpts, "keyring">) {
     this.#persist = opts.persistKeyring;
     this.#rp = { rpId: opts.rpId, rpName: opts.rpName };
     this.#userName = opts.userName ?? opts.rpId ?? opts.rpName ??
       DEFAULT_PRF_USER_NAME;
+    this.#unlockAccount = opts.unlockAccount;
   }
 
   // Copies `opts.keyring` in. Fails instead of starting with an empty ring.
@@ -121,7 +133,14 @@ export class PrfSeedStore implements ISeedStore {
     enclave: Enclave,
     opts?: SetSeedOpts,
   ): Promise<ValStat<Enclave>> {
+    const occupied = this.#enclave !== undefined ||
+      (this.#keyring !== undefined && this.#keyring.entries.length > 0);
+    const [label, lst] = singleAccountLabel(this.#label, opts?.label, occupied);
+    if (lst !== Status.Success || label === undefined) {
+      return err(Status.InvalidParam);
+    }
     if (opts?.persist === true) return err(Status.InvalidParam);
+    this.#label = label;
     this.#enclave = enclave;
     return ok(this.#enclave);
   }
@@ -209,8 +228,26 @@ export class PrfSeedStore implements ISeedStore {
     return this.#enclave;
   }
 
-  /** Passkey UV inside Enclave → new session enclave. */
+  /**
+   * Passkey UV inside Enclave → new session enclave.
+   * With `unlockAccount`, the asserted credId selects the account.
+   */
   async unlock(): Promise<ValStat<Enclave>> {
+    const pick = this.#unlockAccount;
+    if (pick !== undefined) {
+      const [out, st] = await pick();
+      if (st !== Status.Success) return err(st);
+      if (out === undefined) return err(Status.NotFound);
+      if (out.keyring === undefined) {
+        this.#keyring = undefined;
+      } else {
+        const [ring, rst] = cloneKeyring(out.keyring);
+        if (rst !== Status.Success) return err(rst);
+        this.#keyring = ring;
+      }
+      this.#enclave = out.enclave;
+      return ok(out.enclave);
+    }
     const ring = this.#keyring;
     if (ring === undefined || ring.entries.length === 0) {
       return err(Status.MissingSeed);
@@ -224,7 +261,7 @@ export class PrfSeedStore implements ISeedStore {
     );
     if (ust !== Status.Success) return err(ust);
     this.#enclave = out.enclave;
-    const [next, tst] = touchEntry(ring, out.credId);
+    const [next, tst] = touchKeyring(ring, out.credId);
     if (tst !== Status.Success) return err(tst);
     if (next !== undefined) {
       const pst = await this.#persist(next);
@@ -280,6 +317,7 @@ export class PrfSeedStore implements ISeedStore {
   async wipe(): Promise<void> {
     this.#enclave = undefined;
     this.#keyring = undefined;
+    this.#label = undefined;
     await this.#persist(undefined);
   }
 }
@@ -441,7 +479,8 @@ function upsertEntry(ring: Keyring, next: KeyringEntry): ValStat<Keyring> {
   return ok({ salt: ring.salt.slice(), entries });
 }
 
-function touchEntry(
+// Bumps lastUsedAt on the entry for credId. No change when the id is absent.
+export function touchKeyring(
   ring: Keyring,
   credId: Uint8Array,
 ): ValStat<Keyring | undefined> {

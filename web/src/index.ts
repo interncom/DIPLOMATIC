@@ -79,7 +79,7 @@ import {
 import type { PairRequest } from "./shared/crypto/pairing";
 import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
-import { IDBSeedStore } from "./stores/idb/seed";
+import { IDBAccountStore } from "./stores/idb/account";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
@@ -95,6 +95,7 @@ import type {
   IStoredMessageData,
   IStoredMessageWrite,
   ListMsgsOpts,
+  OpenAccount,
   ReconcileOpts,
   ReconcileReport,
   SetSeedOpts,
@@ -200,7 +201,7 @@ export {
   hostHTTPTransport,
   htob,
   HTTPTransport,
-  IDBSeedStore,
+  IDBAccountStore,
   IDBStore,
   idleProgress,
   IEntDB,
@@ -286,6 +287,7 @@ export type {
   KeyringEntry,
   KeyringRow,
   ListMsgsOpts,
+  OpenAccount,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,

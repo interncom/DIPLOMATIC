@@ -146,10 +146,7 @@ export class WorkerRuntime {
         const [enclave, st] = Enclave.fromBytes(cmd.seed);
         cmd.seed.fill(0);
         if (st !== Status.Success) throw new WorkerStatusError(st);
-        const sst = await client.setSeed(enclave, {
-          persist: cmd.persist,
-        });
-        if (sst !== Status.Success) throw new WorkerStatusError(sst);
+        await client.adopt(enclave);
         return undefined;
       }
 

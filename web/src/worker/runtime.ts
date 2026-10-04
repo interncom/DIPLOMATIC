@@ -10,16 +10,22 @@ import { Status } from "../shared/consts";
 import { Enclave } from "../shared/crypto/enclave";
 import { hostHTTPTransport } from "../shared/http";
 import { StateManager } from "../state";
-import { openIDBStore } from "../stores/idb/store";
+import { IDBStore, openBoundStore } from "../stores/idb/store";
 import type { SerializedHost, WorkerCmd, WorkerEvent } from "./protocol";
 
 export type PostFn = (msg: WorkerEvent, transfer?: Transferable[]) => void;
 
+function canClose(value: object): value is { close(): void } {
+  return "close" in value && typeof value.close === "function";
+}
+
 export class WorkerRuntime {
   private client: SyncClient<URL> | undefined;
+  private store: IDBStore | undefined;
   private entDB: IEntDB | undefined;
+  private boundLabel = "";
   private post: PostFn;
-  /** Resolves when init finishes (success or failure). Cmds wait on this. */
+  /** Resolves when bind finishes (success or failure). Cmds wait on this. */
   private whenReady: Promise<void>;
   private resolveReady: (() => void) | undefined;
   private rejectReady: ((e: Error) => void) | undefined;
@@ -32,11 +38,16 @@ export class WorkerRuntime {
     });
   }
 
-  async init(): Promise<void> {
+  // Opens the account databases named by the main thread. Does not open meta.
+  private async bindStores(cmd: {
+    label: string;
+    data: string;
+    ents: string;
+  }): Promise<void> {
+    if (this.client !== undefined) return;
     try {
-      const store = await openIDBStore(crypto);
-      const entDB = await openEntDB({ cache: false });
-      // Real EntDB apply in-worker; signal main with eids to re-read from IDB.
+      const store = await openBoundStore(crypto, cmd.data);
+      const entDB = await openEntDB({ cache: false, name: cmd.ents });
       const state = new StateManager(
         entDB.apply,
         () => entDB.clear(),
@@ -48,7 +59,6 @@ export class WorkerRuntime {
           });
         },
       );
-      // Ensure clear also notifies main (wipe path).
       const origClear = state.clear;
       state.clear = async () => {
         const st = await origClear();
@@ -57,7 +67,6 @@ export class WorkerRuntime {
         }
         return st;
       };
-
       const client = new SyncClient(
         new Clock(),
         state,
@@ -66,22 +75,20 @@ export class WorkerRuntime {
         crypto,
       );
       this.client = client;
+      this.store = store;
       this.entDB = entDB;
-
-      // Progress lives on xferState; one channel for queues + phase ticks.
+      this.boundLabel = cmd.label;
       client.clientState.listen(() => {
         void this.emitClientState();
       });
       client.xferState.listen(() => {
         void this.emitXferState();
       });
-
       await this.emitXferState();
       this.post({ kind: "ready" });
       this.markReady();
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      // Surface to main: without this, connect only sees a ready timeout.
       this.post({ kind: "initError", message: err.message });
       this.failReady(err);
       throw err;
@@ -132,9 +139,11 @@ export class WorkerRuntime {
   }
 
   async handle(cmd: WorkerCmd): Promise<unknown> {
-    // Early cmds (esp. main-thread handshake ping) wait until init finishes.
-    // Unsolicited `ready` can be missed if the app constructed the Worker before
-    // attaching onmessage; request/response still works.
+    // bind opens the databases. Other cmds wait until that finishes.
+    if (cmd.op === "bind") {
+      await this.bindStores(cmd);
+      return undefined;
+    }
     await this.whenReady;
     const client = this.requireClient();
 
@@ -146,7 +155,8 @@ export class WorkerRuntime {
         const [enclave, st] = Enclave.fromBytes(cmd.seed);
         cmd.seed.fill(0);
         if (st !== Status.Success) throw new WorkerStatusError(st);
-        await client.adopt(enclave);
+        const opened = await client.adopt(enclave, this.boundLabel);
+        if (opened !== Status.Success) throw new WorkerStatusError(opened);
         return undefined;
       }
 
@@ -225,6 +235,11 @@ export class WorkerRuntime {
           meta: cmd.meta,
           seed: cmd.seed,
         });
+        if (cmd.seed === true) {
+          this.store?.close();
+          const ent = this.entDB;
+          if (ent !== undefined && canClose(ent)) ent.close();
+        }
         return undefined;
       }
 

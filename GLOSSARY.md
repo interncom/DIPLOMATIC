@@ -52,7 +52,8 @@ On-device list of bindings. Not synced.
 
 - **pdk** — purpose-derived key. Intermediate key from a parent (e.g. master seed) and a protocol purpose tag. Child keys are derived from a PDK so a bug in one purpose cannot expose the parent or another purpose.
 - **ikm** — input keying material (PRF output; see above).
-- **kdm** — key derivation material. Structured KDM is `{label, index}`: a user-significant label plus a 0-based rotation index (empty label / index 0 is the null KDM). Also the 8-byte public bag field, a truncated child of the bag-kdm PDK keyed by the message head.
+- **kdm** — key derivation material. Structured KDM is `{label, index}`: a user-significant label plus a 0-based index (empty label / index 0 is the null KDM). The numeric portion of a KDM is always `index`. Also the 8-byte public bag field, a truncated child of the bag-kdm PDK keyed by the message head.
+- **seq** — host-assigned position of a bag in one realm. A host cursor stores the newest one as `lastSeq`.
 - **cph** (suffix) — encrypted, e.g. `headCph`.
 - **enc** (suffix) — binary-encoded, e.g. `bagEnc`. Also *encoder* (`enc` / `dec` = encoder / decoder).
 - **deriv** — derivation.

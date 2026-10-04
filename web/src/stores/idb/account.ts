@@ -31,46 +31,59 @@ import {
   makeKeyTag,
 } from "../keyTag";
 import { accountLabel } from "../label";
+import { deleteDatabase } from "./idbutil";
+import { assignEnts, placeAccount } from "./names";
 import { ACCOUNTS_TABLE } from "./store";
 
-/** One account: its label, a key tag, and the binding that unseals its key. */
+/**
+ * One account: its label, catalog id, database names, key tag, and the
+ * binding that unseals its key.
+ */
 export type Account = {
   label: string;
+  /** Stable id. Database names are derived from this. */
+  acct?: string;
+  /** Protocol database name. */
+  data?: string;
+  /** EntDB name. Absent until EntDB is opened. */
+  ents?: string;
   keyTag?: KeyTag;
   keyring?: Keyring;
 };
-
-// TODO(accounts-sunset): builds a row from seedMeta. Delete with adoptSeedMeta.
-export function accountFromSeedMeta(
-  label: string,
-  tagRaw: unknown,
-  ringRaw: unknown,
-): Account | undefined {
-  const keyTag = decodeKeyTag(tagRaw);
-  const keyring = decodeKeyring(ringRaw);
-  if (keyTag === undefined && keyring === undefined) return undefined;
-  const row: Account = { label };
-  if (keyTag !== undefined) row.keyTag = keyTag;
-  if (keyring !== undefined) row.keyring = keyring;
-  return row;
-}
 
 function isRec(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object";
 }
 
+function strField(
+  raw: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const v = raw[key];
+  if (typeof v !== "string" || v === "") return undefined;
+  return v;
+}
+
+// Copies catalog fields the editor did not set.
+function carry(cur: Account | undefined, next: Account): Account {
+  if (cur === undefined) return next;
+  if (next.acct === undefined) next.acct = cur.acct;
+  if (next.data === undefined) next.data = cur.data;
+  if (next.ents === undefined) next.ents = cur.ents;
+  return next;
+}
+
 // Reads an account row.
 export function decodeAccount(raw: unknown): Account | undefined {
-  if (!isRec(raw)) return undefined;
-  let label: string | undefined;
-  if (typeof raw.label === "string") label = raw.label;
-  // TODO(accounts-sunset): v4 key was a generated id.
-  // Drop once those DBs have opened v5.
-  else if (typeof raw.id === "string" && raw.id !== "") label = raw.id;
-  if (label === undefined) return undefined;
-  const row: Account = { label };
-  // TODO(accounts-sunset): the field was idPin.
-  const keyTag = decodeKeyTag(raw.keyTag ?? raw.idPin);
+  if (!isRec(raw) || typeof raw.label !== "string") return undefined;
+  const row: Account = { label: raw.label };
+  const acct = strField(raw, "acct");
+  const data = strField(raw, "data");
+  const ents = strField(raw, "ents");
+  if (acct !== undefined) row.acct = acct;
+  if (data !== undefined) row.data = data;
+  if (ents !== undefined) row.ents = ents;
+  const keyTag = decodeKeyTag(raw.keyTag);
   const keyring = decodeKeyring(raw.keyring);
   if (keyTag !== undefined) row.keyTag = keyTag;
   if (keyring !== undefined) row.keyring = keyring;
@@ -122,28 +135,43 @@ function accountsFrom(raw: unknown): Account[] {
   return out;
 }
 
-// Writes one account. Omits the key tag or keyring when that side is absent.
+// Writes one account. Omits a side when it is absent.
 function putAccount(
   store: IDBObjectStore,
-  label: string,
+  row: Account,
   keyTag: unknown,
   keyring: unknown,
 ): void {
-  const row: { label: string; keyTag?: unknown; keyring?: unknown } = {
-    label,
-  };
-  if (keyTag !== undefined) row.keyTag = keyTag;
-  if (keyring !== undefined) row.keyring = keyring;
-  store.put(row);
+  const out: {
+    label: string;
+    acct?: string;
+    data?: string;
+    ents?: string;
+    keyTag?: unknown;
+    keyring?: unknown;
+  } = { label: row.label };
+  if (row.acct !== undefined) out.acct = row.acct;
+  if (row.data !== undefined) out.data = row.data;
+  if (row.ents !== undefined) out.ents = row.ents;
+  if (keyTag !== undefined) out.keyTag = keyTag;
+  if (keyring !== undefined) out.keyring = keyring;
+  store.put(out);
 }
 
 export class IDBAccountStore implements IAccountStore {
   db: IDBDatabase;
   #crypto: ICrypto;
+  /** Closes the open protocol database before it is deleted. */
+  #closeData: (() => void) | undefined;
 
   constructor(db: IDBDatabase, crypto: ICrypto) {
     this.db = db;
     this.#crypto = crypto;
+  }
+
+  // Closes the open protocol database before a seed wipe deletes it.
+  setCloser(close: () => void) {
+    this.#closeData = close;
   }
 
   /**
@@ -161,7 +189,7 @@ export class IDBAccountStore implements IAccountStore {
       return err(Status.InvalidParam);
     }
     const got = await this.#get(name);
-    if (got.acct?.keyTag !== undefined) {
+    if (got?.keyTag !== undefined) {
       musec.fill(0);
       return err(Status.HashMismatch);
     }
@@ -197,7 +225,42 @@ export class IDBAccountStore implements IAccountStore {
     return ok(enclave);
   }
 
+  // Protocol database for `label`, or undefined when that account has no row.
+  async dataName(label: string): Promise<string | undefined> {
+    const got = await this.#get(label);
+    if (got === undefined) return undefined;
+    if (got.data !== undefined && got.data !== "") return got.data;
+    await this.#change(label, (cur) => {
+      if (cur === undefined) return undefined;
+      return { ...cur };
+    });
+    const again = await this.#get(label);
+    return again?.data;
+  }
+
+  // EntDB name for `label`. Creates the catalog row when this account is new.
+  async ensureEnts(label: string): Promise<string> {
+    const [name, lst] = accountLabel(label);
+    if (lst !== Status.Success || name === undefined) {
+      throw new Error("[DIPLOMATIC] invalid account label");
+    }
+    const got = await this.#get(name);
+    const placed = placeAccount(got?.acct, got?.data);
+    const ents = assignEnts(placed.acct, got?.ents);
+    await this.#change(name, (cur) => {
+      const base: Account = cur === undefined ? { label: name } : { ...cur };
+      return { ...base, acct: placed.acct, data: placed.data, ents };
+    });
+    return ents;
+  }
+
   async wipe() {
+    const rows = await this.#list();
+    this.#closeData?.();
+    for (const row of rows) {
+      if (row.data !== undefined) await deleteDatabase(row.data);
+      if (row.ents !== undefined) await deleteDatabase(row.ents);
+    }
     const tx = this.db.transaction(ACCOUNTS_TABLE, "readwrite");
     const store = tx.objectStore(ACCOUNTS_TABLE);
     return new Promise<void>((resolve, reject) => {
@@ -211,7 +274,7 @@ export class IDBAccountStore implements IAccountStore {
     const [name, st] = await this.#boundLabel(label);
     if (st !== Status.Success || name === undefined) return undefined;
     const got = await this.#get(name);
-    return got.acct?.keyring;
+    return got?.keyring;
   }
 
   async persistKeyring(
@@ -269,12 +332,12 @@ export class IDBAccountStore implements IAccountStore {
     const hit = creds.find((c) => bytesEqual(c.credId, out.credId));
     if (hit === undefined) return err(Status.NotFound);
     const got = await this.#get(hit.label);
-    const tag = got.acct?.keyTag;
+    const tag = got?.keyTag;
     if (tag !== undefined) {
-      const match = await keyTagMatches(this.#crypto, out.enclave, tag);
-      if (!match.ok) return err(Status.HashMismatch);
+      const match = await keyTagMatches(out.enclave, tag);
+      if (!match) return err(Status.HashMismatch);
     }
-    const ring = got.acct?.keyring;
+    const ring = got?.keyring;
     if (ring === undefined) return err(Status.NotFound);
     const [next, tst] = touchKeyring(ring, out.credId);
     if (tst !== Status.Success) return err(tst);
@@ -323,28 +386,10 @@ export class IDBAccountStore implements IAccountStore {
 
   // Checks the key tag on `label`, or writes one and creates the row.
   async #assertKeyTag(enclave: Enclave, label: string): Promise<Status> {
-    const got = await this.#get(label);
-    const cur = got.acct;
+    const cur = await this.#get(label);
     if (cur?.keyTag !== undefined) {
-      const hit = await keyTagMatches(this.#crypto, enclave, cur.keyTag);
-      if (!hit.ok) return Status.HashMismatch;
-      // TODO(accounts-sunset): rewrite a legacy pubkey-hash tag in place.
-      if (hit.next !== undefined) {
-        const cloned = cloneKeyTag(hit.next);
-        await this.#change(label, (row) => {
-          const next: Account = { label, keyTag: cloned };
-          if (row?.keyring !== undefined) next.keyring = row.keyring;
-          return next;
-        });
-      } else if (got.legacyName) {
-        // TODO(accounts-sunset): the field was idPin. Move it onto keyTag.
-        await this.#change(label, (row) => {
-          if (row?.keyTag === undefined) return row;
-          const next: Account = { label, keyTag: row.keyTag };
-          if (row.keyring !== undefined) next.keyring = row.keyring;
-          return next;
-        });
-      }
+      const hit = await keyTagMatches(enclave, cur.keyTag);
+      if (!hit) return Status.HashMismatch;
       return Status.Success;
     }
     const [tag, tst] = await makeKeyTag(this.#crypto, enclave);
@@ -364,9 +409,7 @@ export class IDBAccountStore implements IAccountStore {
     return this.#assertKeyTag(enclave, label);
   }
 
-  // Label for a keyring read or write. An explicit label wins.
-  // TODO(accounts-sunset): callers that never name a label still hit the one
-  // pre-accounts identity. Require a label once every caller names one.
+  // Label for a keyring read or write. An omitted label is the only account.
   async #boundLabel(label?: string): Promise<ValStat<string>> {
     if (label !== undefined) {
       const [name, st] = accountLabel(label);
@@ -382,20 +425,13 @@ export class IDBAccountStore implements IAccountStore {
     return err(Status.InvalidParam);
   }
 
-  // Reads one account. legacyName is set when the row still uses idPin.
-  #get(label: string): Promise<{ acct?: Account; legacyName: boolean }> {
+  // Reads one account.
+  #get(label: string): Promise<Account | undefined> {
     const tx = this.db.transaction(ACCOUNTS_TABLE, "readonly");
     const store = tx.objectStore(ACCOUNTS_TABLE);
     return new Promise((resolve, reject) => {
       const req = store.get(label);
-      req.onsuccess = () => {
-        const raw = req.result;
-        const acct = decodeAccount(raw);
-        // TODO(accounts-sunset): the field was idPin.
-        const legacyName = isRec(raw) && raw.keyTag === undefined &&
-          raw.idPin !== undefined;
-        resolve({ acct, legacyName });
-      };
+      req.onsuccess = () => resolve(decodeAccount(req.result));
       req.onerror = () => reject(req.error);
     });
   }
@@ -411,7 +447,7 @@ export class IDBAccountStore implements IAccountStore {
   }
 
   // Updates the account `label`. Creates the row when `edit` returns one.
-  #change(
+  async #change(
     label: string,
     edit: (cur: Account | undefined) => Account | undefined,
   ): Promise<void> {
@@ -424,19 +460,28 @@ export class IDBAccountStore implements IAccountStore {
       req.onsuccess = () => {
         const stored = isRec(req.result) ? req.result : undefined;
         const cur = decodeAccount(req.result);
-        const next = edit(cur);
-        if (next === undefined) {
+        const edited = edit(cur);
+        if (edited === undefined) {
           if (cur !== undefined) store.delete(label);
           return;
         }
-        if (next === cur) return;
-        // Same object the editor was handed: keep the stored bytes.
+        const next = carry(cur, edited === cur ? { ...edited } : edited);
+        const placed = placeAccount(next.acct, next.data);
+        next.acct = placed.acct;
+        next.data = placed.data;
+        if (
+          edited === cur &&
+          cur?.acct === next.acct &&
+          cur?.data === next.data &&
+          cur?.ents === next.ents
+        ) {
+          return;
+        }
+        // Same key tag object the editor was handed: keep the stored bytes.
         let keyTag: unknown = undefined;
         if (next.keyTag !== undefined) {
-          // TODO(accounts-sunset): the field was idPin.
-          const storedTag = stored?.keyTag ?? stored?.idPin;
-          keyTag = next.keyTag === cur?.keyTag && storedTag !== undefined
-            ? storedTag
+          keyTag = next.keyTag === cur?.keyTag && stored?.keyTag !== undefined
+            ? stored.keyTag
             : next.keyTag;
         }
         let keyring: unknown = undefined;
@@ -446,7 +491,7 @@ export class IDBAccountStore implements IAccountStore {
               ? stored.keyring
               : next.keyring;
         }
-        putAccount(store, label, keyTag, keyring);
+        putAccount(store, next, keyTag, keyring);
       };
     });
   }

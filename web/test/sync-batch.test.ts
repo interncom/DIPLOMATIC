@@ -4,8 +4,9 @@ import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
+import { asHostRlm } from "../src/shared/crypto/derivation";
 import type { Hash, HostHandle, IBag } from "../src/shared/types";
-import { ok, err } from "../src/shared/valstat";
+import { err, ok } from "../src/shared/valstat";
 import { APLD_PENDING } from "../src/types";
 import type { IDownloadMessage } from "../src/types";
 import { sealBag } from "../src/shared/bag";
@@ -24,11 +25,15 @@ function hash(n: number): Hash {
 }
 
 function fakeBag(n = 1): IBag {
+  const [rlm, st] = asHostRlm(new Uint8Array(32).fill(n));
+  if (st !== Status.Success) throw new Error(`rlm ${st}`);
   return {
+    rlm,
     sig: new Uint8Array(64).fill(n),
     kdm: new Uint8Array(8).fill(n),
     headCph: new Uint8Array(16).fill(n),
-    bodyCph: new Uint8Array(8).fill(n) };
+    bodyCph: new Uint8Array(8).fill(n),
+  };
 }
 
 describe("pushBatch", () => {
@@ -37,7 +42,8 @@ describe("pushBatch", () => {
     await store.hosts.add({
       label: "h",
       handle: new URL("http://localhost"),
-      idx: 1 });
+      idx: 1,
+    });
     await store.hosts.touch("h", 10);
 
     const h1 = hash(1);
@@ -49,7 +55,8 @@ describe("pushBatch", () => {
         ok([
           { idx: 0, status: Status.Success, seq: 11 },
           { idx: 1, status: Status.Success, seq: 12 },
-        ]) };
+        ]),
+    };
 
     const st = await pushBatch(conn, store, "h", [fakeBag(1), fakeBag(2)], [
       h1,
@@ -66,7 +73,8 @@ describe("pushBatch", () => {
     await store.hosts.add({
       label: "h",
       handle: new URL("http://localhost"),
-      idx: 1 });
+      idx: 1,
+    });
 
     const h1 = hash(1);
     const h2 = hash(2);
@@ -77,7 +85,8 @@ describe("pushBatch", () => {
         ok([
           { idx: 0, status: Status.Success, seq: 1 },
           { idx: 1, status: Status.InvalidSignature },
-        ]) };
+        ]),
+    };
 
     const st = await pushBatch(conn, store, "h", [fakeBag(), fakeBag()], [
       h1,
@@ -96,14 +105,16 @@ describe("pushBatch", () => {
     await store.hosts.add({
       label: "h",
       handle: new URL("http://localhost"),
-      idx: 1 });
+      idx: 1,
+    });
     await store.hosts.touch("h", 5);
 
     const h1 = hash(1);
     await store.uploads.enq("h", [h1]);
 
     const conn = {
-      push: async () => ok([{ idx: 0, status: Status.Success, seq: 9 }]) };
+      push: async () => ok([{ idx: 0, status: Status.Success, seq: 9 }]),
+    };
 
     await pushBatch(conn, store, "h", [fakeBag()], [h1]);
     expect((await store.hosts.get("h"))?.lastSeq).toBe(5);
@@ -114,12 +125,14 @@ describe("pushBatch", () => {
     await store.hosts.add({
       label: "h",
       handle: new URL("http://localhost"),
-      idx: 1 });
+      idx: 1,
+    });
     const h1 = hash(1);
     await store.uploads.enq("h", [h1]);
 
     const conn = {
-      push: async () => err(Status.CommunicationError) };
+      push: async () => err(Status.CommunicationError),
+    };
 
     const st = await pushBatch(conn, store, "h", [fakeBag()], [h1]);
     expect(st).toBe(Status.CommunicationError);
@@ -139,7 +152,8 @@ describe("pullBodies + openPulled", () => {
       off: 0,
       ctr: 0,
       len: body.length,
-      bod: body };
+      bod: body,
+    };
     const [bag, bagStat] = await sealBag(
       message,
       hostIdnt,
@@ -158,11 +172,14 @@ describe("pullBodies + openPulled", () => {
         off: 0,
         ctr: 0,
         len: body.length,
-        hsh: await libsodiumCrypto.blake3(body) } };
+        hsh: await libsodiumCrypto.blake3(body),
+      },
+    };
     await store.downloads.enq([item]);
 
     const conn = {
-      pull: async () => ok([{ seq: 1, bodyCph: bag.bodyCph }]) };
+      pull: async () => ok([{ seq: 1, bodyCph: bag.bodyCph }]),
+    };
 
     const [pulled, pullStat] = await pullBodies(conn, [item]);
     expect(pullStat).toBe(Status.Success);
@@ -194,15 +211,17 @@ describe("pullBodies + openPulled", () => {
         eid: new Uint8Array(16).fill(3),
         off: 0,
         ctr: 0,
-        len: 1 } };
+        len: 1,
+      },
+    };
     await store.downloads.enq([item]);
 
     const conn = {
-      pull: async () => err(Status.HostError) };
+      pull: async () => err(Status.HostError),
+    };
 
     const [, st] = await pullBodies(conn, [item]);
     expect(st).toBe(Status.HostError);
     expect(await store.downloads.count()).toBe(1);
   });
 });
-

@@ -9,6 +9,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { Status } from "./shared/consts";
+import { realmKDMs } from "./stores/cursor";
 import { accountLabel } from "./stores/label";
 import { Exim } from "./shared/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
@@ -172,15 +173,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     const [, st] = await this.store.account.save(enclave, opts);
     if (st !== Status.Success) return st;
-    await this.#open(label, enclave);
+    const opened = await this.#open(label, enclave);
+    if (opened !== Status.Success) return opened;
     this.clientState.emit();
     return Status.Success;
   }
 
   // Opens an account whose key tag was already recorded. Used by the sync worker.
-  async adopt(enclave: Enclave): Promise<void> {
-    await this.#open("", enclave);
+  async adopt(enclave: Enclave, label = ""): Promise<Status> {
+    const opened = await this.#open(label, enclave);
+    if (opened !== Status.Success) return opened;
     this.clientState.emit();
+    return Status.Success;
   }
 
   #enclave(): Enclave | undefined {
@@ -197,13 +201,23 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     this.#account.hosts = await this.#hostRows();
   }
 
-  async #open(label: string, enclave: Enclave): Promise<void> {
+  // Copies realm counters onto the open account.
+  async #pullRealms(): Promise<void> {
+    if (this.#account === undefined) return;
+    this.#account.realms = await this.store.realms.list();
+  }
+
+  // Binds the protocol database, then records the open account.
+  async #open(label: string, enclave: Enclave): Promise<Status> {
+    const bst = await this.store.bind(label);
+    if (bst !== Status.Success) return bst;
     this.#account = {
       label,
       enclave,
       hosts: await this.#hostRows(),
-      realms: [],
+      realms: await this.store.realms.list(),
     };
+    return Status.Success;
   }
 
   private async getClientState(): Promise<IDiplomaticClientState> {
@@ -653,6 +667,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     // Unapplied archive (crash / prior open) before talking to hosts.
     await this.drainApplyQueue();
+    await this.#pullRealms();
+    const realms = realmKDMs(this.#account?.realms ?? []);
 
     for (const [label, conn] of connections) {
       const host = await store.hosts.get(label);
@@ -670,15 +686,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         peekProgressEvery: this.peekProgressEvery,
       };
 
-      const peekStat = await syncPeek(syncParams);
-      if (peekStat !== Status.Success) {
-        console.error(`Failed to peek: ${peekStat}`);
-        // Still publish queue depths (e.g. offline after local enqueue) and
-        // clear any mid-phase progress so Sync UI is not stuck on "peek".
-        this.emitProgress({ phase: "idle" });
-        return peekStat;
+      for (const realm of realms) {
+        const peekStat = await syncPeek({ ...syncParams, realm });
+        if (peekStat !== Status.Success) {
+          console.error(`Failed to peek: ${peekStat}`);
+          // Still publish queue depths (e.g. offline after local enqueue) and
+          // clear any mid-phase progress so Sync UI is not stuck on "peek".
+          this.emitProgress({ phase: "idle" });
+          return peekStat;
+        }
+        this.xferState.emit();
       }
-      this.xferState.emit();
 
       // Push before pull: local redundancy first.
       const pushStat = await syncPush(syncParams);
@@ -758,9 +776,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   }
 
   /**
-   * Full inventory of one host (peek seq 0): advances lastSeq; optionally
-   * enqueues pull/push. Waits out in-flight {@link sync} first (same as
-   * {@link rebuild}). By default drains via {@link sync}, then re-inventories.
+   * Full inventory of one host (peek seq 0 per realm). Sets each cursor and
+   * optionally enqueues pull/push. Waits out in-flight {@link sync} first
+   * (same as {@link rebuild}). By default drains via {@link sync}, then
+   * re-inventories.
    * Returns ephemeral {@link ReconcileReport} (msgcheck, numBags, numDupes) —
    * bag tallies are not persisted.
    */
@@ -855,6 +874,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (hosts.length < 1) {
       return Status.Success;
     }
+    await this.#pullRealms();
+    const realms = realmKDMs(this.#account?.realms ?? []);
 
     // Connect to any hosts that are known but not connected.
     for (const host of hosts) {
@@ -871,12 +892,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       // TODO: handle missing hosts better. If all were missing, would be NOP but still report success.
       if (!host) continue;
 
-      // Full inventory: override lastSeq so peek returns every head.
+      // Full inventory: every realm starts at seq 0.
       const syncParams: ISyncParams<Handle> = {
         conn,
         store,
         enclave,
-        host: { ...host, lastSeq: 0 },
+        host: { ...host, lastSeq: 0, seqs: undefined },
         crypto,
         maxPushBytes: this.maxPushBytes,
         maxPullBytes: this.maxPullBytes,
@@ -884,13 +905,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         peekProgressEvery: this.peekProgressEvery,
       };
 
-      const peekStat = await syncPeek(syncParams);
-      if (peekStat !== Status.Success) {
-        console.error(`rebuild: failed to peek: ${peekStat}`);
-        this.emitProgress({ phase: "idle" });
-        return peekStat;
+      for (const realm of realms) {
+        const peekStat = await syncPeek({ ...syncParams, realm });
+        if (peekStat !== Status.Success) {
+          console.error(`rebuild: failed to peek: ${peekStat}`);
+          this.emitProgress({ phase: "idle" });
+          return peekStat;
+        }
+        this.xferState.emit();
       }
-      this.xferState.emit();
 
       // Open only — no exec; replay applies the full archive after clear.
       const pullStat = await syncPull(syncParams);
@@ -976,14 +999,16 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     if (msgs) {
       await store.messages.wipe();
     }
+    if (ents) {
+      await this.state.clear();
+    }
     if (seed) {
       await store.account.wipe();
+      await store.realms.wipe();
       this.#account = undefined;
     } else if (meta) {
       await this.#pullHosts();
-    }
-    if (ents) {
-      await this.state.clear();
+      await this.#pullRealms();
     }
 
     this.lastProgress = idleProgress;
@@ -1091,6 +1116,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public async link(host: IHostConnectionInfo<Handle>, connect = true) {
     await this.store.hosts.add(host);
     await this.#pullHosts();
+    await this.#pullRealms();
     this.clientState.emit();
 
     if (connect) {
@@ -1104,6 +1130,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   public async unlink(label: string) {
     await this.store.hosts.del(label);
     await this.#pullHosts();
+    await this.#pullRealms();
     this.clientState.emit();
   }
 
@@ -1146,6 +1173,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       async (meta) => {
         const st = await store.hosts.set(host.label, meta);
         await this.#pullHosts();
+        await this.#pullRealms();
         return st;
       },
     );

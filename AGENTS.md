@@ -2,7 +2,7 @@ This repo has a few related projects in it, implementing the DIPLOMATIC protocol
 
 ## Style
 
-Prefer terse variable names, even at the expense of immediate readability to an outsider. Someone who spends time with the code will learn to recognize them. This project is meant to be very compact. It won't have many collaborators. GLOSSARY.md defines some terms. Do not use the ! operator or `as any` in TypeScript to cheat and avoid the type system. Generally follow the style of code in the files you're working on.
+Prefer terse variable names, even at the expense of immediate readability to an outsider. Someone who spends time with the code will learn to recognize them. This project is meant to be very compact. It won't have many collaborators. GLOSSARY.md defines the names to use. Follow it. Do not use the ! operator or `as any` in TypeScript to cheat and avoid the type system. Generally follow the style of code in the files you're working on.
 
 Run `style.sh` in the root of the project to enforce style rules after completing your work.
 
@@ -18,6 +18,8 @@ When implementing a change, there is sometimes a refactor that looks useful to d
 
 To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are *not* desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
 
+A short name still names the thing. Bare words like `Group` are too vague. Name the contents.
+
 ## Function Documentation
 Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. You can explain special cases on a follow-up line. For instance:
 
@@ -27,9 +29,23 @@ function gcd(a, b) {
   // ... implementation
 }
 
+## File Documentation
+
+Start each file with a brief one-line comment describing the file's purpose. Use a grammatical sentence.
+
+## Upgrades
+
+One-time upgrade code is tagged `TODO(realms-sunset):` or `TODO(accounts-sunset):` and says when it is safe to delete.
+
+## Feedback
+
+When given a general piece of feedback — a rule that should apply beyond the edit in front of you — make the requested change, and record the rule in this file. For example: "start files with a brief (1-line) comment describing the file's purpose."
+
 ## Types
 
 Prefer branded types over raw Uint8Array bytes. Those bytes will need some explanation of their purpose so we might as well make it explicit with a branded type rather than relying on comments.
+
+The numeric portion of a KDM is `index`. On a realm row, `prior` holds older indexes. A bag's position is `seq`.
 
 ## Exports
 

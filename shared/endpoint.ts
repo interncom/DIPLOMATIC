@@ -16,13 +16,13 @@ interface IProtoClient {
   clock: IClock;
 }
 
-export interface IAuthenticatedEndpoint<ReqItem, Resp> {
-  // encodeReq writes request data to the provided reqEnc.
+export interface IAuthenticatedEndpoint<ReqInput, Resp> {
+  // Writes the auth timestamp, then one ReqInput via that call's codec.
   encodeReq(
     client: IProtoClient,
     identity: Identity,
     authTS: IAuthTimestamp,
-    body: Iterable<ReqItem>,
+    body: ReqInput,
     reqEnc: Encoder,
   ): Promise<Status>;
 

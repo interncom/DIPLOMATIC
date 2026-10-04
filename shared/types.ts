@@ -4,6 +4,7 @@ import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
 import { IUsageQuota } from "./codecs/usageQuota.ts";
 import { APICallName, Status } from "./consts.ts";
+import type { HostRlm } from "./crypto/derivation.ts";
 import type { ValStat } from "./valstat.ts";
 
 /** Identity seed brands — defined in seed.ts; re-exported for convenience. */
@@ -123,31 +124,39 @@ export type IDeleteParams =
   | { prior: IEntRev; force?: boolean }
   | { eid: EntityID; force?: boolean };
 
+/** One setBags outcome. Success carries the host seq in that bag's rlm. */
+export type ISetBagResult =
+  | { status: Status.Success; seq: number }
+  | { status: Exclude<Status, Status.Success> };
+
 export interface IStorage {
   addUser: (pubKey: PublicKey) => Promise<ValStat<void>>;
   hasUser: (pubKey: PublicKey) => Promise<ValStat<boolean>>;
   subMeta: (pubKey: PublicKey) => Promise<ValStat<ISubscriptionMetadata>>;
   /**
-   * Store bags for a user. Returns host seq for each bag in order.
-   * Empty list succeeds with []. Implementations must assign contiguous
-   * seqs atomically (transaction / single batch) so concurrent writers
-   * cannot claim the same seq.
+   * Store bags for a user. One result per input bag, same order.
+   * An invalid rlm is InvalidParam for that bag; the others are still stored.
+   * Seqs are contiguous per rlm among stored bags, assigned atomically so
+   * concurrent writers cannot claim the same seq in the same rlm.
+   * Empty list succeeds with []. A storage failure fails the call.
    */
   setBags: (
     pubKey: PublicKey,
     bags: IBag[],
-  ) => Promise<ValStat<number[]>>;
+  ) => Promise<ValStat<ISetBagResult[]>>;
   /**
-   * Fetch ciphertext bodies for the given host seqs.
-   * Returns only seqs that exist (missing seqs are omitted, not an error).
-   * Empty `seqs` succeeds with [].
+   * Fetch ciphertext bodies for `seqs` in `rlm`.
+   * Missing seqs are omitted. Empty `seqs` succeeds with [].
    */
   getBodies: (
     pubKey: PublicKey,
+    rlm: HostRlm,
     seqs: number[],
   ) => Promise<ValStat<{ seq: number; bodyCph: Uint8Array }[]>>;
+  /** Heads in `rlm` with seq greater than minSeq, ordered by seq. */
   listHeads: (
     pubKey: PublicKey,
+    rlm: HostRlm,
     minSeq: number,
   ) => Promise<ValStat<IBagPeekItem[]>>;
 }
@@ -253,6 +262,9 @@ export interface IPushListener {
 }
 
 export interface IBagHeader {
+  /** HostRLM. Covered by sig, with headCph. */
+  rlm: HostRlm;
+  /** Ed25519 over rlm ‖ headCph. First field on the wire. */
   sig: Uint8Array;
   kdm: Uint8Array;
 }

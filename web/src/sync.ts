@@ -9,11 +9,22 @@ import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { Decoder, Encoder } from "./shared/codec";
+import type { IKDM } from "./shared/codecs/kdm";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { notifItemCodec } from "./shared/codecs/notifItem";
 import { Status } from "./shared/consts";
+import { nullKDM } from "./shared/crypto/derivation";
 import { Enclave } from "./shared/crypto/enclave";
 import { decryptPeekItem } from "./shared/sync";
+import {
+  cursorOf,
+  realmKDM,
+  realmKDMs,
+  realmKey,
+  sameRealm,
+  storedRealm,
+} from "./stores/cursor";
+import { realmLabel } from "./stores/realm";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
 import { btob64 } from "./shared/binary";
@@ -55,7 +66,7 @@ export type IPulled = {
 /** Host connection methods used by sync phases. */
 export type SyncConn<Handle extends HostHandle> = Pick<
   DiplomaticClientAPI<Handle>,
-  "pull" | "push" | "peek" | "seal" | "identity"
+  "pull" | "push" | "peek" | "seal" | "identity" | "hostRlm"
 >;
 
 export interface ISyncParams<Handle extends HostHandle> {
@@ -77,6 +88,8 @@ export interface ISyncParams<Handle extends HostHandle> {
    * Default `defaultPeekConcurrency`. Set 1 for fully serial.
    */
   peekConcurrency?: number;
+  /** Realm for this peek. Push and pull use each item's own realm. */
+  realm?: IKDM;
 }
 
 /** Approximate on-wire bag size (sig + kdm + ciphers). Soft limit only. */
@@ -85,13 +98,41 @@ function bagBytes(bag: IBag): number {
     bag.bodyCph.length;
 }
 
-/** Push one batch of sealed bags; deq successes; advance lastSeq from store. */
+type DeqGroup = { host: string; realm?: IKDM; seqs: number[] };
+
+// Groups download seqs so one deq is one host and one realm.
+function noteDeq(
+  groups: Map<string, DeqGroup>,
+  host: string,
+  seq: number,
+  realm?: IKDM,
+) {
+  const key = `${host}\0${realmKey(realm ?? nullKDM)}`;
+  const g = groups.get(key);
+  if (g) {
+    g.seqs.push(seq);
+    return;
+  }
+  groups.set(key, { host, realm, seqs: [seq] });
+}
+
+async function flushDeq<Handle extends HostHandle>(
+  store: Pick<IStore<Handle>, "downloads">,
+  groups: Map<string, DeqGroup>,
+) {
+  for (const g of groups.values()) {
+    await store.downloads.deq(g.host, g.seqs, g.realm);
+  }
+}
+
+/** Push one batch of sealed bags; deq successes; advance that realm's cursor. */
 export async function pushBatch<Handle extends HostHandle>(
   conn: Pick<DiplomaticClientAPI<Handle>, "push">,
   store: IStore<Handle>,
   hostLabel: string,
   bags: IBag[],
   hashes: Hash[],
+  realm: IKDM = nullKDM,
 ): Promise<Status> {
   if (bags.length < 1) {
     return Status.Success;
@@ -123,7 +164,7 @@ export async function pushBatch<Handle extends HostHandle>(
   // lastSeq may have moved (peek / earlier pushes); only advance contiguous successes.
   const row = await store.hosts.get(hostLabel);
   if (row) {
-    let currentMax = row.lastSeq;
+    let currentMax = cursorOf(row, realm);
     const start = currentMax;
     const successfulSeqs: number[] = [];
     for (const item of results) {
@@ -138,7 +179,7 @@ export async function pushBatch<Handle extends HostHandle>(
       }
     }
     if (currentMax > start) {
-      await store.hosts.touch(hostLabel, currentMax);
+      await store.hosts.touch(hostLabel, currentMax, realm);
     }
   }
 
@@ -154,27 +195,39 @@ export async function pullBodies<Handle extends HostHandle>(
     return ok([]);
   }
 
-  const dls = new Map<number, IDownloadMessage>();
-  const seqs: number[] = [];
+  type RealmPull = {
+    realm: IKDM;
+    dls: Map<number, IDownloadMessage>;
+    seqs: number[];
+  };
+  const byRealm = new Map<string, RealmPull>();
   for (const item of items) {
-    dls.set(item.seq, item);
-    seqs.push(item.seq);
-  }
-
-  const [result, stat] = await conn.pull(seqs);
-  if (stat !== Status.Success) {
-    // TODO: per-row pull errors (which seqs failed); track on download queue.
-    return err(stat);
-  }
-  if (!result) {
-    return err(Status.InvalidResponse);
+    const realm = item.realm ?? nullKDM;
+    const key = realmKey(realm);
+    let pull = byRealm.get(key);
+    if (!pull) {
+      pull = { realm, dls: new Map(), seqs: [] };
+      byRealm.set(key, pull);
+    }
+    pull.dls.set(item.seq, item);
+    pull.seqs.push(item.seq);
   }
 
   const pulled: IPulled[] = [];
-  for (const { seq, bodyCph } of result) {
-    const dl = dls.get(seq);
-    if (!dl) continue;
-    pulled.push({ dl, bodyCph });
+  for (const pull of byRealm.values()) {
+    const [result, stat] = await conn.pull(pull.seqs, pull.realm);
+    if (stat !== Status.Success) {
+      // TODO: per-row pull errors (which seqs failed); track on download queue.
+      return err(stat);
+    }
+    if (!result) {
+      return err(Status.InvalidResponse);
+    }
+    for (const { seq, bodyCph } of result) {
+      const dl = pull.dls.get(seq);
+      if (!dl) continue;
+      pulled.push({ dl, bodyCph });
+    }
   }
   // TODO: seqs requested but missing from result — record per-row fetch failure.
   return ok(pulled);
@@ -203,21 +256,20 @@ export async function openPulled<Handle extends HostHandle>(
   const parts: IMsgParts[] = [];
   const hashes: Hash[] = [];
   const toStore: IStorableMessage[] = [];
-  // Group seqs by host so each downloads.deq is one store call.
-  const deqByHost = new Map<string, number[]>();
+  // Group seqs by host and realm so each downloads.deq is one store call.
+  const deqGroups = new Map<string, DeqGroup>();
 
   for (const { dl, bodyCph } of items) {
     const { head, kdm, seq, host } = dl;
+    const realm = dl.realm ?? nullKDM;
     // Prefer headEnc/hash from peek (avoids re-encode + double blake3).
     const [resolved, headStat] = await resolveHeadEnc(dl, crypto);
     if (headStat !== Status.Success) {
-      const seqs = deqByHost.get(host) ?? [];
-      seqs.push(seq);
-      deqByHost.set(host, seqs);
+      noteDeq(deqGroups, host, seq, dl.realm);
       continue;
     }
     const { headEnc, headEncHash } = resolved;
-    const cipher = enclave.deriveCipher(kdm, "decrypt");
+    const cipher = enclave.deriveCipher(kdm, "decrypt", realm);
     const [contents, openStat] = await openBagBody(
       headEnc,
       bodyCph,
@@ -227,27 +279,21 @@ export async function openPulled<Handle extends HostHandle>(
     );
     if (openStat !== Status.Success) {
       // Unopenable bag: drop from download queue (no retry). TODO: per-row open errors.
-      const seqs = deqByHost.get(host) ?? [];
-      seqs.push(seq);
-      deqByHost.set(host, seqs);
+      noteDeq(deqGroups, host, seq, dl.realm);
       continue;
     }
 
     const p: IMsgParts = { head, body: contents.bod };
     const keyHash = contents.headHash;
-    toStore.push({ key: keyHash, data: msg2StoredMsgData(p) });
+    toStore.push({ key: keyHash, data: msg2StoredMsgData(p, realm) });
     parts.push(p);
     hashes.push(keyHash);
-    const seqs = deqByHost.get(host) ?? [];
-    seqs.push(seq);
-    deqByHost.set(host, seqs);
+    noteDeq(deqGroups, host, seq, dl.realm);
   }
 
   const statsStore = await store.messages.add(toStore);
   // TODO: return batch status codes from deq too.
-  for (const [host, seqs] of deqByHost) {
-    await store.downloads.deq(host, seqs);
-  }
+  await flushDeq(store, deqGroups);
 
   for (let i = 0; i < statsStore.length; i++) {
     const st = statsStore[i];
@@ -306,7 +352,7 @@ export async function deqDownloadsForHeadHashes<Handle extends HostHandle>(
   const dls = Array.from(await store.downloads.list());
   if (dls.length < 1) return;
 
-  const byHost = new Map<string, number[]>();
+  const deqGroups = new Map<string, DeqGroup>();
   for (const d of dls) {
     let hashB64: string | undefined;
     if (d.headEncHash) {
@@ -317,13 +363,9 @@ export async function deqDownloadsForHeadHashes<Handle extends HostHandle>(
       hashB64 = btob64(resolved.headEncHash);
     }
     if (!want.has(hashB64)) continue;
-    const seqs = byHost.get(d.host) ?? [];
-    seqs.push(d.seq);
-    byHost.set(d.host, seqs);
+    noteDeq(deqGroups, d.host, d.seq, d.realm);
   }
-  for (const [hostLabel, seqs] of byHost) {
-    await store.downloads.deq(hostLabel, seqs);
-  }
+  await flushDeq(store, deqGroups);
 }
 
 /** Discover unseen bags and enqueue download work; advance host lastSeq. */
@@ -337,10 +379,14 @@ export async function syncPeek<Handle extends HostHandle>(
     onProgress,
     peekProgressEvery,
     peekConcurrency,
+    realm: realmArg,
   }: ISyncParams<Handle>,
 ): Promise<Status> {
+  const realm = realmArg ?? nullKDM;
   const [hostIdnt, ist] = await conn.identity();
   if (ist !== Status.Success) return ist;
+  const [rlm, rst] = await conn.hostRlm(realm);
+  if (rst !== Status.Success) return rst;
   let verifyKey: CryptoKey;
   try {
     verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
@@ -348,7 +394,7 @@ export async function syncPeek<Handle extends HostHandle>(
     return Status.CryptoError;
   }
   const dls: IDownloadMessage[] = [];
-  const [items, peekStatus] = await conn.peek(host.lastSeq);
+  const [items, peekStatus] = await conn.peek(cursorOf(host, realm), realm);
   if (peekStatus !== Status.Success) {
     return peekStatus;
   }
@@ -368,6 +414,8 @@ export async function syncPeek<Handle extends HostHandle>(
       verifyKey,
       enclave,
       crypto,
+      rlm,
+      realm,
     );
     let result: PeekCryptoResult;
     if (stat !== Status.Success) {
@@ -414,13 +462,13 @@ export async function syncPeek<Handle extends HostHandle>(
       // download-queue row and redundant upload (host already has this msg).
       console.info("peek: local msg; skip download, deq upload");
       await store.uploads.deq(host.label, [result.headEncHash]);
-      await store.downloads.deq(host.label, [result.seq]);
+      await store.downloads.deq(host.label, [result.seq], realm);
       continue;
     }
 
     // Already enqueueing a download for this msg from an earlier bag in batch.
     if (enqMsgs.has(msgKey)) {
-      await store.downloads.deq(host.label, [result.seq]);
+      await store.downloads.deq(host.label, [result.seq], realm);
       continue;
     }
 
@@ -432,21 +480,24 @@ export async function syncPeek<Handle extends HostHandle>(
     }
 
     enqMsgs.add(msgKey);
-    dls.push({
+    const dl: IDownloadMessage = {
       kdm: result.kdm,
       head,
       seq: result.seq,
       host: host.label,
       headEnc: result.headEnc,
       headEncHash: result.headEncHash,
-    });
+    };
+    const tagged = storedRealm(realm);
+    if (tagged !== undefined) dl.realm = tagged;
+    dls.push(dl);
   }
   await store.downloads.enq(dls);
 
   // Advance cursor only (bag tallies are not tracked on the host row).
   if (items.length > 0) {
     const maxSeq = Math.max(...items.map((i) => i.seq));
-    await store.hosts.recordStats(host.label, { lastSeq: maxSeq });
+    await store.hosts.recordSeqs(host.label, { lastSeq: maxSeq }, realm);
   }
 
   if (onProgress) {
@@ -477,13 +528,21 @@ export async function syncPush<Handle extends HostHandle>(
   let bags: IBag[] = [];
   let hashes: Hash[] = [];
   let batchBytes = 0;
+  let batchRealm: IKDM = nullKDM;
 
   const flush = async (): Promise<Status> => {
     if (bags.length < 1) {
       return Status.Success;
     }
     const n = bags.length;
-    const st = await pushBatch(conn, store, host.label, bags, hashes);
+    const st = await pushBatch(
+      conn,
+      store,
+      host.label,
+      bags,
+      hashes,
+      batchRealm,
+    );
     bags = [];
     hashes = [];
     batchBytes = 0;
@@ -496,38 +555,47 @@ export async function syncPush<Handle extends HostHandle>(
     return st;
   };
 
+  // One batch is one realm, so its seqs share a cursor.
+  type Ready = { hash: Hash; realm: IKDM; msg: IMessage };
+  const ready: Ready[] = [];
+  const realmRows = await store.realms.list();
   for (const msgHeadEncHash of pending) {
     const storedMsg = await store.messages.get(msgHeadEncHash);
     if (!storedMsg) {
       done += 1;
       continue;
     }
-    const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
-    const [bag, statBag] = await conn.seal(msg);
-    if (statBag !== Status.Success) {
-      return statBag;
-    }
-    if (!bag) {
-      return Status.InternalError;
-    }
-    const size = bagBytes(bag);
+    ready.push({
+      hash: msgHeadEncHash,
+      realm: realmKDM(storedMsg.rlm, realmRows),
+      msg: { ...storedMsg.head, bod: storedMsg.body },
+    });
+  }
+  ready.sort((a, b) => {
+    if (a.realm.label < b.realm.label) return -1;
+    if (a.realm.label > b.realm.label) return 1;
+    return a.realm.index - b.realm.index;
+  });
 
+  for (const item of ready) {
+    if (bags.length > 0 && !sameRealm(batchRealm, item.realm)) {
+      const st = await flush();
+      if (st !== Status.Success) return st;
+    }
+    const [bag, statBag] = await conn.seal(item.msg, item.realm);
+    if (statBag !== Status.Success) return statBag;
+    const size = bagBytes(bag);
     if (bags.length > 0 && batchBytes + size > limit) {
       const st = await flush();
-      if (st !== Status.Success) {
-        return st;
-      }
+      if (st !== Status.Success) return st;
     }
-
+    if (bags.length < 1) batchRealm = item.realm;
     bags.push(bag);
-    hashes.push(msgHeadEncHash);
+    hashes.push(item.hash);
     batchBytes += size;
-
     if (batchBytes >= limit) {
       const st = await flush();
-      if (st !== Status.Success) {
-        return st;
-      }
+      if (st !== Status.Success) return st;
     }
   }
 
@@ -612,6 +680,7 @@ export async function syncPull<Handle extends HostHandle>(
 
 export function msg2StoredMsgData(
   { head, body }: IMsgParts,
+  realm?: IKDM,
 ): IStoredMessageWrite {
   const data: IStoredMessageWrite = {
     eid: head.eid,
@@ -621,6 +690,8 @@ export function msg2StoredMsgData(
   if (head.off !== 0) data.off = head.off;
   if (head.ctr !== 0) data.ctr = head.ctr;
   if (head.typ) data.typ = head.typ;
+  const rlm = realmLabel(realm?.label);
+  if (rlm !== undefined) data.rlm = rlm;
   return data;
 }
 
@@ -658,9 +729,12 @@ export async function handleNotif<Handle extends HostHandle>(
     return;
   }
 
+  const hostKDM: IKDM = { label: host.label, index: host.idx ?? 0 };
+  const known = realmKDMs(await store.realms.list());
   let outOfSeq = false;
   const currHost = await store.hosts.get(label);
-  let lastSeq = currHost?.lastSeq;
+  type Run = { realm: IKDM; seq: number };
+  const runs = new Map<string, Run>();
 
   const completeBags: Array<{
     head: IMessageHead;
@@ -668,15 +742,27 @@ export async function handleNotif<Handle extends HostHandle>(
     headEncHash: Hash;
     bodyCph?: Uint8Array;
     kdm: Uint8Array;
+    realm: IKDM;
   }> = [];
   let needPull = false;
 
   for (const item of notifItems) {
+    const [realm, realmSt] = await enclave.realmForRlm(
+      hostKDM,
+      item.rlm,
+      known,
+    );
+    if (realmSt !== Status.Success) {
+      console.error("notif: realm", Status[realmSt]);
+      continue;
+    }
     const [peekItem, s2] = await decryptPeekItem(
       { seq: item.seq, headCph: item.headCph },
       verifyKey,
       enclave,
       crypto,
+      item.rlm,
+      realm,
     );
     if (s2 !== Status.Success) {
       console.error("Failed decrypting notif", Status[s2]);
@@ -698,40 +784,57 @@ export async function handleNotif<Handle extends HostHandle>(
     // Inline body (or empty) can open now; otherwise enqueue a pull.
     if (!item.bodyCph && head.len > 0) {
       needPull = true;
-      await store.downloads.enq([{
+      const dl: IDownloadMessage = {
         seq: item.seq,
         host: label,
         kdm: peekItem.kdm,
         head,
         headEnc: peekItem.headEnc,
         headEncHash,
-      }]);
+      };
+      const tagged = storedRealm(realm);
+      if (tagged !== undefined) dl.realm = tagged;
+      await store.downloads.enq([dl]);
     } else {
       completeBags.push({
         ...peekItem,
         head,
         bodyCph: item.bodyCph,
         headEncHash,
+        realm,
       });
     }
 
-    const isOutOfSeq = lastSeq === undefined || item.seq !== lastSeq + 1;
-    if (isOutOfSeq) {
-      console.log("out of seq", item.seq, lastSeq);
+    if (!currHost) {
+      console.log("out of seq", item.seq, undefined);
+      outOfSeq = true;
+      continue;
+    }
+    const key = realmKey(realm);
+    let run = runs.get(key);
+    if (!run) {
+      run = { realm, seq: cursorOf(currHost, realm) };
+      runs.set(key, run);
+    }
+    if (item.seq !== run.seq + 1) {
+      console.log("out of seq", item.seq, run.seq);
       outOfSeq = true;
     } else {
-      lastSeq = item.seq;
+      run.seq = item.seq;
     }
   }
 
-  // TODO: outOfSeq=true may bump lastSeq incorrectly.
-  if (lastSeq !== undefined) {
-    await store.hosts.touch(host.label, lastSeq);
+  if (currHost) {
+    for (const run of runs.values()) {
+      if (run.seq > cursorOf(currHost, run.realm)) {
+        await store.hosts.touch(host.label, run.seq, run.realm);
+      }
+    }
   }
 
   const toStore: IStorableMessage[] = [];
   for (const input of completeBags) {
-    const cipher = enclave.deriveCipher(input.kdm, "decrypt");
+    const cipher = enclave.deriveCipher(input.kdm, "decrypt", input.realm);
     const [contents, stat] = await openBagBody(
       input.headEnc,
       input.bodyCph,
@@ -744,7 +847,10 @@ export async function handleNotif<Handle extends HostHandle>(
     }
     toStore.push({
       key: input.headEncHash,
-      data: msg2StoredMsgData({ head: input.head, body: contents.bod }),
+      data: msg2StoredMsgData(
+        { head: input.head, body: contents.bod },
+        input.realm,
+      ),
     });
   }
 
@@ -771,13 +877,13 @@ export async function handleNotif<Handle extends HostHandle>(
 }
 
 /**
- * Full host inventory (PEEK from seq 0): set lastSeq; optionally enqueue
- * downloads (msgs on host missing locally) and/or uploads (local msgs missing
- * on host). Returns ephemeral bag tallies + msgcheck (not persisted). Does not
- * pull/push beyond peek — caller should sync() to drain queues.
+ * Full host inventory (PEEK from seq 0 in each realm): set that realm's cursor;
+ * optionally enqueue downloads (msgs on host missing locally) and/or uploads
+ * (local msgs missing on host). Returns ephemeral bag tallies + msgcheck (not
+ * persisted). Does not pull/push beyond peek — caller should sync() to drain.
  *
- * lastSeq is set to the max bag seq in the inventory (0 if empty), including
- * rewind when the host has fewer bags than a prior cursor believed.
+ * Each cursor is the max bag seq in that realm (0 if empty), including rewind
+ * when the host has fewer bags than a prior cursor believed.
  */
 export async function reconcileHost<Handle extends HostHandle>(
   params: ISyncParams<Handle>,
@@ -804,67 +910,91 @@ export async function reconcileHost<Handle extends HostHandle>(
   } catch {
     return err(Status.CryptoError);
   }
-  // Full inventory: ignore local cursor.
-  const [items, peekStatus] = await conn.peek(0);
-  if (peekStatus !== Status.Success) {
-    return err(peekStatus);
-  }
-
-  const total = items.length;
-  const every = peekProgressEvery ?? defaultPeekProgressEvery;
-  const conc = peekConcurrency ?? defaultPeekConcurrency;
-  if (onProgress && total > 0) {
-    onProgress({ phase: "peek", host: host.label, done: 0, total });
-  }
-
-  let cryptoDone = 0;
-  const cryptoResults = await mapPool(items, conc, async (item) => {
-    const [itemDec, stat] = await decryptPeekItem(
-      item,
-      verifyKey,
-      enclave,
-      crypto,
-    );
-    let result: PeekCryptoResult;
-    if (stat !== Status.Success) {
-      result = { ok: false, seq: item.seq, stat };
-    } else {
-      const headEncHash = await crypto.blake3(itemDec.headEnc);
-      result = {
-        ok: true,
-        seq: item.seq,
-        kdm: itemDec.kdm,
-        headEnc: itemDec.headEnc,
-        headEncHash,
-      };
-    }
-    cryptoDone += 1;
-    if (onProgress && shouldEmitItemProgress(cryptoDone, total, every)) {
-      onProgress({
-        phase: "peek",
-        host: host.label,
-        done: cryptoDone,
-        total,
-      });
-    }
-    return result;
-  });
 
   // msgKey (archive key / blake3 of encoded msg header) → first bag + count
   type MsgAgg = {
     hash: Hash;
     count: number;
     sample: Extract<PeekCryptoResult, { ok: true }>;
+    realm: IKDM;
   };
   const byMsg = new Map<string, MsgAgg>();
-  for (const result of cryptoResults) {
-    if (!result.ok) continue;
-    const k = btob64(result.headEncHash);
-    const cur = byMsg.get(k);
-    if (cur) {
-      cur.count += 1;
-    } else {
-      byMsg.set(k, { hash: result.headEncHash, count: 1, sample: result });
+  let numBags = 0;
+  const every = peekProgressEvery ?? defaultPeekProgressEvery;
+  const conc = peekConcurrency ?? defaultPeekConcurrency;
+  const realms = realmKDMs(await store.realms.list());
+
+  for (const realm of realms) {
+    const [rlm, rst] = await conn.hostRlm(realm);
+    if (rst !== Status.Success) return err(rst);
+    // Full inventory: ignore local cursor.
+    const [items, peekStatus] = await conn.peek(0, realm);
+    if (peekStatus !== Status.Success) return err(peekStatus);
+    numBags += items.length;
+
+    const total = items.length;
+    if (onProgress && total > 0) {
+      onProgress({ phase: "peek", host: host.label, done: 0, total });
+    }
+
+    let cryptoDone = 0;
+    const cryptoResults = await mapPool(items, conc, async (item) => {
+      const [itemDec, stat] = await decryptPeekItem(
+        item,
+        verifyKey,
+        enclave,
+        crypto,
+        rlm,
+        realm,
+      );
+      let result: PeekCryptoResult;
+      if (stat !== Status.Success) {
+        result = { ok: false, seq: item.seq, stat };
+      } else {
+        const headEncHash = await crypto.blake3(itemDec.headEnc);
+        result = {
+          ok: true,
+          seq: item.seq,
+          kdm: itemDec.kdm,
+          headEnc: itemDec.headEnc,
+          headEncHash,
+        };
+      }
+      cryptoDone += 1;
+      if (onProgress && shouldEmitItemProgress(cryptoDone, total, every)) {
+        onProgress({
+          phase: "peek",
+          host: host.label,
+          done: cryptoDone,
+          total,
+        });
+      }
+      return result;
+    });
+
+    for (const result of cryptoResults) {
+      if (!result.ok) continue;
+      const k = btob64(result.headEncHash);
+      const cur = byMsg.get(k);
+      if (cur) {
+        cur.count += 1;
+      } else {
+        byMsg.set(k, {
+          hash: result.headEncHash,
+          count: 1,
+          sample: result,
+          realm,
+        });
+      }
+    }
+
+    const setLastSeq = items.length > 0
+      ? Math.max(...items.map((i) => i.seq))
+      : 0;
+    await store.hosts.recordSeqs(host.label, { setLastSeq }, realm);
+
+    if (onProgress) {
+      onProgress({ phase: "peek", host: host.label, done: total, total });
     }
   }
 
@@ -874,7 +1004,6 @@ export async function reconcileHost<Handle extends HostHandle>(
     if (agg.count > 1) numDupes += agg.count - 1;
     uniqueHashes.push(agg.hash);
   }
-  const numBags = items.length;
   const uniqueMsgs = byMsg.size;
   // Same set-checksum as local msgcheck (distinct msgs only; dup bags ignored).
   const hostMsgcheck = await checksumSet(uniqueHashes, crypto);
@@ -897,14 +1026,17 @@ export async function reconcileHost<Handle extends HostHandle>(
       console.error("reconcile: reading msg header", headStatus);
       continue;
     }
-    dls.push({
+    const dl: IDownloadMessage = {
       kdm: r.kdm,
       head,
       seq: r.seq,
       host: host.label,
       headEnc: r.headEnc,
       headEncHash: r.headEncHash,
-    });
+    };
+    const tagged = storedRealm(agg.realm);
+    if (tagged !== undefined) dl.realm = tagged;
+    dls.push(dl);
   }
   if (dls.length > 0) {
     await store.downloads.enq(dls);
@@ -931,21 +1063,6 @@ export async function reconcileHost<Handle extends HostHandle>(
     for (const key of localKeys) {
       if (!hostKeys.has(btob64(key))) missingHost += 1;
     }
-  }
-
-  // lastSeq only — bag tallies are returned, not stored on the host row.
-  const setLastSeq = items.length > 0
-    ? Math.max(...items.map((i) => i.seq))
-    : 0;
-  await store.hosts.recordStats(host.label, { setLastSeq });
-
-  if (onProgress) {
-    onProgress({
-      phase: "peek",
-      host: host.label,
-      done: total,
-      total,
-    });
   }
 
   return ok({

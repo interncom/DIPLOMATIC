@@ -4,11 +4,7 @@ import { IUploadQueue } from "../../types";
 import { UPLOAD_QUEUE_TABLE } from "./store";
 
 export class IDBUploadQueue implements IUploadQueue {
-  db: IDBDatabase;
-
-  constructor(db: IDBDatabase) {
-    this.db = db;
-  }
+  constructor(private db: IDBDatabase) {}
 
   async enq(host: string, hshs: Iterable<Hash>) {
     const hashes = [...hshs];

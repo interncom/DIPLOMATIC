@@ -2,18 +2,21 @@ import { btoh } from "../binary.ts";
 import { Encoder } from "../codec.ts";
 import type { IBagPeekItem } from "../codecs/peekItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
-import { Status } from "../consts.ts";
-import { type IStorage, nullSubMeta } from "../types.ts";
+import { hashBytes, Status } from "../consts.ts";
+import { type ISetBagResult, type IStorage, nullSubMeta } from "../types.ts";
 import { err, ok } from "../valstat.ts";
 
 interface IMemoryStorage extends IStorage {
   users: Set<string>;
   bag: Map<
     string,
-    Map<number, {
-      headCph: Uint8Array;
-      bodyCph: Uint8Array;
-    }>
+    Map<
+      string,
+      Map<number, {
+        headCph: Uint8Array;
+        bodyCph: Uint8Array;
+      }>
+    >
   >;
 }
 
@@ -44,7 +47,7 @@ export function createMemoryStorage(): IMemoryStorage {
       if (bags.length < 1) return ok([]);
 
       // No await in the critical section: one turn of the event loop owns
-      // maxSeq assignment + inserts (in-process mutex).
+      // per-rlm seq assignment + inserts (in-process mutex).
       const pubKeyHex = btoh(pubKey);
       let userBags = this.bag.get(pubKeyHex);
       if (!userBags) {
@@ -52,54 +55,61 @@ export function createMemoryStorage(): IMemoryStorage {
         this.bag.set(pubKeyHex, userBags);
       }
 
-      let maxSeq = 0;
-      for (const seq of userBags.keys()) {
-        if (seq > maxSeq) maxSeq = seq;
-      }
-
-      const seqs: number[] = [];
+      const out: ISetBagResult[] = [];
+      const maxBy = new Map<string, number>();
       for (const bag of bags) {
-        maxSeq += 1;
+        if (bag.rlm.byteLength !== hashBytes) {
+          out.push({ status: Status.InvalidParam });
+          continue;
+        }
+        const rlmHex = btoh(bag.rlm);
+        let realm = userBags.get(rlmHex);
+        if (!realm) {
+          realm = new Map();
+          userBags.set(rlmHex, realm);
+        }
+        let max = maxBy.get(rlmHex);
+        if (max === undefined) {
+          max = 0;
+          for (const seq of realm.keys()) {
+            if (seq > max) max = seq;
+          }
+        }
+        max += 1;
+        maxBy.set(rlmHex, max);
         const enc = new Encoder();
         const status = enc.writeStruct(peekItemHeadCodec, bag);
-        if (status !== Status.Success) {
-          return err(status);
-        }
-        userBags.set(maxSeq, {
+        if (status !== Status.Success) return err(status);
+        realm.set(max, {
           headCph: enc.result(),
           bodyCph: bag.bodyCph,
         });
-        seqs.push(maxSeq);
-      }
-      return ok(seqs);
-    },
-
-    async getBodies(pubKey, seqs) {
-      if (seqs.length < 1) return ok([]);
-      const pubKeyHex = btoh(pubKey);
-      const userBags = this.bag.get(pubKeyHex);
-      if (!userBags) return ok([]);
-      const out: { seq: number; bodyCph: Uint8Array }[] = [];
-      for (const seq of seqs) {
-        const item = userBags.get(seq);
-        if (item?.bodyCph) {
-          out.push({ seq, bodyCph: item.bodyCph });
-        }
+        out.push({ status: Status.Success, seq: max });
       }
       return ok(out);
     },
 
-    async listHeads(pubKey, minSeq) {
-      const pubKeyHex = btoh(pubKey);
+    async getBodies(pubKey, rlm, seqs) {
+      if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
+      if (seqs.length < 1) return ok([]);
+      const realm = this.bag.get(btoh(pubKey))?.get(btoh(rlm));
+      if (!realm) return ok([]);
+      const out: { seq: number; bodyCph: Uint8Array }[] = [];
+      for (const seq of seqs) {
+        const item = realm.get(seq);
+        if (item?.bodyCph) out.push({ seq, bodyCph: item.bodyCph });
+      }
+      return ok(out);
+    },
+
+    async listHeads(pubKey, rlm, minSeq) {
+      if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
       const list: IBagPeekItem[] = [];
-      const userBags = this.bag.get(pubKeyHex);
-      if (userBags) {
-        for (const [seq, item] of userBags.entries()) {
+      const realm = this.bag.get(btoh(pubKey))?.get(btoh(rlm));
+      if (realm) {
+        for (const [seq, item] of realm.entries()) {
           if (seq > minSeq) {
-            list.push({
-              seq,
-              headCph: item.headCph,
-            });
+            list.push({ seq, headCph: item.headCph });
           }
         }
       }

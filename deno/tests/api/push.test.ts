@@ -13,6 +13,7 @@ import {
   pushItemCodec,
 } from "../../../shared/codecs/pushItem.ts";
 import { kdmBytes, sigBytes, Status } from "../../../shared/consts.ts";
+import { asHostRlm, type HostRlm } from "../../../shared/crypto/derivation.ts";
 import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import {
   baseMockCrypto,
@@ -24,10 +25,17 @@ import {
   testPubKey,
 } from "./testUtils.ts";
 
+function hostRlm(fill: number): HostRlm {
+  const [rlm, st] = asHostRlm(new Uint8Array(32).fill(fill));
+  if (st !== Status.Success) throw new Error(`rlm ${st}`);
+  return rlm;
+}
+
 Deno.test("pushEnd.handleReq - success", async () => {
   const pubKey = testPubKey;
   const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
+    rlm: hostRlm(3),
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
     headCph: new Uint8Array([1, 2, 3]),
@@ -94,6 +102,7 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   const pubKey = testPubKey;
   const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
+    rlm: hostRlm(3),
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
     headCph: new Uint8Array([1, 2, 3]),
@@ -168,6 +177,7 @@ Deno.test("pushEnd.handleReq - clock out of sync", async () => {
   const pubKey = testPubKey;
   const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
   const bag: IBag = {
+    rlm: hostRlm(3),
     sig: new Uint8Array(sigBytes).fill(7),
     kdm: new Uint8Array(kdmBytes).fill(10),
     headCph: new Uint8Array([1, 2, 3]),

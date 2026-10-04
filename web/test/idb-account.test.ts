@@ -1,17 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import crypto from "../src/crypto";
-import { btob64url, btoh } from "../src/shared/binary";
+import { btob64url } from "../src/shared/binary";
 import { hashBytes, Status } from "../src/shared/consts";
 import { asChildKey, Purpose } from "../src/shared/crypto/derivation";
 import { Enclave, MUSEC_MIN_LEN } from "../src/shared/crypto/enclave";
 import { asSealedMasterKey, SEALED_MASTER_KEY_LEN } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 import type { Keyring } from "../src/passkey/prf-store";
-import {
-  accountFromSeedMeta,
-  decodeAccount,
-  IDBAccountStore,
-} from "../src/stores/idb/account";
+import { IDBAccountStore } from "../src/stores/idb/account";
 import { MemoryAccountStore } from "../src/stores/memory/account";
 
 function enclaveOf(fill: number): Enclave {
@@ -163,30 +159,6 @@ describe("seed store enclave is private", () => {
 });
 
 describe("accounts row", () => {
-  // TODO(accounts-sunset): seedMeta copy and the v4 generated-id key.
-  test("accountFromSeedMeta keeps key tag and keyring, drops empty legacy", () => {
-    const ring = mustRing();
-    const tag = {
-      n: new Uint8Array(32).fill(1),
-      h: new Uint8Array(32).fill(2),
-    };
-    const row = accountFromSeedMeta("a", tag, ring);
-    expect(row?.label).toBe("a");
-    expect(row?.keyTag?.n).toEqual(tag.n);
-    expect(row?.keyring?.entries.length).toBe(1);
-    expect(accountFromSeedMeta("a", undefined, undefined)).toBeUndefined();
-    expect(accountFromSeedMeta("a", { n: "nope" }, undefined)).toBeUndefined();
-    // TODO(accounts-sunset): rows stored the field as idPin.
-    const adopted = decodeAccount({ id: "old-uuid", idPin: tag });
-    expect(adopted?.label).toBe("old-uuid");
-    expect(adopted?.keyTag?.n).toEqual(tag.n);
-    expect(decodeAccount({ label: "home", id: "old-uuid" })?.label).toBe(
-      "home",
-    );
-    expect(decodeAccount({ label: "" })?.label).toBe("");
-    expect(accountFromSeedMeta("", tag, undefined)?.keyTag?.n).toEqual(tag.n);
-  });
-
   test("missing label is the default account and a new label is its own row", async () => {
     const rows = new Map<string, unknown>();
     const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
@@ -235,53 +207,6 @@ describe("accounts row", () => {
       Status.Success,
     );
     expect(rows.has("work")).toBe(true);
-  });
-
-  // TODO(accounts-sunset): a pubkey-hash row stored as idPin is rewritten
-  // onto keyTag on the next save.
-  test("legacy key tag rewrites in the account row", async () => {
-    const enc = enclaveOf(4);
-    const n = new Uint8Array(32).fill(9);
-    const [idnt, ist] = await enc.deriveIdentity({
-      label: "diplomatic.pin/" + btoh(n),
-      index: 0,
-    });
-    expect(ist).toBe(Status.Success);
-    if (idnt === undefined) return;
-    const old = await crypto.blake3(idnt.publicKey);
-    const rows = new Map<string, unknown>();
-    rows.set("home", { label: "home", idPin: { n, h: old } });
-    const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
-    expect((await store.save(enclaveOf(1), { label: "home" }))[1]).toBe(
-      Status.HashMismatch,
-    );
-    expect(fields(rows.get("home")).idPin).toEqual({ n, h: old });
-    expect(fields(rows.get("home")).keyTag).toBeUndefined();
-    expect((await store.save(enc, { label: "home" }))[1]).toBe(Status.Success);
-    const [child, cst] = await enc.fingerprint(n);
-    expect(cst).toBe(Status.Success);
-    const keptRow = fields(rows.get("home"));
-    expect(keptRow.idPin).toBeUndefined();
-    const kept = keptRow.keyTag;
-    expect(kept).toMatchObject({ n });
-    if (kept === null || typeof kept !== "object" || !("h" in kept)) return;
-    expect(kept.h).toEqual(child);
-    expect(kept.h).not.toEqual(old);
-  });
-
-  // TODO(accounts-sunset): a current key tag stored as idPin is renamed.
-  test("idPin field moves onto keyTag", async () => {
-    const enc = enclaveOf(4);
-    const n = new Uint8Array(32).fill(8);
-    const [h, st] = await enc.fingerprint(n);
-    expect(st).toBe(Status.Success);
-    const rows = new Map<string, unknown>();
-    rows.set("home", { label: "home", idPin: { n, h } });
-    const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
-    expect((await store.save(enc, { label: "home" }))[1]).toBe(Status.Success);
-    const row = fields(rows.get("home"));
-    expect(row.idPin).toBeUndefined();
-    expect(row.keyTag).toEqual({ n, h });
   });
 });
 
@@ -531,6 +456,20 @@ function rowKeys(raw: unknown): string[] {
   return Object.keys(raw).sort();
 }
 
+function strField(raw: unknown, key: string): string | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  if (key === "acct" && "acct" in raw && typeof raw.acct === "string") {
+    return raw.acct;
+  }
+  if (key === "data" && "data" in raw && typeof raw.data === "string") {
+    return raw.data;
+  }
+  if (key === "ents" && "ents" in raw && typeof raw.ents === "string") {
+    return raw.ents;
+  }
+  return undefined;
+}
+
 describe("create mints an account key", () => {
   test("fromRandom mixes musec and a second create does not replace the key", async () => {
     const rows = new Map<string, unknown>();
@@ -541,7 +480,12 @@ describe("create mints an account key", () => {
     if (enc === undefined) return;
     expect(musec.every((b) => b === 0)).toBe(true);
     expect("enclave" in store).toBe(false);
-    expect(rowKeys(rows.get("home"))).toEqual(["keyTag", "label"]);
+    expect(rowKeys(rows.get("home"))).toEqual([
+      "acct",
+      "data",
+      "keyTag",
+      "label",
+    ]);
     const tag = fields(rows.get("home")).keyTag;
     expect(tag).toBeDefined();
     expect((await store.save(enc, { label: "home" }))[1]).toBe(Status.Success);
@@ -572,7 +516,13 @@ describe("create mints an account key", () => {
     expect(pst).toBe(Status.Success);
     if (spare === undefined) return;
     expect(spareMusec.every((b) => b === 0)).toBe(true);
-    expect(rowKeys(rows.get("spare"))).toEqual(["keyTag", "keyring", "label"]);
+    expect(rowKeys(rows.get("spare"))).toEqual([
+      "acct",
+      "data",
+      "keyTag",
+      "keyring",
+      "label",
+    ]);
     expect(fields(rows.get("spare")).keyring).toBeDefined();
     expect(await paper(spare)).not.toEqual(await paper(enc));
 
@@ -588,5 +538,45 @@ describe("create mints an account key", () => {
     expect(blankRows.has("")).toBe(true);
     expect(blankRows.has("   ")).toBe(false);
     expect(await paper(a)).not.toEqual(await paper(b));
+  });
+
+  test("save mints acct and data and a keyring write keeps them", async () => {
+    const rows = new Map<string, unknown>();
+    const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
+    expect((await store.save(enclaveOf(3), { label: "home" }))[1]).toBe(
+      Status.Success,
+    );
+    const acct = strField(rows.get("home"), "acct");
+    const data = strField(rows.get("home"), "data");
+    expect(acct).toMatch(/^[0-9a-f]{32}$/);
+    expect(data).toBe(`data-${acct}`);
+    expect(strField(rows.get("home"), "ents")).toBeUndefined();
+    expect(await store.persistKeyring(mustRing(), "home")).toBe(
+      Status.Success,
+    );
+    expect(strField(rows.get("home"), "acct")).toBe(acct);
+    expect(strField(rows.get("home"), "data")).toBe(data);
+  });
+
+  test("dataName does not create a missing account", async () => {
+    const rows = new Map<string, unknown>();
+    const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
+    expect(await store.dataName("home")).toBeUndefined();
+    expect(rows.size).toBe(0);
+  });
+
+  test("ensureEnts records the ents name and keeps it", async () => {
+    const rows = new Map<string, unknown>();
+    const store = new IDBAccountStore(fakeSeedDb(rows), crypto);
+    const ents = await store.ensureEnts("home");
+    const acct = strField(rows.get("home"), "acct");
+    expect(acct).toMatch(/^[0-9a-f]{32}$/);
+    expect(ents).toBe(`ents-${acct}`);
+    expect(strField(rows.get("home"), "data")).toBe(`data-${acct}`);
+    expect(await store.ensureEnts("home")).toBe(ents);
+    expect(strField(rows.get(""), "ents")).toBeUndefined();
+    const blank = await store.ensureEnts("");
+    expect(blank).toMatch(/^ents-[0-9a-f]{32}$/);
+    expect(rows.has("")).toBe(true);
   });
 });

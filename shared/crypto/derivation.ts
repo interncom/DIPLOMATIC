@@ -15,6 +15,8 @@ export const Purpose = {
   BagKdm: "diplomatic.bagkdm.v1",
   RealmKey: "diplomatic.realmKey.v1",
   RealmID: "diplomatic.realmID.v1",
+  // Bag rlm: realm id, then this purpose with the host's label/index.
+  HostRLM: "diplomatic.hostRLM.v1",
 } as const;
 export type Purpose = typeof Purpose[keyof typeof Purpose];
 
@@ -32,6 +34,9 @@ export type ChildKey<P extends Purpose> = Uint8Array & {
 export type PDK = {
   [K in keyof typeof Purpose]: ChildKey<(typeof Purpose)[K]>;
 };
+
+/** Host-stamped bag rlm. Peek, pull, and bag signatures use this. */
+export type HostRlm = PDK["HostRLM"];
 
 // Null KDM: default child of a PDK (empty label, index 0).
 export const nullKDM: IKDM = Object.freeze({ label: "", index: 0 });
@@ -54,6 +59,11 @@ export function asChildKey<P extends Purpose>(
 ): ValStat<ChildKey<P>> {
   if (bytes.byteLength !== hashBytes) return err(Status.InvalidParam);
   return ok(asChild<P>(bytes));
+}
+
+// Brands 32-byte host rlm material from the wire or from storage.
+export function asHostRlm(bytes: Uint8Array): ValStat<HostRlm> {
+  return asChildKey(bytes, Purpose.HostRLM);
 }
 
 // Encodes structured KDM; raw bytes pass through.

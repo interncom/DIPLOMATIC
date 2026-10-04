@@ -19,8 +19,9 @@ export const baseMockStorage: IStorage = {
   addUser: async () => ok(undefined),
   subMeta: async () => ok(nullSubMeta),
   getBodies: async () => ok([]),
-  listHeads: async (_pubKey, _minSeq) => ok([]),
-  setBags: async (_pubKey, bags) => ok(bags.map((_, i) => i + 1)),
+  listHeads: async (_pubKey, _rlm, _minSeq) => ok([]),
+  setBags: async (_pubKey, bags) =>
+    ok(bags.map((_, i) => ({ status: Status.Success, seq: i + 1 }))),
 };
 
 // Base mock crypto

@@ -4,9 +4,23 @@
 import { Database } from "bun:sqlite";
 import libsodiumCrypto from "../src/crypto";
 import { b64tob, btob64, btoh, htob } from "../src/shared/binary";
+import type { IKDM } from "../src/shared/codecs/kdm";
 import { Status } from "../src/shared/consts";
+import { nullKDM } from "../src/shared/crypto/derivation";
 import { err, ok } from "../src/shared/valstat";
+import {
+  nextCursor,
+  projectCursors,
+  type RealmCursor,
+} from "../src/stores/cursor";
 import { singleAccountLabel } from "../src/stores/label";
+import {
+  advanceRealm,
+  decodeRealm,
+  type IRealm,
+  type IRealmStore,
+  realmLabel,
+} from "../src/stores/realm";
 import { Enclave } from "../src/shared/crypto/enclave";
 import type {
   EntityID,
@@ -19,7 +33,7 @@ import type {
 } from "../src/shared/types";
 import type {
   ApldState,
-  HostStatsUpdate,
+  HostSeqsUpdate,
   IAccountStore,
   IDownloadMessage,
   IDownloadQueue,
@@ -40,6 +54,36 @@ import {
 } from "../src/types";
 
 /** SQLite apld: 0 pending, 1 applied, 2 terminal error. */
+function isRec(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object";
+}
+
+// Host cursors. A missing row is cursor 0.
+function readCursors(
+  db: Database,
+  host: string,
+): { lastSeq: number; seqs?: RealmCursor[] } {
+  const rows: unknown = db.prepare(
+    "SELECT label, idx, lastSeq FROM host_seqs WHERE host = ?",
+  ).all(host);
+  const cursors: RealmCursor[] = [];
+  if (Array.isArray(rows)) {
+    for (const row of rows) {
+      if (!isRec(row)) continue;
+      if (typeof row.label !== "string") continue;
+      if (typeof row.idx !== "number" || typeof row.lastSeq !== "number") {
+        continue;
+      }
+      cursors.push({
+        label: row.label,
+        index: row.idx,
+        lastSeq: row.lastSeq,
+      });
+    }
+  }
+  return projectCursors(cursors);
+}
+
 function apldToSql(a: ApldState): number {
   if (a === APLD_APPLIED) return 1;
   if (a === APLD_ERROR) return 2;
@@ -63,8 +107,14 @@ function openDb(path: string): Database {
     );
     CREATE TABLE IF NOT EXISTS hosts (
       label TEXT PRIMARY KEY,
+      idx INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS host_seqs (
+      host TEXT NOT NULL,
+      label TEXT NOT NULL,
       idx INTEGER NOT NULL,
-      lastSeq INTEGER NOT NULL DEFAULT 0
+      lastSeq INTEGER NOT NULL,
+      PRIMARY KEY (host, label, idx)
     );
     CREATE TABLE IF NOT EXISTS uploads (
       host TEXT NOT NULL,
@@ -73,6 +123,8 @@ function openDb(path: string): Database {
     );
     CREATE TABLE IF NOT EXISTS downloads (
       host TEXT NOT NULL,
+      rlabel TEXT NOT NULL DEFAULT '',
+      ridx INTEGER NOT NULL DEFAULT 0,
       seq INTEGER NOT NULL,
       kdm BLOB NOT NULL,
       eid BLOB NOT NULL,
@@ -83,7 +135,7 @@ function openDb(path: string): Database {
       hsh BLOB,
       headEnc BLOB,
       headEncHash BLOB,
-      PRIMARY KEY (host, seq)
+      PRIMARY KEY (host, rlabel, ridx, seq)
     );
     CREATE TABLE IF NOT EXISTS messages (
       hash TEXT PRIMARY KEY,
@@ -93,27 +145,19 @@ function openDb(path: string): Database {
       typ TEXT,
       body BLOB,
       apld INTEGER NOT NULL DEFAULT 0,
-      err INTEGER
+      err INTEGER,
+      rlm TEXT
+    );
+    CREATE TABLE IF NOT EXISTS realms (
+      account TEXT NOT NULL,
+      label TEXT NOT NULL,
+      idx INTEGER NOT NULL,
+      prior TEXT,
+      PRIMARY KEY (account, label)
     );
     CREATE INDEX IF NOT EXISTS messages_apld ON messages(apld);
     CREATE INDEX IF NOT EXISTS messages_eid ON messages(eid);
   `);
-  // Older perf DBs may lack err / typ / host bag stats.
-  try {
-    db.exec("ALTER TABLE messages ADD COLUMN err INTEGER");
-  } catch {
-    // column already present
-  }
-  try {
-    db.exec("ALTER TABLE messages ADD COLUMN typ TEXT");
-  } catch {
-    // column already present
-  }
-  try {
-    db.exec("ALTER TABLE downloads ADD COLUMN typ TEXT NOT NULL DEFAULT ''");
-  } catch {
-    // column already present
-  }
   return db;
 }
 
@@ -148,7 +192,6 @@ class SqliteAccountStore implements IAccountStore {
   async wipe() {
     this.#enclave = undefined;
     this.#label = undefined;
-    // Drop any legacy seed rows from older harness builds.
     this.db.exec("DELETE FROM seed");
   }
 }
@@ -162,47 +205,66 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
   async add(info: IHostConnectionInfo<Handle>) {
     this.handles.set(info.label, info.handle);
     const idx = info.idx ?? 0;
+    const prev: unknown = this.db.prepare(
+      "SELECT idx FROM hosts WHERE label = ?",
+    ).get(info.label);
+    if (isRec(prev) && typeof prev.idx === "number" && prev.idx !== idx) {
+      this.db.prepare(
+        "DELETE FROM host_seqs WHERE host = ? AND NOT (label = '' AND idx = 0)",
+      ).run(info.label);
+    }
     this.db.prepare(
-      `INSERT INTO hosts (label, idx, lastSeq) VALUES (?, ?, 0)
+      `INSERT INTO hosts (label, idx) VALUES (?, ?)
        ON CONFLICT(label) DO UPDATE SET idx = excluded.idx`,
     ).run(info.label, idx);
   }
 
-  async touch(label: string, seq: number) {
-    await this.recordStats(label, { lastSeq: seq });
+  async touch(label: string, seq: number, realm?: IKDM) {
+    await this.recordSeqs(label, { lastSeq: seq }, realm);
   }
 
-  async recordStats(label: string, u: HostStatsUpdate) {
-    const row = this.db.prepare(
-      "SELECT lastSeq FROM hosts WHERE label = ?",
-    ).get(label) as { lastSeq: number } | null;
-    if (!row) return;
-    let lastSeq = row.lastSeq;
-    if (u.setLastSeq !== undefined) lastSeq = u.setLastSeq;
-    else if (u.lastSeq !== undefined && u.lastSeq > lastSeq) {
-      lastSeq = u.lastSeq;
+  // Writes one host_seqs row. The default realm is label "" and idx 0.
+  private writeRealmSeq(label: string, u: HostSeqsUpdate, realm: IKDM) {
+    const host: unknown = this.db.prepare(
+      "SELECT label FROM hosts WHERE label = ?",
+    ).get(label);
+    if (!isRec(host)) return;
+    const curRow: unknown = this.db.prepare(
+      "SELECT lastSeq FROM host_seqs WHERE host = ? AND label = ? AND idx = ?",
+    ).get(label, realm.label, realm.index);
+    let cur = 0;
+    if (isRec(curRow) && typeof curRow.lastSeq === "number") {
+      cur = curRow.lastSeq;
     }
+    const next = nextCursor(cur, u);
+    if (next === undefined) return;
     this.db.prepare(
-      "UPDATE hosts SET lastSeq = ? WHERE label = ?",
-    ).run(lastSeq, label);
+      `INSERT INTO host_seqs (host, label, idx, lastSeq) VALUES (?, ?, ?, ?)
+       ON CONFLICT(host, label, idx) DO UPDATE SET lastSeq = excluded.lastSeq`,
+    ).run(label, realm.label, realm.index, next);
+  }
+
+  async recordSeqs(label: string, u: HostSeqsUpdate, realm?: IKDM) {
+    this.writeRealmSeq(label, u, realm ?? nullKDM);
   }
 
   async get(label: string): Promise<IHostRow<Handle> | undefined> {
     const row = this.db.prepare(
-      "SELECT label, idx, lastSeq FROM hosts WHERE label = ?",
+      "SELECT label, idx FROM hosts WHERE label = ?",
     ).get(label) as {
       label: string;
       idx: number;
-      lastSeq: number;
     } | null;
     if (!row) return undefined;
     const handle = this.handles.get(label);
     if (handle === undefined) return undefined;
+    const cursors = readCursors(this.db, label);
     return {
       label: row.label,
       idx: row.idx,
-      lastSeq: row.lastSeq,
+      lastSeq: cursors.lastSeq,
       handle,
+      ...(cursors.seqs !== undefined ? { seqs: cursors.seqs } : {}),
     };
   }
 
@@ -215,26 +277,28 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
 
   async del(label: string) {
     this.handles.delete(label);
+    this.db.prepare("DELETE FROM host_seqs WHERE host = ?").run(label);
     this.db.prepare("DELETE FROM hosts WHERE label = ?").run(label);
   }
 
   async list(): Promise<Iterable<IHostRow<Handle>>> {
     const rows = this.db.prepare(
-      "SELECT label, idx, lastSeq FROM hosts",
+      "SELECT label, idx FROM hosts",
     ).all() as {
       label: string;
       idx: number;
-      lastSeq: number;
     }[];
     const out: IHostRow<Handle>[] = [];
     for (const row of rows) {
       const handle = this.handles.get(row.label);
       if (handle === undefined) continue;
+      const cursors = readCursors(this.db, row.label);
       out.push({
         label: row.label,
         idx: row.idx,
-        lastSeq: row.lastSeq,
+        lastSeq: cursors.lastSeq,
         handle,
+        ...(cursors.seqs !== undefined ? { seqs: cursors.seqs } : {}),
       });
     }
     return out;
@@ -242,6 +306,7 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
 
   async wipe() {
     this.handles.clear();
+    this.db.exec("DELETE FROM host_seqs");
     this.db.exec("DELETE FROM hosts");
   }
 }
@@ -310,8 +375,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
   async enq(msgs: Iterable<IDownloadMessage>) {
     const ins = this.db.prepare(
       `INSERT OR REPLACE INTO downloads
-        (host, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (host, rlabel, ridx, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.exec("BEGIN");
     try {
@@ -319,6 +384,8 @@ class SqliteDownloadQueue implements IDownloadQueue {
         const { head } = m;
         ins.run(
           m.host,
+          m.realm?.label ?? "",
+          m.realm?.index ?? 0,
           m.seq,
           m.kdm,
           head.eid,
@@ -338,14 +405,16 @@ class SqliteDownloadQueue implements IDownloadQueue {
     }
   }
 
-  async deq(host: string, seqs: Iterable<number>) {
+  async deq(host: string, seqs: Iterable<number>, realm?: IKDM) {
     const del = this.db.prepare(
-      "DELETE FROM downloads WHERE host = ? AND seq = ?",
+      "DELETE FROM downloads WHERE host = ? AND rlabel = ? AND ridx = ? AND seq = ?",
     );
+    const rlabel = realm?.label ?? "";
+    const ridx = realm?.index ?? 0;
     this.db.exec("BEGIN");
     try {
       for (const seq of seqs) {
-        del.run(host, seq);
+        del.run(host, rlabel, ridx, seq);
       }
       this.db.exec("COMMIT");
     } catch (e) {
@@ -356,10 +425,12 @@ class SqliteDownloadQueue implements IDownloadQueue {
 
   async list(): Promise<IDownloadMessage[]> {
     const rows = this.db.prepare(
-      `SELECT host, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash
+      `SELECT host, rlabel, ridx, seq, kdm, eid, off, ctr, typ, len, hsh, headEnc, headEncHash
        FROM downloads`,
     ).all() as {
       host: string;
+      rlabel: string;
+      ridx: number;
       seq: number;
       kdm: Uint8Array;
       eid: Uint8Array;
@@ -380,6 +451,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
         len: row.len,
         ...(row.hsh ? { hsh: new Uint8Array(row.hsh) } : {}),
       };
+      const named = row.rlabel !== "" || row.ridx !== 0;
       return {
         host: row.host,
         seq: row.seq,
@@ -389,6 +461,7 @@ class SqliteDownloadQueue implements IDownloadQueue {
         ...(row.headEncHash
           ? { headEncHash: new Uint8Array(row.headEncHash) as Hash }
           : {}),
+        ...(named ? { realm: { label: row.rlabel, index: row.ridx } } : {}),
       };
     });
   }
@@ -410,8 +483,8 @@ class SqliteMessageStore implements IMessageStore {
   async add(messages: IStorableMessage[]): Promise<Status[]> {
     if (messages.length < 1) return [];
     const ins = this.db.prepare(
-      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, typ, body, apld, err)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO messages (hash, eid, off, ctr, typ, body, apld, err, rlm)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const results: Status[] = [];
     this.db.exec("BEGIN");
@@ -426,6 +499,7 @@ class SqliteMessageStore implements IMessageStore {
           data.body ?? null,
           apldToSql(data.apld),
           data.err ?? null,
+          realmLabel(data.rlm) ?? null,
         );
         results.push(Status.Success);
       }
@@ -465,11 +539,13 @@ class SqliteMessageStore implements IMessageStore {
       body: Uint8Array | null;
       apld: number;
       err: number | null;
+      rlm: string | null;
     },
     key: Hash,
     opts?: { body?: boolean },
   ): Promise<IStoredMessage> {
     const apld = apldFromSql(row.apld);
+    const rlm = realmLabel(row.rlm);
     // Pass body bytes for len; toStoredMessage omits payload/hsh when body: false.
     return toStoredMessage(
       key,
@@ -481,6 +557,7 @@ class SqliteMessageStore implements IMessageStore {
         ...(row.body ? { body: new Uint8Array(row.body) } : {}),
         apld,
         ...(apld === APLD_ERROR && row.err !== null ? { err: row.err } : {}),
+        ...(rlm !== undefined ? { rlm } : {}),
       },
       this.crypto,
       opts,
@@ -489,7 +566,7 @@ class SqliteMessageStore implements IMessageStore {
 
   async get(key: Hash): Promise<IStoredMessage | undefined> {
     const row = this.db.prepare(
-      "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE hash = ?",
+      "SELECT hash, eid, off, ctr, typ, body, apld, err, rlm FROM messages WHERE hash = ?",
     ).get(btob64(key)) as {
       hash: string;
       eid: Uint8Array;
@@ -499,6 +576,7 @@ class SqliteMessageStore implements IMessageStore {
       body: Uint8Array | null;
       apld: number;
       err: number | null;
+      rlm: string | null;
     } | null;
     if (!row) return undefined;
     return await this.rowToStored(row, key);
@@ -521,15 +599,16 @@ class SqliteMessageStore implements IMessageStore {
       body: Uint8Array | null;
       apld: number;
       err: number | null;
+      rlm: string | null;
     };
     const apld = opts?.apld;
     const body = opts?.body !== false;
     const rows = apld === undefined
       ? this.db.prepare(
-        "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages",
+        "SELECT hash, eid, off, ctr, typ, body, apld, err, rlm FROM messages",
       ).all() as Row[]
       : this.db.prepare(
-        "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE apld = ?",
+        "SELECT hash, eid, off, ctr, typ, body, apld, err, rlm FROM messages WHERE apld = ?",
       ).all(apldToSql(apld)) as Row[];
     return await Promise.all(
       rows.map((row) =>
@@ -562,7 +641,7 @@ class SqliteMessageStore implements IMessageStore {
   async last(eid: EntityID): Promise<IStoredMessage | undefined> {
     // Compare in JS; eid blob equality in SQL is fine for exact match filter.
     const rows = this.db.prepare(
-      "SELECT hash, eid, off, ctr, typ, body, apld, err FROM messages WHERE eid = ?",
+      "SELECT hash, eid, off, ctr, typ, body, apld, err, rlm FROM messages WHERE eid = ?",
     ).all(eid) as {
       hash: string;
       eid: Uint8Array;
@@ -572,6 +651,7 @@ class SqliteMessageStore implements IMessageStore {
       body: Uint8Array | null;
       apld: number;
       err: number | null;
+      rlm: string | null;
     }[];
     if (rows.length < 1) return undefined;
     let best = rows[0];
@@ -624,8 +704,72 @@ class SqliteMessageStore implements IMessageStore {
   }
 }
 
+function realmFromSql(raw: unknown): IRealm | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  if (!("label" in raw) || !("idx" in raw)) return undefined;
+  const { label, idx } = raw;
+  if (typeof label !== "string" || typeof idx !== "number") return undefined;
+  let prior: unknown;
+  if ("prior" in raw && typeof raw.prior === "string" && raw.prior !== "") {
+    try {
+      prior = JSON.parse(raw.prior);
+    } catch {
+      prior = undefined;
+    }
+  }
+  return decodeRealm({
+    label,
+    index: idx,
+    ...(prior !== undefined ? { prior } : {}),
+  });
+}
+
+// One file is one account. The account column remains for older perf databases.
+class SqliteRealmStore implements IRealmStore {
+  constructor(private db: Database) {}
+
+  async list(): Promise<IRealm[]> {
+    const raw = this.db.prepare(
+      "SELECT label, idx, prior FROM realms WHERE account = ''",
+    ).all();
+    if (!Array.isArray(raw)) return [];
+    const out: IRealm[] = [];
+    for (const item of raw) {
+      const realm = realmFromSql(item);
+      if (realm !== undefined) out.push(realm);
+    }
+    return out;
+  }
+
+  async get(label: string): Promise<IRealm | undefined> {
+    return realmFromSql(
+      this.db.prepare(
+        "SELECT label, idx, prior FROM realms WHERE account = '' AND label = ?",
+      ).get(label),
+    );
+  }
+
+  async put(label: string, index: number): Promise<Status> {
+    const [next, st] = advanceRealm(label, await this.get(label), index);
+    if (st !== Status.Success) return st;
+    const prior = next.prior !== undefined ? JSON.stringify(next.prior) : null;
+    this.db.prepare(
+      `INSERT INTO realms (account, label, idx, prior)
+       VALUES ('', ?, ?, ?)
+       ON CONFLICT(account, label) DO UPDATE SET
+         idx = excluded.idx, prior = excluded.prior`,
+    ).run(next.label, next.index, prior);
+    return Status.Success;
+  }
+
+  async wipe() {
+    this.db.exec("DELETE FROM realms");
+  }
+}
+
 export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
   account: SqliteAccountStore;
+  realms: SqliteRealmStore;
   hosts: SqliteHostStore<Handle>;
   uploads: SqliteUploadQueue;
   downloads: SqliteDownloadQueue;
@@ -635,10 +779,16 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
   constructor(path: string, crypto: ICrypto = libsodiumCrypto) {
     this.db = openDb(path);
     this.account = new SqliteAccountStore(this.db, crypto);
+    this.realms = new SqliteRealmStore(this.db);
     this.hosts = new SqliteHostStore<Handle>(this.db);
     this.uploads = new SqliteUploadQueue(this.db);
     this.downloads = new SqliteDownloadQueue(this.db);
     this.messages = new SqliteMessageStore(this.db, crypto);
+  }
+
+  // One file holds every account.
+  async bind(): Promise<Status> {
+    return Status.Success;
   }
 
   async wipe() {

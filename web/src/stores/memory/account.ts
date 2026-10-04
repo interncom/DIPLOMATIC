@@ -28,9 +28,8 @@ export class MemoryAccountStore implements IAccountStore {
     }
     const slot = this.#slots.get(label) ?? {};
     if (slot.tag !== undefined) {
-      const hit = await keyTagMatches(this.#crypto, enclave, slot.tag);
-      if (!hit.ok) return err(Status.HashMismatch);
-      if (hit.next !== undefined) slot.tag = hit.next;
+      const hit = await keyTagMatches(enclave, slot.tag);
+      if (!hit) return err(Status.HashMismatch);
     } else {
       const [tag, tst] = await makeKeyTag(this.#crypto, enclave);
       if (tst !== Status.Success) return err(tst);

@@ -19,7 +19,7 @@ import { btoh } from "../../../shared/binary.ts";
 import { Clock } from "../../../shared/clock.ts";
 import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
-import { Status } from "../../../shared/consts.ts";
+import { hashBytes, Status } from "../../../shared/consts.ts";
 import {
   DiplomaticHTTPServer,
   validateWebSocketAuth,
@@ -27,6 +27,7 @@ import {
 import type {
   IHostCrypto,
   IPushNotifier,
+  ISetBagResult,
   IStorage,
 } from "../../../shared/types";
 import { nullSubMeta } from "../../../shared/types.ts";
@@ -186,16 +187,25 @@ export default {
       // chunk (statements run sequentially; each sees prior inserts in the txn).
       async setBags(pubKey, bags) {
         if (bags.length < 1) return ok([]);
+        const good: number[] = [];
+        for (let i = 0; i < bags.length; i++) {
+          if (bags[i].rlm.byteLength === hashBytes) good.push(i);
+        }
+        if (good.length < 1) {
+          return ok(bags.map(() => ({ status: Status.InvalidParam })));
+        }
         const t0 = Date.now();
         try {
           const pubKeyHex = btoh(pubKey);
-          // seq is allocated atomically relative to current rows (and prior
+          // seq is allocated per rlm, relative to current rows (and prior
           // inserts in the same batch transaction).
           const insertSql = `
-            INSERT INTO bags (userPubKey, seq, headCph, bodyCph)
+            INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph)
             VALUES (
               ?,
-              (SELECT COALESCE(MAX(seq), 0) + 1 FROM bags WHERE userPubKey = ?),
+              ?,
+              (SELECT COALESCE(MAX(seq), 0) + 1 FROM bags
+                WHERE userPubKey = ? AND rlm = ?),
               ?,
               ?
             )
@@ -203,14 +213,17 @@ export default {
 
           const stmts: D1PreparedStatement[] = [];
           let totalBody = 0;
-          for (const bag of bags) {
+          for (const i of good) {
+            const bag = bags[i];
             totalBody += bag.bodyCph.length;
             const enc = new Encoder();
             enc.writeStruct(peekItemHeadCodec, bag);
             stmts.push(
               env.DIP_DB.prepare(insertSql).bind(
                 pubKeyHex,
+                bag.rlm,
                 pubKeyHex,
+                bag.rlm,
                 enc.result(),
                 bag.bodyCph,
               ),
@@ -236,7 +249,19 @@ export default {
               Date.now() - t0
             }`,
           );
-          return ok(seqs);
+          let n = 0;
+          const out: ISetBagResult[] = [];
+          for (let i = 0; i < bags.length; i++) {
+            if (bags[i].rlm.byteLength !== hashBytes) {
+              out.push({ status: Status.InvalidParam });
+              continue;
+            }
+            const seq = seqs[n];
+            n += 1;
+            if (seq === undefined) return err(Status.StorageError);
+            out.push({ status: Status.Success, seq });
+          }
+          return ok(out);
         } catch (e) {
           logStorageError("setBags", e, {
             n: bags.length,
@@ -246,32 +271,32 @@ export default {
         }
       },
 
-      async getBodies(pubKey, seqs) {
+      async getBodies(pubKey, rlm, seqs) {
+        if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
         if (seqs.length < 1) return ok([]);
         const t0 = Date.now();
         try {
           const pubKeyHex = btoh(pubKey);
           const out: { seq: number; bodyCph: Uint8Array }[] = [];
           // SQLite/D1 reject queries with too many bound parameters
-          // ("too many SQL variables"). D1's limit is ~100; leave one slot for
-          // userPubKey so each IN (...) stays at maxBinds-1 seq placeholders.
+          // ("too many SQL variables"). D1's limit is ~100; leave slots for
+          // userPubKey and rlm so each IN stays at maxBinds-2 seq placeholders.
           const maxBinds = 100;
-          const chunk = maxBinds - 1;
+          const chunk = maxBinds - 2;
           for (let i = 0; i < seqs.length; i += chunk) {
             const part = seqs.slice(i, i + chunk);
             const placeholders = part.map(() => "?").join(",");
             const rows = await env.DIP_DB.prepare(
-              `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND seq IN (${placeholders})`,
+              `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
             )
-              .bind(pubKeyHex, ...part)
+              .bind(pubKeyHex, rlm, ...part)
               .all<{ seq: number; bodyCph: Uint8Array }>();
             for (const row of rows.results ?? []) {
-              if (row.bodyCph) {
-                out.push({
-                  seq: row.seq,
-                  bodyCph: new Uint8Array(row.bodyCph),
-                });
-              }
+              if (!row.bodyCph) continue;
+              out.push({
+                seq: row.seq,
+                bodyCph: new Uint8Array(row.bodyCph),
+              });
             }
           }
           console.info(
@@ -286,13 +311,14 @@ export default {
         }
       },
 
-      async listHeads(pubKey, minSeq) {
+      async listHeads(pubKey, rlm, minSeq) {
+        if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
         try {
           const pubKeyHex = btoh(pubKey);
           const rows = await env.DIP_DB.prepare(
-            "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND seq > ? ORDER BY seq",
+            "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq > ? ORDER BY seq",
           )
-            .bind(pubKeyHex, minSeq)
+            .bind(pubKeyHex, rlm, minSeq)
             .all<{ seq: number; headCph: Uint8Array }>();
           return ok(
             rows.results?.map((row) => ({

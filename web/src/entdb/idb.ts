@@ -21,6 +21,7 @@ import {
 } from "./entdb";
 import { b64tob, btob64 } from "../shared/binary";
 import { dipLog } from "../verbose";
+import { type EntRlm, realmLabel } from "../stores/realm";
 
 export const entityTableName = "entities";
 export const typeIndexName = "entity_type_created_at";
@@ -28,13 +29,15 @@ export const typeUpdatedAtIndexName = "entity_type_updated_at";
 export const typeParentIndexName = "entity_type_parent_id";
 /** multiEntry index on tgs[]; query by tag then filter by type. */
 export const tagsIndexName = "entity_tags";
+/** Realm label. Rows in the default realm omit rlm and are not in this index. */
+export const realmIndexName = "entity_rlm";
 /** Dropped in v14; name kept so upgrade can deleteIndex. */
 const typeGroupIndexName = "entity_type_group_id";
 
-/** Shared by main thread and sync worker — must stay in lockstep. */
+/** Pre-split EntDB name. New accounts use `ents-<acct>`. */
 export const ENT_IDB_NAME = "db";
-/** v14: drop [`typ`,`gid`] index (gid superseded by tags). */
-export const ENT_IDB_VERSION = 14;
+/** v15: optional rlm (realm label) index. Omitted on the default realm. */
+export const ENT_IDB_VERSION = 15;
 
 interface IStoredEntity<T = unknown> {
   bod: T;
@@ -42,6 +45,8 @@ interface IStoredEntity<T = unknown> {
   ctr?: number;
   eid: string;
   pid?: string;
+  /** Realm label. Omitted for the default realm. */
+  rlm?: EntRlm;
   tgs?: string[]; // tags (API); multiEntry-indexed
   typ: string;
   upd: Date; // updatedAt
@@ -68,12 +73,14 @@ function isStoredEntity<T>(s: IStoredRow<T>): s is IStoredEntity<T> {
 }
 
 function entityToStored<T>(ent: IEntity<T>): IStoredEntity<T> {
+  const rlm = realmLabel(ent.rlm);
   const stored: IStoredEntity<T> = {
     bod: ent.body,
     crd: ent.createdAt,
     ...(ent.ctr !== 0 ? { ctr: ent.ctr } : {}),
     eid: btob64(ent.eid),
     pid: ent.pid ? btob64(ent.pid) : undefined,
+    ...(rlm !== undefined ? { rlm } : {}),
     tgs: ent.tags,
     typ: ent.type,
     upd: ent.updatedAt,
@@ -106,6 +113,7 @@ function rowToStored(row: IEntRow): IStoredRow {
 function storedToEntity<T>(
   stored: IStoredEntity<T>,
 ): IEntity<T> {
+  const rlm = realmLabel(stored.rlm);
   return {
     body: stored.bod,
     createdAt: stored.crd,
@@ -115,6 +123,7 @@ function storedToEntity<T>(
     eid: b64tob(stored.eid) as EntityID,
     pid: stored.pid ? b64tob(stored.pid) as EntityID : undefined,
     ...(stored.tgs !== undefined ? { tags: stored.tgs } : {}),
+    ...(rlm !== undefined ? { rlm } : {}),
   };
 }
 
@@ -205,8 +214,18 @@ export class EntIDB implements IEntDB {
   /** In-flight open; coalesces concurrent ensureDb / peer upgrade reopen. */
   private opening: Promise<IDBDatabase> | undefined;
 
+  constructor(private name: string) {}
+
   async init() {
     await this.ensureDb();
+  }
+
+  // Drops this connection so the database can be deleted or upgraded.
+  close() {
+    const db = this.db;
+    this.db = undefined;
+    this.opening = undefined;
+    if (db !== undefined) db.close();
   }
 
   /**
@@ -221,7 +240,7 @@ export class EntIDB implements IEntDB {
     if (this.opening) {
       return this.opening;
     }
-    this.opening = openEntIdbConnection().then((db) => {
+    this.opening = openEntIdbConnection(this.name).then((db) => {
       db.onversionchange = () => {
         // Let the other realm (worker/main/tab) finish schema upgrade.
         db.close();
@@ -630,11 +649,14 @@ function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
       multiEntry: true,
     });
   }
+  if (!store.indexNames.contains(realmIndexName)) {
+    store.createIndex(realmIndexName, "rlm", { unique: false });
+  }
 }
 
-function openEntIdbConnection(): Promise<IDBDatabase> {
+function openEntIdbConnection(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(ENT_IDB_NAME, ENT_IDB_VERSION);
+    const req = indexedDB.open(name, ENT_IDB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       const tx = req.transaction;
@@ -653,7 +675,7 @@ function openEntIdbConnection(): Promise<IDBDatabase> {
       // their onversionchange handler closes; without that, open hangs forever.
       console.warn(
         "[DIPLOMATIC] EntDB IDB upgrade blocked " +
-          `(${ENT_IDB_NAME} → v${ENT_IDB_VERSION}); ` +
+          `(${name} → v${ENT_IDB_VERSION}); ` +
           "waiting for other connections to close",
       );
     };
@@ -664,8 +686,8 @@ function openEntIdbConnection(): Promise<IDBDatabase> {
 }
 
 /** Durable IndexedDB EntDB. Internal-only. Apps use {@link openEntDB} instead. */
-export async function openEntIDB() {
-  const entDB = new EntIDB();
+export async function openEntIDB(name: string) {
+  const entDB = new EntIDB(name);
   await entDB.init();
   return entDB;
 }

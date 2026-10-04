@@ -1,15 +1,26 @@
+import { Status } from "../../shared/consts";
 import { ICrypto } from "../../shared/types";
-import { IStore } from "../../types";
+import { err, ok, type ValStat } from "../../shared/valstat";
+import {
+  IAccountStore,
+  IDownloadQueue,
+  IHostStore,
+  IMessageStore,
+  IStore,
+  IUploadQueue,
+} from "../../types";
+import type { IRealmStore } from "../realm";
+import { IDBAccountStore } from "./account";
 import { IDBDownloadQueue } from "./dnlds";
 import { IDBHostStore } from "./hosts";
+import { openDataDB, openMetaDB } from "./migrate";
 import { IDBMessageStore } from "./msgs";
-import { accountFromSeedMeta, decodeAccount, IDBAccountStore } from "./account";
+import { IDBRealmStore } from "./realms";
 import { IDBUploadQueue } from "./uplds";
-
 export const ACCOUNTS_TABLE = "accounts";
-/** TODO(accounts-sunset): seedMeta store name. Delete with adoptSeedMeta. */
-const LEGACY_SEED_META = "seedMeta";
 export const HOSTS_TABLE = "hosts";
+/** Host-realm cursors. Key is host, realm label, realm index. */
+export const HOST_SEQS_TABLE = "host_seqs";
 export const UPLOAD_QUEUE_TABLE = "uploadQueue";
 export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
 export const MESSAGES_TABLE = "messages";
@@ -19,30 +30,198 @@ export const MESSAGES_TABLE = "messages";
  * strings keep keys compact.
  */
 export const MESSAGES_APLD_INDEX = "apld";
+/** Realm label. Default-realm rows omit rlm and are not in this index. */
+export const MESSAGES_RLM_INDEX = "rlm";
+export const REALMS_TABLE = "realms";
 
-/** Schema version: v5 keys each account by a unique label. */
-export const DIPLOMATIC_STORE_DB_VERSION = 5;
+type Tables = {
+  realms: IRealmStore;
+  hosts: IHostStore<URL>;
+  uploads: IUploadQueue;
+  downloads: IDownloadQueue;
+  messages: IMessageStore;
+};
 
-/** TODO(accounts-sunset): seedMeta had no label. That row is the default account. */
-const ADOPTED_ACCOUNT_LABEL = "";
+// Protocol stores for one open data database.
+function openTables(db: IDBDatabase, crypto: ICrypto): Tables {
+  return {
+    realms: new IDBRealmStore(db),
+    hosts: new IDBHostStore(db),
+    uploads: new IDBUploadQueue(db),
+    downloads: new IDBDownloadQueue(db),
+    messages: new IDBMessageStore(db, crypto),
+  };
+}
 
-export const DIPLOMATIC_STORE_DB_NAME = "diplomatic-store-db";
+// Protocol stores before a data database is open. Reads are empty.
+function idleTables(): Tables {
+  return {
+    realms: {
+      async list() {
+        return [];
+      },
+      async get() {
+        return undefined;
+      },
+      async put() {
+        return Status.NotFound;
+      },
+      async wipe() {},
+    },
+    hosts: {
+      async add() {},
+      async get() {
+        return undefined;
+      },
+      async del() {},
+      async set() {
+        return Status.NotFound;
+      },
+      async list() {
+        return [];
+      },
+      async wipe() {},
+      async touch() {},
+      async recordSeqs() {},
+    },
+    uploads: {
+      async enq() {},
+      async deq() {},
+      async list() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async wipe() {},
+    },
+    downloads: {
+      async enq() {},
+      async deq() {},
+      async list() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async wipe() {},
+    },
+    messages: {
+      async add(rows) {
+        return rows.map(() => Status.DatabaseError);
+      },
+      async get() {
+        return undefined;
+      },
+      async has() {
+        return false;
+      },
+      async del() {},
+      async list() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async listKeys() {
+        return [];
+      },
+      async last() {
+        return undefined;
+      },
+      async markApplied() {},
+      async markFailed() {},
+      async wipe() {},
+    },
+  };
+}
 
 export class IDBStore implements IStore<URL> {
-  account: IDBAccountStore;
-  hosts: IDBHostStore;
-  uploads: IDBUploadQueue;
-  downloads: IDBDownloadQueue;
-  messages: IDBMessageStore;
-  db: IDBDatabase;
+  account: IAccountStore;
+  realms: IRealmStore;
+  hosts: IHostStore<URL>;
+  uploads: IUploadQueue;
+  downloads: IDownloadQueue;
+  messages: IMessageStore;
+  #db: IDBDatabase | undefined;
+  #crypto: ICrypto;
+  #lookup: ((label: string) => Promise<string | undefined>) | undefined;
 
-  constructor(db: IDBDatabase, crypto: ICrypto) {
-    this.db = db;
-    this.account = new IDBAccountStore(db, crypto);
-    this.hosts = new IDBHostStore(db);
-    this.uploads = new IDBUploadQueue(db);
-    this.downloads = new IDBDownloadQueue(db);
-    this.messages = new IDBMessageStore(db, crypto);
+  constructor(
+    account: IAccountStore,
+    crypto: ICrypto,
+    lookup?: (label: string) => Promise<string | undefined>,
+    db?: IDBDatabase,
+  ) {
+    this.account = account;
+    this.#crypto = crypto;
+    this.#lookup = lookup;
+    const idle = idleTables();
+    this.realms = idle.realms;
+    this.hosts = idle.hosts;
+    this.uploads = idle.uploads;
+    this.downloads = idle.downloads;
+    this.messages = idle.messages;
+    if (db !== undefined) this.#mount(db);
+  }
+
+  // Points the protocol stores at `db` and closes the previous connection.
+  #mount(db: IDBDatabase) {
+    const prev = this.#db;
+    this.#db = db;
+    db.onversionchange = () => {
+      if (this.#db !== db) return;
+      this.#drop();
+    };
+    this.#use(openTables(db, this.#crypto));
+    if (prev !== undefined && prev !== db) prev.close();
+  }
+
+  // Closes the open data database and serves empty protocol stores.
+  #drop() {
+    const db = this.#db;
+    this.#db = undefined;
+    this.#use(idleTables());
+    if (db !== undefined) db.close();
+  }
+
+  // Installs one set of protocol stores.
+  #use(tables: Tables) {
+    this.realms = tables.realms;
+    this.hosts = tables.hosts;
+    this.uploads = tables.uploads;
+    this.downloads = tables.downloads;
+    this.messages = tables.messages;
+  }
+
+  // Opens this account's protocol database. A worker store is already open.
+  async bind(label: string): Promise<Status> {
+    if (this.#lookup === undefined) {
+      return this.#db === undefined ? Status.NotFound : Status.Success;
+    }
+    const data = await this.#lookup(label);
+    if (data === undefined) return Status.NotFound;
+    if (this.#db !== undefined && this.#db.name === data) return Status.Success;
+    const db = await openDataDB(data);
+    this.#mount(db);
+    return Status.Success;
+  }
+
+  // Data and ents names the worker should open. Does not open ents here.
+  async prepareWorker(
+    label: string,
+  ): Promise<ValStat<{ data: string; ents: string }>> {
+    const data = await this.#lookup?.(label);
+    if (data === undefined) return err(Status.NotFound);
+    if (!(this.account instanceof IDBAccountStore)) {
+      return err(Status.InvalidParam);
+    }
+    const ents = await this.account.ensureEnts(label);
+    return ok({ data, ents });
+  }
+
+  close() {
+    this.#drop();
   }
 
   /**
@@ -57,121 +236,38 @@ export class IDBStore implements IStore<URL> {
   }
 }
 
-// Creates the accounts store when this database does not have one yet.
-function ensureAccounts(db: IDBDatabase, tx: IDBTransaction): void {
-  if (!db.objectStoreNames.contains(ACCOUNTS_TABLE)) {
-    db.createObjectStore(ACCOUNTS_TABLE, { keyPath: "label" });
-    return;
-  }
-  const store = tx.objectStore(ACCOUNTS_TABLE);
-  if (store.keyPath === "label") return;
-  // TODO(accounts-sunset): v4 keyPath was `id`.
-  // Delete this rebuild once those DBs have opened v5.
-  const req = store.getAll();
-  req.onsuccess = () => {
-    const rows = req.result;
-    db.deleteObjectStore(ACCOUNTS_TABLE);
-    const next = db.createObjectStore(ACCOUNTS_TABLE, { keyPath: "label" });
-    if (!Array.isArray(rows)) return;
-    for (const item of rows) {
-      const acct = decodeAccount(item);
-      if (acct !== undefined) next.put(acct);
-    }
-  };
-}
-
-// TODO(accounts-sunset): copy seedMeta into one accounts row, then drop it.
-function adoptSeedMeta(db: IDBDatabase, tx: IDBTransaction): void {
-  const meta = tx.objectStore(LEGACY_SEED_META);
-  // TODO(accounts-sunset): seedMeta stored the key tag under "idPin".
-  const tagReq = meta.get("idPin");
-  const ringReq = meta.get("keyring");
-  let tag: unknown;
-  let ring: unknown;
-  let left = 2;
-  const finish = () => {
-    left -= 1;
-    if (left > 0) return;
-    const row = accountFromSeedMeta(ADOPTED_ACCOUNT_LABEL, tag, ring);
-    if (row !== undefined) tx.objectStore(ACCOUNTS_TABLE).put(row);
-    db.deleteObjectStore(LEGACY_SEED_META);
-  };
-  tagReq.onsuccess = () => {
-    tag = tagReq.result;
-    finish();
-  };
-  ringReq.onsuccess = () => {
-    ring = ringReq.result;
-    finish();
-  };
-}
-
-export async function openIDBStoreDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(
-      DIPLOMATIC_STORE_DB_NAME,
-      DIPLOMATIC_STORE_DB_VERSION,
-    );
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      const tx = req.transaction;
-      if (!tx) throw new Error("missing upgrade transaction for accounts");
-      ensureAccounts(db, tx);
-      // TODO(accounts-sunset): remove with adoptSeedMeta.
-      if (db.objectStoreNames.contains(LEGACY_SEED_META)) {
-        adoptSeedMeta(db, tx);
-      }
-      if (!db.objectStoreNames.contains(HOSTS_TABLE)) {
-        db.createObjectStore(HOSTS_TABLE, {
-          keyPath: "label",
-        });
-      }
-      if (!db.objectStoreNames.contains(UPLOAD_QUEUE_TABLE)) {
-        db.createObjectStore(UPLOAD_QUEUE_TABLE, {
-          keyPath: ["host", "hash"],
-        });
-      }
-      if (!db.objectStoreNames.contains(DOWNLOAD_QUEUE_TABLE)) {
-        db.createObjectStore(DOWNLOAD_QUEUE_TABLE);
-      }
-
-      let msgStore: IDBObjectStore;
-      if (!db.objectStoreNames.contains(MESSAGES_TABLE)) {
-        msgStore = db.createObjectStore(MESSAGES_TABLE);
-      } else {
-        // Upgrade path: existing store (tx is non-null during onupgradeneeded).
-        if (!tx) {
-          throw new Error("missing upgrade transaction for messages store");
-        }
-        msgStore = tx.objectStore(MESSAGES_TABLE);
-      }
-      if (!msgStore.indexNames.contains(MESSAGES_APLD_INDEX)) {
-        msgStore.createIndex(MESSAGES_APLD_INDEX, "apld", { unique: false });
-      }
-    };
-    req.onblocked = () => {
-      console.warn(
-        "[DIPLOMATIC] protocol store IDB upgrade blocked " +
-          `(${DIPLOMATIC_STORE_DB_NAME} → v${DIPLOMATIC_STORE_DB_VERSION}); ` +
-          "waiting for other connections to close",
-      );
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      // Main + worker share this DB. Close on versionchange so a peer upgrade
-      // is not blocked (same multi-connection rule as EntDB).
-      db.onversionchange = () => {
-        db.close();
-      };
-      resolve(db);
-    };
-    req.onerror = () =>
-      reject(req.error ?? new Error("protocol store IndexedDB open failed"));
-  });
-}
-
+// Opens the catalog and, when the default account already has one, its data.
 export async function openIDBStore(crypto: ICrypto) {
-  const db = await openIDBStoreDB();
+  await persistBestEffort();
+  const meta = await openMetaDB();
+  const account = new IDBAccountStore(meta, crypto);
+  const store = new IDBStore(
+    account,
+    crypto,
+    (label) => account.dataName(label),
+  );
+  account.setCloser(() => store.close());
+  const home = await account.dataName("");
+  if (home !== undefined) await store.bind("");
+  return store;
+}
+
+// Worker protocol database. The catalog stays on the main thread.
+export async function openBoundStore(
+  crypto: ICrypto,
+  data: string,
+): Promise<IDBStore> {
+  const db = await openDataDB(data);
+  const account: IAccountStore = {
+    async save() {
+      return err(Status.InvalidParam);
+    },
+    async wipe() {},
+  };
+  return new IDBStore(account, crypto, undefined, db);
+}
+
+async function persistBestEffort() {
   // persist() can be slow or unavailable in workers; never block worker ready.
   if (typeof navigator !== "undefined" && navigator.storage?.persist) {
     try {
@@ -185,5 +281,4 @@ export async function openIDBStore(crypto: ICrypto) {
       // Non-fatal: durable storage request is best-effort.
     }
   }
-  return new IDBStore(db, crypto);
 }

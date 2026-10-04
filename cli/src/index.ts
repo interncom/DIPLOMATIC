@@ -6,12 +6,19 @@ import { Clock, IClock } from "../shared/clock.ts";
 import type { IBagPeekItem } from "../shared/codecs/peekItem.ts";
 import { IBagPullItem } from "../shared/codecs/pullItem.ts";
 import { IBagPushItem } from "../shared/codecs/pushItem.ts";
+import type { IKDM } from "../shared/codecs/kdm.ts";
 import { Status } from "../shared/consts.ts";
 import { Enclave } from "../shared/crypto/enclave.ts";
 import { hostHTTPTransport } from "../shared/http.ts";
 import { genSingletonUpsert } from "../shared/singleton.ts";
 import { decryptPeekItem } from "../shared/sync.ts";
-import { HostHandle, IBag, IHostConnectionInfo, IMessage, ITransport } from "../shared/types.ts";
+import {
+  HostHandle,
+  IBag,
+  IHostConnectionInfo,
+  IMessage,
+  ITransport,
+} from "../shared/types.ts";
 import { err, ok, ValStat } from "../shared/valstat.ts";
 
 // A CLIClient maintains no state. Master seed lives only inside the Enclave.
@@ -45,14 +52,17 @@ export class CLIClient<Handle extends HostHandle> {
     return stat;
   }
 
-  async push(msgs: IMessage[]): Promise<ValStat<IBagPushItem[]>> {
+  async push(
+    msgs: IMessage[],
+    realm?: IKDM,
+  ): Promise<ValStat<IBagPushItem[]>> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
 
     const bags: IBag[] = [];
     for (const msg of msgs) {
-      const [bag, statBag] = await this.conn.seal(msg);
+      const [bag, statBag] = await this.conn.seal(msg, realm);
       if (statBag !== Status.Success) {
         return err(statBag);
       }
@@ -67,25 +77,32 @@ export class CLIClient<Handle extends HostHandle> {
     return ok(items);
   }
 
-  async peek(lastSeq: number): Promise<ValStat<IBagPeekItem[]>> {
+  async peek(
+    lastSeq: number,
+    realm?: IKDM,
+  ): Promise<ValStat<IBagPeekItem[]>> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
 
-    return this.conn.peek(lastSeq);
+    return this.conn.peek(lastSeq, realm);
   }
 
-  async pull(seqs: number[]): Promise<ValStat<IBagPullItem[]>> {
+  async pull(
+    seqs: number[],
+    realm?: IKDM,
+  ): Promise<ValStat<IBagPullItem[]>> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
 
-    return this.conn.pull(seqs);
+    return this.conn.pull(seqs, realm);
   }
 
   async open(
     peekItem: IBagPeekItem,
     pullItem: IBagPullItem,
+    realm?: IKDM,
   ): Promise<ValStat<IOpenBag>> {
     if (!this.conn) return err(Status.ConnectionClosed);
 
@@ -97,15 +114,19 @@ export class CLIClient<Handle extends HostHandle> {
     } catch {
       return err(Status.CryptoError);
     }
+    const [rlm, rlmSt] = await this.conn.hostRlm(realm);
+    if (rlmSt !== Status.Success) return err(rlmSt);
     const [itemDec, statPeekItem] = await decryptPeekItem(
       peekItem,
       verifyKey,
       this.enclave,
       crypto,
+      rlm,
+      realm,
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
-    const cipher = this.enclave.deriveCipher(itemDec.kdm, "decrypt");
+    const cipher = this.enclave.deriveCipher(itemDec.kdm, "decrypt", realm);
     return openBagBody(itemDec.headEnc, pullItem.bodyCph, cipher, crypto);
   }
 
@@ -183,7 +204,8 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
   }
   return {
     handle: new URL(hostURL),
-    label: "host" };
+    label: "host",
+  };
 }
 
 // Re-exports for convenience in demos

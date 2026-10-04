@@ -72,13 +72,16 @@ import { Enclave } from "./shared/crypto/enclave";
 import type { Identity } from "./shared/crypto/enclave";
 import {
   asChildKey,
+  asHostRlm,
   type ChildKey,
+  type HostRlm,
   nullKDM,
   Purpose,
 } from "./shared/crypto/derivation";
 import type { PairRequest } from "./shared/crypto/pairing";
 import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
+import type { EntRlm, IRealm } from "./stores/realm";
 import { IDBAccountStore } from "./stores/idb/account";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
@@ -86,7 +89,7 @@ import { SingletonStateManager } from "./shared/singleton";
 import type {
   ApldState,
   Applier,
-  HostStatsUpdate,
+  HostSeqsUpdate,
   IClient,
   IDiplomaticClientState,
   IHostRow,
@@ -172,6 +175,7 @@ export {
   asChildKey,
   asDHKEReq,
   asDHKEResp,
+  asHostRlm,
   asSealedMasterKey,
   b64tob,
   b64urltob,
@@ -259,8 +263,10 @@ export type {
   DHKEReq,
   DHKEResp,
   EntDBMemoryOptions,
+  EntRlm,
   HostHandle,
-  HostStatsUpdate,
+  HostRlm,
+  HostSeqsUpdate,
   IClient,
   ICrypto,
   IDateRange,
@@ -275,6 +281,7 @@ export type {
   IMessage,
   IMutateOp,
   IOp,
+  IRealm,
   IStateManager,
   IStoredMessage,
   IStoredMessageData,

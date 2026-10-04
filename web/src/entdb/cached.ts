@@ -62,6 +62,7 @@ import {
   isLiveEnt,
   typesChanged,
 } from "./entdb";
+import { entsNameFor } from "../stores/idb/catalog";
 import { openEntIDB } from "./idb";
 import { EntDBMemory } from "./memory";
 import { dipLog, setVerbose } from "../verbose";
@@ -108,6 +109,10 @@ export type OpenEntDBOptions = {
    * Process-wide; also accepted on openDiplomaticClient / useClient.
    */
   verbose?: boolean;
+  /** Account whose EntDB to open. Default is the unlabeled account. */
+  label?: string;
+  /** Database name. The worker passes this and does not open the catalog. */
+  name?: string;
 };
 
 export type CachedEntDBOptions = {
@@ -130,7 +135,8 @@ export async function openEntDB(
   if (opts?.verbose !== undefined) {
     setVerbose(opts.verbose);
   }
-  const durable = await openEntIDB();
+  const name = opts?.name ?? await entsNameFor(opts?.label ?? "");
+  const durable = await openEntIDB(name);
   if (opts?.cache === false) {
     return durable;
   }

@@ -2,10 +2,18 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { notifItemCodec } from "../../shared/codecs/notifItem.ts";
 import { Status } from "../../shared/consts.ts";
+import { asHostRlm, type HostRlm } from "../../shared/crypto/derivation.ts";
+
+function testRlm(fill: number): HostRlm {
+  const [rlm, st] = asHostRlm(new Uint8Array(32).fill(fill));
+  if (st !== Status.Success) throw new Error(`rlm ${st}`);
+  return rlm;
+}
 
 Deno.test("notifItem roundtrip with bodyCph", () => {
   const original = {
     seq: 42,
+    rlm: testRlm(1),
     headCph: new Uint8Array([1, 2, 3, 4]),
     bodyCph: new Uint8Array([5, 6, 7]),
   };
@@ -17,6 +25,7 @@ Deno.test("notifItem roundtrip with bodyCph", () => {
   assertEquals(status, Status.Success);
   if (status !== Status.Success) return;
   assertEquals(decoded.seq, original.seq);
+  assertEquals(decoded.rlm, original.rlm);
   assertEquals(decoded.headCph, original.headCph);
   assertEquals(decoded.bodyCph, original.bodyCph);
   assertEquals(dec.done(), true);
@@ -25,6 +34,7 @@ Deno.test("notifItem roundtrip with bodyCph", () => {
 Deno.test("notifItem roundtrip without bodyCph", () => {
   const original = {
     seq: 99,
+    rlm: testRlm(2),
     headCph: new Uint8Array([10, 20, 30]),
     bodyCph: undefined,
   };
@@ -36,6 +46,7 @@ Deno.test("notifItem roundtrip without bodyCph", () => {
   assertEquals(status, Status.Success);
   if (status !== Status.Success) return;
   assertEquals(decoded.seq, original.seq);
+  assertEquals(decoded.rlm, original.rlm);
   assertEquals(decoded.headCph, original.headCph);
   assertEquals(decoded.bodyCph, original.bodyCph);
   assertEquals(dec.done(), true);
@@ -44,6 +55,7 @@ Deno.test("notifItem roundtrip without bodyCph", () => {
 Deno.test("notifItem with empty headCph", () => {
   const original = {
     seq: 0,
+    rlm: testRlm(3),
     headCph: new Uint8Array(0),
     bodyCph: new Uint8Array(0),
   };
@@ -54,6 +66,7 @@ Deno.test("notifItem with empty headCph", () => {
   const [decoded, status] = dec.readStruct(notifItemCodec);
   assertEquals(status, Status.Success);
   if (status !== Status.Success) return;
+  assertEquals(decoded.rlm, original.rlm);
   assertEquals(decoded.headCph.length, 0);
   assertEquals(decoded.bodyCph?.length ?? 0, 0);
   assertEquals(dec.done(), true);
@@ -62,6 +75,7 @@ Deno.test("notifItem with empty headCph", () => {
 Deno.test("notifItem decode truncated bodyCph", () => {
   const enc = new Encoder();
   enc.writeVarInt(1);
+  enc.writeBytes(new Uint8Array(32));
   enc.writeVarBytes(new Uint8Array([1]));
   enc.writeVarInt(5); // bodyLen=5
   enc.writeBytes(new Uint8Array([1, 2, 3])); // Only 3 bytes

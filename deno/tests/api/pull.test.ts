@@ -8,8 +8,9 @@ import {
   pullItemCodec,
 } from "../../../shared/codecs/pullItem.ts";
 import { Status } from "../../../shared/consts.ts";
+import { asHostRlm } from "../../../shared/crypto/derivation.ts";
 import { IStorage, PublicKey } from "../../../shared/types.ts";
-import { ok, ValStat } from "../../../shared/valstat.ts";
+import { ok } from "../../../shared/valstat.ts";
 import {
   baseMockStorage,
   createMockHost,
@@ -19,12 +20,12 @@ import {
 } from "./testUtils.ts";
 
 // Mock storage with getBodies override for pull tests
+const [pullRlm, pullRlmSt] = asHostRlm(new Uint8Array(32).fill(7));
+if (pullRlmSt !== Status.Success) throw new Error(`rlm ${pullRlmSt}`);
+
 const mockStorage: IStorage = {
   ...baseMockStorage,
-  getBodies: (
-    _pubKey: Uint8Array,
-    seqs: number[],
-  ): Promise<ValStat<{ seq: number; bodyCph: Uint8Array }[]>> => {
+  getBodies: (_pubKey, _rlm, seqs) => {
     const out: { seq: number; bodyCph: Uint8Array }[] = [];
     for (const seq of seqs) {
       if (seq === 1) {
@@ -47,14 +48,16 @@ Deno.test("pullEnd.encodeReq", () => {
     new Date("2023-01-01T00:00:00.000Z"),
   );
   const seqs: number[] = [1, 4];
+  const req = { rlm: pullRlm, seqs };
   const reqEnc = new Encoder();
 
   // deno-lint-ignore no-explicit-any
-  pullEnd.encodeReq(client as any, keys, tsAuth, seqs, reqEnc);
+  pullEnd.encodeReq(client as any, keys, tsAuth, req, reqEnc);
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();
   expectedEnc.writeStruct(authTimestampCodec, tsAuth);
+  expectedEnc.writeBytes(pullRlm);
   for (const seq of seqs) {
     expectedEnc.writeVarInt(seq);
   }
@@ -65,6 +68,7 @@ Deno.test("pullEnd.handleReq - success with some bodies", async () => {
   const seqs = [1, 4];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytes(pullRlm);
   for (const seq of seqs) reqEnc.writeVarInt(seq);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -98,6 +102,7 @@ Deno.test("pullEnd.handleReq - no bodies", async () => {
   const seqs: number[] = [0];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytes(pullRlm);
   for (const seq of seqs) {
     reqEnc.writeVarInt(seq);
   }
@@ -146,6 +151,7 @@ Deno.test("pullEnd.handleReq - clock out of sync", async () => {
   const seqs: number[] = [1];
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytes(pullRlm);
   for (const seq of seqs) {
     reqEnc.writeVarInt(seq);
   }

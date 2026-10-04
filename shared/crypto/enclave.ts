@@ -51,7 +51,13 @@ import {
 } from "../seed.ts";
 import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
-import { deriveKey, nullKDM, type PDK, Purpose } from "./derivation.ts";
+import {
+  deriveKey,
+  type HostRlm,
+  nullKDM,
+  type PDK,
+  Purpose,
+} from "./derivation.ts";
 import {
   blake3,
   decryptXSalsa20Poly1305Combined,
@@ -88,6 +94,7 @@ import {
   sealPRF,
   unsealPRF,
 } from "./prf.ts";
+import { deriveHostRLM, deriveRealmID, deriveRealmKey } from "./realms.ts";
 
 export type EncryptCipher = {
   encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
@@ -173,6 +180,19 @@ export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
   if (bytes.byteLength !== MASTER_SEED_LEN) return err(Status.InvalidParam);
   // Inline ValStat ok: do not pass seed bytes to imported `ok`.
   return [bytes as MasterSeed, Status.Success];
+}
+
+// Constant-time compare. Length differs before the loop.
+function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  let d = 0;
+  for (let i = 0; i < a.byteLength; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === undefined || y === undefined) return false;
+    d |= x ^ y;
+  }
+  return d === 0;
 }
 
 export class Enclave {
@@ -469,18 +489,57 @@ export class Enclave {
     return worker;
   }
 
+  // Stable realm id (account key + realm KDM). No host material.
+  async realmID(realmKDM: IKDM): Promise<ValStat<PDK["RealmID"]>> {
+    return deriveRealmID(this.#seed, realmKDM);
+  }
+
+  // Bag rlm for one realm on one host (realm id, then HostRLM + host KDM).
+  async hostRlm(
+    realmKDM: IKDM,
+    hostKDM: IKDM,
+  ): Promise<ValStat<PDK["HostRLM"]>> {
+    const [id, st] = await this.realmID(realmKDM);
+    if (st !== Status.Success) return err(st);
+    try {
+      return await deriveHostRLM(id, hostKDM);
+    } finally {
+      id.fill(0);
+    }
+  }
+
+  // Realm KDM whose host rlm equals `rlm`. NotFound if none of `realms` do.
+  async realmForRlm(
+    hostKDM: IKDM,
+    rlm: HostRlm,
+    realms: readonly IKDM[],
+  ): Promise<ValStat<IKDM>> {
+    for (const realmKDM of realms) {
+      const [got, st] = await this.hostRlm(realmKDM, hostKDM);
+      if (st !== Status.Success) return err(st);
+      const match = bytesEq(got, rlm);
+      got.fill(0);
+      if (match) {
+        return ok({ label: realmKDM.label, index: realmKDM.index });
+      }
+    }
+    return err(Status.NotFound);
+  }
+
   /**
-   * Cipher for public KDM. Does not hold key bytes; each op re-enters the
-   * enclave (async, hardware-shaped). `usage` selects the return shape:
+   * Cipher for public KDM under a realm (default: nullKDM). Does not hold
+   * key bytes; each op re-enters the enclave. `usage` selects the shape:
    * `"encrypt"` → `{ encrypt }`, `"decrypt"` → `{ decrypt }`, `"both"` → both.
    */
   deriveCipher<U extends CipherUsage>(
     kdm: Uint8Array,
     usage: U,
+    realmKDM: IKDM = nullKDM,
   ): CipherForUsage<U> {
     const kdmBound = kdm.slice();
-    const encrypt = (data: Uint8Array) => this.#encrypt(kdmBound, data);
-    const decrypt = (data: Uint8Array) => this.#decrypt(kdmBound, data);
+    const realm: IKDM = { label: realmKDM.label, index: realmKDM.index };
+    const encrypt = (data: Uint8Array) => this.#encrypt(kdmBound, data, realm);
+    const decrypt = (data: Uint8Array) => this.#decrypt(kdmBound, data, realm);
     const byUsage: { [K in CipherUsage]: CipherForUsage<K> } = {
       encrypt: Object.freeze({ encrypt }),
       decrypt: Object.freeze({ decrypt }),
@@ -620,8 +679,9 @@ export class Enclave {
   async #encrypt(
     kdm: Uint8Array,
     data: Uint8Array,
+    realmKDM: IKDM,
   ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm);
+    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
     if (st !== Status.Success) return err(st);
     try {
       try {
@@ -637,8 +697,9 @@ export class Enclave {
   async #decrypt(
     kdm: Uint8Array,
     data: Uint8Array,
+    realmKDM: IKDM,
   ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm);
+    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
     if (st !== Status.Success) return err(st);
     try {
       try {
@@ -651,12 +712,28 @@ export class Enclave {
     }
   }
 
-  async #keyFromKDM(kdm: Uint8Array): Promise<ValStat<PDK["Cipher"]>> {
-    return await deriveKey({
-      parent: this.#seed,
-      purpose: Purpose.Cipher,
-      kdm,
-    });
+  // Cipher key for one bag. Parent is the realm key (later, a TWK).
+  async #keyFromKDM(
+    kdm: Uint8Array,
+    realmKDM: IKDM,
+  ): Promise<ValStat<PDK["Cipher"]>> {
+    const [parent, pst] = await this.#bagKeyParent(realmKDM);
+    if (pst !== Status.Success) return err(pst);
+    try {
+      return await deriveKey({
+        parent,
+        purpose: Purpose.Cipher,
+        kdm,
+      });
+    } finally {
+      parent.fill(0);
+    }
+  }
+
+  // TODO(realms): a bag wnd (start seconds, window size seconds) replaces
+  // this parent with a TWK derived from the realm key.
+  async #bagKeyParent(realmKDM: IKDM): Promise<ValStat<PDK["RealmKey"]>> {
+    return deriveRealmKey(this.#seed, realmKDM);
   }
 
   async #deriveSeed(kdm: IKDM): Promise<ValStat<PDK["Identity"]>> {

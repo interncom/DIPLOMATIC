@@ -15,6 +15,7 @@ import {
   toStoredMessage,
 } from "../../types";
 import { Status } from "../../shared/consts";
+import { omitDefaultRealm } from "../realm";
 
 export class MemoryMessageStore implements IMessageStore {
   messages = new Map<string, IStoredMessageData>();
@@ -24,7 +25,7 @@ export class MemoryMessageStore implements IMessageStore {
   async add(messages: IStorableMessage[]): Promise<Status[]> {
     const results: Status[] = [];
     for (const { key, data } of messages) {
-      this.messages.set(btob64(key), data);
+      this.messages.set(btob64(key), omitDefaultRealm(data));
       results.push(Status.Success);
     }
     return results;

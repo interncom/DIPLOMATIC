@@ -1,9 +1,8 @@
 import { describe, expect, test } from "vitest";
 import crypto from "../src/crypto";
-import { btoh } from "../src/shared/binary";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { Status } from "../src/shared/consts";
-import { keyTagDigest, keyTagMatches, makeKeyTag } from "../src/stores/keyTag";
+import { keyTagDigest, makeKeyTag } from "../src/stores/keyTag";
 import { MemoryAccountStore } from "../src/stores/memory/account";
 import { mustIdnt } from "./mustIdnt";
 
@@ -87,26 +86,5 @@ describe("MemoryAccountStore key tag", () => {
     expect(bhst).toBe(Status.Success);
     expect(ah).toEqual(a.h);
     expect(bh).toEqual(b.h);
-  });
-
-  // TODO(accounts-sunset): pubkey-hash rows still match and rewrite.
-  test("legacy key tag matches and rewrites to the fingerprint child", async () => {
-    const enc = enclaveOf(4);
-    const n = new Uint8Array(32).fill(9);
-    const [idnt, ist] = await enc.deriveIdentity({
-      label: "diplomatic.pin/" + btoh(n),
-      index: 0,
-    });
-    expect(ist).toBe(Status.Success);
-    if (idnt === undefined) return;
-    const old = await crypto.blake3(idnt.publicKey);
-    const hit = await keyTagMatches(crypto, enc, { n, h: old });
-    expect(hit.ok).toBe(true);
-    if (!hit.ok || hit.next === undefined) return;
-    expect(hit.next.n).toEqual(n);
-    expect(hit.next.h).not.toEqual(old);
-    const [child, cst] = await enc.fingerprint(n);
-    expect(cst).toBe(Status.Success);
-    expect(hit.next.h).toEqual(child);
   });
 });

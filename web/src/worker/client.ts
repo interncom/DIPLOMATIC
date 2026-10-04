@@ -30,6 +30,8 @@ import type {
   SerializedContent,
 } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
+import { postToDiplomaticWorker } from "../shared/worker/spawn";
+import { IDBStore } from "../stores/idb/store";
 import { dipLog } from "../verbose";
 import type {
   ApldState,
@@ -417,6 +419,15 @@ export class WorkerClient implements IClient<URL> {
     await this.loadSession(false);
     this.clientState.emit();
 
+    const label = this.local.selected()?.label ?? "";
+    // spawnSyncWorker cannot name the databases. Bind is a follow-up post.
+    let bound: { data: string; ents: string } | undefined;
+    if (this.store instanceof IDBStore) {
+      const [got, nst] = await this.store.prepareWorker(label);
+      if (nst !== Status.Success) return nst;
+      bound = got;
+    }
+
     const id = this.allocId();
     const timeoutMs = this.readyTimeoutMs;
     await new Promise<unknown>((resolve, reject) => {
@@ -443,6 +454,15 @@ export class WorkerClient implements IClient<URL> {
           persist: opts?.persist,
         });
         this.bindWorker(seeded);
+        if (bound !== undefined) {
+          postToDiplomaticWorker(seeded, {
+            id: 0,
+            op: "bind",
+            label,
+            data: bound.data,
+            ents: bound.ents,
+          });
+        }
       } catch (e) {
         this.pending.delete(id);
         if (timer !== undefined) clearTimeout(timer);
@@ -620,11 +640,8 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async wipe(opts?: WipeOpts): Promise<void> {
-    // Main first: shared IDB tables + seed.wipe (largeBlob overwrite if wired).
-    await this.local.wipe(opts);
-    if (this.worker) {
-      // Worker: network teardown + its store/enclave + EntDB connection.
-      await this.request({
+    const ask = () =>
+      this.request({
         id: this.allocId(),
         op: "wipe",
         msgs: opts?.msgs,
@@ -632,7 +649,10 @@ export class WorkerClient implements IClient<URL> {
         meta: opts?.meta,
         seed: opts?.seed,
       });
-    }
+    // Seed wipe deletes the databases. The worker must close them first.
+    if (opts?.seed === true && this.worker) await ask();
+    await this.local.wipe(opts);
+    if (opts?.seed !== true && this.worker) await ask();
     await this.hydrateStateFromStore(this.store);
     this.clientState.emit();
     this.xferState.emit();

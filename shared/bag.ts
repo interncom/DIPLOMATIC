@@ -1,15 +1,19 @@
-// Bag is the encrypted message, wrapped with data to support the relay protocol across untrusted hosts.
-// The bag includes a fixed-size header: signature (64), kdm (8), totaling 72 bytes.
+// Bag is the encrypted message, wrapped for relay across untrusted hosts.
+// Wire prefix: signature (64), rlm (32), kdm (8).
+// The signature covers rlm ‖ headCph.
 
 import { Decoder, Encoder } from "./codec.ts";
+import type { IKDM } from "./codecs/kdm.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
-import { Status } from "./consts.ts";
+import { hashBytes, Status } from "./consts.ts";
+import type { HostRlm } from "./crypto/derivation.ts";
 import {
   type DecryptCipher,
   Enclave,
   type Identity,
 } from "./crypto/enclave.ts";
-import { bytesEqual } from "./binary.ts";
+import { nullKDM } from "./crypto/derivation.ts";
+import { bytesEqual, concat } from "./binary.ts";
 import { EncodedMessage } from "./message.ts";
 import { err, ok, type ValStat } from "./valstat.ts";
 import type {
@@ -21,12 +25,26 @@ import type {
   IMessageWithHash,
 } from "./types.ts";
 
+// Bytes the bag signature covers: rlm followed by the encrypted head.
+export function bagSigMsg(
+  rlm: HostRlm,
+  headCph: Uint8Array,
+): Uint8Array {
+  // TODO: optimize to be zero-copy (may have to change how signature method works)
+  return concat(rlm, headCph);
+}
+
 export function bagSigValid(
   bag: IBag,
   verifyKey: CryptoKey,
   crypto: IHostCrypto,
 ): Promise<boolean> {
-  return crypto.checkSigEd25519(bag.sig, bag.headCph, verifyKey);
+  if (bag.rlm.byteLength !== hashBytes) return Promise.resolve(false);
+  return crypto.checkSigEd25519(
+    bag.sig,
+    bagSigMsg(bag.rlm, bag.headCph), // TODO: optimize this to be zero-copy
+    verifyKey,
+  );
 }
 
 export async function sealBag(
@@ -34,6 +52,8 @@ export async function sealBag(
   identity: Identity,
   crypto: ICrypto,
   enclave: Enclave,
+  hostKDM: IKDM = nullKDM,
+  realmKDM: IKDM = nullKDM,
 ): Promise<ValStat<IBag>> {
   let hsh: Uint8Array | undefined;
   if (msg.bod && msg.len > 0) {
@@ -51,7 +71,9 @@ export async function sealBag(
   // KDM via identity (private key stays in enclave); cipher is opaque.
   const [kdm, kst] = await identity.kdmFor(headEnc);
   if (kst !== Status.Success) return err(kst);
-  const cipher = enclave.deriveCipher(kdm, "encrypt");
+  const [rlm, rst] = await enclave.hostRlm(realmKDM, hostKDM);
+  if (rst !== Status.Success) return err(rst);
+  const cipher = enclave.deriveCipher(kdm, "encrypt", realmKDM);
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
   const [headCph, hst] = await cipher.encrypt(headEnc);
@@ -63,10 +85,11 @@ export async function sealBag(
     bodyCph = cph;
   }
 
-  // Sign ciphertext (private key stays in enclave).
-  const [sig, sst] = await identity.sign(headCph);
+  // Sign rlm ‖ headCph (private key stays in enclave).
+  const [sig, sst] = await identity.sign(bagSigMsg(rlm, headCph));
   if (sst !== Status.Success) return err(sst);
   return ok({
+    rlm,
     sig,
     kdm,
     headCph,
@@ -126,18 +149,23 @@ export async function openBag(
   verifyKey: CryptoKey,
   crypto: ICrypto,
   enclave: Enclave,
+  hostKDM: IKDM = nullKDM,
+  realms: readonly IKDM[] = [nullKDM],
 ): Promise<ValStat<IMessageWithHash>> {
-  // Check sig.
-  const sigValid = await crypto.checkSigEd25519(
-    bag.sig,
-    bag.headCph,
-    verifyKey,
-  );
+  // Check sig over rlm ‖ headCph.
+  const sigValid = await bagSigValid(bag, verifyKey, crypto);
   if (!sigValid) {
     return err(Status.InvalidSignature);
   }
 
-  const cipher = enclave.deriveCipher(bag.kdm, "decrypt");
+  // rlm selects the realm key. The default realm is nullKDM.
+  const [realmKDM, rst] = await enclave.realmForRlm(
+    hostKDM,
+    bag.rlm,
+    realms,
+  );
+  if (rst !== Status.Success) return err(rst);
+  const cipher = enclave.deriveCipher(bag.kdm, "decrypt", realmKDM);
 
   // Decrypt head (key stays in the enclave via cipher).
   const [msgHeadEnc, dst] = await cipher.decrypt(bag.headCph);

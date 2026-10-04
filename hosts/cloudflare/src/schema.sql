@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
 DROP TABLE IF EXISTS bags;
 CREATE TABLE IF NOT EXISTS bags (
   userPubKey TEXT,
+  rlm BLOB,
   seq INTEGER,
   headCph BLOB,
   bodyCph BLOB,
-  PRIMARY KEY (userPubKey, seq),
-  UNIQUE (userPubKey, seq)
+  PRIMARY KEY (userPubKey, rlm, seq)
 );

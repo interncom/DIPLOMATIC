@@ -4,9 +4,13 @@ import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
 import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
+import type { IKDM } from "./codecs/kdm.ts";
+import type { IBagPeekItem } from "./codecs/peekItem.ts";
+import type { IBagPullItem } from "./codecs/pullItem.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
 import { Enclave, type Identity } from "./crypto/enclave.ts";
+import { type HostRlm, nullKDM } from "./crypto/derivation.ts";
 import { IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
 import type {
@@ -31,12 +35,12 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
   ) {}
 
-  private async call<ReqItem, Resp>(
+  private async call<ReqInput, Resp>(
     apiCall: {
-      endpoint: IAuthenticatedEndpoint<ReqItem, Resp>;
+      endpoint: IAuthenticatedEndpoint<ReqInput, Resp>;
       name: APICallName;
     },
-    items: Iterable<ReqItem>,
+    body: ReqInput,
   ): Promise<ValStat<Resp>> {
     const { clock, transport } = this;
     const { endpoint, name } = apiCall;
@@ -54,7 +58,7 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
       this,
       id,
       authTS,
-      items,
+      body,
       enc,
     );
     if (encStatus !== Status.Success) return err(encStatus);
@@ -97,25 +101,49 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     return respVS;
   }
 
-  identity = (): Promise<ValStat<Identity>> => {
-    const { host, enclave } = this;
-    return enclave.deriveIdentity({
-      label: host.label,
-      index: host.idx ?? 0,
-    });
-  };
+  // Host KDM for this connection. A missing index is 0.
+  #hostKDM(): IKDM {
+    return { label: this.host.label, index: this.host.idx ?? 0 };
+  }
 
-  seal = async (msg: IMessage): Promise<ValStat<IBag>> => {
+  identity = (): Promise<ValStat<Identity>> =>
+    this.enclave.deriveIdentity(this.#hostKDM());
+
+  // HostRLM for `realm` on this host. The default realm is nullKDM.
+  hostRlm = (realm: IKDM = nullKDM): Promise<ValStat<HostRlm>> =>
+    this.enclave.hostRlm(realm, this.#hostKDM());
+
+  // Seals `msg` for `realm` on this host. The default realm is nullKDM.
+  seal = async (
+    msg: IMessage,
+    realm: IKDM = nullKDM,
+  ): Promise<ValStat<IBag>> => {
     const { crypto, enclave } = this;
     const [id, st] = await this.identity();
     if (st !== Status.Success) return err(st);
-    return sealBag(msg, id, crypto, enclave);
+    return sealBag(msg, id, crypto, enclave, this.#hostKDM(), realm);
   };
 
-  register = () => this.call(api.user, []);
-  peek = (lastSeq: number) => this.call(api.peek, [lastSeq]);
+  register = () => this.call(api.user, undefined);
+  // Peeks `realm` after `lastSeq`. The default realm is nullKDM.
+  peek = async (
+    lastSeq: number,
+    realm: IKDM = nullKDM,
+  ): Promise<ValStat<IBagPeekItem[]>> => {
+    const [rlm, st] = await this.hostRlm(realm);
+    if (st !== Status.Success) return err(st);
+    return this.call(api.peek, { rlm, seq: lastSeq });
+  };
   push = (bags: IBag[]) => this.call(api.push, bags);
-  pull = (seqs: number[]) => this.call(api.pull, seqs);
+  // Pulls `seqs` from `realm`. The default realm is nullKDM.
+  pull = async (
+    seqs: number[],
+    realm: IKDM = nullKDM,
+  ): Promise<ValStat<IBagPullItem[]>> => {
+    const [rlm, st] = await this.hostRlm(realm);
+    if (st !== Status.Success) return err(st);
+    return this.call(api.pull, { rlm, seqs });
+  };
 
   // listen for new bags.
   listen = async (

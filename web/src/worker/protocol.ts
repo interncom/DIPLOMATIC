@@ -22,6 +22,13 @@ export type WorkerCmd =
   }
   | {
     id: number;
+    op: "bind";
+    label: string;
+    data: string;
+    ents: string;
+  }
+  | {
+    id: number;
     op: "link";
     host: SerializedHost;
     connect?: boolean;

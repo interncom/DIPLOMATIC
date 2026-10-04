@@ -4,15 +4,23 @@ import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
+import { asHostRlm, type HostRlm } from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import type { IBag, IMessage } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
+
+function hostRlm(fill: number): HostRlm {
+  const [rlm, st] = asHostRlm(new Uint8Array(32).fill(fill));
+  if (st !== Status.Success) throw new Error(`rlm ${st}`);
+  return rlm;
+}
 
 Deno.test("bag", async (t) => {
   const crypto = libsodiumCrypto;
 
   await t.step("encodeBag", async () => {
     const op: IBag = {
+      rlm: hostRlm(0x66),
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
       headCph: new Uint8Array([10, 11, 12]),
@@ -21,24 +29,21 @@ Deno.test("bag", async (t) => {
     const enc = new Encoder();
     enc.writeStruct(bagCodec, op);
     const encoded = enc.result();
-    const expectedLen = 64 + 8 + 1 + 1 + 3 + 2; // sig + kdm + varint(3) + varint(2) + headCph + bodyCph
+    // sig + rlm + kdm + varint(3) + varint(2) + headCph + bodyCph
+    const expectedLen = 64 + 32 + 8 + 1 + 1 + 3 + 2;
     assertEquals(encoded.length, expectedLen);
-    // Check sig
     assertEquals(encoded.slice(0, 64), op.sig);
-    // Check kdm
-    assertEquals(encoded.slice(64, 72), op.kdm);
-    // Check lenHeadCph varint
-    assertEquals(encoded[72], 3); // varint for 3
-    // Check headCph
-    assertEquals(encoded.slice(73, 76), op.headCph);
-    // Check lenBodyCph varint
-    assertEquals(encoded[76], 2); // varint for 2
-    // Check bodyCph
-    assertEquals(encoded.slice(77, 79), op.bodyCph);
+    assertEquals(encoded.slice(64, 96), op.rlm);
+    assertEquals(encoded.slice(96, 104), op.kdm);
+    assertEquals(encoded[104], 3);
+    assertEquals(encoded.slice(105, 108), op.headCph);
+    assertEquals(encoded[108], 2);
+    assertEquals(encoded.slice(109, 111), op.bodyCph);
   });
 
   await t.step("decodeBag", async () => {
     const op: IBag = {
+      rlm: hostRlm(0x66),
       sig: new Uint8Array(64).fill(0x77),
       kdm: new Uint8Array(8).fill(0x88),
       headCph: new Uint8Array([10, 11, 12]),
@@ -51,6 +56,7 @@ Deno.test("bag", async (t) => {
     const [decoded, status] = decoder.readStruct(bagCodec);
     assertEquals(status, Status.Success);
     if (status !== Status.Success) return;
+    assertEquals(decoded.rlm, op.rlm);
     assertEquals(decoded.sig, op.sig);
     assertEquals(decoded.kdm, op.kdm);
     assertEquals(decoded.headCph, op.headCph);
@@ -105,8 +111,19 @@ Deno.test("bag", async (t) => {
       return;
     }
 
-    // Open the bag
+    assertEquals(bag.rlm.byteLength, 32);
     const verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
+    const [miss, missSt] = await openBag(
+      bag,
+      verifyKey,
+      crypto,
+      enclave,
+      { label: "other", index: 1 },
+    );
+    assertEquals(missSt, Status.NotFound);
+    assertEquals(miss, undefined);
+
+    // Open the bag (sealed under the null host KDM).
     const [openedMsg, status] = await openBag(
       bag,
       verifyKey,
@@ -124,5 +141,17 @@ Deno.test("bag", async (t) => {
     } else {
       throw new Error(`Open bag failed with status ${status}`);
     }
+
+    const swapped = bag.rlm.slice();
+    swapped[0] ^= 0xff;
+    const [badRlm, bst] = asHostRlm(swapped);
+    if (bst !== Status.Success) throw new Error(`rlm ${bst}`);
+    const [, bad] = await openBag(
+      { ...bag, rlm: badRlm },
+      verifyKey,
+      crypto,
+      enclave,
+    );
+    assertEquals(bad, Status.InvalidSignature);
   });
 });

@@ -19,6 +19,12 @@ import type {
 } from "./shared/types";
 import { ValStat } from "./shared/valstat";
 import { ICrypto } from "./shared/types";
+import {
+  type EntRlm,
+  type IRealm,
+  type IRealmStore,
+  realmLabel,
+} from "./stores/realm";
 
 export interface IMsgParts {
   head: IMessageHead;
@@ -106,20 +112,23 @@ export type OpenAccount<H extends HostHandle> = {
   enclave: Enclave;
   /** Host rows as of the last open, link, or unlink. */
   hosts: IHostRow<H>[];
-  /** TODO(realms): realm list discovered when this account is unlocked. */
-  realms: IKDM[];
+  /** Realm rows from the realms table, refreshed with hosts and before sync. */
+  realms: IRealm[];
 };
 
 export interface IHostRow<Handle extends HostHandle>
   extends IHostConnectionInfo<Handle>, Partial<IHostMetadata> {
+  /** Default-realm cursor, joined from host_seqs on read. */
   lastSeq: number;
+  /** Other realm cursors, joined from host_seqs on read. */
+  seqs?: { label: string; index: number; lastSeq: number }[];
 }
 
 /**
  * Host row cursor write (one store transaction).
  * `lastSeq` only advances unless `setLastSeq` is set.
  */
-export type HostStatsUpdate = {
+export type HostSeqsUpdate = {
   /** New lastSeq if greater than current (incremental peek/push). */
   lastSeq?: number;
   /** Absolute lastSeq, including rewind (full inventory). */
@@ -134,10 +143,14 @@ export interface IHostStore<Handle extends HostHandle> {
   set: (label: string, meta: IHostMetadata) => Promise<Status>;
   list: () => Promise<Iterable<IHostRow<Handle>>>;
   wipe: () => Promise<void>;
-  // Advance host lastSeq if seq is greater; never rewind.
-  touch: (label: string, seq: number) => Promise<void>;
-  /** Apply lastSeq updates in one transaction. */
-  recordStats: (label: string, u: HostStatsUpdate) => Promise<void>;
+  // Advance this realm's cursor if seq is greater. Never rewind.
+  touch: (label: string, seq: number, realm?: IKDM) => Promise<void>;
+  /** Apply one host_seqs cursor. The default realm is nullKDM. */
+  recordSeqs: (
+    label: string,
+    u: HostSeqsUpdate,
+    realm?: IKDM,
+  ) => Promise<void>;
 }
 
 /** Options for {@link IClient.reconcile}. */
@@ -204,10 +217,12 @@ export interface IDownloadMessage {
    * blake3(headEnc). When set with headEnc, open skips re-hashing the head.
    */
   headEncHash?: Hash;
+  /** Realm KDM. Omit for the default realm. */
+  realm?: IKDM;
 }
 export interface IDownloadQueue {
   enq: (msgs: Iterable<IDownloadMessage>) => Promise<void>;
-  deq: (host: string, seqs: Iterable<number>) => Promise<void>;
+  deq: (host: string, seqs: Iterable<number>, realm?: IKDM) => Promise<void>;
   list: () => Promise<Iterable<IDownloadMessage>>;
   count: () => Promise<number>;
   wipe(): Promise<void>;
@@ -238,6 +253,8 @@ export interface IStoredMessageFields {
   /** Msg head typ. Omit when empty (raw). */
   typ?: string;
   body?: EncodedMessage;
+  /** Realm label. Omit for the default realm. */
+  rlm?: EntRlm;
 }
 
 /**
@@ -254,7 +271,7 @@ export interface IStoredMessageData extends IStoredMessageFields {
 /**
  * Required shape for every put into the message archive (app/API layer).
  * `apld` is required and must be one of the three {@link ApldState} values.
- * Omit optional fields (`off`, `ctr`, `typ`, `body`, `err`) rather than storing empties.
+ * Omit optional fields (`off`, `ctr`, `typ`, `body`, `err`, `rlm`) rather than storing empties.
  */
 export type IStoredMessageWrite = IStoredMessageFields & {
   apld: ApldState;
@@ -273,6 +290,8 @@ export interface IStoredMessage {
   body?: EncodedMessage;
   /** Apply lifecycle — same {@link ApldState} as the archive row. */
   apld: ApldState;
+  /** Realm label. Omitted for the default realm. */
+  rlm?: EntRlm;
   /** Status code when apld is {@link APLD_ERROR}. */
   err?: number;
 }
@@ -371,6 +390,8 @@ export async function toStoredMessage(
   };
   if (includeBody && raw !== undefined) out.body = raw;
   if (apld === APLD_ERROR && data.err !== undefined) out.err = data.err;
+  const rlm = realmLabel(data.rlm);
+  if (rlm !== undefined) out.rlm = rlm;
   return out;
 }
 export interface IMessageStore {
@@ -399,10 +420,17 @@ export interface IMessageStore {
 
 export interface IStore<Handle extends HostHandle> {
   account: IAccountStore;
+  /** Realm counters. Not cleared by {@link IStore.wipe}. */
+  realms: IRealmStore;
   hosts: IHostStore<Handle>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
   messages: IMessageStore;
+  /**
+   * Open the protocol database for `label`.
+   * A store with one database returns Success.
+   */
+  bind(label: string): Promise<Status>;
   /**
    * Clear protocol tables (hosts, queues, messages). Does not call account.wipe.
    */

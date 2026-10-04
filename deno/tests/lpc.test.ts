@@ -4,6 +4,7 @@ import { makeAuthTimestamp } from "../../shared/auth.ts";
 import { MockClock } from "../../shared/clock.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { APICallName, Status } from "../../shared/consts.ts";
+import { asHostRlm } from "../../shared/crypto/derivation.ts";
 import { CallbackListener } from "../../shared/lpc/listener.ts";
 import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
 import { DiplomaticLPCServer, LPCTransport } from "../../shared/lpc/server.ts";
@@ -305,13 +306,18 @@ Deno.test("lpc integration", async (t) => {
         enclave: null as unknown as Enclave,
         clock: baseMockClock,
       };
-      const items = [0]; // for peek, from date
+      const [rlm, rlmSt] = asHostRlm(new Uint8Array(32));
+      if (rlmSt !== Status.Success) {
+        assertEquals(rlmSt, Status.Success);
+        return;
+      }
+      const cur = { rlm, seq: 0 };
       const reqEnc = new Encoder();
       const encStatus = await peekEnd.encodeReq(
         mockClient,
         keys,
         authTS,
-        items,
+        cur,
         reqEnc,
       );
       assertEquals(encStatus, Status.Success);

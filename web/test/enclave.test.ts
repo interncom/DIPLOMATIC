@@ -51,7 +51,7 @@ const permits: Permit[] = [
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
+    callerSrc: "ed5a08442d605b6341958240077b7684",
     why: "To derive the paper-check digest from the master via the fingerprint PDK.",
   },
   {
@@ -59,7 +59,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "fcd3b151aeb45bf96faab4a8a3ee8bf8",
+    callerSrc: "ed5a08442d605b6341958240077b7684",
     why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
@@ -141,6 +141,54 @@ const permits: Permit[] = [
     src: "9c8cd6b0f93d95f04895afc1ee35606a",
     callerSrc: "04806d6ab018ed0aacf1b548aead1e60",
     why: "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
+  },
+  {
+    caller: "realmID",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "0de5207b092b952756705bc0fc7f250d",
+    callerSrc: "3fcc873d5ae7b0b71dc0eaf00c164a50",
+    why: "To derive the stable realm id from the master and the realm KDM.",
+  },
+  {
+    caller: "realmID",
+    callee: "NobleCrypto.blake3",
+    how: "exact",
+    src: "ac2d00162c47b0171aee8576da4a9689",
+    callerSrc: "3fcc873d5ae7b0b71dc0eaf00c164a50",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+  },
+  {
+    caller: "hostRlm",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "0de5207b092b952756705bc0fc7f250d",
+    callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
+    why: "To derive the realm id from the master before stamping the host bag rlm.",
+  },
+  {
+    caller: "hostRlm",
+    callee: "NobleCrypto.blake3",
+    how: "exact",
+    src: "ac2d00162c47b0171aee8576da4a9689",
+    callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+  },
+  {
+    caller: "realmForRlm",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "0de5207b092b952756705bc0fc7f250d",
+    callerSrc: "95b21335db154411af036442bc22d738",
+    why: "To derive each candidate realm id from the master and match its host rlm.",
+  },
+  {
+    caller: "realmForRlm",
+    callee: "NobleCrypto.blake3",
+    how: "exact",
+    src: "ac2d00162c47b0171aee8576da4a9689",
+    callerSrc: "95b21335db154411af036442bc22d738",
+    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
 ];
 
@@ -682,6 +730,41 @@ const traces: Record<string, () => void | Promise<void>> = {
     const [idnt, ist] = await e.deriveIdentity({ label: "test", index: 0 });
     expect(ist).toBe(Status.Success);
     expect(idnt?.publicKey).toBeDefined();
+    assertPermitted();
+  },
+  async realmID() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("realmID", seed);
+    const [id, st] = await e.realmID({ label: "", index: 0 });
+    expect(st).toBe(Status.Success);
+    expect(id).toBeDefined();
+    assertPermitted();
+  },
+  async hostRlm() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("hostRlm", seed);
+    const [rlm, st] = await e.hostRlm(
+      { label: "", index: 0 },
+      { label: "h", index: 0 },
+    );
+    expect(st).toBe(Status.Success);
+    expect(rlm).toBeDefined();
+    assertPermitted();
+  },
+  async realmForRlm() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("realmForRlm", seed);
+    const host = { label: "h", index: 0 };
+    const realm = { label: "", index: 0 };
+    const [rlm, rst] = await e.hostRlm(realm, host);
+    expect(rst).toBe(Status.Success);
+    if (rlm === undefined) return;
+    const [got, st] = await e.realmForRlm(host, rlm, [realm]);
+    expect(st).toBe(Status.Success);
+    expect(got).toEqual(realm);
     assertPermitted();
   },
 };

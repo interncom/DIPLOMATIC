@@ -18,6 +18,7 @@
 // out-of-order / newest-first apply of older mutates would resurrect ents.
 // Tombstones are never pruned: partition healing can deliver old msgs anytime.
 
+import type { EntRlm } from "../stores/realm";
 import { Decoder } from "../shared/codec.ts";
 import { eidCodec } from "../shared/codecs/eid.ts";
 import { Status } from "../shared/consts";
@@ -42,6 +43,8 @@ export interface IEntity<T = unknown> extends Omit<IMsgEntBody<T>, "body"> {
   createdAt: Date;
   ctr: number;
   body: T;
+  /** Realm label. Omitted for the default realm. */
+  rlm?: EntRlm;
 }
 
 /**

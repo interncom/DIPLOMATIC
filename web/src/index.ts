@@ -69,16 +69,27 @@ import {
   IUpdateParams,
 } from "./shared/types";
 import { Enclave } from "./shared/crypto/enclave";
-import type { PairRequest } from "./shared/crypto/enclave";
+import type { Identity } from "./shared/crypto/enclave";
+import {
+  asChildKey,
+  asHostRlm,
+  type ChildKey,
+  type HostRlm,
+  nullKDM,
+  Purpose,
+} from "./shared/crypto/derivation";
+import type { PairRequest } from "./shared/crypto/pairing";
+import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
-import { IDBSeedStore } from "./stores/idb/seed";
+import type { EntRlm, IRealm } from "./stores/realm";
+import { IDBAccountStore } from "./stores/idb/account";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
 import type {
   ApldState,
   Applier,
-  HostStatsUpdate,
+  HostSeqsUpdate,
   IClient,
   IDiplomaticClientState,
   IHostRow,
@@ -87,6 +98,7 @@ import type {
   IStoredMessageData,
   IStoredMessageWrite,
   ListMsgsOpts,
+  OpenAccount,
   ReconcileOpts,
   ReconcileReport,
   SetSeedOpts,
@@ -130,6 +142,7 @@ import type {
 } from "./passkey/prf-store";
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
+import { type IKDM } from "./shared/codecs/kdm";
 import { asDHKEReq, asDHKEResp } from "./shared/crypto/pairing";
 import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
 import {
@@ -159,8 +172,10 @@ export {
   APLD_ERROR,
   APLD_PENDING,
   apldFromStored,
+  asChildKey,
   asDHKEReq,
   asDHKEResp,
+  asHostRlm,
   asSealedMasterKey,
   b64tob,
   b64urltob,
@@ -190,7 +205,7 @@ export {
   hostHTTPTransport,
   htob,
   HTTPTransport,
-  IDBSeedStore,
+  IDBAccountStore,
   IDBStore,
   idleProgress,
   IEntDB,
@@ -209,6 +224,7 @@ export {
   MemoryStore,
   normalizeTags,
   nullEntDB,
+  nullKDM,
   nullStateManager,
   openDiplomaticClient,
   openEntDB,
@@ -216,6 +232,7 @@ export {
   PasskeySeedStore,
   prfCapable,
   PrfSeedStore,
+  Purpose,
   revFromEntity,
   revFromHead,
   SEALED_MASTER_KEY_LEN,
@@ -238,26 +255,33 @@ export {
 export type {
   ApldState,
   Applier,
+  BindPrior,
   BundleHost,
   CachedEntDBOptions,
+  ChildKey,
   DateSpec,
   DHKEReq,
   DHKEResp,
   EntDBMemoryOptions,
+  EntRlm,
   HostHandle,
-  HostStatsUpdate,
+  HostRlm,
+  HostSeqsUpdate,
   IClient,
   ICrypto,
   IDateRange,
   IDeleteParams,
+  Identity,
   IDiplomaticClientState,
   IEntRev,
   IEntRow,
   IHostConnectionInfo,
   IHostRow,
+  IKDM,
   IMessage,
   IMutateOp,
   IOp,
+  IRealm,
   IStateManager,
   IStoredMessage,
   IStoredMessageData,
@@ -270,6 +294,7 @@ export type {
   KeyringEntry,
   KeyringRow,
   ListMsgsOpts,
+  OpenAccount,
   OpenDiplomaticClientMainOptions,
   OpenDiplomaticClientOptions,
   OpenDiplomaticClientWorkerOptions,
@@ -278,6 +303,7 @@ export type {
   PairRequest,
   PasskeySeedStoreOpts,
   PersistKeyring,
+  PrfBound,
   PrfRp,
   PrfSeedStoreOpts,
   ReconcileOpts,

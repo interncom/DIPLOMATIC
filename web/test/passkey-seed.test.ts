@@ -7,6 +7,7 @@ import {
 import { largeBlobCreateCred } from "../src/shared/webauthn/largeBlob";
 import crypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
+import { mustIdnt } from "./mustIdnt";
 import { Status } from "../src/shared/consts";
 
 describe("defaultWebAuthnRpId", () => {
@@ -48,7 +49,7 @@ function persistBlob(fill: number): ArrayBuffer {
 
 function enclaveOf(fill: number): Enclave {
   const [e, st] = Enclave.fromBytes(seedBytes(fill));
-  if (st !== Status.Success || e === undefined) {
+  if (st !== Status.Success) {
     throw new Error(`enclaveOf failed ${st}`);
   }
   return e;
@@ -276,8 +277,8 @@ describe("Enclave largeBlob seed boundary", () => {
     if (out === undefined) return;
     expect(out.credId).toEqual(credId);
     // Round-trip identity: same seed as enclaveOf(9) would derive.
-    const expected = await enclaveOf(9).deriveIdentity("test", 0);
-    const got = await out.enclave.deriveIdentity("test", 0);
+    const expected = await mustIdnt(enclaveOf(9), "test", 0);
+    const got = await mustIdnt(out.enclave, "test", 0);
     expect(got.publicKey).toEqual(expected.publicKey);
   });
 
@@ -296,8 +297,8 @@ describe("Enclave largeBlob seed boundary", () => {
     expect(out).toBeDefined();
     if (out === undefined) return;
     expect(out.credId).toEqual(credId);
-    const expected = await enclaveOf(4).deriveIdentity("test", 0);
-    const got = await out.enclave.deriveIdentity("test", 0);
+    const expected = await mustIdnt(enclaveOf(4), "test", 0);
+    const got = await mustIdnt(out.enclave, "test", 0);
     expect(got.publicKey).toEqual(expected.publicKey);
     expect(get).toHaveBeenCalledTimes(2);
     const pick = get.mock.calls[0][0];
@@ -366,8 +367,8 @@ describe("Enclave largeBlob seed boundary", () => {
     stubNav({ create, get });
 
     const store = new PasskeySeedStore({ rpId: "localhost" });
-    const enc1 = await store.save(enc0, { persist: true });
-    expect(enc1).toBeDefined();
+    const [enc1, sst] = await store.save(enc0, { persist: true });
+    expect(sst).toBe(Status.Success);
     expect(store.credId).toEqual(credId);
     expect(await store.load()).toBe(enc1);
 
@@ -379,5 +380,64 @@ describe("Enclave largeBlob seed boundary", () => {
     const [enc2, ust] = await store.unlock();
     expect(ust).toBe(Status.Success);
     expect(await store.load()).toBe(enc2);
+  });
+
+  it("each account keeps its own largeBlob", async () => {
+    const workId = new Uint8Array(16).fill(1);
+    const homeId = new Uint8Array(16).fill(2);
+    const workBuf = workId.buffer.slice(
+      workId.byteOffset,
+      workId.byteOffset + workId.byteLength,
+    );
+    const homeBuf = homeId.buffer.slice(
+      homeId.byteOffset,
+      homeId.byteOffset + homeId.byteLength,
+    );
+    const create = vi.fn()
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { supported: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(homeBuf, { largeBlob: { supported: true } }),
+      );
+    const get = vi.fn()
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { written: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(homeBuf, { largeBlob: { written: true } }),
+      )
+      .mockResolvedValueOnce(
+        mockCred(workBuf, { largeBlob: { blob: persistBlob(4) } }),
+      );
+    stubNav({ create, get });
+
+    const store = new PasskeySeedStore({ rpId: "localhost" });
+    const work = enclaveOf(4);
+    const [, wst] = await store.save(work, { label: "work", persist: true });
+    expect(wst).toBe(Status.Success);
+    expect(store.credId).toEqual(workId);
+    const [, hst] = await store.save(enclaveOf(5), {
+      label: "home",
+      persist: true,
+    });
+    expect(hst).toBe(Status.Success);
+    expect(store.credId).toEqual(homeId);
+    expect(create).toHaveBeenCalledTimes(2);
+    const allowId = (call: number) => {
+      const id = get.mock.calls[call][0].publicKey.allowCredentials[0].id;
+      return new Uint8Array(id);
+    };
+    expect(allowId(0)).toEqual(workId);
+    expect(allowId(1)).toEqual(homeId);
+
+    const [opened, ust] = await store.unlock({ label: "work" });
+    expect(ust).toBe(Status.Success);
+    if (opened === undefined) return;
+    const expected = await mustIdnt(work, "test", 0);
+    const got = await mustIdnt(opened, "test", 0);
+    expect(got.publicKey).toEqual(expected.publicKey);
+    expect(store.credId).toEqual(workId);
+    expect(allowId(2)).toEqual(workId);
   });
 });

@@ -22,6 +22,7 @@ import { checksumEntRevs } from "../shared/checksum";
 import { Status } from "../shared/consts";
 import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
 import { err, ok, ValStat } from "../shared/valstat.ts";
+import { omitDefaultRealm } from "../stores/realm";
 
 /** Options for {@link EntDBMemory}. */
 export type EntDBMemoryOptions = {
@@ -59,14 +60,15 @@ export class EntDBMemory implements IEntDB {
 
   /** Install or replace a row; live ents are indexed, tombstones are not. */
   put(row: IEntRow): void {
-    const key = btob64(row.eid);
+    const next = isLiveEnt(row) ? omitDefaultRealm(row) : row;
+    const key = btob64(next.eid);
     const prev = this.ents.get(key);
     if (prev !== undefined && isLiveEnt(prev)) {
       this.unindex(key, prev);
     }
-    this.ents.set(key, row);
-    if (isLiveEnt(row)) {
-      this.index(key, row);
+    this.ents.set(key, next);
+    if (isLiveEnt(next)) {
+      this.index(key, next);
     }
   }
 

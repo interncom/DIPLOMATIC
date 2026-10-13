@@ -14,14 +14,11 @@ import {
   setApld,
   toStoredMessage,
 } from "../../types";
+import { omitDefaultRealm } from "../realm";
 import { MESSAGES_APLD_INDEX, MESSAGES_TABLE } from "./store";
 
 export class IDBMessageStore implements IMessageStore {
-  db: IDBDatabase;
-
-  constructor(db: IDBDatabase, private crypto: ICrypto) {
-    this.db = db;
-  }
+  constructor(private db: IDBDatabase, private crypto: ICrypto) {}
 
   async add(messages: IStorableMessage[]): Promise<Status[]> {
     const tx = this.db.transaction(MESSAGES_TABLE, "readwrite");
@@ -44,7 +41,7 @@ export class IDBMessageStore implements IMessageStore {
         const { key, data } = messages[i];
         const keyB64 = btob64(key);
         // Put caller data as-is (omit optional fields at write time).
-        const req = store.put(data, keyB64);
+        const req = store.put(omitDefaultRealm(data), keyB64);
         // We skip req.onsuccess because we default results to Success.
         req.onerror = (evt) => {
           // preventDefault allows continuation if a single insert fails.

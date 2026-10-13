@@ -8,6 +8,7 @@ import {
   peekItemCodec,
 } from "../../../shared/codecs/peekItem.ts";
 import { Status } from "../../../shared/consts.ts";
+import { asHostRlm } from "../../../shared/crypto/derivation.ts";
 import { IStorage, PublicKey } from "../../../shared/types.ts";
 import { ok, ValStat } from "../../../shared/valstat.ts";
 import {
@@ -23,6 +24,7 @@ const mockStorage: IStorage = {
   ...baseMockStorage,
   listHeads: async (
     _pubKey: PublicKey,
+    _rlm: Uint8Array,
     _minSeq: number,
   ): Promise<ValStat<IBagPeekItem[]>> => {
     // Mock: return some items
@@ -45,15 +47,18 @@ Deno.test("peekEnd.encodeReq", () => {
     new Uint8Array(32).fill(1) as PublicKey,
     new Date("2023-01-01T00:00:00.000Z"),
   );
-  const body: number[] = [0];
+  const [rlm, rlmSt] = asHostRlm(new Uint8Array(32).fill(9));
+  if (rlmSt !== Status.Success) throw new Error(`rlm ${rlmSt}`);
+  const cur = { rlm, seq: 0 };
   const reqEnc = new Encoder();
 
-  peekEnd.encodeReq(client, keys, tsAuth, body, reqEnc);
+  peekEnd.encodeReq(client, keys, tsAuth, cur, reqEnc);
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();
   expectedEnc.writeStruct(authTimestampCodec, tsAuth);
-  expectedEnc.writeVarInt(body[0]);
+  expectedEnc.writeBytes(rlm);
+  expectedEnc.writeVarInt(0);
   assertEquals(encoded, expectedEnc.result());
 });
 
@@ -62,6 +67,7 @@ Deno.test("peekEnd.handleReq - success", async () => {
   const minSeq = 0;
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytes(new Uint8Array(32));
   reqEnc.writeVarInt(minSeq);
   const reqData = reqEnc.result();
   const reqDec = new Decoder(reqData);
@@ -89,6 +95,18 @@ Deno.test("peekEnd.handleReq - success", async () => {
 
 Deno.test("peekEnd.handleReq - extra body content", async () => {
   const tsAuth = createTestAuthTimestamp(testPubKey, new Date(946713599000));
+  const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeBytes(new Uint8Array(32));
+  reqEnc.writeVarInt(0);
+  reqEnc.writeBytes(new Uint8Array([1]));
+  const reqDec = new Decoder(reqEnc.result());
+  const status = await peekEnd.handleReq(mockHost, reqDec, new Encoder());
+  assertEquals(status, Status.ExtraBodyContent);
+});
+
+Deno.test("peekEnd.handleReq - short body", async () => {
+  const tsAuth = createTestAuthTimestamp(testPubKey, new Date(946713599000));
   const from = new Date("2023-01-01T00:00:00.000Z");
   const reqEnc = new Encoder();
   reqEnc.writeStruct(authTimestampCodec, tsAuth);
@@ -104,7 +122,7 @@ Deno.test("peekEnd.handleReq - extra body content", async () => {
     reqDec,
     respEnc,
   );
-  assertEquals(status, Status.ExtraBodyContent);
+  assertEquals(status, Status.OutOfBounds);
 });
 
 Deno.test("peekEnd.decodeResp", () => {

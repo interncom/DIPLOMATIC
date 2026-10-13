@@ -64,7 +64,3 @@ async function handleCmd(cmd: WorkerCmd): Promise<void> {
     scope.postMessage(replyErr(cmd.id, Status.InternalError));
   }
 }
-
-void runtime.init().catch((e) => {
-  console.error("worker init failed", e);
-});

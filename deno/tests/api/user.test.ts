@@ -21,11 +21,10 @@ Deno.test("userEnd.encodeReq", () => {
     testPubKeyAlt,
     new Date("2023-01-01T00:00:00.000Z"),
   );
-  const body = [] as Iterable<never>;
   const reqEnc = new Encoder();
 
   // deno-lint-ignore no-explicit-any
-  userEnd.encodeReq(client as any, keys, tsAuth, body, reqEnc);
+  userEnd.encodeReq(client as any, keys, tsAuth, undefined, reqEnc);
 
   const encoded = reqEnc.result();
   const expectedEnc = new Encoder();

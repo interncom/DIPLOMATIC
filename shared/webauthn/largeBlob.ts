@@ -3,7 +3,8 @@
 // WebAuthn “authenticator” = binding key: IKM / blob store, not authn/authz.
 //
 // This is browser I/O plumbing, not crypto. Seed persist/clear write lives
-// in enclave.ts (Iron Law). This module is create / read / capability probe.
+// in crypto/largeBlob.ts and only Enclave calls it. This module is create /
+// read / capability probe.
 
 import { Status } from "../consts.ts";
 import { randomBytesArrayBuffer } from "../crypto/entropy.ts";

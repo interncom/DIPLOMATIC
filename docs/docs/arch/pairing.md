@@ -23,10 +23,11 @@ AEAD key:
 
 ```
 S     = X25519(sk_local, peer_pub)
-KEK   = blake3(S ‖ diplomatic.qrpair.v1 ‖ reqPub ‖ respPub)[0..32]
+PDK   = blake3(S, { context: diplomatic.qrpair.v1 })
+KEK   = blake3(reqPub ‖ respPub, { key: PDK })
 ```
 
-`reqPub` / `respPub` are bound into the KDF so the ciphertext is tied to both public keys. A PRF-binding KEK cannot open a pair body.
+`reqPub` / `respPub` are bound into the child so the ciphertext is tied to both public keys. A PRF-binding KEK cannot open a pair body.
 
 Transport is not part of the object: QR, audio, or copy-paste are encodings of these bytes. A URL hash for a system camera / deeplink must not send the payload to the app host.
 
@@ -44,7 +45,7 @@ Transport is not part of the object: QR, audio, or copy-paste are encodings of t
 
 **Backdoored `getRandomValues`.** Seeds, nonces, and pairing scalars all come from it. That sinks the whole stack, not just pairing.
 
-**Shared-passkey pair.** If both devices can evaluate the same PRF, you can seal under `blake3(prf ‖ domain)` and skip ECDH. That is a different product (synced platform passkey). This flow is for a device that does not have that credential yet.
+**Shared-passkey pair.** If both devices can evaluate the same PRF, you can seal under the bind PDK child and skip ECDH. That is a different product (synced platform passkey). This flow is for a device that does not have that credential yet.
 
 **Active in-person MITM.** Someone gives the enroller their own `DHKEReq`. Unauthenticated ECDH: they decrypt `DHKEResp`. The user must take the request from the enrollee in front of them.
 

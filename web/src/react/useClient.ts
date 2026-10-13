@@ -3,6 +3,7 @@ import { openEntDB } from "../entdb/cached";
 import { entStateManager, IEntDB } from "../entdb/entdb";
 import { openDiplomaticClient } from "../openClient";
 import { Clock, IClock } from "../shared/clock";
+import { Status } from "../shared/consts";
 import type { Enclave } from "../shared/crypto/enclave";
 import { IHostConnectionInfo, IStateManager } from "../shared/types";
 import { nullStateManager } from "../state";
@@ -197,7 +198,15 @@ export function useClient(opts: UseClientOptions = {}) {
       const { client, mode } = opened;
 
       if (seed) {
-        await client.setSeed(seed);
+        const sst = await client.setSeed(seed);
+        if (sst !== Status.Success) {
+          dispose();
+          setDiplomaticState({
+            stateMgr: entMgr,
+            error: new Error(`setSeed ${Status[sst]}`),
+          });
+          return;
+        }
       }
       if (host) {
         await client.link(host);

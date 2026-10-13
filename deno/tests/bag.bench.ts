@@ -12,10 +12,12 @@ import libsodiumCrypto from "../src/crypto.ts";
 const crypto = libsodiumCrypto;
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const [enclave, est] = Enclave.fromBytes(seed);
-if (est !== Status.Success || enclave === undefined) {
-  throw new Error(`enclave ${est}`);
-}
-const hostIdnt = await enclave.deriveIdentity("benchmark-host", 0);
+if (est !== Status.Success) throw new Error(`enclave ${est}`);
+const [hostIdnt, ist] = await enclave.deriveIdentity({
+  label: "benchmark-host",
+  index: 0,
+});
+if (ist !== Status.Success) throw new Error(`idnt ${ist}`);
 
 function createBod(size: number): Uint8Array {
   const arr = new Uint8Array(size);
@@ -56,6 +58,7 @@ async function bench(size: number, suffix: string) {
     await fullyEncodeBag(op);
   });
   const bagEnc = await fullyEncodeBag(op);
+  const verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
   Deno.bench(`open bag (${suffix})`, async () => {
     const decoder = new Decoder(bagEnc);
     const [bag, stat] = decoder.readStruct(bagCodec);
@@ -64,7 +67,7 @@ async function bench(size: number, suffix: string) {
     }
     const [, openStat] = await openBag(
       bag,
-      hostIdnt.publicKey,
+      verifyKey,
       crypto,
       enclave,
     );

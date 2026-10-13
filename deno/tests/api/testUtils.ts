@@ -19,16 +19,25 @@ export const baseMockStorage: IStorage = {
   addUser: async () => ok(undefined),
   subMeta: async () => ok(nullSubMeta),
   getBodies: async () => ok([]),
-  listHeads: async (_pubKey, _minSeq) => ok([]),
-  setBags: async (_pubKey, bags) => ok(bags.map((_, i) => i + 1)),
+  listHeads: async (_pubKey, _rlm, _minSeq) => ok([]),
+  setBags: async (_pubKey, bags) =>
+    ok(bags.map((_, i) => ({ status: Status.Success, seq: i + 1 }))),
 };
 
 // Base mock crypto
 export const baseMockCrypto = {
+  importVerifyKey: (pubKey: PublicKey) =>
+    crypto.subtle.importKey(
+      "raw",
+      pubKey,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    ),
   checkSigEd25519: (
     _sig: Uint8Array,
     _message: Uint8Array | string,
-    _pubKey: PublicKey,
+    _verifyKey: CryptoKey,
   ) => Promise.resolve(true),
   blake3: () => Promise.resolve(new Uint8Array(32)),
 };

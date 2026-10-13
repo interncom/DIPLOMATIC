@@ -7,39 +7,57 @@ import { Enclave } from "../src/shared/crypto/enclave";
 import { MockClock } from "../src/shared/clock";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
-import memStorage, {
-  createMemoryStorage } from "../src/shared/storage/memory";
+import { createMemoryStorage } from "../src/shared/storage/memory";
 import { sealBag } from "../src/shared/bag";
+import { realmLabel } from "../src/stores/realm";
 import { Encoder } from "../src/shared/codec";
 import { makeEID } from "../src/shared/codecs/eid";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { checksumSet } from "../src/shared/checksum";
-import { EntityID, Hash, HostHandle, IMessage } from "../src/shared/types";
+import {
+  EntityID,
+  Hash,
+  HostHandle,
+  ISetBagResult,
+  IMessage,
+} from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import {
   APLD_APPLIED,
   IDownloadMessage,
-  IStoredMessageData } from "../src/types";
+  IStoredMessageData,
+} from "../src/types";
 import { bytesEqual } from "../src/shared/binary";
+import { mustConnIdnt, mustIdnt } from "./mustIdnt";
+
+function hostSeq(rows: ISetBagResult[] | undefined): number | undefined {
+  const row = rows?.[0];
+  if (row === undefined || row.status !== Status.Success) return undefined;
+  return row.seq;
+}
 
 // Fixed seed for deterministic key derivation
 const testSeedBytes = new Uint8Array(32).fill(0x42);
 function testEnclave(): Enclave {
   const [e, st] = Enclave.fromBytes(testSeedBytes);
-  if (st !== Status.Success || e === undefined) throw new Error(`enclave ${st}`);
+  if (st !== Status.Success) throw new Error(`enclave ${st}`);
   return e;
 }
 
 async function createTestBag(message: IMessage, enclave: Enclave) {
-  const hostIdnt = await enclave.deriveIdentity("test", 1);
-  return sealBag(message, hostIdnt, libsodiumCrypto, enclave);
+  const hostIdnt = await mustIdnt(enclave, "test", 1);
+  return sealBag(message, hostIdnt, libsodiumCrypto, enclave, {
+    label: "test",
+    index: 1,
+  });
 }
 
 /** Valid EID (id+ts structure) so messageHeadCodec.decode succeeds on peek. */
 function testEid(n: number): EntityID {
   const [eid, st] = makeEID({
     id: new Uint8Array(8).fill(n),
-    ts: new Date(n * 1000) });
+    ts: new Date(n * 1000),
+  });
   if (st !== Status.Success || !eid) {
     throw new Error(`testEid(${n}): ${Status[st]}`);
   }
@@ -53,7 +71,8 @@ function testMsg(n: number, body: number[]): IMessage {
     off: 0,
     ctr: 0,
     len: bod.length,
-    bod };
+    bod,
+  };
 }
 
 describe("syncPeek", () => {
@@ -72,7 +91,7 @@ describe("syncPeek", () => {
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1, lastSyncedAt: new Date(0), lastSeq: 0 };
     // Create fresh storage and host per test
-    const storage = { ...memStorage };
+    const storage = createMemoryStorage();
     lpcHost = new DiplomaticLPCServer(
       storage,
       libsodiumCrypto,
@@ -88,7 +107,7 @@ describe("syncPeek", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
@@ -106,28 +125,33 @@ describe("syncPeek", () => {
       off: 0,
       ctr: 0,
       len: 4,
-      bod: new Uint8Array([1, 2, 3, 4]) };
+      bod: new Uint8Array([1, 2, 3, 4]),
+    };
 
     // Seal bag using same host identity that conn will use, and put on host.
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const [bag, statBag] = await sealBag(
       message,
       hostIdnt,
       libsodiumCrypto,
       enclave,
+      { label: "test", index: 1 },
     );
     if (statBag !== Status.Success || !bag) {
       expect(statBag).toBe(Status.Success);
       return;
     }
-    const [seqs, setStatus] = await lpcHost.storage.setBags(hostIdnt.publicKey, [
-      bag,
-    ]);
-    if (setStatus !== Status.Success || !seqs?.[0]) {
+    const [stored, setStatus] = await lpcHost.storage.setBags(
+      hostIdnt.publicKey,
+      [
+        bag,
+      ],
+    );
+    const seq = hostSeq(stored);
+    if (setStatus !== Status.Success || seq === undefined) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
-    const seq = seqs[0];
 
     // Compute headEncHash exactly as sealBag + decryptPeekItem will see it (hsh is included when len>0).
     let hsh: Uint8Array | undefined;
@@ -146,7 +170,8 @@ describe("syncPeek", () => {
       ...(message.off !== 0 ? { off: message.off } : {}),
       ...(message.ctr !== 0 ? { ctr: message.ctr } : {}),
       body: message.bod,
-      apld: APLD_APPLIED };
+      apld: APLD_APPLIED,
+    };
     await store.messages.add([{ key: headEncHash, data: storedData }]);
 
     // Enqueue for upload to this host.
@@ -159,7 +184,8 @@ describe("syncPeek", () => {
       store,
       enclave,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
     expect(stat).toBe(Status.Success);
 
     // Upload was dequeued because host already has it.
@@ -188,7 +214,7 @@ describe("syncPeek", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await isolatedConn.identity();
+    const hostIdnt = await mustConnIdnt(isolatedConn);
     await isolatedHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: isolatedHost, idx: 1 });
 
@@ -203,10 +229,57 @@ describe("syncPeek", () => {
       store,
       enclave,
       host: { ...host, lastSeq: 0 },
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
     expect(stat).toBe(Status.Success);
     const row = await store.hosts.get("test");
     expect(row?.lastSeq).toBeGreaterThan(0);
+  });
+
+  test("a named realm does not move lastSeq", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    await store.realms.put("inbox", 1);
+    await store.hosts.recordSeqs("test", { lastSeq: 9 });
+    const hostIdnt = await mustConnIdnt(conn);
+    const inbox = { label: "inbox", index: 1 };
+    const m = testMsg(3, [4, 5]);
+    const [bag, statBag] = await sealBag(
+      m,
+      hostIdnt,
+      libsodiumCrypto,
+      enclave,
+      { label: "test", index: 1 },
+      inbox,
+    );
+    expect(statBag).toBe(Status.Success);
+    if (statBag !== Status.Success) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
+
+    const stat = await syncPeek({
+      conn,
+      store,
+      enclave,
+      host: { ...host, handle: lpcHost, lastSeq: 9 },
+      crypto: libsodiumCrypto,
+      realm: inbox,
+    });
+    expect(stat).toBe(Status.Success);
+    const row = await store.hosts.get("test");
+    expect(row?.lastSeq).toBe(9);
+    expect(row?.seqs).toEqual([{ label: "inbox", index: 1, lastSeq: 1 }]);
+
+    const pullStat = await syncPull({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+    });
+    expect(pullStat).toBe(Status.Success);
+    const msgs = await store.messages.list();
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]?.rlm).toBe("inbox");
+    expect(Array.from(await store.downloads.list())).toHaveLength(0);
   });
 });
 
@@ -217,7 +290,7 @@ describe("syncPeek download de-dupe", () => {
   let hostRow: { label: string; idx: number; lastSeq: number };
   let lpcHost: DiplomaticLPCServer;
   let conn: DiplomaticClientAPI<HostHandle>;
-  let hostIdnt: Awaited<ReturnType<Enclave["deriveIdentity"]>>;
+  let hostIdnt: Awaited<ReturnType<typeof mustIdnt>>;
 
   async function msgHash(m: IMessage): Promise<Hash> {
     let hsh: Uint8Array | undefined;
@@ -233,7 +306,9 @@ describe("syncPeek download de-dupe", () => {
       data: {
         eid: m.eid,
         body: m.bod,
-        apld: APLD_APPLIED } }]);
+        apld: APLD_APPLIED,
+      },
+    }]);
   }
 
   beforeEach(async () => {
@@ -257,7 +332,7 @@ describe("syncPeek download de-dupe", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    hostIdnt = await conn.identity();
+    hostIdnt = await mustConnIdnt(conn);
     await lpcHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
@@ -276,7 +351,8 @@ describe("syncPeek download de-dupe", () => {
       store,
       enclave,
       host: { ...hostRow, handle: lpcHost },
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
     expect(st).toBe(Status.Success);
     expect(Array.from(await store.downloads.list())).toHaveLength(1);
     expect((await store.hosts.get("test"))?.lastSeq).toBe(2);
@@ -296,7 +372,8 @@ describe("syncPeek download de-dupe", () => {
       store,
       enclave,
       host: { ...hostRow, handle: lpcHost },
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
     expect(await store.uploads.list("test")).toHaveLength(0);
   });
 });
@@ -321,7 +398,8 @@ describe("reconcileHost", () => {
     host = {
       label: "test",
       idx: 1,
-      lastSeq: 0 };
+      lastSeq: 0,
+    };
     // Isolated host storage so bags do not leak across tests.
     const storage = createMemoryStorage();
     lpcHost = new DiplomaticLPCServer(
@@ -339,13 +417,13 @@ describe("reconcileHost", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     await lpcHost.storage.addUser(hostIdnt.publicKey);
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
   });
 
   test("returns bag tallies and reports set differences", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
 
     // Two bags, same head (duplicate on host).
     const message: IMessage = {
@@ -353,7 +431,8 @@ describe("reconcileHost", () => {
       off: 0,
       ctr: 0,
       len: 3,
-      bod: new Uint8Array([1, 2, 3]) };
+      bod: new Uint8Array([1, 2, 3]),
+    };
     const [bag1, s1] = await createTestBag(message, enclave);
     const [bag2, s2] = await createTestBag(message, enclave);
     expect(s1).toBe(Status.Success);
@@ -367,7 +446,8 @@ describe("reconcileHost", () => {
       off: 0,
       ctr: 0,
       len: 1,
-      bod: new Uint8Array([7]) };
+      bod: new Uint8Array([7]),
+    };
     let hsh: Uint8Array | undefined;
     if (localOnly.bod && localOnly.len > 0) {
       hsh = await libsodiumCrypto.blake3(localOnly.bod);
@@ -380,7 +460,9 @@ describe("reconcileHost", () => {
       data: {
         eid: localOnly.eid,
         body: localOnly.bod,
-        apld: APLD_APPLIED } }]);
+        apld: APLD_APPLIED,
+      },
+    }]);
 
     const [report, st] = await reconcileHost(
       {
@@ -388,7 +470,8 @@ describe("reconcileHost", () => {
         store,
         enclave,
         host: { ...host, handle: lpcHost },
-        crypto: libsodiumCrypto },
+        crypto: libsodiumCrypto,
+      },
       { pull: true, push: true },
     );
     expect(st).toBe(Status.Success);
@@ -415,13 +498,14 @@ describe("reconcileHost", () => {
   });
 
   test("pull false does not enqueue downloads", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const message: IMessage = {
       eid: new Uint8Array(16).fill(5),
       off: 0,
       ctr: 0,
       len: 1,
-      bod: new Uint8Array([1]) };
+      bod: new Uint8Array([1]),
+    };
     const [bag, s] = await createTestBag(message, enclave);
     expect(s).toBe(Status.Success);
     if (!bag) return;
@@ -433,7 +517,8 @@ describe("reconcileHost", () => {
         store,
         enclave,
         host: { ...host, handle: lpcHost },
-        crypto: libsodiumCrypto },
+        crypto: libsodiumCrypto,
+      },
       { pull: false, push: false },
     );
     expect(st).toBe(Status.Success);
@@ -442,19 +527,21 @@ describe("reconcileHost", () => {
   });
 
   test("host msgcheck matches checksum of distinct msgs", async () => {
-    const hostIdnt = await enclave.deriveIdentity("test", 1);
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
     const msgA: IMessage = {
       eid: new Uint8Array(16).fill(6),
       off: 0,
       ctr: 0,
       len: 1,
-      bod: new Uint8Array([1]) };
+      bod: new Uint8Array([1]),
+    };
     const msgB: IMessage = {
       eid: new Uint8Array(16).fill(7),
       off: 0,
       ctr: 0,
       len: 1,
-      bod: new Uint8Array([2]) };
+      bod: new Uint8Array([2]),
+    };
     const [bagA1] = await createTestBag(msgA, enclave);
     const [bagA2] = await createTestBag(msgA, enclave); // dupe of A
     const [bagB] = await createTestBag(msgB, enclave);
@@ -474,7 +561,7 @@ describe("reconcileHost", () => {
     const expected = await checksumSet([ha, hb], libsodiumCrypto);
 
     // Stale high cursor — reconcile should reset lastSeq from inventory.
-    await store.hosts.recordStats("test", { lastSeq: 999 });
+    await store.hosts.recordSeqs("test", { lastSeq: 999 });
 
     const [report, st] = await reconcileHost(
       {
@@ -482,7 +569,8 @@ describe("reconcileHost", () => {
         store,
         enclave,
         host: { ...host, handle: lpcHost, lastSeq: 999 },
-        crypto: libsodiumCrypto },
+        crypto: libsodiumCrypto,
+      },
       { pull: false, push: false },
     );
     expect(st).toBe(Status.Success);
@@ -511,7 +599,7 @@ describe("syncPush", () => {
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };
     // Create fresh storage and host per test
-    const storage = { ...memStorage };
+    const storage = createMemoryStorage();
     lpcHost = new DiplomaticLPCServer(
       storage,
       libsodiumCrypto,
@@ -527,18 +615,23 @@ describe("syncPush", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
 
-  async function enqueueMsg(body: Uint8Array, eidFill: number): Promise<Hash> {
+  async function enqueueMsg(
+    body: Uint8Array,
+    eidFill: number,
+    rlm?: string,
+  ): Promise<Hash> {
     const message: IMessage = {
       eid: new Uint8Array(16).fill(eidFill),
       off: 0,
       ctr: 0,
       len: body.length,
-      bod: body };
+      bod: body,
+    };
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, message);
     const headEnc = enc.result();
@@ -546,7 +639,10 @@ describe("syncPush", () => {
     const storedData: IStoredMessageData = {
       eid: message.eid,
       body: message.bod,
-      apld: APLD_APPLIED };
+      apld: APLD_APPLIED,
+    };
+    const labeled = realmLabel(rlm);
+    if (labeled !== undefined) storedData.rlm = labeled;
     await store.messages.add([{ key: hash, data: storedData }]);
     await store.uploads.enq("test", [hash]);
     return hash;
@@ -562,7 +658,8 @@ describe("syncPush", () => {
       enclave,
       clock,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
 
     expect(await store.uploads.count()).toBe(0);
   });
@@ -582,10 +679,31 @@ describe("syncPush", () => {
       clock,
       host,
       crypto: libsodiumCrypto,
-      maxPushBytes: 1 });
+      maxPushBytes: 1,
+    });
 
     expect(stat).toBe(Status.Success);
     expect(await store.uploads.count()).toBe(0);
+  });
+
+  test("a named realm push does not move lastSeq", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    await store.realms.put("inbox", 1);
+    await store.hosts.recordSeqs("test", { lastSeq: 4 });
+    await enqueueMsg(new Uint8Array([9]), 8, "inbox");
+
+    const stat = await syncPush({
+      conn,
+      store,
+      enclave,
+      host,
+      crypto: libsodiumCrypto,
+    });
+    expect(stat).toBe(Status.Success);
+    expect(await store.uploads.count()).toBe(0);
+    const row = await store.hosts.get("test");
+    expect(row?.lastSeq).toBe(4);
+    expect(row?.seqs).toEqual([{ label: "inbox", index: 1, lastSeq: 1 }]);
   });
 });
 
@@ -605,7 +723,7 @@ describe("syncPull", () => {
     clock = new MockClock(new Date(0));
     host = { label: "test", idx: 1 };
     // Create fresh storage and host per test
-    const storage = { ...memStorage };
+    const storage = createMemoryStorage();
     lpcHost = new DiplomaticLPCServer(
       storage,
       libsodiumCrypto,
@@ -621,7 +739,7 @@ describe("syncPull", () => {
       transport,
       () => Promise.resolve(Status.Success),
     );
-    const hostIdnt = await conn.identity();
+    const hostIdnt = await mustConnIdnt(conn);
     const [_, addStatus] = await lpcHost.storage.addUser(hostIdnt.publicKey);
     expect(addStatus).toBe(Status.Success);
   });
@@ -633,7 +751,8 @@ describe("syncPull", () => {
       ctr: 0,
       len: 4,
       bod: new Uint8Array([1, 2, 3, 4]),
-      hsh: await libsodiumCrypto.blake3(new Uint8Array([1, 2, 3, 4])) };
+      hsh: await libsodiumCrypto.blake3(new Uint8Array([1, 2, 3, 4])),
+    };
     const [bag, statBag] = await createTestBag(message, enclave);
     if (statBag !== Status.Success) {
       expect(statBag).toBe(Status.Success);
@@ -641,21 +760,22 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await enclave.deriveIdentity("test", 1);
-    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+    const keys = await mustIdnt(enclave, "test", 1);
+    const [stored, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
-    if (setStatus !== Status.Success || !seqs?.[0]) {
+    const seq = hostSeq(stored);
+    if (setStatus !== Status.Success || seq === undefined) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
-    const seq = seqs[0];
 
     const download: IDownloadMessage = {
       kdm: bag.kdm,
       head: message,
       host: "test",
-      seq };
+      seq,
+    };
     await store.downloads.enq([download]);
 
     await syncPull({
@@ -663,7 +783,8 @@ describe("syncPull", () => {
       store,
       enclave,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -680,7 +801,8 @@ describe("syncPull", () => {
       ctr: 0,
       len: body.length,
       bod: body,
-      hsh: await libsodiumCrypto.blake3(body) };
+      hsh: await libsodiumCrypto.blake3(body),
+    };
     const enc = new Encoder();
     enc.writeStruct(messageHeadCodec, message);
     const headEnc = enc.result();
@@ -692,13 +814,15 @@ describe("syncPull", () => {
       host: "test",
       seq: 99,
       headEnc,
-      headEncHash }]);
+      headEncHash,
+    }]);
     expect(await store.downloads.count()).toBe(1);
 
     // Same moment as import/apply: archive the msg, then deq matching downloads.
     await store.messages.add([{
       key: headEncHash,
-      data: { eid: message.eid, body, apld: APLD_APPLIED } }]);
+      data: { eid: message.eid, body, apld: APLD_APPLIED },
+    }]);
     await deqDownloadsForHeadHashes(store, [headEncHash], libsodiumCrypto);
 
     expect(await store.downloads.count()).toBe(0);
@@ -714,7 +838,8 @@ describe("syncPull", () => {
       store,
       enclave,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
     expect(st).toBe(Status.NoChange);
     expect(pullCalls).toBe(0);
   });
@@ -727,17 +852,18 @@ describe("syncPull", () => {
       ctr: 0,
       len: body.length,
       bod: body,
-      hsh: await libsodiumCrypto.blake3(body) };
+      hsh: await libsodiumCrypto.blake3(body),
+    };
     const [bag, statBag] = await createTestBag(message, enclave);
     expect(statBag).toBe(Status.Success);
     if (statBag !== Status.Success || !bag) return;
 
-    const keys = await enclave.deriveIdentity("test", 1);
-    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+    const keys = await mustIdnt(enclave, "test", 1);
+    const [stored, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
     expect(setStatus).toBe(Status.Success);
-    const seq = seqs?.[0];
+    const seq = hostSeq(stored);
     expect(seq).toBeDefined();
     if (seq === undefined) return;
 
@@ -745,7 +871,8 @@ describe("syncPull", () => {
       kdm: bag.kdm,
       head: message,
       host: "test",
-      seq }]);
+      seq,
+    }]);
 
     let pullCalls = 0;
     let afterOpenCalls = 0;
@@ -762,7 +889,8 @@ describe("syncPull", () => {
           store,
           enclave,
           host,
-          crypto: libsodiumCrypto },
+          crypto: libsodiumCrypto,
+        },
         async () => {
           afterOpenCalls += 1;
         },
@@ -787,7 +915,8 @@ describe("syncPull", () => {
       store,
       enclave,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
 
     expect(stat).toBe(Status.NoChange);
     const messages = Array.from(await store.messages.list());
@@ -799,7 +928,8 @@ describe("syncPull", () => {
       eid: new Uint8Array(16).fill(1),
       off: 0,
       ctr: 0,
-      len: 0 };
+      len: 0,
+    };
     const [bag, statBag] = await createTestBag(message, enclave);
     if (statBag !== Status.Success) {
       expect(statBag).toBe(Status.Success);
@@ -807,21 +937,22 @@ describe("syncPull", () => {
     }
 
     // Add bag to host storage
-    const keys = await enclave.deriveIdentity("test", 1);
-    const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
+    const keys = await mustIdnt(enclave, "test", 1);
+    const [stored, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
       bag,
     ]);
-    if (setStatus !== Status.Success || !seqs?.[0]) {
+    const seq = hostSeq(stored);
+    if (setStatus !== Status.Success || seq === undefined) {
       expect(setStatus).toBe(Status.Success);
       return;
     }
-    const seq = seqs[0];
 
     const download: IDownloadMessage = {
       kdm: bag.kdm,
       head: message,
       host: "test",
-      seq };
+      seq,
+    };
     await store.downloads.enq([download]);
 
     await syncPull({
@@ -829,7 +960,8 @@ describe("syncPull", () => {
       store,
       enclave,
       host,
-      crypto: libsodiumCrypto });
+      crypto: libsodiumCrypto,
+    });
 
     const messages = Array.from(await store.messages.list());
     expect(messages.length).toBe(1);
@@ -837,7 +969,7 @@ describe("syncPull", () => {
   });
 
   test("drains download queue under a tight maxPullBytes budget", async () => {
-    const keys = await enclave.deriveIdentity("test", 1);
+    const keys = await mustIdnt(enclave, "test", 1);
     const downloads: IDownloadMessage[] = [];
 
     for (let i = 0; i < 3; i++) {
@@ -848,20 +980,25 @@ describe("syncPull", () => {
         ctr: 0,
         len: body.length,
         bod: body,
-        hsh: await libsodiumCrypto.blake3(body) };
+        hsh: await libsodiumCrypto.blake3(body),
+      };
       const [bag, statBag] = await createTestBag(message, enclave);
       expect(statBag).toBe(Status.Success);
       if (statBag !== Status.Success) return;
-      const [seqs, setStatus] = await lpcHost.storage.setBags(keys.publicKey, [
-        bag,
-      ]);
+      const [stored, setStatus] = await lpcHost.storage.setBags(
+        keys.publicKey,
+        [bag],
+      );
       expect(setStatus).toBe(Status.Success);
-      expect(seqs?.[0]).toBeDefined();
+      const seq = hostSeq(stored);
+      expect(seq).toBeDefined();
+      if (seq === undefined) return;
       downloads.push({
         kdm: bag.kdm,
         head: message,
         host: "test",
-        seq: seqs[0] });
+        seq,
+      });
     }
     await store.downloads.enq(downloads);
 
@@ -872,7 +1009,8 @@ describe("syncPull", () => {
       enclave,
       host,
       crypto: libsodiumCrypto,
-      maxPullBytes: 4 });
+      maxPullBytes: 4,
+    });
 
     expect(stat).toBe(Status.Success);
     expect(await store.downloads.count()).toBe(0);

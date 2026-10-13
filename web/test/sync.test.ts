@@ -7,7 +7,12 @@ import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { EncodedMessage } from "../src/shared/message";
 import memStorage from "../src/shared/storage/memory";
 import { Enclave } from "../src/shared/crypto/enclave";
-import type { HostHandle, IHostCrypto, IStateManager, IStorage } from "../src/shared/types";
+import type {
+  HostHandle,
+  IHostCrypto,
+  IStateManager,
+  IStorage,
+} from "../src/shared/types";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Status } from "../src/shared/consts";
 
@@ -22,7 +27,8 @@ beforeEach(() => {
     hasUser: memStorage.hasUser.bind(memStorage),
     setBags: memStorage.setBags.bind(memStorage),
     getBodies: memStorage.getBodies.bind(memStorage),
-    listHeads: memStorage.listHeads.bind(memStorage) };
+    listHeads: memStorage.listHeads.bind(memStorage),
+  };
   hostClock.set(new Date(0));
   lpcHost = new DiplomaticLPCServer(
     storage,
@@ -44,8 +50,9 @@ const createClient = async (seed: Uint8Array) => {
     },
     notify() {},
     async refresh() {},
-    on(_type, _listener) { },
-    off(_type, _listener) { } };
+    on(_type, _listener) {},
+    off(_type, _listener) {},
+  };
   const client = new SyncClient(
     new MockClock(new Date(0)),
     state,
@@ -57,7 +64,7 @@ const createClient = async (seed: Uint8Array) => {
   if (est !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${est}`);
   }
-  await store.seed.save(enclave);
+  await client.setSeed(enclave);
   return { store, client };
 };
 
@@ -124,7 +131,8 @@ describe("Sync Integration", () => {
     const priorA = {
       eid: head.eid,
       ctr: head.ctr,
-      updatedAt: new Date(eidDec.ts.getTime() + head.off) };
+      updatedAt: new Date(eidDec.ts.getTime() + head.off),
+    };
     const [, stUp] = await clientA.updateRaw(priorA, new Uint8Array([3]));
     expect(stUp).toBe(Status.Success);
     expect(await clientA.sync()).toBe(Status.Success);

@@ -45,7 +45,7 @@ describe("MemoryHostStore.touch", () => {
   });
 });
 
-describe("MemoryHostStore.recordStats", () => {
+describe("MemoryHostStore.recordSeqs", () => {
   let hosts: MemoryHostStore<URL>;
 
   beforeEach(async () => {
@@ -58,13 +58,51 @@ describe("MemoryHostStore.recordStats", () => {
   });
 
   test("lastSeq advances only; setLastSeq can rewind", async () => {
-    await hosts.recordStats("h", { lastSeq: 10 });
-    await hosts.recordStats("h", { lastSeq: 4 });
+    await hosts.recordSeqs("h", { lastSeq: 10 });
+    await hosts.recordSeqs("h", { lastSeq: 4 });
     let row = await hosts.get("h");
     expect(row?.lastSeq).toBe(10);
 
-    await hosts.recordStats("h", { setLastSeq: 3 });
+    await hosts.recordSeqs("h", { setLastSeq: 3 });
     row = await hosts.get("h");
     expect(row?.lastSeq).toBe(3);
+  });
+
+  test("a named realm does not move lastSeq", async () => {
+    const inbox = { label: "inbox", index: 1 };
+    await hosts.touch("h", 4, inbox);
+    let row = await hosts.get("h");
+    expect(row?.lastSeq).toBe(0);
+    expect(row?.seqs).toEqual([{ label: "inbox", index: 1, lastSeq: 4 }]);
+
+    await hosts.touch("h", 2, inbox);
+    row = await hosts.get("h");
+    expect(row?.seqs?.[0]?.lastSeq).toBe(4);
+
+    await hosts.recordSeqs("h", { setLastSeq: 1 }, inbox);
+    row = await hosts.get("h");
+    expect(row?.lastSeq).toBe(0);
+    expect(row?.seqs).toEqual([{ label: "inbox", index: 1, lastSeq: 1 }]);
+  });
+
+  test("re-link keeps realm cursors; a new handle clears them", async () => {
+    const inbox = { label: "inbox", index: 1 };
+    await hosts.touch("h", 4, inbox);
+    await hosts.touch("h", 3);
+    const prev = await hosts.get("h");
+    if (prev === undefined) throw new Error("host");
+    await hosts.add({ label: "h", handle: prev.handle, idx: 1 });
+    let row = await hosts.get("h");
+    expect(row?.lastSeq).toBe(3);
+    expect(row?.seqs?.[0]?.lastSeq).toBe(4);
+
+    await hosts.add({
+      label: "h",
+      handle: new URL("http://other"),
+      idx: 1,
+    });
+    row = await hosts.get("h");
+    expect(row?.lastSeq).toBe(0);
+    expect(row?.seqs).toBeUndefined();
   });
 });

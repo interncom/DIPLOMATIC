@@ -27,6 +27,7 @@ import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
+import { nullKDM } from "../src/shared/crypto/derivation";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { createMemoryStorage } from "../src/shared/storage/memory";
@@ -56,9 +57,7 @@ const defaultClientDownDb = join(
 const SEED_BYTES = new Uint8Array(32).fill(0x42);
 function SEED(): Enclave {
   const [e, st] = Enclave.fromBytes(SEED_BYTES);
-  if (st !== Status.Success || e === undefined) {
-    throw new Error(`enclave ${st}`);
-  }
+  if (st !== Status.Success) throw new Error(`enclave ${st}`);
   return e;
 }
 const HOST_LABEL = "lpc";
@@ -160,14 +159,14 @@ async function main() {
 
   // --- uploader client (SQLite archive + queues) ---
   const upStore = new SqliteStore<IProtoHost>(clientUpDb, libsodiumCrypto);
-  await upStore.seed.save(SEED(), { persist: true });
+  await upStore.account.save(SEED(), { persist: true });
   await upStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
     idx: HOST_IDX,
   });
 
-  const enclave = await upStore.seed.load();
+  const enclave = await upStore.account.load();
   if (!enclave) throw new Error("missing seed");
 
   const upHost = await upStore.hosts.get(HOST_LABEL);
@@ -182,7 +181,8 @@ async function main() {
     () => Promise.resolve(Status.Success),
   );
   {
-    const keys = await upConn.identity();
+    const [keys, kst] = await upConn.identity();
+    if (kst !== Status.Success) throw new Error(`identity ${kst}`);
     const [, addSt] = await storage.addUser(keys.publicKey);
     if (addSt !== Status.Success) throw new Error(`addUser ${addSt}`);
   }
@@ -218,21 +218,27 @@ async function main() {
     }); queue left=${left}`,
   );
 
-  const keys = await upConn.identity();
-  const [heads, listSt] = await storage.listHeads(keys.publicKey, 0);
+  const [keys, kst] = await upConn.identity();
+  if (kst !== Status.Success) throw new Error(`identity ${kst}`);
+  const [rlm, rlmSt] = await enclave.hostRlm(nullKDM, {
+    label: HOST_LABEL,
+    index: HOST_IDX,
+  });
+  if (rlmSt !== Status.Success) throw new Error(`hostRlm ${rlmSt}`);
+  const [heads, listSt] = await storage.listHeads(keys.publicKey, rlm, 0);
   if (listSt !== Status.Success) throw new Error(`listHeads ${listSt}`);
   console.log(`  host heads: ${heads.length}`);
 
   // --- downloader client (same seed, empty SQLite archive) ---
   console.log("\n=== 3. sync from host (peek → pull/open/exec) ===");
   const downStore = new SqliteStore<IProtoHost>(clientDownDb, libsodiumCrypto);
-  await downStore.seed.save(SEED(), { persist: true });
+  await downStore.account.save(SEED(), { persist: true });
   await downStore.hosts.add({
     label: HOST_LABEL,
     handle: lpcHost,
     idx: HOST_IDX,
   });
-  const downEnclave = await downStore.seed.load();
+  const downEnclave = await downStore.account.load();
   if (!downEnclave) throw new Error("missing seed");
   const downHostRow = await downStore.hosts.get(HOST_LABEL);
   if (!downHostRow) throw new Error("missing host");

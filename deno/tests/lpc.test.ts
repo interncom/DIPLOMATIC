@@ -4,6 +4,7 @@ import { makeAuthTimestamp } from "../../shared/auth.ts";
 import { MockClock } from "../../shared/clock.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { APICallName, Status } from "../../shared/consts.ts";
+import { asHostRlm } from "../../shared/crypto/derivation.ts";
 import { CallbackListener } from "../../shared/lpc/listener.ts";
 import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
 import { DiplomaticLPCServer, LPCTransport } from "../../shared/lpc/server.ts";
@@ -21,10 +22,18 @@ import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 
 const baseCryptoImpl: ICrypto = {
+  importVerifyKey: (pubKey: PublicKey) =>
+    crypto.subtle.importKey(
+      "raw",
+      pubKey,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    ),
   checkSigEd25519: async (
     _sig: Uint8Array,
     _message: Uint8Array | string,
-    _pubKey: PublicKey,
+    _verifyKey: CryptoKey,
   ): Promise<boolean> => true, // mock
   signEd25519: async (
     _message: Uint8Array | string,
@@ -182,10 +191,18 @@ Deno.test("lpc integration", async (t) => {
   await t.step("invalid authTS - bad signature", async () => {
     // Custom crypto that checks sig validity
     const customCrypto = {
+      importVerifyKey: (pubKey: PublicKey) =>
+        crypto.subtle.importKey(
+          "raw",
+          pubKey,
+          { name: "Ed25519" },
+          false,
+          ["verify"],
+        ),
       checkSigEd25519: async (
         sig: Uint8Array,
         _message: Uint8Array | string,
-        _pubKey: PublicKey,
+        _verifyKey: CryptoKey,
       ): Promise<boolean> => sig[0] === 0x99, // mock: valid if sig[0] is 0x99
       blake3: async (_data: Uint8Array) => new Uint8Array(32) as Hash,
     };
@@ -289,13 +306,18 @@ Deno.test("lpc integration", async (t) => {
         enclave: null as unknown as Enclave,
         clock: baseMockClock,
       };
-      const items = [0]; // for peek, from date
+      const [rlm, rlmSt] = asHostRlm(new Uint8Array(32));
+      if (rlmSt !== Status.Success) {
+        assertEquals(rlmSt, Status.Success);
+        return;
+      }
+      const cur = { rlm, seq: 0 };
       const reqEnc = new Encoder();
       const encStatus = await peekEnd.encodeReq(
         mockClient,
         keys,
         authTS,
-        items,
+        cur,
         reqEnc,
       );
       assertEquals(encStatus, Status.Success);

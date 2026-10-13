@@ -25,7 +25,8 @@ export async function makeAuthTimestamp(
     return err(statTs);
   }
   const encodedTs = enc.result();
-  const sig = await identity.sign(encodedTs);
+  const [sig, sst] = await identity.sign(encodedTs);
+  if (sst !== Status.Success) return err(sst);
   return ok({
     pubKey: identity.publicKey,
     sig,
@@ -47,10 +48,16 @@ export async function validateAuthTimestamp(
   const enc = new Encoder();
   enc.writeDate(authTS.timestamp);
   const data = enc.result();
+  let verifyKey: CryptoKey;
+  try {
+    verifyKey = await crypto.importVerifyKey(authTS.pubKey);
+  } catch {
+    return Status.CryptoError;
+  }
   const sigValid = await crypto.checkSigEd25519(
     authTS.sig,
     data,
-    authTS.pubKey,
+    verifyKey,
   );
   if (!sigValid) {
     return Status.InvalidSignature;

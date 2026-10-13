@@ -8,7 +8,7 @@ Credentials are scoped to the page hostname (`rpId`). Every bind, unseal, and la
 
 ### PRF binding (daily unlock)
 
-WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave domain-separates those bytes (`diplomatic.bind.v1`) and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless. Pairing uses a different KDF (`diplomatic.qrpair.v1`); see [Pairing](./pairing).
+WebAuthn `prf` (CTAP2 `hmac-secret`) produces 32 bytes of IKM. The enclave derives a bind PDK from those bytes (`diplomatic.bind.v1`), then a null-KDM child KEK, and AEAD-seals under XSalsa20-Poly1305. The ciphertext plus salt and credential id sit in protocol IndexedDB. Without a successful `prf` evaluation, the blob is useless. Pairing uses a different purpose (`diplomatic.qrpair.v1`); see [Pairing](./pairing).
 
 PRF credential create (inside Enclave) does **not** default `authenticatorAttachment`. Omitting it lets the UA offer platform passkeys, roaming keys, and third-party providers. Pass `platform` to restrict (iCloud Keychain, Google Password Manager, Windows Hello). The platform vendor may sync that passkey — and therefore the ability to evaluate PRF — with the user’s account. That is accepted: the OS or browser already sees the unlocked seed in memory.
 
@@ -38,7 +38,7 @@ App API: `Enclave.pairRequest` / `enclave.pairAccept`, then `sealWithPasskey` on
 
 `Enclave.fromBytes` (web hex paste, CLI `DIP_SEED`). No WebAuthn. Session-only unless the app then binds with PRF or writes largeBlob.
 
-CLI paper backup: `Enclave.dumpToTty` writes 8 lines of `n] xxxx xxxx` plus a `#] xxxx xxxx` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter, erasing the previous line (`tools/keys/hexdump.ts`). The fingerprint is BLAKE3 KDF of the master with context `DIPLOMATIC SEED FINGERPRINT`. Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` prompts `n] ` one line at a time (erasing the previous), then prints `#]` for the user to check against the paper.
+CLI paper backup: `Enclave.dumpToTty` writes 8 lines of `n] xxxx xxxx` plus a `#] xxxx xxxx` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter, erasing the previous line (`tools/keys/hexdump.ts`). The fingerprint is the null-KDM child of the fingerprint PDK (`diplomatic.fingerprint.v1`). Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` prompts `n] ` one line at a time (erasing the previous), then prints `#]` for the user to check against the paper.
 
 ## Platform support
 

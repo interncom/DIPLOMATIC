@@ -3,13 +3,15 @@ import { decode, encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Enclave } from "../src/shared/crypto/enclave";
+import { nullKDM } from "../src/shared/crypto/derivation";
+import { mustIdnt } from "./mustIdnt";
 import { Status } from "../src/shared/consts";
 import type {
   Hash,
   IHostConnectionInfo,
-  IProtoHost,
   IMessage,
   IMessageHead,
+  IProtoHost,
   IStateManager,
 } from "../src/shared/types";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
@@ -56,7 +58,7 @@ function waitNotifies(notifies: unknown[], want: number): Promise<void> {
 
 function enclaveFrom(bytes: Uint8Array): Enclave {
   const [e, st] = Enclave.fromBytes(bytes);
-  if (st !== Status.Success || e === undefined) {
+  if (st !== Status.Success) {
     throw new Error(`enclave ${st}`);
   }
   return e;
@@ -75,7 +77,8 @@ const mockClock = { now: () => new Date() };
 const testHost: IHostConnectionInfo<IProtoHost> = {
   handle: lpcHost,
   label: "test",
-  idx: 1 };
+  idx: 1,
+};
 
 const createClient = async (clock = mockClock) => {
   const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
@@ -88,8 +91,9 @@ const createClient = async (clock = mockClock) => {
     },
     notify() {},
     async refresh() {},
-    on(_type, _listener) { },
-    off(_type, _listener) { } };
+    on(_type, _listener) {},
+    off(_type, _listener) {},
+  };
   const client = new SyncClient<IProtoHost>(
     clock,
     state,
@@ -151,7 +155,8 @@ describe("Client", () => {
       expect(xferState).toEqual({
         numDownloads: 0,
         numUploads: 0,
-        progress: { phase: "idle" } });
+        progress: { phase: "idle" },
+      });
     });
 
     test("with non-zero counts", async () => {
@@ -166,15 +171,18 @@ describe("Client", () => {
           eid: new Uint8Array(16).fill(3),
           ctr: 0,
           len: 0,
-          off: 0 },
-        host: "label" };
+          off: 0,
+        },
+        host: "label",
+      };
       await store.uploads.enq("label", [hash1, hash2]);
       await store.downloads.enq([dl]);
       const xferState = await client.xferState.get();
       expect(xferState).toEqual({
         numDownloads: 1,
         numUploads: 2,
-        progress: { phase: "idle" } });
+        progress: { phase: "idle" },
+      });
     });
 
     test("includes idle progress in snapshot by default", async () => {
@@ -260,7 +268,8 @@ describe("Client", () => {
         notify() {},
         async refresh() {},
         on() {},
-        off() {} };
+        off() {},
+      };
       const client = new SyncClient(
         mockClock,
         state,
@@ -341,8 +350,9 @@ describe("Client", () => {
         },
         notify() {},
         async refresh() {},
-        on(_type, _listener) { },
-        off(_type, _listener) { } };
+        on(_type, _listener) {},
+        off(_type, _listener) {},
+      };
       const client = new SyncClient(
         mockClock,
         state,
@@ -365,11 +375,13 @@ describe("Client", () => {
           eid: new Uint8Array(16).fill(3),
           ctr: 0,
           len: 0,
-          off: 0 },
-        host: "test" };
+          off: 0,
+        },
+        host: "test",
+      };
       await store.downloads.enq([dl]);
 
-      expect(await store.seed.load()).toBeDefined();
+      expect(client.selected()).toBeDefined();
       expect(Array.from(await store.hosts.list()).length).toBe(1);
       expect(Array.from(await store.messages.list()).length).toBe(1);
       expect(await store.uploads.count()).toBeGreaterThan(0);
@@ -379,15 +391,15 @@ describe("Client", () => {
 
       expect(cleared).toBe(true);
       expect(client.connections.size).toBe(0);
-      // Default wipe keeps seed (identity opt-in).
-      expect(await store.seed.load()).toBeDefined();
+      // Default wipe keeps the open account.
+      expect(client.selected()).toBeDefined();
       expect(Array.from(await store.hosts.list()).length).toBe(0);
       expect(Array.from(await store.messages.list()).length).toBe(0);
       expect(await store.uploads.count()).toBe(0);
       expect(await store.downloads.count()).toBe(0);
 
       await client.wipe({ seed: true, msgs: false, ents: false, meta: false });
-      expect(await store.seed.load()).toBeUndefined();
+      expect(client.selected()).toBeUndefined();
     });
 
     test("clears EntDB and notifies type subscribers", async () => {
@@ -442,7 +454,7 @@ describe("Client", () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(syncSpy).not.toHaveBeenCalled();
         syncSpy.mockRestore();
-        expect(await store.seed.load()).toBeDefined();
+        expect(client.selected()).toBeDefined();
       } finally {
         vi.useRealTimers();
       }
@@ -452,7 +464,8 @@ describe("Client", () => {
   describe("insert", () => {
     test("stores an insert message", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000) });
+        now: () => new Date(1234567890000),
+      });
       await client.link(testHost);
       const body: EncodedMessage = new Uint8Array([1, 2, 3]);
       const [_head, statHead] = await client.insertRaw(body);
@@ -498,7 +511,8 @@ describe("Client", () => {
   describe("update", () => {
     test("stores update message and increments counter", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000) });
+        now: () => new Date(1234567890000),
+      });
       await client.link(testHost);
       const body1: EncodedMessage = new Uint8Array([4, 5, 6]);
       const body2: EncodedMessage = new Uint8Array([7, 8, 9]);
@@ -564,7 +578,8 @@ describe("Client", () => {
           off: 1000,
           ctr: 5,
           len: 0,
-          hsh: undefined };
+          hsh: undefined,
+        };
         const enc = new Encoder();
         enc.writeStruct(messageHeadCodec, head);
         const headEnc = enc.result();
@@ -574,13 +589,15 @@ describe("Client", () => {
           ...(head.off !== 0 ? { off: head.off } : {}),
           ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
           body: undefined,
-          apld: APLD_APPLIED };
+          apld: APLD_APPLIED,
+        };
         await store.messages.add([{ key: hash, data }]);
 
         const prior = {
           eid,
           ctr: 5,
-          updatedAt: new Date(1000) };
+          updatedAt: new Date(1000),
+        };
         const [newMsg, stat] = await client.updateRaw(prior, body, true);
         if (stat !== Status.Success) {
           expect(stat).toBe(Status.Success);
@@ -597,7 +614,8 @@ describe("Client", () => {
   describe("delete", () => {
     test("stores delete message and increments counter", async () => {
       const { store, client } = await createClient({
-        now: () => new Date(1234567890000) });
+        now: () => new Date(1234567890000),
+      });
       await client.link(testHost);
 
       const [h1, st1] = await client.insertRaw(new Uint8Array([10, 11]));
@@ -637,7 +655,8 @@ describe("Client", () => {
         off: 1000,
         ctr: 0,
         len: 2,
-        hsh: undefined };
+        hsh: undefined,
+      };
       const enc = new Encoder();
       enc.writeStruct(messageHeadCodec, head);
       const headEnc = enc.result();
@@ -647,13 +666,15 @@ describe("Client", () => {
         ...(head.off !== 0 ? { off: head.off } : {}),
         ...(head.ctr !== 0 ? { ctr: head.ctr } : {}),
         body: new Uint8Array([30, 31]),
-        apld: APLD_APPLIED };
+        apld: APLD_APPLIED,
+      };
       await store.messages.add([{ key: hash, data }]);
 
       const prior = {
         eid,
         ctr: 0,
-        updatedAt: new Date(1000) };
+        updatedAt: new Date(1000),
+      };
       const [respHead, statDel] = await client.delete({ prior, force: true });
       if (statDel !== Status.Success) {
         expect(statDel).toBe(Status.Success);
@@ -770,7 +791,7 @@ describe("Client", () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
         .gen256BitSecureRandomSeed();
-      await store.seed.save(enclaveFrom(masterSeed));
+      await client.setSeed(enclaveFrom(masterSeed));
       await client.link(testHost);
       await client.connect();
 
@@ -779,10 +800,21 @@ describe("Client", () => {
 
       expect(await client.sync()).toBe(Status.Success);
       expect(await store.uploads.count()).toBe(0);
-      const enclave = (await store.seed.load())!;
-      const hostIdnt = await enclave.deriveIdentity("test", 1);
+      const enclave = client.selected()?.enclave;
+      expect(enclave).toBeDefined();
+      if (enclave === undefined) return;
+      const hostIdnt = await mustIdnt(enclave, "test", 1);
+      const [rlm, rlmSt] = await enclave.hostRlm(nullKDM, {
+        label: testHost.label,
+        index: testHost.idx ?? 0,
+      });
+      if (rlmSt !== Status.Success) {
+        expect(rlmSt).toBe(Status.Success);
+        return;
+      }
       const [list, statList] = await lpcHost.storage.listHeads(
         hostIdnt.publicKey,
+        rlm,
         0,
       );
       if (statList !== Status.Success) {
@@ -796,7 +828,7 @@ describe("Client", () => {
       const { store, client } = await createClient(lpcHost.clock);
       const masterSeed = await libsodiumCrypto
         .gen256BitSecureRandomSeed();
-      await store.seed.save(enclaveFrom(masterSeed));
+      await client.setSeed(enclaveFrom(masterSeed));
       await client.link(testHost);
       await client.connect();
 
@@ -808,12 +840,12 @@ describe("Client", () => {
       host.lastSeq = 0;
 
       // Manually add a message to the host storage
-      const enclave = await store.seed.load();
+      const enclave = client.selected()?.enclave;
       expect(enclave).not.toBeUndefined();
       if (!enclave) {
         return;
       }
-      const hostIdnt = await enclave.deriveIdentity(host.label, 1);
+      const hostIdnt = await mustIdnt(enclave, host.label, 1);
       const body: EncodedMessage = new Uint8Array([4, 5, 6]);
       const msg: IMessage = {
         eid: new Uint8Array(16).fill(0),
@@ -821,12 +853,14 @@ describe("Client", () => {
         off: 0,
         ctr: 0,
         len: body.length,
-        bod: body };
+        bod: body,
+      };
       const [bag, statBag] = await sealBag(
         msg,
         hostIdnt,
         libsodiumCrypto,
         enclave,
+        { label: host.label, index: host.idx ?? 0 },
       );
       if (statBag !== Status.Success) {
         expect(statBag).toBe(Status.Success);
@@ -858,7 +892,7 @@ describe("Client", () => {
       const { store: storeA, client: clientA } = await createClient(
         lpcHost.clock,
       );
-      await storeA.seed.save(enclaveFrom(masterSeed));
+      await clientA.setSeed(enclaveFrom(masterSeed));
       await clientA.link(testHost);
       await clientA.connect(false); // no listen
 
@@ -866,7 +900,7 @@ describe("Client", () => {
       const { store: storeB, client: clientB } = await createClient(
         lpcHost.clock,
       );
-      await storeB.seed.save(enclaveFrom(masterSeed));
+      await clientB.setSeed(enclaveFrom(masterSeed));
       await clientB.link(testHost);
       await clientB.connect(false); // no listen
 
@@ -902,7 +936,7 @@ describe("push notifications", () => {
     const { store: storeA, client: clientA } = await createClient(
       lpcHost.clock,
     );
-    await storeA.seed.save(enclaveFrom(masterSeed));
+    await clientA.setSeed(enclaveFrom(masterSeed));
     await clientA.link(testHost);
     const hostA = await storeA.hosts.get("test");
     if (hostA) {
@@ -913,7 +947,7 @@ describe("push notifications", () => {
     const { store: storeB, client: clientB } = await createClient(
       lpcHost.clock,
     );
-    await storeB.seed.save(enclaveFrom(masterSeed));
+    await clientB.setSeed(enclaveFrom(masterSeed));
     await clientB.link(testHost);
 
     // Set clientB's host to old sync time so it will peek for new messages

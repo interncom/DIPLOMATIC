@@ -1,12 +1,10 @@
+import type { IKDM } from "../../shared/codecs/kdm";
 import { IDownloadMessage, IDownloadQueue } from "../../types";
+import { downloadKey } from "../cursor";
 import { DOWNLOAD_QUEUE_TABLE } from "./store";
 
 export class IDBDownloadQueue implements IDownloadQueue {
-  db: IDBDatabase;
-
-  constructor(db: IDBDatabase) {
-    this.db = db;
-  }
+  constructor(private db: IDBDatabase) {}
 
   async enq(msgs: Iterable<IDownloadMessage>) {
     const messages = [...msgs];
@@ -17,13 +15,12 @@ export class IDBDownloadQueue implements IDownloadQueue {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       for (const msg of messages) {
-        const key = `${msg.host}:${msg.seq}`;
-        store.put(msg, key);
+        store.put(msg, downloadKey(msg.host, msg.seq, msg.realm));
       }
     });
   }
 
-  async deq(host: string, seqs: Iterable<number>) {
+  async deq(host: string, seqs: Iterable<number>, realm?: IKDM) {
     const seqArray = [...seqs];
     if (seqArray.length === 0) return;
     const tx = this.db.transaction(DOWNLOAD_QUEUE_TABLE, "readwrite");
@@ -32,8 +29,7 @@ export class IDBDownloadQueue implements IDownloadQueue {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       for (const seq of seqArray) {
-        const key = `${host}:${seq}`;
-        store.delete(key);
+        store.delete(downloadKey(host, seq, realm));
       }
     });
   }

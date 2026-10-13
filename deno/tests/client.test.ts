@@ -20,7 +20,12 @@ const mockHost = {
 };
 
 const mockEnclave = {
-  derive: async () => new Uint8Array(32), // Mock derive
+  deriveIdentity: async () =>
+    ok({
+      publicKey: new Uint8Array(32),
+      sign: async () => ok(new Uint8Array(64)),
+      kdmFor: async () => ok(new Uint8Array(8)),
+    }),
 };
 const mockCrypto = {
   blake3: async () => new Uint8Array(32),

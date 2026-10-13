@@ -1,23 +1,20 @@
+import type { IKDM } from "../../shared/codecs/kdm";
 import { IDownloadMessage, IDownloadQueue } from "../../types";
-
-function keyFor(host: string, seq: number): string {
-  return `${host}:${seq}`;
-}
+import { type DownloadKey, downloadKey } from "../cursor";
 
 export class MemoryDownloadQueue implements IDownloadQueue {
-  queue = new Map<string, IDownloadMessage>();
+  queue = new Map<DownloadKey, IDownloadMessage>();
 
   async enq(msgs: Iterable<IDownloadMessage>) {
     for (const msg of msgs) {
-      const key = keyFor(msg.host, msg.seq);
+      const key = downloadKey(msg.host, msg.seq, msg.realm);
       this.queue.set(key, msg);
     }
   }
 
-  async deq(host: string, seqs: Iterable<number>) {
+  async deq(host: string, seqs: Iterable<number>, realm?: IKDM) {
     for (const seq of seqs) {
-      const key = keyFor(host, seq);
-      this.queue.delete(key);
+      this.queue.delete(downloadKey(host, seq, realm));
     }
   }
 

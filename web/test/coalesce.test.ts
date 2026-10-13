@@ -242,29 +242,14 @@ describe("SyncClient.sync coalesce+trailing", () => {
       libsodiumCrypto,
     );
 
-    // Gate seed.load so we can stampede sync() mid-run.
-    let loads = 0;
-    const entered = defer();
-    const gate = defer();
-    const origLoad = store.seed.load.bind(store.seed);
-    store.seed.load = async () => {
-      loads++;
-      if (loads === 1) {
-        entered.resolve();
-        await gate.promise;
-      }
-      return origLoad();
-    };
-
-    // No seed → stages note MissingSeed; enough to exercise run coalesce.
+    // No open account. doSync returns before its first await, so the stampede
+    // has to join the in-flight drain synchronously.
     const p1 = client.sync();
-    await entered.promise;
     const p2 = client.sync();
     const p3 = client.sync();
     // In-flight callers share the same Promise (CoalesceTail).
     expect(p2).toBe(p1);
     expect(p3).toBe(p1);
-    gate.resolve();
     const results = await Promise.all([p1, p2, p3]);
 
     expect(results[0]).toBe(results[1]);

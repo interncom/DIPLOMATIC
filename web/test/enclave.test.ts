@@ -131,7 +131,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "embedded",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "2e2ff7055df4863b792f32a9ac46c896",
+    callerSrc: "2c16e9144131f9aa86fa2f4fef175ca7",
     why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
   {

@@ -215,7 +215,9 @@ export class Enclave {
     try {
       if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
       os = await gen256BitSecureRandomSeed();
-      mix = concat(os, musec);
+      mix = new Uint8Array(os.byteLength + musec.byteLength);
+      mix.set(os, 0);
+      mix.set(musec, os.byteLength);
       hashed = await blake3(mix);
       const [seed, st] = asMasterSeed(hashed);
       if (st !== Status.Success) return err(st);

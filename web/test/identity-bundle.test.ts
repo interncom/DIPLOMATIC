@@ -223,9 +223,25 @@ describe("Enclave persist IdentityBundle", () => {
 });
 
 describe("enclave fromRandom musec", () => {
-  it("rejects musec shorter than MUSEC_MIN_LEN", async () => {
-    const [, st] = await Enclave.fromRandom(new Uint8Array(MUSEC_MIN_LEN - 1));
+  it("rejects musec shorter than MUSEC_MIN_LEN and wipes it", async () => {
+    const musec = new Uint8Array(MUSEC_MIN_LEN - 1).fill(4);
+    const [, st] = await Enclave.fromRandom(musec);
     expect(st).toBe(Status.InvalidParam);
+    expect(musec.every((b) => b === 0)).toBe(true);
+  });
+
+  it("wipes musec when the OS generator throws", async () => {
+    const musec = new Uint8Array(32).fill(5);
+    const draw = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = () => {
+      throw new Error("rng");
+    };
+    try {
+      await expect(Enclave.fromRandom(musec)).rejects.toThrow("rng");
+    } finally {
+      crypto.getRandomValues = draw;
+    }
+    expect(musec.every((b) => b === 0)).toBe(true);
   });
 
   it("mixes musec and returns an enclave", async () => {
@@ -233,6 +249,7 @@ describe("enclave fromRandom musec", () => {
     const [e, st] = await Enclave.fromRandom(musec);
     expect(st).toBe(Status.Success);
     expect(e).toBeDefined();
+    expect(musec.every((b) => b === 0)).toBe(true);
     if (e === undefined) return;
     const idnt = await mustIdnt(e, "test", 0);
     expect(idnt.publicKey.byteLength).toBeGreaterThan(0);

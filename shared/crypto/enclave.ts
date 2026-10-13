@@ -204,21 +204,30 @@ export class Enclave {
 
   /**
    * New enclave: blake3(OS CSPRNG ‖ musec). musec is required (MUSEC_MIN_LEN).
-   * Mix stays in this method; musec is wiped before return.
+   * Musec is wiped on every return, including rejection and a throw from the
+   * OS generator. A rejected digest is wiped. The stored seed is that digest
+   * buffer, so the success path must not wipe it.
    */
   static async fromRandom(musec: Uint8Array): Promise<ValStat<Enclave>> {
-    if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
-    const os = await gen256BitSecureRandomSeed();
-    const mix = concat(os, musec);
+    let os: Uint8Array | undefined;
+    let mix: Uint8Array | undefined;
+    let hashed: Uint8Array | undefined;
     try {
-      const hashed = await blake3(mix);
+      if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
+      os = await gen256BitSecureRandomSeed();
+      mix = concat(os, musec);
+      hashed = await blake3(mix);
       const [seed, st] = asMasterSeed(hashed);
       if (st !== Status.Success) return err(st);
-      return ok(new Enclave(seed));
+      const enclave = new Enclave(seed);
+      // Digest buffer is #seed. Drop the local so finally does not wipe it.
+      hashed = undefined;
+      return ok(enclave);
     } finally {
-      os.fill(0);
-      mix.fill(0);
+      os?.fill(0);
+      mix?.fill(0);
       musec.fill(0);
+      hashed?.fill(0);
     }
   }
 

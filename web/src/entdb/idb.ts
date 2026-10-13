@@ -588,25 +588,32 @@ export class EntIDB implements IEntDB {
     } catch {
       return err(Status.DatabaseClosed);
     }
-    const tx = db.transaction(entityTableName, "readonly");
-    const store = tx.objectStore(entityTableName);
-    const revs: ReturnType<typeof revFromEntity>[] = [];
-    return new Promise((resolve) => {
-      const req = store.openCursor();
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (cursor) {
-          const stored = cursor.value as IStoredRow;
-          // Live + permanent tombstones (full LWW frontier).
-          revs.push(revFromEntity(storedToRow(stored)));
-          cursor.continue();
-        } else {
-          void checksumEntRevs(revs, crypto).then(resolve);
-        }
-      };
-      req.onerror = () => resolve(err(Status.DatabaseError));
-    });
+    return checksumEntities(db, crypto);
   }
+}
+
+// Frontier checksum of an already-open entities store (live rows and tombstones).
+export function checksumEntities(
+  db: IDBDatabase,
+  crypto: ICrypto,
+): Promise<ValStat<Hash>> {
+  const tx = db.transaction(entityTableName, "readonly");
+  const store = tx.objectStore(entityTableName);
+  const revs: ReturnType<typeof revFromEntity>[] = [];
+  return new Promise((resolve) => {
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        const stored = cursor.value as IStoredRow;
+        revs.push(revFromEntity(storedToRow(stored)));
+        cursor.continue();
+      } else {
+        void checksumEntRevs(revs, crypto).then(resolve);
+      }
+    };
+    req.onerror = () => resolve(err(Status.DatabaseError));
+  });
 }
 
 function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
@@ -690,4 +697,9 @@ export async function openEntIDB(name: string) {
   const entDB = new EntIDB(name);
   await entDB.init();
   return entDB;
+}
+
+// Opens `name` at the current EntDB schema, creating it when it is missing.
+export function openEntDatabase(name: string): Promise<IDBDatabase> {
+  return openEntIdbConnection(name);
 }

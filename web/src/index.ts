@@ -83,13 +83,6 @@ import type { BindPrior, PrfBound } from "./shared/crypto/prf";
 import { nullStateManager, StateManager } from "./state";
 import type { EntRlm, IRealm } from "./stores/realm";
 import { IDBAccountStore } from "./stores/idb/account";
-import {
-  copy022,
-  read022Keyring,
-  unlock022,
-  unseal022,
-} from "./stores/idb/copy022";
-import type { Copy022Report } from "./stores/idb/copy022";
 import { IDBStore, openIDBStore } from "./stores/idb/store";
 import { MemoryStore } from "./stores/memory/store";
 import { SingletonStateManager } from "./shared/singleton";
@@ -194,7 +187,6 @@ export {
   checksumSet,
   Clock,
   cmpBytes,
-  copy022,
   crypto,
   Decoder,
   DEFAULT_PRF_SALT,
@@ -241,7 +233,6 @@ export {
   prfCapable,
   PrfSeedStore,
   Purpose,
-  read022Keyring,
   revFromEntity,
   revFromHead,
   SEALED_MASTER_KEY_LEN,
@@ -252,8 +243,6 @@ export {
   Status,
   SyncClient,
   TypedEventEmitter,
-  unlock022,
-  unseal022,
   useClient,
   useClientState,
   useClientXferState,
@@ -270,7 +259,6 @@ export type {
   BundleHost,
   CachedEntDBOptions,
   ChildKey,
-  Copy022Report,
   DateSpec,
   DHKEReq,
   DHKEResp,

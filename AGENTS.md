@@ -33,10 +33,6 @@ function gcd(a, b) {
 
 Start each file with a brief one-line comment describing the file's purpose. Use a grammatical sentence.
 
-## Upgrades
-
-One-time upgrade code is tagged `TODO(realms-sunset):` or `TODO(accounts-sunset):` and says when it is safe to delete.
-
 ## Feedback
 
 When given a general piece of feedback — a rule that should apply beyond the edit in front of you — make the requested change, and record the rule in this file. For example: "start files with a brief (1-line) comment describing the file's purpose."

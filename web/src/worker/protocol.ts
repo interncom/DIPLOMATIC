@@ -150,11 +150,9 @@ function phaseFromUnknown(
 ): SyncProgressEvent["phase"] | undefined {
   if (
     p === "peek" || p === "pull" || p === "open" || p === "exec" ||
-    p === "push" || p === "import" || p === "idle" ||
-    // legacy phase name
-    p === "apply"
+    p === "push" || p === "import" || p === "idle"
   ) {
-    return p === "apply" ? "exec" : p;
+    return p;
   }
   return undefined;
 }

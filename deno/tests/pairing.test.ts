@@ -125,9 +125,10 @@ Deno.test("DHKE round-trips seed and hosts", async () => {
   const [opened, ost] = await req.finish(resp);
   assertEquals(ost, Status.Success);
   assertEquals(opened.hosts, hosts);
-  const [a, ida] = await enc.deriveIdentity({ label: "test", index: 0 });
-  const [b, idb] = await opened.enclave.deriveIdentity({
-    label: "test",
+  const idKDM = { label: "test", index: 0 };
+  const [a, ida] = await enc.bagman(idKDM, { label: "", index: 0 });
+  const [b, idb] = await opened.enclave.bagman(idKDM, {
+    label: "",
     index: 0,
   });
   assertEquals(ida, Status.Success);

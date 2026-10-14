@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import libsodiumCrypto from "../src/crypto";
 import { entStateManager } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
-import DiplomaticClientAPI from "../src/shared/client";
+import DiplomaticClientAPI, { hostBagMgrs } from "../src/shared/client";
 import { MockClock } from "../src/shared/clock";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
@@ -172,10 +172,14 @@ async function main() {
   const upHost = await upStore.hosts.get(HOST_LABEL);
   if (!upHost) throw new Error("missing host");
 
+  const [upBagMgrs, upSt] = await hostBagMgrs(enclave, {
+    label: HOST_LABEL,
+    index: HOST_IDX,
+  });
+  if (upSt !== Status.Success) throw new Error(`bagMgrs ${upSt}`);
   const upConn = new DiplomaticClientAPI(
-    enclave,
+    upBagMgrs,
     libsodiumCrypto,
-    upHost,
     hostClock,
     makeTransport(),
     () => Promise.resolve(Status.Success),
@@ -203,7 +207,6 @@ async function main() {
   const pushStat = await syncPush({
     conn: upConn,
     store: upStore,
-    enclave,
     host: upHost,
     crypto: libsodiumCrypto,
   });
@@ -243,10 +246,14 @@ async function main() {
   const downHostRow = await downStore.hosts.get(HOST_LABEL);
   if (!downHostRow) throw new Error("missing host");
 
+  const [downBagMgrs, downSt] = await hostBagMgrs(downEnclave, {
+    label: HOST_LABEL,
+    index: HOST_IDX,
+  });
+  if (downSt !== Status.Success) throw new Error(`bagMgrs ${downSt}`);
   const downConn = new DiplomaticClientAPI(
-    downEnclave,
+    downBagMgrs,
     libsodiumCrypto,
-    downHostRow,
     hostClock,
     makeTransport(),
     () => Promise.resolve(Status.Success),
@@ -257,7 +264,7 @@ async function main() {
   const peekStat = await syncPeek({
     conn: downConn,
     store: downStore,
-    enclave: downEnclave,
+
     host: downHostRow,
     crypto: libsodiumCrypto,
   });
@@ -281,7 +288,7 @@ async function main() {
     {
       conn: downConn,
       store: downStore,
-      enclave: downEnclave,
+
       host: refreshedHost,
       crypto: libsodiumCrypto,
     },

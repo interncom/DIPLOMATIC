@@ -6,13 +6,12 @@ import { IClock } from "./clock.ts";
 import { Decoder, Encoder } from "./codec.ts";
 import { IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { Status } from "./consts.ts";
-import { Enclave, type Identity } from "./crypto/enclave.ts";
+import type { BagManager } from "./crypto/bagman.ts";
 import { ICrypto, IProtoHost } from "./types.ts";
 import { ValStat } from "./valstat.ts";
 
 interface IProtoClient {
   crypto: ICrypto;
-  enclave: Enclave;
   clock: IClock;
 }
 
@@ -20,7 +19,7 @@ export interface IAuthenticatedEndpoint<ReqInput, Resp> {
   // Writes the auth timestamp, then one ReqInput via that call's codec.
   encodeReq(
     client: IProtoClient,
-    identity: Identity,
+    identity: BagManager,
     authTS: IAuthTimestamp,
     body: ReqInput,
     reqEnc: Encoder,
@@ -38,6 +37,6 @@ export interface IAuthenticatedEndpoint<ReqInput, Resp> {
 }
 
 export interface IAuthData {
-  identity: Identity;
+  identity: BagManager;
   authTS: IAuthTimestamp;
 }

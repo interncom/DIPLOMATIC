@@ -855,13 +855,7 @@ describe("Client", () => {
         len: body.length,
         bod: body,
       };
-      const [bag, statBag] = await sealBag(
-        msg,
-        hostIdnt,
-        libsodiumCrypto,
-        enclave,
-        { label: host.label, index: host.idx ?? 0 },
-      );
+      const [bag, statBag] = await sealBag(msg, hostIdnt, libsodiumCrypto);
       if (statBag !== Status.Success) {
         expect(statBag).toBe(Status.Success);
         return;

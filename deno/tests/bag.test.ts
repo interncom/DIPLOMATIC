@@ -4,7 +4,11 @@ import { Decoder, Encoder } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { Status } from "../../shared/consts.ts";
-import { asHostRlm, type HostRlm } from "../../shared/crypto/derivation.ts";
+import {
+  asHostRlm,
+  type HostRlm,
+  nullKDM,
+} from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import type { IBag, IMessage } from "../../shared/types.ts";
 import libsodiumCrypto from "../src/crypto.ts";
@@ -80,11 +84,14 @@ Deno.test("bag", async (t) => {
     const seed = await crypto.gen256BitSecureRandomSeed();
     const [enclave, est] = Enclave.fromBytes(seed);
     if (est !== Status.Success) throw new Error(`enclave ${est}`);
-    const [hostIdnt, ist] = await enclave.deriveIdentity({
-      label: "test-host",
-      index: 0,
+    const idKDM = { label: "test-host", index: 0 };
+    const [hostIdnt, ist] = await enclave.bagman(idKDM, nullKDM);
+    if (ist !== Status.Success) throw new Error(`bagman ${ist}`);
+    const [other, ost] = await enclave.bagman(idKDM, {
+      label: "other",
+      index: 1,
     });
-    if (ist !== Status.Success) throw new Error(`idnt ${ist}`);
+    if (ost !== Status.Success) throw new Error(`bagman ${ost}`);
 
     // Create a test message
     const id = await crypto.genRandomBytes(8);
@@ -105,7 +112,7 @@ Deno.test("bag", async (t) => {
     };
 
     // Seal the message
-    const [bag, statBag] = await sealBag(msg, hostIdnt, crypto, enclave);
+    const [bag, statBag] = await sealBag(msg, hostIdnt, crypto);
     if (statBag !== Status.Success) {
       assertEquals(statBag, Status.Success);
       return;
@@ -113,23 +120,12 @@ Deno.test("bag", async (t) => {
 
     assertEquals(bag.rlm.byteLength, 32);
     const verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
-    const [miss, missSt] = await openBag(
-      bag,
-      verifyKey,
-      crypto,
-      enclave,
-      { label: "other", index: 1 },
-    );
+    const [miss, missSt] = await openBag(bag, verifyKey, crypto, other);
     assertEquals(missSt, Status.NotFound);
     assertEquals(miss, undefined);
 
-    // Open the bag (sealed under the null host KDM).
-    const [openedMsg, status] = await openBag(
-      bag,
-      verifyKey,
-      crypto,
-      enclave,
-    );
+    // Open the bag with the manager that sealed it.
+    const [openedMsg, status] = await openBag(bag, verifyKey, crypto, hostIdnt);
     if (status === Status.Success) {
       // openedMsg is IMessageWithHash
 
@@ -150,7 +146,7 @@ Deno.test("bag", async (t) => {
       { ...bag, rlm: badRlm },
       verifyKey,
       crypto,
-      enclave,
+      hostIdnt,
     );
     assertEquals(bad, Status.InvalidSignature);
   });

@@ -9,12 +9,12 @@ import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
 import { Decoder, Encoder } from "./shared/codec";
-import type { IKDM } from "./shared/codecs/kdm";
+import { type IKDM, kdmEq } from "./shared/codecs/kdm";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { notifItemCodec } from "./shared/codecs/notifItem";
 import { Status } from "./shared/consts";
+import type { BagManager } from "./shared/crypto/bagman";
 import { nullKDM } from "./shared/crypto/derivation";
-import { Enclave } from "./shared/crypto/enclave";
 import { decryptPeekItem } from "./shared/sync";
 import {
   cursorOf,
@@ -27,7 +27,7 @@ import {
 import { realmLabel } from "./stores/realm";
 import { Hash, HostHandle, IBag, ICrypto, IMessage } from "./shared/types";
 import { err, ok, ValStat } from "./shared/valstat";
-import { btob64 } from "./shared/binary";
+import { btob64, bytesEqual } from "./shared/binary";
 import { checksumSet } from "./shared/checksum";
 import {
   defaultPeekProgressEvery,
@@ -66,13 +66,19 @@ export type IPulled = {
 /** Host connection methods used by sync phases. */
 export type SyncConn<Handle extends HostHandle> = Pick<
   DiplomaticClientAPI<Handle>,
-  "pull" | "push" | "peek" | "seal" | "identity" | "hostRlm"
+  | "pull"
+  | "push"
+  | "peek"
+  | "seal"
+  | "identity"
+  | "hostRlm"
+  | "bag"
+  | "bagMgrs"
 >;
 
 export interface ISyncParams<Handle extends HostHandle> {
   conn: SyncConn<Handle>;
   store: IStore<Handle>;
-  enclave: Enclave;
   host: IHostRow<Handle>;
   crypto: ICrypto;
   /** Soft max sealed-bag bytes per push request. Oversized bags go alone. */
@@ -245,7 +251,7 @@ export type IOpened = {
  */
 export async function openPulled<Handle extends HostHandle>(
   store: IStore<Handle>,
-  enclave: Enclave,
+  bagMgrs: readonly BagManager[],
   crypto: ICrypto,
   items: IPulled[],
 ): Promise<ValStat<IOpened>> {
@@ -269,11 +275,15 @@ export async function openPulled<Handle extends HostHandle>(
       continue;
     }
     const { headEnc, headEncHash } = resolved;
-    const cipher = enclave.deriveCipher(kdm, "decrypt", realm);
+    const bagMgr = bagMgrs.find((bagMgr) => kdmEq(realm, bagMgr.realmKDM));
+    if (bagMgr === undefined) {
+      noteDeq(deqGroups, host, seq, dl.realm);
+      continue;
+    }
     const [contents, openStat] = await openBagBody(
       headEnc,
       bodyCph,
-      cipher,
+      { decrypt: (data) => bagMgr.decrypt(kdm, data) },
       crypto,
       headEncHash,
     );
@@ -373,7 +383,6 @@ export async function syncPeek<Handle extends HostHandle>(
   {
     conn,
     store,
-    enclave,
     host,
     crypto,
     onProgress,
@@ -383,10 +392,10 @@ export async function syncPeek<Handle extends HostHandle>(
   }: ISyncParams<Handle>,
 ): Promise<Status> {
   const realm = realmArg ?? nullKDM;
+  const bagMgr = conn.bagMgrFor(realm);
+  if (bagMgr === undefined) return Status.NotFound;
   const [hostIdnt, ist] = await conn.identity();
   if (ist !== Status.Success) return ist;
-  const [rlm, rst] = await conn.hostRlm(realm);
-  if (rst !== Status.Success) return rst;
   let verifyKey: CryptoKey;
   try {
     verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
@@ -412,10 +421,8 @@ export async function syncPeek<Handle extends HostHandle>(
     const [itemDec, stat] = await decryptPeekItem(
       item,
       verifyKey,
-      enclave,
+      bagMgr,
       crypto,
-      rlm,
-      realm,
     );
     let result: PeekCryptoResult;
     if (stat !== Status.Success) {
@@ -615,7 +622,6 @@ export async function syncPull<Handle extends HostHandle>(
   {
     conn,
     store,
-    enclave,
     host,
     crypto,
     maxPullBytes,
@@ -663,7 +669,12 @@ export async function syncPull<Handle extends HostHandle>(
     }
     // Host may return bodies in any order; re-sort before open/exec.
     const ordered = sortByHlcDesc(pulled, (p) => p.dl.head);
-    const [, openStat] = await openPulled(store, enclave, crypto, ordered);
+    const [, openStat] = await openPulled(
+      store,
+      conn.bagMgrs(),
+      crypto,
+      ordered,
+    );
     if (openStat !== Status.Success) {
       return openStat;
     }
@@ -704,7 +715,6 @@ export async function handleNotif<Handle extends HostHandle>(
   {
     conn,
     store,
-    enclave,
     host,
     crypto,
     onProgress,
@@ -729,8 +739,6 @@ export async function handleNotif<Handle extends HostHandle>(
     return;
   }
 
-  const hostKDM: IKDM = { label: host.label, index: host.idx ?? 0 };
-  const known = realmKDMs(await store.realms.list());
   let outOfSeq = false;
   const currHost = await store.hosts.get(label);
   type Run = { realm: IKDM; seq: number };
@@ -743,26 +751,24 @@ export async function handleNotif<Handle extends HostHandle>(
     bodyCph?: Uint8Array;
     kdm: Uint8Array;
     realm: IKDM;
+    bagMgr: BagManager;
   }> = [];
   let needPull = false;
 
   for (const item of notifItems) {
-    const [realm, realmSt] = await enclave.realmForRlm(
-      hostKDM,
-      item.rlm,
-      known,
+    const bagMgr = conn.bagMgrs().find((bagMgr) =>
+      bytesEqual(bagMgr.rlm, item.rlm)
     );
-    if (realmSt !== Status.Success) {
-      console.error("notif: realm", Status[realmSt]);
+    if (bagMgr === undefined) {
+      console.error("notif: realm", Status[Status.NotFound]);
       continue;
     }
+    const realm = bagMgr.realmKDM;
     const [peekItem, s2] = await decryptPeekItem(
       { seq: item.seq, headCph: item.headCph },
       verifyKey,
-      enclave,
+      bagMgr,
       crypto,
-      item.rlm,
-      realm,
     );
     if (s2 !== Status.Success) {
       console.error("Failed decrypting notif", Status[s2]);
@@ -802,6 +808,7 @@ export async function handleNotif<Handle extends HostHandle>(
         bodyCph: item.bodyCph,
         headEncHash,
         realm,
+        bagMgr,
       });
     }
 
@@ -834,11 +841,10 @@ export async function handleNotif<Handle extends HostHandle>(
 
   const toStore: IStorableMessage[] = [];
   for (const input of completeBags) {
-    const cipher = enclave.deriveCipher(input.kdm, "decrypt", input.realm);
     const [contents, stat] = await openBagBody(
       input.headEnc,
       input.bodyCph,
-      cipher,
+      { decrypt: (data) => input.bagMgr.decrypt(input.kdm, data) },
       crypto,
     );
     if (stat !== Status.Success) {
@@ -894,7 +900,6 @@ export async function reconcileHost<Handle extends HostHandle>(
   const {
     conn,
     store,
-    enclave,
     host,
     crypto,
     onProgress,
@@ -925,8 +930,8 @@ export async function reconcileHost<Handle extends HostHandle>(
   const realms = realmKDMs(await store.realms.list());
 
   for (const realm of realms) {
-    const [rlm, rst] = await conn.hostRlm(realm);
-    if (rst !== Status.Success) return err(rst);
+    const bagMgr = conn.bagMgrFor(realm);
+    if (bagMgr === undefined) return err(Status.NotFound);
     // Full inventory: ignore local cursor.
     const [items, peekStatus] = await conn.peek(0, realm);
     if (peekStatus !== Status.Success) return err(peekStatus);
@@ -942,10 +947,8 @@ export async function reconcileHost<Handle extends HostHandle>(
       const [itemDec, stat] = await decryptPeekItem(
         item,
         verifyKey,
-        enclave,
+        bagMgr,
         crypto,
-        rlm,
-        realm,
       );
       let result: PeekCryptoResult;
       if (stat !== Status.Success) {

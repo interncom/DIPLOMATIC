@@ -1,5 +1,7 @@
 // Various binary codecs.
 
+import { bytesEqual as ctEqual } from "./crypto/binary.ts";
+
 export function btoh(bytes: Uint8Array): string {
   const hex = Array.from(bytes)
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -18,10 +20,9 @@ export function htob(hex: string): Uint8Array {
   return bytes;
 }
 
+// Constant-time compare. The loop lives in crypto/binary.ts.
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a === b) return true;
-  if (a.byteLength !== b.byteLength) return false;
-  return a.every((byte, i) => byte === b[i]);
+  return ctEqual(a, b);
 }
 
 // Use native implementation of btob64 where possible.

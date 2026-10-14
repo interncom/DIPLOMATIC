@@ -3,16 +3,10 @@
 // The signature covers rlm ‖ headCph.
 
 import { Decoder, Encoder } from "./codec.ts";
-import type { IKDM } from "./codecs/kdm.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { hashBytes, Status } from "./consts.ts";
 import type { HostRlm } from "./crypto/derivation.ts";
-import {
-  type DecryptCipher,
-  Enclave,
-  type Identity,
-} from "./crypto/enclave.ts";
-import { nullKDM } from "./crypto/derivation.ts";
+import { BagManager } from "./crypto/bagman.ts";
 import { bytesEqual, concat } from "./binary.ts";
 import { EncodedMessage } from "./message.ts";
 import { err, ok, type ValStat } from "./valstat.ts";
@@ -49,11 +43,8 @@ export function bagSigValid(
 
 export async function sealBag(
   msg: IMessage,
-  identity: Identity,
+  bagMgr: BagManager,
   crypto: ICrypto,
-  enclave: Enclave,
-  hostKDM: IKDM = nullKDM,
-  realmKDM: IKDM = nullKDM,
 ): Promise<ValStat<IBag>> {
   let hsh: Uint8Array | undefined;
   if (msg.bod && msg.len > 0) {
@@ -68,25 +59,23 @@ export async function sealBag(
   }
   const headEnc = enc.result();
 
-  // KDM via identity (private key stays in enclave); cipher is opaque.
-  const [kdm, kst] = await identity.kdmFor(headEnc);
+  const [kdm, kst] = await bagMgr.bagKDM(headEnc);
   if (kst !== Status.Success) return err(kst);
-  const [rlm, rst] = await enclave.hostRlm(realmKDM, hostKDM);
-  if (rst !== Status.Success) return err(rst);
-  const cipher = enclave.deriveCipher(kdm, "encrypt", realmKDM);
+  const rlm = bagMgr.rlm;
 
   // Encrypt header and body separately, so that signed encrypted header may be served in PEEK response.
-  const [headCph, hst] = await cipher.encrypt(headEnc);
+  const [headCph, hst] = await bagMgr.encrypt(kdm, headEnc);
   if (hst !== Status.Success) return err(hst);
   let bodyCph: Uint8Array = new Uint8Array(0);
   if (msg.bod) {
-    const [cph, bst] = await cipher.encrypt(msg.bod);
+    const [cph, bst] = await bagMgr.encrypt(kdm, msg.bod);
     if (bst !== Status.Success) return err(bst);
     bodyCph = cph;
   }
 
-  // Sign rlm ‖ headCph (private key stays in enclave).
-  const [sig, sst] = await identity.sign(bagSigMsg(rlm, headCph));
+  // Sign rlm ‖ headCph. The private key stays in the manager.
+  const sigMsg = bagSigMsg(rlm, headCph);
+  const [sig, sst] = await bagMgr.sign(sigMsg);
   if (sst !== Status.Success) return err(sst);
   return ok({
     rlm,
@@ -102,10 +91,15 @@ export interface IOpenBag {
   bod?: EncodedMessage;
   headHash: Hash;
 }
+// Decrypts a body already bound to one bag kdm.
+export type BagDecrypt = {
+  decrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
+};
+
 export async function openBagBody(
   headEnc: Uint8Array,
   bodyCph: Uint8Array | undefined,
-  cipher: DecryptCipher,
+  cipher: BagDecrypt,
   crypto: ICrypto,
   /** When set (e.g. from peek), skip blake3(headEnc). */
   headHashKnown?: Hash,
@@ -117,7 +111,7 @@ export async function openBagBody(
     return err(Status.InvalidMessage);
   }
 
-  // Decrypt body, if any (key stays in the enclave via cipher).
+  // Decrypt body, if any. The key stays in the manager.
   let msgBody: Uint8Array | undefined;
   if (bodyCph && bodyCph.length > 0) {
     const [bod, dst] = await cipher.decrypt(bodyCph);
@@ -148,34 +142,23 @@ export async function openBag(
   bag: IBag,
   verifyKey: CryptoKey,
   crypto: ICrypto,
-  enclave: Enclave,
-  hostKDM: IKDM = nullKDM,
-  realms: readonly IKDM[] = [nullKDM],
+  bagMgr: BagManager,
 ): Promise<ValStat<IMessageWithHash>> {
   // Check sig over rlm ‖ headCph.
   const sigValid = await bagSigValid(bag, verifyKey, crypto);
   if (!sigValid) {
     return err(Status.InvalidSignature);
   }
+  if (!bytesEqual(bagMgr.rlm, bag.rlm)) return err(Status.NotFound);
 
-  // rlm selects the realm key. The default realm is nullKDM.
-  const [realmKDM, rst] = await enclave.realmForRlm(
-    hostKDM,
-    bag.rlm,
-    realms,
-  );
-  if (rst !== Status.Success) return err(rst);
-  const cipher = enclave.deriveCipher(bag.kdm, "decrypt", realmKDM);
-
-  // Decrypt head (key stays in the enclave via cipher).
-  const [msgHeadEnc, dst] = await cipher.decrypt(bag.headCph);
+  // Decrypt head. The key stays in the manager.
+  const [msgHeadEnc, dst] = await bagMgr.decrypt(bag.kdm, bag.headCph);
   if (dst !== Status.Success) return err(dst);
 
-  // Use openBagBody for the rest.
   const [contents, status] = await openBagBody(
     msgHeadEnc,
     bag.bodyCph,
-    cipher,
+    { decrypt: (data) => bagMgr.decrypt(bag.kdm, data) },
     crypto,
   );
   if (status !== Status.Success) {

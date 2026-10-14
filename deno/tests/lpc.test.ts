@@ -20,6 +20,13 @@ import type {
 } from "../../shared/types.ts";
 import { baseMockClock, baseMockCrypto } from "./api/testUtils.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
+import { ok } from "../../shared/valstat.ts";
+
+// Wraps a mock signature as BagManager.sign's ValStat.
+function mockSign(impl: ICrypto, key: PrivateKey) {
+  return async (msg: Uint8Array | string) =>
+    ok(await impl.signEd25519(msg, key));
+}
 
 const baseCryptoImpl: ICrypto = {
   importVerifyKey: (pubKey: PublicKey) =>
@@ -80,7 +87,7 @@ Deno.test("lpc integration", async (t) => {
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp({
       publicKey: keys.publicKey,
-      sign: (msg) => cryptoImpl.signEd25519(msg, keys.privateKey),
+      sign: mockSign(cryptoImpl, keys.privateKey),
     }, now);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
@@ -150,7 +157,7 @@ Deno.test("lpc integration", async (t) => {
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp({
       publicKey: keys.publicKey,
-      sign: (msg) => cryptoImpl.signEd25519(msg, keys.privateKey),
+      sign: mockSign(cryptoImpl, keys.privateKey),
     }, now);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
@@ -225,7 +232,7 @@ Deno.test("lpc integration", async (t) => {
     const now = baseMockClock.now();
     const [authTS, statAuthTS] = await makeAuthTimestamp({
       publicKey: keys.publicKey,
-      sign: (msg) => cryptoImpl.signEd25519(msg, keys.privateKey),
+      sign: mockSign(cryptoImpl, keys.privateKey),
     }, now);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
@@ -256,7 +263,7 @@ Deno.test("lpc integration", async (t) => {
     const oldTs = new Date(Date.now() - 31000); // Beyond clockToleranceMs (30000)
     const [authTS, statAuthTS] = await makeAuthTimestamp({
       publicKey: keys.publicKey,
-      sign: (msg) => cryptoImpl.signEd25519(msg, keys.privateKey),
+      sign: mockSign(cryptoImpl, keys.privateKey),
     }, oldTs);
     if (statAuthTS !== Status.Success) {
       assertEquals(statAuthTS, Status.Success);
@@ -293,7 +300,7 @@ Deno.test("lpc integration", async (t) => {
       const now = baseMockClock.now(); // original time
       const [authTS, statAuthTS] = await makeAuthTimestamp({
         publicKey: keys.publicKey,
-        sign: (msg) => baseCryptoImpl.signEd25519(msg, keys.privateKey),
+        sign: mockSign(baseCryptoImpl, keys.privateKey),
       }, now);
       if (statAuthTS !== Status.Success) {
         assertEquals(statAuthTS, Status.Success);

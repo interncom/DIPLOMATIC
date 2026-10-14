@@ -8,7 +8,7 @@ Run `style.sh` in the root of the project to enforce style rules after completin
 
 Write the minimum amount of code you can to achieve the task without sacrificing clarity. Don't do "code golf" tricks to shorten the code, but look for refactors or even rearchitectures that would reduce LOC.
 
-Do not introduce new jargon without good reason.
+Do not introduce new jargon. Consult the human before coining a term. Use the names in GLOSSARY.md.
 
 ## Change-Minimization
 
@@ -16,17 +16,20 @@ When implementing a change, there is sometimes a refactor that looks useful to d
 
 ## Terseness
 
-To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are *not* desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
+To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are _not_ desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
 
 A short name still names the thing. Bare words like `Group` are too vague. Name the contents.
 
+A single `BagManager` is `bagMgr`. Several are `bagMgrs`. Do not abbreviate either as `bags`; that name is the protocol envelope (`IBag`).
+
 ## Function Documentation
+
 Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. You can explain special cases on a follow-up line. For instance:
 
 // Finds the greatest common divisor of two numbers.
 // Returns undefined if a or b is not a number.
 function gcd(a, b) {
-  // ... implementation
+// ... implementation
 }
 
 ## File Documentation
@@ -82,15 +85,15 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 ## Checking Work
 
 - Run tests before and after making changes to ensure you haven't broken anything.
-  - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
-  - `npm test` from `web` dir.
+    - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
+    - `npm test` from `web` dir.
 
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.
 
 - Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully. Then `node check.mjs` from `pkg` (`prepublishOnly` / `publish.sh` also run it).
 
 - Run the benchmarks before and after as well, to check for meaningful regressions.
-  - `deno bench` from `deno` dir.
+    - `deno bench` from `deno` dir.
 
 - Ensure that changes have not introduced new sensitive cryptographic operations outside the `shared/crypto` folder.
 - Ensure that changes have not resulted in the unencrypted master seed (key) being accessible outside of the Enclave in `shared/crypto`.

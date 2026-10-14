@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { reconcileHost, syncPeek, syncPull, syncPush } from "../src/sync";
 import { MemoryStore } from "../src/stores/memory/store";
-import DiplomaticClientAPI from "../src/shared/client";
+import DiplomaticClientAPI, { hostBagMgrs } from "../src/shared/client";
 import libsodiumCrypto from "../src/crypto";
 import { Enclave } from "../src/shared/crypto/enclave";
 import { MockClock } from "../src/shared/clock";
@@ -18,8 +18,8 @@ import {
   EntityID,
   Hash,
   HostHandle,
-  ISetBagResult,
   IMessage,
+  ISetBagResult,
 } from "../src/shared/types";
 import { Status } from "../src/shared/consts";
 import {
@@ -44,12 +44,18 @@ function testEnclave(): Enclave {
   return e;
 }
 
-async function createTestBag(message: IMessage, enclave: Enclave) {
-  const hostIdnt = await mustIdnt(enclave, "test", 1);
-  return sealBag(message, hostIdnt, libsodiumCrypto, enclave, {
+async function testBagMgrs(enclave: Enclave) {
+  const [bagMgrs, st] = await hostBagMgrs(enclave, {
     label: "test",
     index: 1,
   });
+  if (st !== Status.Success) throw new Error(`bagMgrs ${st}`);
+  return bagMgrs;
+}
+
+async function createTestBag(message: IMessage, enclave: Enclave) {
+  const hostIdnt = await mustIdnt(enclave, "test", 1);
+  return sealBag(message, hostIdnt, libsodiumCrypto);
 }
 
 /** Valid EID (id+ts structure) so messageHeadCodec.decode succeeds on peek. */
@@ -100,9 +106,8 @@ describe("syncPeek", () => {
     );
     transport = new LPCTransport(lpcHost);
     conn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      host,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -113,7 +118,7 @@ describe("syncPeek", () => {
   });
 
   test("handles empty peek results", async () => {
-    await syncPeek({ conn, store, enclave, host, crypto: libsodiumCrypto });
+    await syncPeek({ conn, store, host, crypto: libsodiumCrypto });
 
     const downloads = Array.from(await store.downloads.list());
     expect(downloads.length).toBe(0);
@@ -134,8 +139,6 @@ describe("syncPeek", () => {
       message,
       hostIdnt,
       libsodiumCrypto,
-      enclave,
-      { label: "test", index: 1 },
     );
     if (statBag !== Status.Success || !bag) {
       expect(statBag).toBe(Status.Success);
@@ -182,7 +185,6 @@ describe("syncPeek", () => {
     const stat = await syncPeek({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -207,9 +209,8 @@ describe("syncPeek", () => {
     );
     const transport = new LPCTransport(isolatedHost);
     const isolatedConn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      host,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -227,7 +228,6 @@ describe("syncPeek", () => {
     const stat = await syncPeek({
       conn: isolatedConn,
       store,
-      enclave,
       host: { ...host, lastSeq: 0 },
       crypto: libsodiumCrypto,
     });
@@ -240,17 +240,11 @@ describe("syncPeek", () => {
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
     await store.realms.put("inbox", 1);
     await store.hosts.recordSeqs("test", { lastSeq: 9 });
-    const hostIdnt = await mustConnIdnt(conn);
     const inbox = { label: "inbox", index: 1 };
+    const hostIdnt = await mustIdnt(enclave, "test", 1, inbox);
+    conn.add(hostIdnt);
     const m = testMsg(3, [4, 5]);
-    const [bag, statBag] = await sealBag(
-      m,
-      hostIdnt,
-      libsodiumCrypto,
-      enclave,
-      { label: "test", index: 1 },
-      inbox,
-    );
+    const [bag, statBag] = await sealBag(m, hostIdnt, libsodiumCrypto);
     expect(statBag).toBe(Status.Success);
     if (statBag !== Status.Success) return;
     await lpcHost.storage.setBags(hostIdnt.publicKey, [bag]);
@@ -258,7 +252,6 @@ describe("syncPeek", () => {
     const stat = await syncPeek({
       conn,
       store,
-      enclave,
       host: { ...host, handle: lpcHost, lastSeq: 9 },
       crypto: libsodiumCrypto,
       realm: inbox,
@@ -271,7 +264,6 @@ describe("syncPeek", () => {
     const pullStat = await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -325,9 +317,8 @@ describe("syncPeek download de-dupe", () => {
     );
     const transport = new LPCTransport(lpcHost);
     conn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      hostRow,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -349,7 +340,6 @@ describe("syncPeek download de-dupe", () => {
     const st = await syncPeek({
       conn,
       store,
-      enclave,
       host: { ...hostRow, handle: lpcHost },
       crypto: libsodiumCrypto,
     });
@@ -370,7 +360,6 @@ describe("syncPeek download de-dupe", () => {
     await syncPeek({
       conn,
       store,
-      enclave,
       host: { ...hostRow, handle: lpcHost },
       crypto: libsodiumCrypto,
     });
@@ -410,9 +399,8 @@ describe("reconcileHost", () => {
     );
     const transport = new LPCTransport(lpcHost);
     conn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      host,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -468,7 +456,6 @@ describe("reconcileHost", () => {
       {
         conn,
         store,
-        enclave,
         host: { ...host, handle: lpcHost },
         crypto: libsodiumCrypto,
       },
@@ -515,7 +502,6 @@ describe("reconcileHost", () => {
       {
         conn,
         store,
-        enclave,
         host: { ...host, handle: lpcHost },
         crypto: libsodiumCrypto,
       },
@@ -567,7 +553,6 @@ describe("reconcileHost", () => {
       {
         conn,
         store,
-        enclave,
         host: { ...host, handle: lpcHost, lastSeq: 999 },
         crypto: libsodiumCrypto,
       },
@@ -608,9 +593,8 @@ describe("syncPush", () => {
     );
     transport = new LPCTransport(lpcHost);
     conn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      host,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -655,7 +639,6 @@ describe("syncPush", () => {
     await syncPush({
       conn,
       store,
-      enclave,
       clock,
       host,
       crypto: libsodiumCrypto,
@@ -675,7 +658,6 @@ describe("syncPush", () => {
     const stat = await syncPush({
       conn,
       store,
-      enclave,
       clock,
       host,
       crypto: libsodiumCrypto,
@@ -690,12 +672,12 @@ describe("syncPush", () => {
     await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
     await store.realms.put("inbox", 1);
     await store.hosts.recordSeqs("test", { lastSeq: 4 });
+    conn.add(await mustIdnt(enclave, "test", 1, { label: "inbox", index: 1 }));
     await enqueueMsg(new Uint8Array([9]), 8, "inbox");
 
     const stat = await syncPush({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -732,9 +714,8 @@ describe("syncPull", () => {
     );
     transport = new LPCTransport(lpcHost);
     conn = new DiplomaticClientAPI(
-      enclave,
+      await testBagMgrs(enclave),
       libsodiumCrypto,
-      host,
       clock,
       transport,
       () => Promise.resolve(Status.Success),
@@ -781,7 +762,6 @@ describe("syncPull", () => {
     await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -836,7 +816,6 @@ describe("syncPull", () => {
     const st = await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -887,7 +866,6 @@ describe("syncPull", () => {
         {
           conn,
           store,
-          enclave,
           host,
           crypto: libsodiumCrypto,
         },
@@ -913,7 +891,6 @@ describe("syncPull", () => {
     const stat = await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -958,7 +935,6 @@ describe("syncPull", () => {
     await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
     });
@@ -1006,7 +982,6 @@ describe("syncPull", () => {
     const stat = await syncPull({
       conn,
       store,
-      enclave,
       host,
       crypto: libsodiumCrypto,
       maxPullBytes: 4,

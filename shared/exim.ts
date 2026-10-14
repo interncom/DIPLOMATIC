@@ -8,7 +8,7 @@ import { IFileHead } from "./codecs/fileHead.ts";
 import { fileIndexItemCodec, IFileIndexItem } from "./codecs/fileIndexItem.ts";
 import { messageHeadCodec } from "./codecs/messageHead.ts";
 import { Status } from "./consts.ts";
-import { Enclave } from "./crypto/enclave.ts";
+import { BagManager } from "./crypto/bagman.ts";
 import { ICrypto, IMessageHead } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
@@ -53,18 +53,11 @@ export namespace Exim {
 
   // Encodes msgs into a signed, encrypted diplomatic export file.
   export async function encodeFile(
-    keyLbl: string,
-    keyIdx: number,
     msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
     crypto: ICrypto,
-    enclave: Enclave,
+    bagMgr: BagManager,
   ): Promise<ValStat<Uint8Array>> {
-    const [identity, ist] = await enclave.deriveIdentity({
-      label: keyLbl,
-      index: keyIdx,
-    });
-    if (ist !== Status.Success) return err(ist);
-
+    const id = bagMgr.idKDM;
     const encIndex = new Encoder();
     const encBody = new Encoder();
 
@@ -76,14 +69,13 @@ export namespace Exim {
       if (statHeadEnc !== Status.Success) return err(statHeadEnc);
       const headEnc = encHead.result();
 
-      const [kdm, kst] = await identity.kdmFor(headEnc);
+      const [kdm, kst] = await bagMgr.bagKDM(headEnc);
       if (kst !== Status.Success) return err(kst);
-      const cipher = enclave.deriveCipher(kdm, "encrypt");
-      const [headCph, hst] = await cipher.encrypt(headEnc);
+      const [headCph, hst] = await bagMgr.encrypt(kdm, headEnc);
       if (hst !== Status.Success) return err(hst);
       let bodyCph: Uint8Array = new Uint8Array(0);
       if (msg.body) {
-        const [cph, bst] = await cipher.encrypt(msg.body);
+        const [cph, bst] = await bagMgr.encrypt(kdm, msg.body);
         if (bst !== Status.Success) return err(bst);
         bodyCph = cph;
       }
@@ -115,13 +107,13 @@ export namespace Exim {
     const indexEnc = encIndex.result();
     const hsh = await crypto.blake3(indexEnc);
 
-    // Sign the hash to prove ownership (private key stays in enclave).
-    const [sig, sst] = await identity.sign(hsh);
+    // Sign the hash to prove ownership. The private key stays in the manager.
+    const [sig, sst] = await bagMgr.sign(hsh);
     if (sst !== Status.Success) return err(sst);
 
     const head: IFileHead = {
-      lbl: keyLbl,
-      idx: keyIdx,
+      lbl: id.label,
+      idx: id.index,
       num,
       hsh,
       sig,
@@ -135,25 +127,24 @@ export namespace Exim {
   }
 
   // Decrypts and verifies a diplomatic export file into msgs.
+  // The file head label and index must match `bagMgr`.
   export async function decodeFile(
     file: Uint8Array,
     crypto: ICrypto,
-    enclave: Enclave,
+    bagMgr: BagManager,
   ): Promise<ValStat<{ head: IMessageHead; body?: Uint8Array }[]>> {
     const [fileStruct, statDecode] = fileCodec.decode(new Decoder(file));
     if (statDecode !== Status.Success) return err(statDecode);
     const { head, indexEnc, bodyEnc } = fileStruct;
-
-    const [identity, ist] = await enclave.deriveIdentity({
-      label: head.lbl,
-      index: head.idx,
-    });
-    if (ist !== Status.Success) return err(ist);
+    const id = bagMgr.idKDM;
+    if (head.lbl !== id.label || head.idx !== id.index) {
+      return err(Status.InvalidParam);
+    }
 
     // Check that hash signature is valid.
     let verifyKey: CryptoKey;
     try {
-      verifyKey = await crypto.importVerifyKey(identity.publicKey);
+      verifyKey = await crypto.importVerifyKey(bagMgr.publicKey);
     } catch {
       return err(Status.CryptoError);
     }
@@ -181,8 +172,7 @@ export namespace Exim {
 
     const messages: { head: IMessageHead; body?: Uint8Array }[] = [];
     for (const item of items) {
-      const cipher = enclave.deriveCipher(item.kdm, "decrypt");
-      const [headEnc, dst] = await cipher.decrypt(item.headCph);
+      const [headEnc, dst] = await bagMgr.decrypt(item.kdm, item.headCph);
       if (dst !== Status.Success) return err(dst);
       const [msgHead, headStatus] = messageHeadCodec.decode(
         new Decoder(headEnc),
@@ -196,7 +186,7 @@ export namespace Exim {
           item.offBody,
           item.offBody + item.lenBody,
         );
-        const [bod, bdst] = await cipher.decrypt(itemBodyCph);
+        const [bod, bdst] = await bagMgr.decrypt(item.kdm, itemBodyCph);
         if (bdst !== Status.Success) return err(bdst);
         itemBodyEnc = bod;
         const hashItemBody = await crypto.blake3(itemBodyEnc);
@@ -212,29 +202,21 @@ export namespace Exim {
     return ok(messages);
   }
 
-  // Re-encodes a file from enclaveIn to enclaveOut, mapping msgs through transform.
+  // Re-encodes a file from bagMgrIn to bagMgrOut, mapping msgs through transform.
   export async function migrateFile(
     file: Uint8Array,
     crypto: ICrypto,
-    enclaveIn: Enclave,
-    enclaveOut: Enclave,
+    bagMgrIn: BagManager,
+    bagMgrOut: BagManager,
     transform: (
       msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
     ) =>
       | Iterable<{ head: IMessageHead; body?: Uint8Array }>
       | Promise<Iterable<{ head: IMessageHead; body?: Uint8Array }>>,
   ): Promise<ValStat<Uint8Array>> {
-    const [msgs, stDec] = await decodeFile(file, crypto, enclaveIn);
+    const [msgs, stDec] = await decodeFile(file, crypto, bagMgrIn);
     if (stDec !== Status.Success) return err(stDec);
-    const [fileStruct, stFile] = fileCodec.decode(new Decoder(file));
-    if (stFile !== Status.Success) return err(stFile);
     const mapped = await transform(msgs);
-    return encodeFile(
-      fileStruct.head.lbl,
-      fileStruct.head.idx,
-      mapped,
-      crypto,
-      enclaveOut,
-    );
+    return encodeFile(mapped, crypto, bagMgrOut);
   }
 }

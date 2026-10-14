@@ -69,7 +69,7 @@ import {
   IUpdateParams,
 } from "./shared/types";
 import { Enclave } from "./shared/crypto/enclave";
-import type { Identity } from "./shared/crypto/enclave";
+import type { BagManager } from "./shared/crypto/bagman";
 import {
   asChildKey,
   asHostRlm,
@@ -255,6 +255,7 @@ export {
 export type {
   ApldState,
   Applier,
+  BagManager,
   BindPrior,
   BundleHost,
   CachedEntDBOptions,
@@ -271,7 +272,6 @@ export type {
   ICrypto,
   IDateRange,
   IDeleteParams,
-  Identity,
   IDiplomaticClientState,
   IEntRev,
   IEntRow,

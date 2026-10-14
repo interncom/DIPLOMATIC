@@ -1,4 +1,4 @@
-import type { Identity } from "../../../shared/crypto/enclave.ts";
+import type { BagManager } from "../../../shared/crypto/bagman.ts";
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
 import { pullEnd } from "../../../shared/api/pull.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
@@ -42,7 +42,7 @@ const tsAuth = createTestAuthTimestamp(testPubKey, new Date(946713599000));
 
 Deno.test("pullEnd.encodeReq", () => {
   const client = {}; // Mock
-  const keys = {} as Identity; // Mock
+  const keys = {} as BagManager; // Mock
   const tsAuth = createTestAuthTimestamp(
     new Uint8Array(32).fill(1) as PublicKey,
     new Date("2023-01-01T00:00:00.000Z"),

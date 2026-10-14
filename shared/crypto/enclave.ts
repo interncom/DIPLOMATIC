@@ -13,8 +13,10 @@
 //      unseal ceremonies return PRF IKM; Enclave seals, unseals, and wipes it.
 //      Do not export a seed helper for outer layers.
 //
-// Callers may receive only: derived public handles (Identity, ciphers), AEAD
+// Callers may receive only: BagManager (one identity and one realm), AEAD
 // ciphertext, Status/booleans, and new Enclave instances from factories.
+// bagman copies an Identity PDK (from the master seed), a realm key, and an rlm out. bagman.ts
+// never receives the seed.
 //
 // dumpToTty (paper): 8×8 hex to /dev/tty, Status only. Fail closed: the write
 // runs only when DIP_CLI_DUMP is defined and true. Keep
@@ -42,14 +44,13 @@ import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import type { BundleHost } from "../codecs/bundleHost.ts";
 import type { IKDM } from "../codecs/kdm.ts";
-import { kdmBytes, Status } from "../consts.ts";
+import { Status } from "../consts.ts";
 import {
   asSealedMasterKey,
   MASTER_SEED_LEN,
   type MasterSeed,
   type SealedMasterKey,
 } from "../seed.ts";
-import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
 import {
   deriveKey,
@@ -61,10 +62,8 @@ import {
 import {
   blake3,
   decryptXSalsa20Poly1305Combined,
-  deriveEd25519KeyPair,
   encryptXSalsa20Poly1305Combined,
   gen256BitSecureRandomSeed,
-  signEd25519,
 } from "./noble.ts";
 import {
   asDHKEResp,
@@ -95,38 +94,8 @@ import {
   unsealPRF,
 } from "./prf.ts";
 import { deriveHostRLM, deriveRealmID, deriveRealmKey } from "./realms.ts";
-
-export type EncryptCipher = {
-  encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
-
-export type DecryptCipher = {
-  decrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
-
-/** Encrypt + decrypt capability for one KDM. */
-export type DerivedCipher = EncryptCipher & DecryptCipher;
-
-/** Which ops the caller needs; only those methods are present on the handle. */
-export type CipherUsage = "encrypt" | "decrypt" | "both";
-
-/** Return shape of `deriveCipher` for a given usage (type-level enforcement). */
-export type CipherForUsage<U extends CipherUsage> = {
-  encrypt: EncryptCipher;
-  decrypt: DecryptCipher;
-  both: DerivedCipher;
-}[U];
-
-/**
- * KDM-scoped signing identity: public key is public; sign/kdmFor re-enter
- * the enclave so the private key never leaves. Used for hosts, export files, etc.
- */
-export type Identity = {
-  readonly publicKey: PublicKey;
-  sign: (message: Uint8Array | string) => Promise<ValStat<Uint8Array>>;
-  /** Per-bag 8-byte KDM (bag-kdm PDK child keyed by the encoded head). */
-  kdmFor: (msgHeadEnc: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
+import { BagManager } from "./bagman.ts";
+import { bytesEqual } from "./binary.ts";
 
 // bun --define DIP_CLI_DUMP=true to enable dumpToTty (hexdump.ts). Absent or
 // false → NotImplemented; web/worker/pkg-cli define false so the write is DCE'd.
@@ -180,19 +149,6 @@ export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
   if (bytes.byteLength !== MASTER_SEED_LEN) return err(Status.InvalidParam);
   // Inline ValStat ok: do not pass seed bytes to imported `ok`.
   return [bytes as MasterSeed, Status.Success];
-}
-
-// Constant-time compare. Length differs before the loop.
-function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.byteLength !== b.byteLength) return false;
-  let d = 0;
-  for (let i = 0; i < a.byteLength; i++) {
-    const x = a[i];
-    const y = b[i];
-    if (x === undefined || y === undefined) return false;
-    d |= x ^ y;
-  }
-  return d === 0;
 }
 
 export class Enclave {
@@ -528,7 +484,7 @@ export class Enclave {
     for (const realmKDM of realms) {
       const [got, st] = await this.hostRlm(realmKDM, hostKDM);
       if (st !== Status.Success) return err(st);
-      const match = bytesEq(got, rlm);
+      const match = bytesEqual(got, rlm);
       got.fill(0);
       if (match) {
         return ok({ label: realmKDM.label, index: realmKDM.index });
@@ -537,44 +493,28 @@ export class Enclave {
     return err(Status.NotFound);
   }
 
-  /**
-   * Cipher for public KDM under a realm (default: nullKDM). Does not hold
-   * key bytes; each op re-enters the enclave. `usage` selects the shape:
-   * `"encrypt"` → `{ encrypt }`, `"decrypt"` → `{ decrypt }`, `"both"` → both.
-   */
-  deriveCipher<U extends CipherUsage>(
-    kdm: Uint8Array,
-    usage: U,
-    realmKDM: IKDM = nullKDM,
-  ): CipherForUsage<U> {
-    const kdmBound = kdm.slice();
-    const realm: IKDM = { label: realmKDM.label, index: realmKDM.index };
-    const encrypt = (data: Uint8Array) => this.#encrypt(kdmBound, data, realm);
-    const decrypt = (data: Uint8Array) => this.#decrypt(kdmBound, data, realm);
-    const byUsage: { [K in CipherUsage]: CipherForUsage<K> } = {
-      encrypt: Object.freeze({ encrypt }),
-      decrypt: Object.freeze({ decrypt }),
-      both: Object.freeze({ encrypt, decrypt }),
-    };
-    return byUsage[usage];
-  }
-
-  /**
-   * Identity from the identity PDK + KDM. Private key stays in the enclave;
-   * only publicKey and capability methods are returned.
-   */
-  async deriveIdentity(kdm: IKDM): Promise<ValStat<Identity>> {
-    const kdmBound: IKDM = { label: kdm.label, index: kdm.index };
-    const [keys, st] = await this.#deriveSubkeys(kdmBound);
-    if (st !== Status.Success) return err(st);
-    const publicKey = keys.publicKey;
-    // Handle only needs the pub; priv would outlive this call on the Identity.
-    keys.privateKey.fill(0);
-    return ok(Object.freeze({
-      publicKey,
-      sign: (message: Uint8Array | string) => this.#sign(kdmBound, message),
-      kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(kdmBound, msgHeadEnc),
-    }));
+  // Returns the BagManager for one identity KDM x realm combination.
+  async bagman(idKDM: IKDM, realmKDM: IKDM): Promise<ValStat<BagManager>> {
+    const idCopy: IKDM = { label: idKDM.label, index: idKDM.index };
+    const realmCopy: IKDM = { label: realmKDM.label, index: realmKDM.index };
+    const [idnt, ist] = await deriveKey({
+      parent: this.#seed,
+      purpose: Purpose.Identity,
+      kdm: idCopy,
+    });
+    if (ist !== Status.Success) return err(ist);
+    const [realm, rst] = await deriveRealmKey(this.#seed, realmCopy);
+    if (rst !== Status.Success) {
+      idnt.fill(0);
+      return err(rst);
+    }
+    const [rlm, lst] = await this.hostRlm(realmCopy, idCopy);
+    if (lst !== Status.Success) {
+      idnt.fill(0);
+      realm.fill(0);
+      return err(lst);
+    }
+    return BagManager.init(idnt, realm, rlm, idCopy, realmCopy);
   }
 
   // Fingerprint-PDK child. No kdm is the paper check (null KDM).
@@ -604,15 +544,7 @@ export class Enclave {
     const [got, gst] = await this.#bindTag(credId);
     if (gst !== Status.Success) return false;
     try {
-      if (got.byteLength !== tag.byteLength) return false;
-      let d = 0;
-      for (let i = 0; i < got.byteLength; i++) {
-        const a = got[i];
-        const b = tag[i];
-        if (a === undefined || b === undefined) return false;
-        d |= a ^ b;
-      }
-      return d === 0;
+      return bytesEqual(got, tag);
     } finally {
       got.fill(0);
     }
@@ -686,135 +618,6 @@ export class Enclave {
     // Inline ValStat ok: do not pass seed-bearing `out` to imported `ok`.
     return [out, Status.Success];
   }
-
-  async #encrypt(
-    kdm: Uint8Array,
-    data: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await encryptXSalsa20Poly1305Combined(data, key));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      key.fill(0);
-    }
-  }
-
-  async #decrypt(
-    kdm: Uint8Array,
-    data: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await decryptXSalsa20Poly1305Combined(data, key));
-      } catch {
-        return err(Status.DecryptionError);
-      }
-    } finally {
-      key.fill(0);
-    }
-  }
-
-  // Cipher key for one bag. Parent is the realm key (later, a TWK).
-  async #keyFromKDM(
-    kdm: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<PDK["Cipher"]>> {
-    const [parent, pst] = await this.#bagKeyParent(realmKDM);
-    if (pst !== Status.Success) return err(pst);
-    try {
-      return await deriveKey({
-        parent,
-        purpose: Purpose.Cipher,
-        kdm,
-      });
-    } finally {
-      parent.fill(0);
-    }
-  }
-
-  // TODO(realms): a bag wnd (start seconds, window size seconds) replaces
-  // this parent with a TWK derived from the realm key.
-  async #bagKeyParent(realmKDM: IKDM): Promise<ValStat<PDK["RealmKey"]>> {
-    return deriveRealmKey(this.#seed, realmKDM);
-  }
-
-  async #deriveSeed(kdm: IKDM): Promise<ValStat<PDK["Identity"]>> {
-    return await deriveKey({
-      parent: this.#seed,
-      purpose: Purpose.Identity,
-      kdm,
-    });
-  }
-
-  async #deriveSubkeys(kdm: IKDM): Promise<ValStat<KeyPair>> {
-    const [seed, st] = await this.#deriveSeed(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await deriveEd25519KeyPair(asDerivSeed(seed)));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      // Pair already holds seed‖pub; this 32-byte deriv must not linger.
-      seed.fill(0);
-    }
-  }
-
-  async #sign(
-    kdm: IKDM,
-    message: Uint8Array | string,
-  ): Promise<ValStat<Uint8Array>> {
-    const [keys, st] = await this.#deriveSubkeys(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await signEd25519(message, keys.privateKey));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      // Re-derived per sign so the caller never holds a long-lived priv.
-      keys.privateKey.fill(0);
-    }
-  }
-
-  async #kdmFor(
-    kdm: IKDM,
-    msgHeadEnc: Uint8Array,
-  ): Promise<ValStat<Uint8Array>> {
-    const [idSeed, st] = await this.#deriveSeed(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      const [child, cst] = await deriveKey({
-        parent: idSeed,
-        purpose: Purpose.BagKdm,
-        kdm: msgHeadEnc,
-      });
-      if (cst !== Status.Success) return err(cst);
-      try {
-        return ok(child.slice(0, kdmBytes));
-      } finally {
-        child.fill(0);
-      }
-    } finally {
-      idSeed.fill(0);
-    }
-  }
-}
-
-// Brands an identity child as the Ed25519 derivation seed for that identity.
-function asDerivSeed(child: PDK["Identity"]): DerivationSeed {
-  return child as Uint8Array as DerivationSeed;
 }
 
 const LOCK_SKIP = new Set(["constructor", "prototype", "length", "name"]);

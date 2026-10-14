@@ -2,7 +2,7 @@ import { IClock } from "./clock.ts";
 import { Encoder } from "./codec.ts";
 import { type IAuthTimestamp } from "./codecs/authTimestamp.ts";
 import { clockToleranceMs, Status } from "./consts.ts";
-import type { Identity } from "./crypto/enclave.ts";
+import type { BagManager } from "./crypto/bagman.ts";
 import type { IHostCrypto } from "./types.ts";
 import { err, ok, ValStat } from "./valstat.ts";
 
@@ -16,7 +16,7 @@ export type EncodedAuthTimestamp = Uint8Array;
 // Clocks must be synchronized to ensure correct op order.
 
 export async function makeAuthTimestamp(
-  identity: Pick<Identity, "publicKey" | "sign">,
+  identity: BagManager,
   ts: Date,
 ): Promise<ValStat<IAuthTimestamp>> {
   const enc = new Encoder();

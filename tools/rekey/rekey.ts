@@ -1,5 +1,8 @@
+import { fileCodec } from "../../shared/codecs/file.ts";
+import { Decoder } from "../../shared/codec.ts";
 import { Exim } from "../../shared/exim.ts";
 import { Status } from "../../shared/consts.ts";
+import { nullKDM } from "../../shared/crypto/derivation.ts";
 import crypto from "../../bun/src/crypto.ts";
 import {
   die,
@@ -68,11 +71,24 @@ if (input.length === 0) die("Input file is empty.");
 console.error(`Read ${input.length} bytes from ${inputFile}.`);
 
 console.error("Migrating export to new master key...");
+const [fileStruct, stFile] = fileCodec.decode(new Decoder(input));
+if (stFile !== Status.Success) {
+  die(`Failed to read export head: ${Status[stFile]}`);
+}
+const idKDM = { label: fileStruct.head.lbl, index: fileStruct.head.idx };
+const [bagMgrIn, stIn] = await oldEnclave.bagman(idKDM, nullKDM);
+if (stIn !== Status.Success) {
+  die(`Failed to open old export key: ${Status[stIn]}`);
+}
+const [bagMgrOut, stOut] = await newEnclave.bagman(idKDM, nullKDM);
+if (stOut !== Status.Success) {
+  die(`Failed to open new export key: ${Status[stOut]}`);
+}
 const [outBytes, statMig] = await Exim.migrateFile(
   input,
   crypto,
-  oldEnclave,
-  newEnclave,
+  bagMgrIn,
+  bagMgrOut,
   (msgs) => msgs,
 );
 if (statMig !== Status.Success || outBytes === undefined) {

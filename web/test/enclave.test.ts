@@ -16,8 +16,8 @@ import { asMasterSeed, Enclave } from "../src/shared/crypto/enclave";
 import { asDHKEReq } from "../src/shared/crypto/pairing";
 import {
   asSealedMasterKey,
-  SEALED_MASTER_KEY_LEN,
   type MasterSeed,
+  SEALED_MASTER_KEY_LEN,
 } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
@@ -52,7 +52,8 @@ const permits: Permit[] = [
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
     callerSrc: "ed5a08442d605b6341958240077b7684",
-    why: "To derive the paper-check digest from the master via the fingerprint PDK.",
+    why:
+      "To derive the paper-check digest from the master via the fingerprint PDK.",
   },
   {
     caller: "fingerprint",
@@ -60,23 +61,26 @@ const permits: Permit[] = [
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "ed5a08442d605b6341958240077b7684",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
-    caller: "deriveIdentity",
+    caller: "bagman",
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "f3ece8cacc6142574a55e99349dce84a",
-    why: "To derive an identity child from the master via the identity PDK and KDM.",
+    callerSrc: "ac1d4318f16157350080401569d43ed9",
+    why:
+      "To derive the Identity PDK (from the master seed), realm key, and host rlm for one BagManager.",
   },
   {
-    caller: "deriveIdentity",
+    caller: "bagman",
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "f3ece8cacc6142574a55e99349dce84a",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    callerSrc: "ac1d4318f16157350080401569d43ed9",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "spawnSyncWorker",
@@ -92,7 +96,8 @@ const permits: Permit[] = [
     how: "embedded",
     src: "079455f96cc75fbb6626d0377048af4f",
     callerSrc: "510716230290ba6595b037290e2735f5",
-    why: "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
+    why:
+      "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
   {
     caller: "bind",
@@ -108,7 +113,8 @@ const permits: Permit[] = [
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "bind",
@@ -124,7 +130,8 @@ const permits: Permit[] = [
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
     callerSrc: "a40b76baa8edc592ba346492c6d3bb67",
-    why: "To encrypt the master with a KEK derived from caller-supplied PRF IKM.",
+    why:
+      "To encrypt the master with a KEK derived from caller-supplied PRF IKM.",
   },
   {
     caller: "fromRandom",
@@ -132,7 +139,8 @@ const permits: Permit[] = [
     how: "embedded",
     src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "2c16e9144131f9aa86fa2f4fef175ca7",
-    why: "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
+    why:
+      "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
   {
     caller: "persistToLargeBlob",
@@ -140,7 +148,8 @@ const permits: Permit[] = [
     how: "embedded",
     src: "9c8cd6b0f93d95f04895afc1ee35606a",
     callerSrc: "04806d6ab018ed0aacf1b548aead1e60",
-    why: "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
+    why:
+      "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
   },
   {
     caller: "realmID",
@@ -156,7 +165,8 @@ const permits: Permit[] = [
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "3fcc873d5ae7b0b71dc0eaf00c164a50",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "hostRlm",
@@ -164,7 +174,8 @@ const permits: Permit[] = [
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
     callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
-    why: "To derive the realm id from the master before stamping the host bag rlm.",
+    why:
+      "To derive the realm id from the master before stamping the host bag rlm.",
   },
   {
     caller: "hostRlm",
@@ -172,23 +183,26 @@ const permits: Permit[] = [
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
     callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
     caller: "realmForRlm",
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "95b21335db154411af036442bc22d738",
-    why: "To derive each candidate realm id from the master and match its host rlm.",
+    callerSrc: "a332a1cf9d348c376b4ec48ac75d8085",
+    why:
+      "To derive each candidate realm id from the master and match its host rlm.",
   },
   {
     caller: "realmForRlm",
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "95b21335db154411af036442bc22d738",
-    why: "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+    callerSrc: "a332a1cf9d348c376b4ec48ac75d8085",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
 ];
 
@@ -337,8 +351,7 @@ function assertPermitted() {
       );
       continue;
     }
-    const row =
-      `{ caller: ${JSON.stringify(hit.caller)}, ` +
+    const row = `{ caller: ${JSON.stringify(hit.caller)}, ` +
       `callee: ${JSON.stringify(hit.callee)}, ` +
       `how: ${JSON.stringify(hit.how)}, ` +
       `src: ${JSON.stringify(hex)}, ` +
@@ -391,7 +404,8 @@ vi.mock("../src/shared/webauthn/largeBlob", async (importOriginal) => {
   const blob = new Uint8Array(33);
   blob.fill(1, 0, 32);
   return wrapFns("largeBlob", orig, {
-    largeBlobRead: async () => ok({ blob: blob.slice(), credId: credId.slice() }),
+    largeBlobRead: async () =>
+      ok({ blob: blob.slice(), credId: credId.slice() }),
     largeBlobCreateCred: async () => ok(credId.slice()),
   });
 });
@@ -715,21 +729,16 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(w).toBeDefined();
     assertPermitted();
   },
-  deriveCipher() {
+  async bagman() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    arm("deriveCipher", seed);
-    const c = e.deriveCipher(new Uint8Array(8), "both");
-    expect(c.encrypt).toBeDefined();
-    assertPermitted();
-  },
-  async deriveIdentity() {
-    const seed = randomSeed();
-    const e = enclaveOf(seed);
-    arm("deriveIdentity", seed);
-    const [idnt, ist] = await e.deriveIdentity({ label: "test", index: 0 });
-    expect(ist).toBe(Status.Success);
-    expect(idnt?.publicKey).toBeDefined();
+    arm("bagman", seed);
+    const [bagMgr, st] = await e.bagman(
+      { label: "test", index: 0 },
+      { label: "", index: 0 },
+    );
+    expect(st).toBe(Status.Success);
+    expect(bagMgr?.publicKey).toBeDefined();
     assertPermitted();
   },
   async realmID() {

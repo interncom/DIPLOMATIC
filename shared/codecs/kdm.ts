@@ -13,6 +13,10 @@ export interface IKDM {
   index: number;
 }
 
+export function kdmEq(k1: IKDM, k2: IKDM): boolean {
+  return k1.label === k2.label && k1.index === k2.index;
+}
+
 export const kdmCodec: ICodecStruct<IKDM> = {
   encode(enc, kdm) {
     const s1 = enc.writeVarString(kdm.label);

@@ -298,16 +298,16 @@ describe("enclave fromRandom musec", () => {
 });
 
 describe("enclave seal/unseal via caller IKM", () => {
-  it("round-trips master under sealWithIkm / unsealWithIkm", async () => {
+  it("round-trips master under sealWithIKM / unsealWithIKM", async () => {
     const enc = enclaveOf(9);
     const ikm = new Uint8Array(32).fill(4);
-    const [sealed, sst] = await enc.sealWithIkm(ikm.slice());
+    const [sealed, sst] = await enc.sealWithIKM(ikm.slice());
     expect(sst).toBe(Status.Success);
     expect(sealed).toBeDefined();
     if (sealed === undefined) return;
     expect(sealed.byteLength).toBe(72);
 
-    const [opened, ust] = await Enclave.unsealWithIkm(sealed, ikm.slice());
+    const [opened, ust] = await Enclave.unsealWithIKM(sealed, ikm.slice());
     expect(ust).toBe(Status.Success);
     expect(opened).toBeDefined();
     if (opened === undefined) return;

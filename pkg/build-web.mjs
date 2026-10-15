@@ -11,7 +11,7 @@ const webMetaFlag = verbose ? ` --metafile=${webMetaFromRoot}` : "";
 const workerMetaFlag = verbose ? ` --metafile=${workerMetaFromRoot}` : "";
 
 // 1) Bundle worker first (self-contained ESM for blob spawn).
-// Must stay false: dumpToTty is fail-closed, and check.mjs rejects /dev/tty.
+// Must stay false: dumpToTTY is fail-closed, and check.mjs rejects /dev/tty.
 const cliDumpOff = " --define DIP_CLI_DUMP=false";
 
 execSync(

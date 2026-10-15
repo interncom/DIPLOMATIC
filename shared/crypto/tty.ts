@@ -1,5 +1,5 @@
 // Paper backup of the master seed to /dev/tty.
-// Only Enclave.dumpToTty calls this, and only after the DIP_CLI_DUMP check,
+// Only Enclave.dumpToTTY calls this, and only after the DIP_CLI_DUMP check,
 // so a false define drops this module from the web bundle. Does not wipe `seed`.
 
 import { Status } from "../consts.ts";
@@ -7,7 +7,7 @@ import { type ValStat } from "../valstat.ts";
 
 // Writes numbered seed hex lines plus a fingerprint check line to /dev/tty.
 // Paced mode erases the previous line before the next (Enter between).
-export async function dumpToTty(
+export async function dumpToTTY(
   seed: Uint8Array,
   fingerprint: () => Promise<ValStat<Uint8Array>>,
 ): Promise<Status> {

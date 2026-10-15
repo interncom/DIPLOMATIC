@@ -72,7 +72,7 @@ export type SyncConn<Handle extends HostHandle> = Pick<
   | "seal"
   | "identity"
   | "hostRlm"
-  | "bag"
+  | "bagMgrFor"
   | "bagMgrs"
 >;
 

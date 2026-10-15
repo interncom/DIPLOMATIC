@@ -3,7 +3,6 @@ import { decode, encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Enclave } from "../src/shared/crypto/enclave";
-import { nullKDM } from "../src/shared/crypto/derivation";
 import { mustIdnt } from "./mustIdnt";
 import { Status } from "../src/shared/consts";
 import type {
@@ -804,17 +803,9 @@ describe("Client", () => {
       expect(enclave).toBeDefined();
       if (enclave === undefined) return;
       const hostIdnt = await mustIdnt(enclave, "test", 1);
-      const [rlm, rlmSt] = await enclave.hostRlm(nullKDM, {
-        label: testHost.label,
-        index: testHost.idx ?? 0,
-      });
-      if (rlmSt !== Status.Success) {
-        expect(rlmSt).toBe(Status.Success);
-        return;
-      }
       const [list, statList] = await lpcHost.storage.listHeads(
         hostIdnt.publicKey,
-        rlm,
+        hostIdnt.rlm,
         0,
       );
       if (statList !== Status.Success) {

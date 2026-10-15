@@ -118,7 +118,7 @@ export class CLIClient<Handle extends HostHandle> {
     if (!this.conn) return err(Status.ConnectionClosed);
     const stRealm = await this.#realm(realm);
     if (stRealm !== Status.Success) return err(stRealm);
-    const bagMgr = this.conn.bag(realm ?? nullKDM);
+    const bagMgr = this.conn.bagMgrFor(realm ?? nullKDM);
     if (bagMgr === undefined) return err(Status.NotFound);
 
     const [hostIdnt, ist] = await this.conn.identity();
@@ -149,7 +149,7 @@ export class CLIClient<Handle extends HostHandle> {
   async #realm(realm: IKDM = nullKDM): Promise<Status> {
     const conn = this.conn;
     if (!conn) return Status.ConnectionClosed;
-    if (conn.bag(realm) !== undefined) return Status.Success;
+    if (conn.bagMgrFor(realm) !== undefined) return Status.Success;
     const [home, st] = await conn.identity();
     if (st !== Status.Success) return st;
     const [bagMgr, bst] = await this.enclave.bagman(home.idKDM, realm);

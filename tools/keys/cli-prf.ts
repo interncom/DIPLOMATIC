@@ -141,7 +141,7 @@ export async function persistNewLabel(
   console.error(`Using ${dev}`);
   const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
   const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
-  const [sealed, sst] = await enc.sealWithIkm(ikm);
+  const [sealed, sst] = await enc.sealWithIKM(ikm);
   if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
   upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
   writeRing(path, ring);
@@ -372,7 +372,7 @@ export async function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
     if (sst !== Status.Success || sm === undefined) continue;
     const ikm = tryEvalHmac(dev, ring.rpId, e.credId, ring.salt);
     if (ikm === undefined) continue;
-    const [enc, est] = await Enclave.unsealWithIkm(sm, ikm);
+    const [enc, est] = await Enclave.unsealWithIKM(sm, ikm);
     if (est === Status.Success && enc !== undefined) return enc;
   }
   die("no keyring entry unsealed (wrong YubiKey?)");

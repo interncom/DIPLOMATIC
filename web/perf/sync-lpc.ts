@@ -27,7 +27,6 @@ import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
-import { nullKDM } from "../src/shared/crypto/derivation";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { createMemoryStorage } from "../src/shared/storage/memory";
@@ -223,10 +222,7 @@ async function main() {
 
   const [keys, kst] = await upConn.identity();
   if (kst !== Status.Success) throw new Error(`identity ${kst}`);
-  const [rlm, rlmSt] = await enclave.hostRlm(nullKDM, {
-    label: HOST_LABEL,
-    index: HOST_IDX,
-  });
+  const [rlm, rlmSt] = await upConn.hostRlm();
   if (rlmSt !== Status.Success) throw new Error(`hostRlm ${rlmSt}`);
   const [heads, listSt] = await storage.listHeads(keys.publicKey, rlm, 0);
   if (listSt !== Status.Success) throw new Error(`listHeads ${listSt}`);

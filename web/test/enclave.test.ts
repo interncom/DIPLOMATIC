@@ -43,7 +43,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "80447fde624aed325b9266f5576bbb5a",
+    callerSrc: "21e8f2c51df544fec3f6beac972893fe",
     why: "To encrypt the master with a KEK derived from passkey PRF.",
   },
   {
@@ -51,7 +51,7 @@ const permits: Permit[] = [
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "ed5a08442d605b6341958240077b7684",
+    callerSrc: "70585655c6a627656a31ff27bf3924de",
     why:
       "To derive the paper-check digest from the master via the fingerprint PDK.",
   },
@@ -60,7 +60,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "ed5a08442d605b6341958240077b7684",
+    callerSrc: "70585655c6a627656a31ff27bf3924de",
     why:
       "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -69,7 +69,7 @@ const permits: Permit[] = [
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "ac1d4318f16157350080401569d43ed9",
+    callerSrc: "956ef02e590485cdec645d6d8060cc5d",
     why:
       "To derive the Identity PDK (from the master seed), realm key, and host rlm for one BagManager.",
   },
@@ -78,7 +78,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "ac1d4318f16157350080401569d43ed9",
+    callerSrc: "956ef02e590485cdec645d6d8060cc5d",
     why:
       "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -87,7 +87,7 @@ const permits: Permit[] = [
     callee: "spawn.postToDiplomaticWorker",
     how: "exact",
     src: "5af866aa6e511c9ee3df323202b50e08",
-    callerSrc: "ce33febf07d7ee4fba3860e13225e5d7",
+    callerSrc: "d68259b8478ab7dec1966e2de44d2987",
     why: "To inject seed into Web Worker we build to base64 blob ourselves.",
   },
   {
@@ -95,7 +95,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "embedded",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "510716230290ba6595b037290e2735f5",
+    callerSrc: "1cb5bc53c14988e4f73f2cae6c6718a5",
     why:
       "To encrypt pair package (including seed) with DHKE-negotiated shared key.",
   },
@@ -104,7 +104,7 @@ const permits: Permit[] = [
     callee: "derivation.deriveKey",
     how: "exact",
     src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
+    callerSrc: "656054094bc2f78b1b89373f8ee01536",
     why: "To derive a bind-tag child from the master (PDK keyed by credId).",
   },
   {
@@ -112,7 +112,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "exact",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
+    callerSrc: "656054094bc2f78b1b89373f8ee01536",
     why:
       "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
@@ -121,15 +121,15 @@ const permits: Permit[] = [
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "24b3cbb41b2ad686584c15d52a4ad727",
+    callerSrc: "656054094bc2f78b1b89373f8ee01536",
     why: "To encrypt the master with KEK derived from passkey PRF.",
   },
   {
-    caller: "sealWithIkm",
+    caller: "sealWithIKM",
     callee: "NobleCrypto.encryptXSalsa20Poly1305Combined",
     how: "exact",
     src: "079455f96cc75fbb6626d0377048af4f",
-    callerSrc: "a40b76baa8edc592ba346492c6d3bb67",
+    callerSrc: "81b3034804c239466ab894f29b760ea9",
     why:
       "To encrypt the master with a KEK derived from caller-supplied PRF IKM.",
   },
@@ -138,7 +138,7 @@ const permits: Permit[] = [
     callee: "NobleCrypto.blake3",
     how: "embedded",
     src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "2c16e9144131f9aa86fa2f4fef175ca7",
+    callerSrc: "e81cea68cd2360678682bc4d978be08d",
     why:
       "To mix OS CSPRNG with mandatory user-space entropy (musec) into the master.",
   },
@@ -147,62 +147,9 @@ const permits: Permit[] = [
     callee: "cryptoLargeBlob.writeLargeBlob",
     how: "embedded",
     src: "9c8cd6b0f93d95f04895afc1ee35606a",
-    callerSrc: "04806d6ab018ed0aacf1b548aead1e60",
+    callerSrc: "d29775772c16aa9866e1eb796646d91c",
     why:
       "To UV-write IdentityBundle wire (master seed, then host rows) into largeBlob.",
-  },
-  {
-    caller: "realmID",
-    callee: "derivation.deriveKey",
-    how: "exact",
-    src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "3fcc873d5ae7b0b71dc0eaf00c164a50",
-    why: "To derive the stable realm id from the master and the realm KDM.",
-  },
-  {
-    caller: "realmID",
-    callee: "NobleCrypto.blake3",
-    how: "exact",
-    src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "3fcc873d5ae7b0b71dc0eaf00c164a50",
-    why:
-      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
-  },
-  {
-    caller: "hostRlm",
-    callee: "derivation.deriveKey",
-    how: "exact",
-    src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
-    why:
-      "To derive the realm id from the master before stamping the host bag rlm.",
-  },
-  {
-    caller: "hostRlm",
-    callee: "NobleCrypto.blake3",
-    how: "exact",
-    src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "b01f3a299f2f4e45adce6a19fa3a5dfc",
-    why:
-      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
-  },
-  {
-    caller: "realmForRlm",
-    callee: "derivation.deriveKey",
-    how: "exact",
-    src: "0de5207b092b952756705bc0fc7f250d",
-    callerSrc: "a332a1cf9d348c376b4ec48ac75d8085",
-    why:
-      "To derive each candidate realm id from the master and match its host rlm.",
-  },
-  {
-    caller: "realmForRlm",
-    callee: "NobleCrypto.blake3",
-    how: "exact",
-    src: "ac2d00162c47b0171aee8576da4a9689",
-    callerSrc: "a332a1cf9d348c376b4ec48ac75d8085",
-    why:
-      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
 ];
 
@@ -628,25 +575,25 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(st).not.toBe(Status.Success);
     assertPermitted();
   },
-  async sealWithIkm() {
+  async sealWithIKM() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     const ikm = new Uint8Array(32).fill(3);
-    arm("sealWithIkm", seed);
-    const [out, st] = await e.sealWithIkm(ikm);
+    arm("sealWithIKM", seed);
+    const [out, st] = await e.sealWithIKM(ikm);
     expect(st).toBe(Status.Success);
     expect(out).toBeDefined();
     assertPermitted();
   },
-  async unsealWithIkm() {
+  async unsealWithIKM() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
     const ikm = new Uint8Array(32).fill(3);
-    const [sealed, sst] = await e.sealWithIkm(ikm.slice());
+    const [sealed, sst] = await e.sealWithIKM(ikm.slice());
     expect(sst).toBe(Status.Success);
     if (sealed === undefined) return;
-    arm("unsealWithIkm", seed);
-    const [opened, st] = await Enclave.unsealWithIkm(sealed, ikm.slice());
+    arm("unsealWithIKM", seed);
+    const [opened, st] = await Enclave.unsealWithIKM(sealed, ikm.slice());
     expect(st).toBe(Status.Success);
     expect(opened).toBeDefined();
     assertPermitted();
@@ -682,11 +629,11 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(st).toBe(Status.Success);
     assertPermitted();
   },
-  async dumpToTty() {
+  async dumpToTTY() {
     const seed = randomSeed();
     const e = enclaveOf(seed);
-    arm("dumpToTty", seed);
-    const st = await e.dumpToTty();
+    arm("dumpToTTY", seed);
+    const st = await e.dumpToTTY();
     expect(st).toBe(Status.NotImplemented);
     assertPermitted();
   },
@@ -741,49 +688,14 @@ const traces: Record<string, () => void | Promise<void>> = {
     expect(bagMgr?.publicKey).toBeDefined();
     assertPermitted();
   },
-  async realmID() {
-    const seed = randomSeed();
-    const e = enclaveOf(seed);
-    arm("realmID", seed);
-    const [id, st] = await e.realmID({ label: "", index: 0 });
-    expect(st).toBe(Status.Success);
-    expect(id).toBeDefined();
-    assertPermitted();
-  },
-  async hostRlm() {
-    const seed = randomSeed();
-    const e = enclaveOf(seed);
-    arm("hostRlm", seed);
-    const [rlm, st] = await e.hostRlm(
-      { label: "", index: 0 },
-      { label: "h", index: 0 },
-    );
-    expect(st).toBe(Status.Success);
-    expect(rlm).toBeDefined();
-    assertPermitted();
-  },
-  async realmForRlm() {
-    const seed = randomSeed();
-    const e = enclaveOf(seed);
-    arm("realmForRlm", seed);
-    const host = { label: "h", index: 0 };
-    const realm = { label: "", index: 0 };
-    const [rlm, rst] = await e.hostRlm(realm, host);
-    expect(rst).toBe(Status.Success);
-    if (rlm === undefined) return;
-    const [got, st] = await e.realmForRlm(host, rlm, [realm]);
-    expect(st).toBe(Status.Success);
-    expect(got).toEqual(realm);
-    assertPermitted();
-  },
 };
 
-// dumpToTty passes the raw seed into crypto/tty.ts. The runtime tracer cannot
-// see it: the call sits behind DIP_CLI_DUMP, compiled false in web tests.
-// src is tty.dumpToTty; callerSrc is Enclave.dumpToTty (the handoff).
+// Inner.dumpToTTY passes the raw seed into crypto/tty.ts. The runtime tracer
+// cannot see it: the call sits behind DIP_CLI_DUMP, compiled false in web tests.
+// src is tty.dumpToTTY. callerSrc is the public Enclave.dumpToTTY delegate.
 const ttyDumpPin = {
-  src: "a9e0ad51a81876ee798582226c2f0a2c",
-  callerSrc: "e4bea6201fd77ebb3b553b01d160af4e",
+  src: "0adfdd1f7dcc49fa4aec55efc910b918",
+  callerSrc: "b8b5fe09a773e381b730ddf4e4d0690e",
   why: "To print the master seed as paper-backup hex on /dev/tty.",
 };
 
@@ -793,11 +705,11 @@ describe("Enclave imported-callee seed trace", () => {
     expect(Object.keys(traces).sort()).toEqual(pub);
   });
 
-  it("pins tty dumpToTty, which receives the raw seed", async () => {
+  it("pins tty dumpToTTY, which receives the raw seed", async () => {
     const tty = await import("../src/shared/crypto/tty");
-    const caller = enclaveFn("dumpToTty");
-    if (caller === undefined) throw new Error("Enclave.dumpToTty missing");
-    const src = srcHex(tty.dumpToTty);
+    const caller = enclaveFn("dumpToTTY");
+    if (caller === undefined) throw new Error("Enclave.dumpToTTY missing");
+    const src = srcHex(tty.dumpToTTY);
     const callerSrc = srcHex(caller);
     expect({ src, callerSrc, why: ttyDumpPin.why }).toEqual(ttyDumpPin);
   });

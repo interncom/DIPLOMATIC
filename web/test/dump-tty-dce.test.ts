@@ -1,4 +1,4 @@
-// Web minify must DCE dumpToTty's /dev/tty write (DIP_CLI_DUMP=false).
+// Web minify must DCE dumpToTTY's /dev/tty write (DIP_CLI_DUMP=false).
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -49,7 +49,7 @@ function assertNoTtyWrite(js: string, label: string) {
     .toBe(false);
 }
 
-describe("web dumpToTty DCE", () => {
+describe("web dumpToTTY DCE", () => {
   it("build scripts pin DIP_CLI_DUMP=false", () => {
     const web = readFileSync(join(repo, "pkg/build-web.mjs"), "utf8");
     const cli = readFileSync(join(repo, "pkg/build-cli.mjs"), "utf8");
@@ -57,11 +57,11 @@ describe("web dumpToTty DCE", () => {
     expect(cli).toContain("--define DIP_CLI_DUMP=false");
   });
 
-  it("minified Enclave has no tty write and dumpToTty is NotImplemented", async () => {
+  it("minified Enclave has no tty write and dumpToTTY is NotImplemented", async () => {
     const out = buildWebEnclave();
     const js = readFileSync(out, "utf8");
     assertNoTtyWrite(js, "minified Enclave");
-    expect(js).toContain("dumpToTty");
+    expect(js).toContain("dumpToTTY");
 
     const mod: unknown = await import(pathToFileURL(out).href);
     expect(mod).toMatchObject({ Enclave: expect.any(Function) });
@@ -81,11 +81,11 @@ describe("web dumpToTty DCE", () => {
     const e = pair[0];
     const st = pair[1];
     expect(st).toBe(Status.Success);
-    if (e === null || typeof e !== "object" || !("dumpToTty" in e)) {
-      throw new Error("enclave missing dumpToTty");
+    if (e === null || typeof e !== "object" || !("dumpToTTY" in e)) {
+      throw new Error("enclave missing dumpToTTY");
     }
-    const dump = e.dumpToTty;
-    if (typeof dump !== "function") throw new Error("dumpToTty not a function");
+    const dump = e.dumpToTTY;
+    if (typeof dump !== "function") throw new Error("dumpToTTY not a function");
     expect(await dump.call(e)).toBe(Status.NotImplemented);
 
     Object.defineProperty(globalThis, "DIP_CLI_DUMP", {

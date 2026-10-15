@@ -105,8 +105,8 @@ Deno.test("client realm kdm", async () => {
     () => Promise.resolve(Status.Success),
   );
 
-  const [home, hs] = await enclave.hostRlm(nullKDM, hostKDM);
-  const [box, bs] = await enclave.hostRlm(inbox, hostKDM);
+  const [home, hs] = await client.hostRlm();
+  const [box, bs] = await client.hostRlm(inbox);
   if (hs !== Status.Success || bs !== Status.Success) {
     throw new Error(`rlm ${hs} ${bs}`);
   }

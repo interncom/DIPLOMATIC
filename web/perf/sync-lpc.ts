@@ -11,7 +11,7 @@
 //   2) fresh client: peek all heads, then pull/open/exec (syncPeek + syncPull)
 //
 // Optional:
-//   DATASET=path/to/msgs.msgpack
+//   DATASET=path/to/msgs.bin
 //   CLIENT_UP_DB=...    (uploader client archive)
 //   CLIENT_DOWN_DB=...  (downloader client archive)
 
@@ -43,7 +43,7 @@ import {
 } from "./productivity";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const defaultDataset = join(here, "../../fixtures/productivity/msgs.msgpack");
+const defaultDataset = join(here, "../../fixtures/productivity/msgs.bin");
 const defaultClientUpDb = join(
   here,
   "../../fixtures/productivity/client-up-perf.db",

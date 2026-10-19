@@ -1,4 +1,4 @@
-// Generate fixtures/productivity/msgs.msgpack (+ meta.json).
+// Generate fixtures/productivity/msgs.bin (+ meta.json).
 // Run from repo root:
 //   bun run web/perf/gen-productivity.ts
 // Optional scale (smoke): NUM_ENTS=100 NUM_MSGS=700 bun run web/perf/gen-productivity.ts
@@ -40,7 +40,7 @@ const bytes = packDataset(file);
 const genMs = performance.now() - t0;
 
 mkdirSync(outDir, { recursive: true });
-const msgsPath = join(outDir, "msgs.msgpack");
+const msgsPath = join(outDir, "msgs.bin");
 const metaPath = join(outDir, "meta.json");
 writeFileSync(msgsPath, bytes);
 writeFileSync(
@@ -57,7 +57,7 @@ writeFileSync(
       msgsWithNote: stats.withNote,
       fileBytes: bytes.length,
       bodyShape:
-        '{ type: "todo", body: { text: string; note?: string; done: boolean } }',
+        "ent frame; payload is var-string text, var-int done, var-string note",
       description:
         "Simulated productivity-app dump for sync perf (LPC push/peek/pull). Regenerated via web/perf/gen-productivity.ts.",
     },

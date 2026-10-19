@@ -2,6 +2,7 @@ import type { SyncProgressEvent } from "./progress";
 import type { IKDM } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
 import type { Enclave } from "./shared/crypto/enclave";
+import type { IBlobUpdate, IBlobWrite } from "./shared/blobs";
 import type { EncodedMessage } from "./shared/message";
 import type {
   EntityID,
@@ -475,6 +476,20 @@ export interface IClient<Handle extends HostHandle> {
    * Delete by `{ prior }` (preferred) or `{ eid }` (archive lookup).
    */
   delete(op: IDeleteParams): Promise<ValStat<IMessageHead>>;
+
+  // Blob msgs. The ent body is the bytes.
+  insertBlob(
+    mime: string,
+    bytes: Uint8Array,
+    opts?: IBlobWrite,
+  ): Promise<ValStat<IMessageHead>>;
+  updateBlob(
+    eid: EntityID,
+    bytes: Uint8Array,
+    opts?: IBlobUpdate,
+  ): Promise<ValStat<IMessageHead>>;
+  deleteBlob(eid: EntityID): Promise<ValStat<IMessageHead>>;
+  readBlob(eid: EntityID): Promise<ValStat<Uint8Array>>;
 
   /** Allocate an entity id (optional 8-byte id material; else random). */
   genEID(id?: Uint8Array): Promise<ValStat<EntityID>>;

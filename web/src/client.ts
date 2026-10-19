@@ -42,6 +42,13 @@ import {
   idleProgress,
   SyncProgressEvent,
 } from "./progress";
+import {
+  blobBytes,
+  type IBlobUpdate,
+  type IBlobWrite,
+  insertBlobMsg,
+  updateBlobMsg,
+} from "./shared/blobs";
 import { saveBlob } from "./saveBlob";
 import {
   defaultMaxPullBytes,
@@ -614,6 +621,47 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       return err<IMessageHead>(st);
     }
     return this.updateRaw(prior, undefined, force);
+  }
+
+  // Inserts a blob. mime is the part after "blob:", such as "image/jpeg".
+  public async insertBlob(
+    mime: string,
+    bytes: Uint8Array,
+    opts?: IBlobWrite,
+  ): Promise<ValStat<IMessageHead>> {
+    const [msg, st] = insertBlobMsg(mime, bytes, opts);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.insertRaw(msg.bod, msg.typ);
+  }
+
+  // Replaces the bytes of an existing blob. Omit a key to keep the archived value.
+  public async updateBlob(
+    eid: EntityID,
+    bytes: Uint8Array,
+    opts?: IBlobUpdate,
+  ): Promise<ValStat<IMessageHead>> {
+    const [msg, st] = updateBlobMsg(await this.lastMsg(eid), bytes, opts);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.updateRaw(msg.prior, msg.bod, undefined, msg.typ);
+  }
+
+  // Deletes the blob ent. Archived bytes stay until msg pruning exists.
+  public deleteBlob(eid: EntityID): Promise<ValStat<IMessageHead>> {
+    return this.delete({ eid });
+  }
+
+  // Reads a copy of the latest bytes for eid.
+  public async readBlob(eid: EntityID): Promise<ValStat<Uint8Array>> {
+    return blobBytes(await this.lastMsg(eid));
+  }
+
+  // Latest archived msg for eid, including bod when the row has one.
+  private async lastMsg(eid: EntityID): Promise<IMessage | undefined> {
+    const stored = await this.store.messages.last(eid);
+    if (stored === undefined) return undefined;
+    const msg: IMessage = { ...stored.head };
+    if (stored.body !== undefined) msg.bod = stored.body;
+    return msg;
   }
 
   /**

@@ -107,6 +107,46 @@ All writes take a single opts object (`force` optional where skew can apply).
   await client.delete({ eid: ent.eid }); // slower
   ```
 
+### Blobs
+
+A blob is an ent whose payload is the bytes. The head `typ` is `blob:` plus a mime (`blob:image/jpeg`). The ent body is the same ordered frame as any other ent, and the raw bytes are its `body`. Another ent stores the blob's full `eid`. A filename goes in `tags`. These writes return `ValStat`, the same `[value, status]` pair as `insert` and `update`.
+
+Most blobs have one referring ent. Set the blob's `pid` to that ent's `eid`, as in the insert below. Clock-skew recovery can replace the blob eid and leave the stored reference broken. The `pid` still names the referrer, so a later pass can list the blobs parented there and point the reference at the live one. The same link finds a blob the referrer dropped. A rich-text field that removes an embedded image can see the blob still parented to that note and call `deleteBlob`.
+
+- `insertBlob(mime, bytes, opts?)` — new blob ent. `mime` is the part after `blob:`, such as `"image/jpeg"`. An empty mime is `InvalidParam`. `opts` is `{ pid?, tags? }`. An empty `Uint8Array` is still a live blob.
+
+  ```ts
+  import { Status } from "@interncom/diplomatic";
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const [head, st] = await client.insertBlob("image/jpeg", bytes, {
+    pid: note.eid,
+    tags: ["name:cat.jpg"],
+  });
+  if (st !== Status.Success) return;
+  // head.eid — store this on the ent that owns the file
+  ```
+
+- `updateBlob(eid, bytes, opts?)` — replace the bytes of an existing blob. `opts` is `{ pid?, tags?, mime? }`. A present key replaces the archived value. A missing key keeps it. `tags: []` clears tags. A present `pid: undefined` clears the parent. Omit `mime` to keep the previous type. An empty `mime` is `InvalidParam`.
+
+  `NotFound` when `eid` has no message, or the latest message is a delete. `InvalidParam` when that message has no blob mime. Skew recovery follows `update`.
+
+  ```ts
+  const [head, st] = await client.updateBlob(blobEid, nextBytes, {
+    mime: "image/webp",
+    tags: ["name:cat.webp"],
+  });
+  ```
+
+- `deleteBlob(eid)` — delete that ent. Same as `delete({ eid })`. The archived bytes stay until message pruning exists. A later `readBlob` or `updateBlob` is `NotFound`.
+
+- `readBlob(eid)` — a copy of the latest bytes. `NotFound` when `eid` is missing, the latest message is a delete, or it is not a blob. A live blob with an empty payload returns an empty `Uint8Array`.
+
+  ```ts
+  const [bytes, st] = await client.readBlob(blobEid);
+  if (st !== Status.Success) return;
+  ```
+
 ## Rebuild
 
 - `rebuild(options?)` — wipe application state (e.g. EntDB) and re-derive it by replaying the local message archive.

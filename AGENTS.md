@@ -10,6 +10,8 @@ Write the minimum amount of code you can to achieve the task without sacrificing
 
 Do not introduce new jargon. Consult the human before coining a term. Use the names in GLOSSARY.md.
 
+Capitalize acronyms in names (`BlobAPI`, not `BlobApi`).
+
 ## Change-Minimization
 
 When implementing a change, there is sometimes a refactor that looks useful to do. Resist the urge to do it all together. We value keeping changes focused so that the commits are easy to read and understand. You can do the refactor in a follow-up commit.

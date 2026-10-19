@@ -44,12 +44,12 @@ const { client, dispose } = await openDiplomaticClient({ state, worker: true });
 
 Local writes build a message and call `state.apply` **before** the persist queue, the apply chain, and the message archive. With the default EntDB cache, `apply` patches mem immediately, queues IndexedDB persist, then notifies UI subscribers after the next paint (before IDB callbacks). That lets a fire-and-forget save close its modal in the current frame; a prior write's archive/persist cannot delay the notify. Pass `{ optimistic: false }` to notify only after that durable commit. Archive → mark applied → upload still run after.
 
-Shared fields on write ops. `type` is stored on the msg head (`typ`); `body` / `pid` / `tags` are msgpack in the msg body:
+Shared fields on write ops. `type` is stored on the msg head (`typ`). The msg body is an ordered frame: optional `pid` (var-bytes; empty means absent), a var-int tag count, that many var-strings, then the raw `body` bytes. The app encodes `body`.
 
 ```ts
-type EntFields<T> = {
+type EntFields = {
   type: string;       // application type name (msg head typ)
-  body?: T;           // application payload
+  body?: Uint8Array;  // application payload
   pid?: EntityID;     // optional parent eid (exclusive hierarchy)
   tags?: string[];    // optional multi-value reverse-indexed tags (N:M refs)
 };

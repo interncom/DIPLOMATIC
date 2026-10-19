@@ -10,7 +10,7 @@ if (!text) {
   process.exit(1);
 }
 
-const body = Diplomatic.msgpack.encode(text);
+const body = new TextEncoder().encode(text);
 const stat = await client.upsertSingletonSync("status", body);
 if (stat !== Diplomatic.Status.Success) {
   console.error(`upserting message: ${Diplomatic.Status[stat]}`);

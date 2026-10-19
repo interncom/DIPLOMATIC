@@ -1,8 +1,21 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { encode } from "@msgpack/msgpack";
+import { encodeEnt } from "../src/shared/codecs/ent";
 import { msgToOp, StateManager } from "../src/state";
 import { Status } from "../src/shared/consts";
-import { IMessage, IDeleteOp, IMutateOp, isMutateOp } from "../src/shared/types";
+import {
+  IDeleteOp,
+  IMessage,
+  IMutateOp,
+  isMutateOp,
+} from "../src/shared/types";
+
+function entBod(
+  ent: { tags?: string[]; body?: Uint8Array },
+): Uint8Array {
+  const [bod, st] = encodeEnt(ent);
+  if (st !== Status.Success) throw new Error("encodeEnt");
+  return bod;
+}
 
 describe("msgToOp", () => {
   test("returns IDeleteOp when bod is undefined", () => {
@@ -41,18 +54,18 @@ describe("msgToOp", () => {
     expect((op as IDeleteOp).eid).toEqual(msg.eid);
   });
 
-  test("returns IMutateOp when bod is valid msgpack", () => {
-    const msgEntBody = {
-      type: "testEntity",
-      body: { key: "value" },
+  test("returns IMutateOp when bod is a valid ent frame", () => {
+    const body = new TextEncoder().encode("value");
+    const bod = entBod({
+      body,
       tags: ["impl:x", "label:y"],
-    };
-    const bod = encode(msgEntBody);
+    });
 
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(2),
       off: 200,
       ctr: 10,
+      typ: "testEntity",
       len: bod.length,
       bod,
     };
@@ -66,15 +79,13 @@ describe("msgToOp", () => {
     expect(mutateOp.ctr).toBe(10);
     expect(mutateOp.eid).toEqual(msg.eid);
     expect(mutateOp.type).toBe("testEntity");
-    expect(mutateOp.body).toEqual({ key: "value" });
+    expect(mutateOp.body).toEqual(body);
     expect(mutateOp.tags).toEqual(["impl:x", "label:y"]);
   });
 
   test("returns IMutateOp type from msg head typ", () => {
-    const msgEntBody = {
-      body: { key: "value" },
-    };
-    const bod = encode(msgEntBody);
+    const body = new TextEncoder().encode("value");
+    const bod = entBod({ body });
 
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(2),
@@ -91,16 +102,16 @@ describe("msgToOp", () => {
     expect(isMutateOp(op)).toBe(true);
     if (!isMutateOp(op)) return;
     expect(op.type).toBe("headType");
-    expect(op.body).toEqual({ key: "value" });
+    expect(op.body).toEqual(body);
   });
 
-  test("returns InvalidMessage when bod is invalid msgpack", () => {
+  test("returns InvalidMessage when bod is a truncated ent frame", () => {
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(3),
       off: 300,
       ctr: 15,
       len: 1,
-      bod: new Uint8Array([0xff]), // Invalid msgpack
+      bod: new Uint8Array([0xff]),
     };
 
     const [op, status] = msgToOp(msg);
@@ -132,16 +143,13 @@ describe("StateManager.apply", () => {
       heard.push("testEntity");
     });
 
-    const msgEntBody = {
-      type: "testEntity",
-      body: { key: "value" },
-    };
-    const bod = encode(msgEntBody);
+    const bod = entBod({ body: new TextEncoder().encode("value") });
 
     const msg: IMessage = {
       eid: new Uint8Array(16).fill(4),
       off: 400,
       ctr: 20,
+      typ: "testEntity",
       len: bod.length,
       bod,
     };
@@ -189,15 +197,12 @@ describe("StateManager.apply", () => {
       len: 0,
     };
 
-    const msgEntBody = {
-      type: "anotherEntity",
-      body: { data: "test" },
-    };
-    const bod = encode(msgEntBody);
+    const bod = entBod({ body: new TextEncoder().encode("test") });
     const mutateMsg: IMessage = {
       eid: new Uint8Array(16).fill(7),
       off: 700,
       ctr: 35,
+      typ: "anotherEntity",
       len: bod.length,
       bod,
     };

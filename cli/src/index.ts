@@ -237,7 +237,6 @@ export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
 }
 
 // Re-exports for convenience in demos
-export { default as msgpack } from "../bun/src/codec.ts";
 export { Decoder } from "../shared/codec.ts";
 export { notifItemCodec } from "../shared/codecs/notifItem.ts";
 export type { IBagNotifItem } from "../shared/codecs/notifItem.ts";

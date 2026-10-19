@@ -56,6 +56,10 @@ When handling security-critical data like private keys, always ensure that they 
 
 Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts yourself. The human must look at these.
 
+## Bytes
+
+Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buffer: bytes outside the view stay reachable on `.buffer`, and wiping either side wipes both. Copy when the caller will zero the source or the result, or when a view would keep secret bytes alive. `Encoder.writeBytes` copies because callers zero seeds and PRF output after encode.
+
 ## Constraints
 
 - Do not use typecasting `x as Type` in TypeScript.

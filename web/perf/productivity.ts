@@ -1,20 +1,20 @@
 // Productivity-app dataset: ~42k msgs / ~6.5k ents (~7 msgs/ent).
-// Body shape: { type: "todo", body: { text, note?, done } } (msgpack).
+// Todo payload: var-string text, var-int done, var-string note (empty = none).
+// That payload is the raw body of an ent frame. typ "todo" is on the msg head.
 
-import {
-  decode as msgpackDecode,
-  encode as msgpackEncode,
-} from "@msgpack/msgpack";
+import { Decoder, Encoder } from "../src/shared/codec";
 import { makeEID } from "../src/shared/codecs/eid";
+import { encodeEnt, entCodec } from "../src/shared/codecs/ent";
 import { Status } from "../src/shared/consts";
 import type { EntityID, ICrypto, IMessage } from "../src/shared/types";
+import type { ValStat } from "../src/shared/valstat";
 
 /** Matches a real productivity dump (~42k msgs → ~6.5k entities). */
 export const PROD_NUM_ENTS = 6500;
 export const PROD_NUM_MSGS = 42_000;
 /** Fixed PRNG seed ("PERF" ascii). */
 export const PROD_SEED = 0x50455246;
-export const PROD_DATASET_VERSION = 1;
+export const PROD_DATASET_VERSION = 2;
 
 /** ~50 actions/day (docs/perf/cases.md productivity model). */
 const MS_PER_ACTION = Math.floor((24 * 60 * 60 * 1000) / 50);
@@ -53,18 +53,12 @@ const NOTE_SNIPS = [
   "waiting on reply",
 ];
 
-export type TodoBody = {
-  text: string;
-  note?: string;
-  done: boolean;
-};
-
 export type ProdMsgRec = {
   /** Packed EntityID bytes. */
   e: Uint8Array;
   off: number;
   ctr: number;
-  /** msgpack of IMsgEntBody<{ text, note?, done }>. */
+  /** Ent frame whose body is the todo payload. */
   b: Uint8Array;
 };
 
@@ -121,15 +115,57 @@ export function msgsPerEntity(
   return per;
 }
 
+// Throws unless the codec write succeeded.
+function mustStatus(st: Status, what: string): void {
+  if (st !== Status.Success) throw new Error(`${what} ${st}`);
+}
+
+// Returns the value, or throws with `what` when the status is not success.
+function take<T>(pair: ValStat<T>, what: string): T {
+  const [v, st] = pair;
+  if (st !== Status.Success) throw new Error(`${what} ${st}`);
+  return v;
+}
+
+// Packs one todo's text, done flag, and optional note.
+function encodeTodoPayload(
+  text: string,
+  done: boolean,
+  note: string | undefined,
+): Uint8Array {
+  const enc = new Encoder();
+  mustStatus(enc.writeVarString(text), "text");
+  mustStatus(enc.writeVarInt(done ? 1 : 0), "done");
+  mustStatus(enc.writeVarString(note ?? ""), "note");
+  return enc.result();
+}
+
+// Wraps a todo payload as an ent message body.
 function encodeTodoBody(
   text: string,
   done: boolean,
   note: string | undefined,
 ): Uint8Array {
-  const body: TodoBody = note === undefined
-    ? { text, done }
-    : { text, note, done };
-  return msgpackEncode({ type: "todo", body });
+  return take(
+    encodeEnt({ body: encodeTodoPayload(text, done, note) }),
+    "encodeEnt",
+  );
+}
+
+// True when the ent frame's todo payload has a non-empty note.
+function todoHasNote(b: Uint8Array): boolean {
+  const outer = new Decoder(b);
+  const [ent, st] = outer.readStruct(entCodec);
+  if (st !== Status.Success) return false;
+  if (ent.body === undefined) return false;
+  const inner = new Decoder(ent.body);
+  const [, s1] = inner.readVarString();
+  if (s1 !== Status.Success) return false;
+  const [, s2] = inner.readVarInt();
+  if (s2 !== Status.Success) return false;
+  const [note, s3] = inner.readVarString();
+  if (s3 !== Status.Success) return false;
+  return note.length > 0;
 }
 
 /**
@@ -243,43 +279,44 @@ export function generateProductivityMsgs(
   return recs;
 }
 
+// Packs the dataset: version, seed, counts, then each rec.
 export function packDataset(file: ProdDatasetFile): Uint8Array {
-  return msgpackEncode(file);
+  const enc = new Encoder();
+  mustStatus(enc.writeVarInt(file.v), "v");
+  mustStatus(enc.writeVarInt(file.seed), "seed");
+  mustStatus(enc.writeVarInt(file.ents), "ents");
+  mustStatus(enc.writeVarInt(file.msgs), "msgs");
+  mustStatus(enc.writeVarInt(file.recs.length), "n");
+  for (const r of file.recs) {
+    mustStatus(enc.writeVarBytes(r.e), "e");
+    mustStatus(enc.writeVarInt(r.off), "off");
+    mustStatus(enc.writeVarInt(r.ctr), "ctr");
+    mustStatus(enc.writeVarBytes(r.b), "b");
+  }
+  return enc.result();
 }
 
+// Reads a dataset packed by packDataset. Rejects other versions.
 export function unpackDataset(bytes: Uint8Array): ProdDatasetFile {
-  const raw = msgpackDecode(bytes);
-  if (typeof raw !== "object" || raw === null) {
-    throw new Error("dataset: not an object");
+  const dec = new Decoder(bytes);
+  const v = take(dec.readVarInt(), "v");
+  if (v !== PROD_DATASET_VERSION) {
+    throw new Error(`dataset: unsupported version ${v}`);
   }
-  const o = raw as Record<string, unknown>;
-  if (o.v !== PROD_DATASET_VERSION) {
-    throw new Error(`dataset: unsupported version ${String(o.v)}`);
-  }
-  if (!Array.isArray(o.recs)) {
-    throw new Error("dataset: missing recs");
-  }
+  const seed = take(dec.readVarInt(), "seed");
+  const ents = take(dec.readVarInt(), "ents");
+  const msgs = take(dec.readVarInt(), "msgs");
+  const n = take(dec.readVarInt(), "n");
   const recs: ProdMsgRec[] = [];
-  for (const r of o.recs) {
-    if (typeof r !== "object" || r === null) throw new Error("bad rec");
-    const row = r as Record<string, unknown>;
-    const e = row.e;
-    const b = row.b;
-    if (!(e instanceof Uint8Array) || !(b instanceof Uint8Array)) {
-      throw new Error("rec e/b must be bytes");
-    }
-    if (typeof row.off !== "number" || typeof row.ctr !== "number") {
-      throw new Error("rec off/ctr must be numbers");
-    }
-    recs.push({ e, off: row.off, ctr: row.ctr, b });
+  for (let i = 0; i < n; i++) {
+    const e = take(dec.readVarBytes(), "e");
+    const off = take(dec.readVarInt(), "off");
+    const ctr = take(dec.readVarInt(), "ctr");
+    const b = take(dec.readVarBytes(), "b");
+    recs.push({ e, off, ctr, b });
   }
-  return {
-    v: PROD_DATASET_VERSION,
-    seed: Number(o.seed),
-    ents: Number(o.ents),
-    msgs: Number(o.msgs),
-    recs,
-  };
+  if (!dec.done()) throw new Error("dataset: trailing bytes");
+  return { v, seed, ents, msgs, recs };
 }
 
 /** Turn dataset records into IMessage values (with body hashes). */
@@ -318,9 +355,7 @@ export function datasetStats(recs: ProdMsgRec[]): {
   for (const r of recs) {
     eids.add(Array.from(r.e).join(","));
     bodyBytes += r.b.length;
-    // Cheap note probe: decode only when needed would be slower; scan for "note" key via decode.
-    const decoded = msgpackDecode(r.b) as { body?: { note?: string } };
-    if (decoded?.body?.note !== undefined) withNote += 1;
+    if (todoHasNote(r.b)) withNote += 1;
   }
   const msgs = recs.length;
   const ents = eids.size;

@@ -39,7 +39,7 @@ if (!text) {
   process.exit(1);
 }
 
-const body = Diplomatic.msgpack.encode(text);
+const body = new TextEncoder().encode(text);
 const stat = await client.upsertSingletonSync("status", body);
 if (stat !== Diplomatic.Status.Success) {
   console.error(`upserting message: ${Diplomatic.Status[stat]}`);
@@ -81,10 +81,10 @@ if (!text) {
 Load the message to record.
 
 ```ts
-const body = Diplomatic.msgpack.encode(text);
+const body = new TextEncoder().encode(text);
 ```
 
-Encode the message as binary, using [msgpack](https://msgpack.org/).
+Encode the message as UTF-8 bytes.
 
 ```ts
 const stat = await client.upsertSingletonSync("status", body);
@@ -134,7 +134,7 @@ const [bag, statBag] = await client.open(peekItem, pullItems[0]);
 if (statBag !== Status.Success) panic(`Opening bag: ${statBag}`);
 const body = bag?.bod;
 if (body) {
-  const text = Diplomatic.msgpack.decode(body);
+  const text = new TextDecoder().decode(body);
   console.log(text);
 }
 ```
@@ -205,7 +205,7 @@ Decrypt and combine the message header and body, forming a "bag".
 ```ts
 const body = bag?.bod;
 if (body) {
-  const text = Diplomatic.msgpack.decode(body);
+  const text = new TextDecoder().decode(body);
   console.log(text);
 }
 ```
@@ -254,7 +254,7 @@ async function handleNotif(item: IBagNotifItem): Promise<Status> {
     return Status.MissingBody;
   }
 
-  const text = Diplomatic.msgpack.decode(body);
+  const text = new TextDecoder().decode(body);
   console.log(text);
 
   return Status.Success;
@@ -342,7 +342,7 @@ async function handleNotif(item: IBagNotifItem): Promise<Status> {
     return Status.MissingBody;
   }
 
-  const text = Diplomatic.msgpack.decode(body);
+  const text = new TextDecoder().decode(body);
   console.log(text);
 
   return Status.Success;
@@ -404,7 +404,6 @@ Now we'll create a web app that displays the status message in real-time.
 5. Edit `src/main.ts` with the code below (or replace it entirely). We'll explain this line-by-line in the next section.
 
 ```ts
-import { decode } from '@msgpack/msgpack'
 import * as Diplomatic from '@interncom/diplomatic'
 
 const msgType = "status";
@@ -425,7 +424,7 @@ export async function register(): Promise<void> {
     const stateMgr = new Diplomatic.SingletonStateManager(msgType)
     stateMgr.on(msgType, () => {
       if (!stateMgr.latest) return;
-      const bodyStr = decode(stateMgr.latest) as string
+      const bodyStr = new TextDecoder().decode(stateMgr.latest)
       localStorage.setItem('status', bodyStr)
       statusDiv.textContent = bodyStr
     })
@@ -490,11 +489,10 @@ export async function register(): Promise<void> {
 ### Code Walkthrough
 
 ```ts
-import { decode } from '@msgpack/msgpack'
 import * as Diplomatic from '@interncom/diplomatic/web'
 ```
 
-Import msgpack for decoding. Import DIPLOMATIC web client.
+Import the DIPLOMATIC web client.
 
 ```ts
 const msgType = "status";
@@ -531,7 +529,7 @@ Get the seed and host URL from the input fields, validating they're provided.
     const stateMgr = new Diplomatic.SingletonStateManager(msgType)
     stateMgr.on(msgType, () => {
       if (!stateMgr.latest) return;
-      const bodyStr = decode(stateMgr.latest) as string
+      const bodyStr = new TextDecoder().decode(stateMgr.latest)
       localStorage.setItem('status', bodyStr)
       statusDiv.textContent = bodyStr
     })

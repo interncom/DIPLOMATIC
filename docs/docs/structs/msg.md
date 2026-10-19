@@ -21,7 +21,7 @@ Typical INSERT overhead is [53 bytes](../api/push#message-head-data-structure-ov
 
 ## Body
 
-For EntDB upserts the body is [msgpack](https://msgpack.org) of `{ body, pid?, tags? }`. `type` is not in the body. Deletes have no body.
+For EntDB upserts the body is an ordered frame: `pid` as var-bytes (empty means absent), a var-int tag count, that many var-strings, then the raw application bytes. `type` is not in the body. Deletes have no body.
 
 `insert` / `update` set `typ` from the op's `type`. `insertRaw` / `updateRaw` take an optional `typ` (default empty).
 

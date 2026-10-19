@@ -14,7 +14,6 @@ import {
   PublicKey,
   PushReceiver,
 } from "../../shared/types.ts";
-import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 import { Clock, MockClock } from "../../shared/clock.ts";
@@ -102,7 +101,7 @@ Deno.test("server", async (t) => {
   });
 
   // Test PUSH
-  const bod = denoMsgpack.encode("test operation data");
+  const bod = new TextEncoder().encode("test operation data");
   const [op1, s1] = await genInsert({ now, bod, crypto: libsodiumCrypto });
   if (s1 !== Status.Success) {
     assertEquals(s1, Status.Success);

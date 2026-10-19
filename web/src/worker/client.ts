@@ -539,14 +539,14 @@ export class WorkerClient implements IClient<URL> {
     return this.local.updateRaw(prior, content, force, typ);
   }
 
-  async insert<T = unknown>(
-    op: IInsertParams<T>,
+  async insert(
+    op: IInsertParams<Uint8Array>,
   ): Promise<ValStat<IMessageHead>> {
     return this.local.insert(op);
   }
 
-  async update<T = unknown>(
-    op: IUpdateParams<T>,
+  async update(
+    op: IUpdateParams<Uint8Array>,
   ): Promise<ValStat<IMessageHead>> {
     return this.local.update(op);
   }

@@ -111,6 +111,21 @@ export class Decoder {
     return ok(str);
   }
 
+  // Reads a var-int count, then that many var-strings.
+  // Each string is at least one byte, so a count past the buffer is invalid.
+  readVarStrings(): ValStat<string[]> {
+    const [n, s1] = this.readVarInt();
+    if (s1 !== Status.Success) return err(s1);
+    if (n < 0 || n > this.remaining()) return err(Status.InvalidMessage);
+    const strs: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const [s, st] = this.readVarString();
+      if (st !== Status.Success) return err(st);
+      strs.push(s);
+    }
+    return ok(strs);
+  }
+
   readBytes(num: number): ValStat<Uint8Array> {
     if (num < 0) {
       return err(Status.InvalidParam);
@@ -157,6 +172,19 @@ export class Decoder {
     return this.pos >= this.data.length;
   }
 
+  // Bytes left after the cursor.
+  remaining(): number {
+    return this.data.length - this.pos;
+  }
+
+  // Views the unread tail and advances to the end.
+  // The view aliases the input, so earlier bytes stay on its buffer.
+  readRest(): Uint8Array {
+    const bytes = this.data.subarray(this.pos);
+    this.pos = this.data.length;
+    return bytes;
+  }
+
   consumed(): number {
     return this.pos;
   }
@@ -188,6 +216,17 @@ export class Encoder {
     const status = this.writeVarInt(bytes.length);
     if (status !== Status.Success) return status;
     this.writeBytes(bytes);
+    return Status.Success;
+  }
+
+  // Writes a var-int count, then that many var-strings.
+  writeVarStrings(strs: string[]): Status {
+    const st = this.writeVarInt(strs.length);
+    if (st !== Status.Success) return st;
+    for (const s of strs) {
+      const s1 = this.writeVarString(s);
+      if (s1 !== Status.Success) return s1;
+    }
     return Status.Success;
   }
 

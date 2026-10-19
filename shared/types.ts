@@ -222,12 +222,6 @@ export interface ICrypto extends IHostCrypto {
   blake3: (data: Uint8Array, opts?: Blake3Opts) => Promise<Hash>;
 }
 
-export interface IMsgpackCodec {
-  encode: (source: unknown) => Uint8Array;
-  decode: (packed: ArrayBuffer | Uint8Array) => unknown;
-  decodeAsync: (stream: ReadableStream<Uint8Array>) => Promise<unknown>;
-}
-
 export interface IProtoHost {
   storage: IStorage;
   crypto: IHostCrypto;

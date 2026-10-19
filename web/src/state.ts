@@ -5,14 +5,14 @@
 // application object ("ent" in EntDB) associated with that eid.
 // StateManager delegates to a pluggable "applier" to do the updates.
 
-import { decode } from "@msgpack/msgpack";
+import { Decoder } from "./shared/codec";
+import { entCodec } from "./shared/codecs/ent";
 import { TypedEventEmitter } from "./shared/events";
 import { Status } from "./shared/consts";
 import {
   EntityID,
   IDeleteOp,
   IMessage,
-  IMsgEntBody,
   IMutateOp,
   IOp,
   IStateManager,
@@ -20,33 +20,9 @@ import {
 import { err, ok, ValStat } from "./shared/valstat";
 import type { Applier } from "./types";
 
-export function isMsgEntBody(bodDec: unknown): bodDec is IMsgEntBody {
-  if (!bodDec) {
-    return false;
-  }
-  if (typeof bodDec !== "object") {
-    return false;
-  }
-  if ("body" in bodDec === false) {
-    return false;
-  }
-  return true;
-}
-
-/** Legacy msgpack bodies stored type in-band; prefer msg head typ. */
-function typeFromBody(bod: unknown): string | undefined {
-  if (bod === null || typeof bod !== "object") return undefined;
-  if (!("type" in bod)) return undefined;
-  const t = bod.type;
-  if (typeof t !== "string") return undefined;
-  return t;
-}
-
+// Turns a message into an ent op. Empty bod is a delete.
 export function msgToOp(msg: IMessage): ValStat<IOp> {
-  // If an IMessage represents an entity update (i.e. it's used in EntDB),
-  // then the bod of the IMessage must be an msgpack-encoded IMsgEntBod.
   if (!msg.bod || msg.bod.length === 0) {
-    // Undefined or empty bod indicates a delete operation.
     const op: IDeleteOp = {
       off: msg.off,
       ctr: msg.ctr,
@@ -54,22 +30,18 @@ export function msgToOp(msg: IMessage): ValStat<IOp> {
     };
     return ok(op);
   }
-  const bodDec = decode(msg.bod);
-  if (isMsgEntBody(bodDec) === false) {
-    console.warn(`msg body invalid`, bodDec);
-    return err(Status.InvalidMessage);
-  }
-  const headTyp = msg.typ ?? "";
-  const type = headTyp.length > 0 ? headTyp : (typeFromBody(bodDec) ?? "");
+  const dec = new Decoder(msg.bod);
+  const [ent, st] = dec.readStruct(entCodec);
+  if (st !== Status.Success) return err(st);
   const op: IMutateOp = {
     off: msg.off,
     ctr: msg.ctr,
     eid: msg.eid,
-    pid: bodDec.pid,
-    tags: bodDec.tags,
-    type,
-    body: bodDec.body,
+    type: msg.typ ?? "",
+    body: ent.body,
   };
+  if (ent.pid !== undefined) op.pid = ent.pid;
+  if (ent.tags !== undefined) op.tags = ent.tags;
   return ok(op);
 }
 

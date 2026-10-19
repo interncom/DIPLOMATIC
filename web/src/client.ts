@@ -1,12 +1,11 @@
 // This is the web client for DIPLOMATIC.
 
-import { encode } from "@msgpack/msgpack";
-
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
+import { encodeEnt } from "./shared/codecs/ent";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import type { IKDM } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
@@ -27,7 +26,6 @@ import {
   IInsertParams,
   IMessage,
   IMessageHead,
-  IMsgEntBody,
   IStateManager,
   ITransport,
   IUpdateParams,
@@ -585,26 +583,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return ok(parts.head);
   }
 
-  public async insert<T = unknown>(op: IInsertParams<T>) {
-    const { body, type, pid, tags } = op;
-    const entBody: IMsgEntBody = { body };
-    if (pid !== undefined) entBody.pid = pid;
-    if (tags !== undefined) entBody.tags = tags;
-    const entBodyEnc = encode(entBody);
-    return this.insertRaw(entBodyEnc, type);
+  public async insert(op: IInsertParams<Uint8Array>) {
+    const [bod, st] = encodeEnt(op);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.insertRaw(bod, op.type);
   }
 
-  public async update<T = unknown>(op: IUpdateParams<T>) {
-    const { prior, body, type, pid, tags, force } = op;
-    const entBody: IMsgEntBody = { body };
-    if (pid !== undefined) entBody.pid = pid;
-    if (tags !== undefined) entBody.tags = tags;
-    const entBodyEnc = encode(entBody);
+  public async update(op: IUpdateParams<Uint8Array>) {
+    const [bod, st] = encodeEnt(op);
+    if (st !== Status.Success) return err<IMessageHead>(st);
     return this.updateRaw(
-      prior,
-      entBodyEnc,
-      force ?? this.forceSkewHandlingByDefault,
-      type,
+      op.prior,
+      bod,
+      op.force ?? this.forceSkewHandlingByDefault,
+      op.type,
     );
   }
 

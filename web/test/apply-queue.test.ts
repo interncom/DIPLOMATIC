@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "vitest";
-import { encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
@@ -271,7 +270,7 @@ describe("SyncClient apply queue", () => {
     await client.setSeed(testEnclave());
     const [head, st] = await client.insert({
       type: "note",
-      body: { t: "hi" },
+      body: new TextEncoder().encode("hi"),
     });
     expect(st).toBe(Status.Success);
     expect(head).toBeDefined();
@@ -288,7 +287,7 @@ describe("SyncClient apply queue", () => {
     const client = makeClient(store, state);
     await client.setSeed(testEnclave());
     const [ins, stIns] = await client.insertRaw(
-      encode({ type: "t", body: 1 }),
+      new Uint8Array([1]),
     );
     expect(stIns).toBe(Status.Success);
     if (!ins) throw new Error("missing head");
@@ -297,7 +296,7 @@ describe("SyncClient apply queue", () => {
     if (!prior) throw new Error("missing prior");
     const [up, stUp] = await client.updateRaw(
       prior,
-      encode({ type: "t", body: 2 }),
+      new Uint8Array([2]),
     );
     expect(stUp).toBe(Status.Success);
     expect(up).toBeDefined();
@@ -335,7 +334,7 @@ describe("SyncClient apply queue", () => {
     await client.setSeed(testEnclave());
     await client.link(host, false);
     expect(await store.uploads.count()).toBe(0);
-    await client.insertRaw(encode({ type: "t", body: "x" }));
+    await client.insertRaw(new Uint8Array([3]));
     expect(await store.uploads.count()).toBe(1);
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
   });
@@ -361,7 +360,7 @@ describe("SyncClient apply queue", () => {
       { handle: lpcHost, label: "h", idx: 0 },
       false,
     );
-    await client.insertRaw(encode({ type: "t", body: "x" }));
+    await client.insertRaw(new Uint8Array([3]));
     // App rejected the msg — do not push to hosts; terminal → not pending.
     expect(await store.uploads.count()).toBe(0);
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
@@ -392,7 +391,7 @@ describe("SyncClient apply queue", () => {
       { handle: lpcHost, label: "h", idx: 0 },
       false,
     );
-    await client.insertRaw(encode({ type: "t", body: "x" }));
+    await client.insertRaw(new Uint8Array([3]));
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
     expect(await store.uploads.count()).toBe(1);
   });
@@ -436,7 +435,7 @@ describe("SyncClient apply queue", () => {
       msgs.map(() => Status.InvalidMessage)
     );
     const client = makeClient(store, state);
-    await client.insertRaw(encode({ type: "t", body: "poison" }));
+    await client.insertRaw(new Uint8Array([4]));
     expect(await client.countMsgs(APLD_ERROR)).toBe(1);
     expect(await client.countMsgs(APLD_PENDING)).toBe(0);
     const failed = await client.listMsgs({ apld: APLD_ERROR });
@@ -583,7 +582,7 @@ describe("SyncClient apply queue", () => {
 
     await Promise.all([
       client.drainApplyQueue(),
-      client.insertRaw(encode({ type: "t", body: 1 })),
+      client.insertRaw(new Uint8Array([1])),
     ]);
     expect(maxMark).toBe(1);
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
@@ -596,7 +595,7 @@ describe("SyncClient apply queue", () => {
     );
     const client = makeClient(store, state);
     await client.setSeed(testEnclave());
-    await client.insertRaw(encode({ type: "t", body: 1 }));
+    await client.insertRaw(new Uint8Array([1]));
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(1);
     // Retry drain still fails and stays pending (non-terminal)
     const stats = await client.drainApplyQueue();
@@ -611,7 +610,7 @@ describe("SyncClient apply queue", () => {
     );
     const client = makeClient(store, state);
     await client.setSeed(testEnclave());
-    await client.insertRaw(encode({ type: "t", body: 1 }));
+    await client.insertRaw(new Uint8Array([1]));
     expect(await store.messages.list({ apld: APLD_PENDING })).toHaveLength(0);
     const listed = Array.from(await store.messages.list());
     expect(listed[0].err).toBe(Status.InvalidMessage);

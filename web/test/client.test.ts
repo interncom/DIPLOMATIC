@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "vitest";
-import { decode, encode } from "@msgpack/msgpack";
 import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import { Enclave } from "../src/shared/crypto/enclave";
@@ -20,7 +19,8 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
 import { EncodedMessage } from "../src/shared/message";
 import { bytesEqual } from "../src/shared/binary";
-import { Encoder } from "../src/shared/codec";
+import { Decoder, Encoder } from "../src/shared/codec";
+import { entCodec } from "../src/shared/codecs/ent";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import {
   APLD_APPLIED,
@@ -226,9 +226,10 @@ describe("Client", () => {
 
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(3)));
       // No host link: local-only archive.
+      const rebuild = new TextEncoder().encode("rebuild-me");
       await client.insert({
         type: "todo",
-        body: { text: "rebuild-me" },
+        body: rebuild,
       });
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
@@ -248,7 +249,7 @@ describe("Client", () => {
       const [after, afterStat] = await entDB.getEntities({ type: "todo" });
       expect(afterStat).toBe(Status.Success);
       expect(after?.length).toBe(1);
-      expect(after?.[0].body).toEqual({ text: "rebuild-me" });
+      expect(after?.[0].body).toEqual(rebuild);
       // Archive preserved.
       expect(Array.from(await store.messages.list()).length).toBe(1);
     });
@@ -303,7 +304,7 @@ describe("Client", () => {
 
       const [head, stIns] = await client.insert({
         type: "todo",
-        body: { text: "undead?" },
+        body: new TextEncoder().encode("undead?"),
       });
       expect(stIns).toBe(Status.Success);
       if (!head) throw new Error("insert head");
@@ -418,7 +419,7 @@ describe("Client", () => {
 
       await client.insert({
         type: "todo",
-        body: { text: "hi" },
+        body: new TextEncoder().encode("hi"),
       });
 
       const [before, beforeStat] = await entDB.getEntities({ type: "todo" });
@@ -490,9 +491,10 @@ describe("Client", () => {
       const { store, client } = await createClient({
         now: () => new Date(1234567890000),
       });
+      const milk = new TextEncoder().encode("milk");
       const [head, st] = await client.insert({
         type: "todo",
-        body: { text: "milk" },
+        body: milk,
       });
       expect(st).toBe(Status.Success);
       expect(head?.typ).toBe("todo");
@@ -502,8 +504,11 @@ describe("Client", () => {
       const bod = messages[0].body;
       expect(bod).toBeDefined();
       if (!bod) return;
-      const decoded = decode(bod);
-      expect(decoded).toEqual({ body: { text: "milk" } });
+      const dec = new Decoder(bod);
+      const [ent, stEnt] = dec.readStruct(entCodec);
+      expect(stEnt).toBe(Status.Success);
+      if (stEnt !== Status.Success) return;
+      expect(ent.body).toEqual(milk);
     });
   });
 
@@ -721,12 +726,13 @@ describe("Client", () => {
       const notifies: string[][] = [];
       cache.subscribe((types) => notifies.push([...types]));
 
-      const pIns = client.insert({ type: "todo", body: { text: "a" } });
+      const a = new TextEncoder().encode("a");
+      const pIns = client.insert({ type: "todo", body: a });
       await waitNotifies(notifies, 1);
       expect(notifies[0]).toContain("todo");
       const [afterIns] = await cache.getEntities({ type: "todo" });
       expect(afterIns).toHaveLength(1);
-      expect(afterIns?.[0]?.body).toEqual({ text: "a" });
+      expect(afterIns?.[0]?.body).toEqual(a);
       expect(Array.from(await store.messages.list()).length).toBe(0);
 
       releaseAdd();
@@ -768,9 +774,15 @@ describe("Client", () => {
       const notifies: string[][] = [];
       cache.subscribe((types) => notifies.push([...types]));
 
-      const p1 = client.insert({ type: "todo", body: { text: "a" } });
+      const p1 = client.insert({
+        type: "todo",
+        body: new TextEncoder().encode("a"),
+      });
       await waitNotifies(notifies, 1);
-      const p2 = client.insert({ type: "todo", body: { text: "b" } });
+      const p2 = client.insert({
+        type: "todo",
+        body: new TextEncoder().encode("b"),
+      });
       await waitNotifies(notifies, 2);
       const [after] = await cache.getEntities({ type: "todo" });
       expect(after).toHaveLength(2);

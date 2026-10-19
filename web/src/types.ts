@@ -469,8 +469,8 @@ export interface IClient<Handle extends HostHandle> {
     force?: boolean,
     typ?: string,
   ): Promise<ValStat<IMessageHead>>;
-  insert<T = unknown>(op: IInsertParams<T>): Promise<ValStat<IMessageHead>>;
-  update<T = unknown>(op: IUpdateParams<T>): Promise<ValStat<IMessageHead>>;
+  insert(op: IInsertParams<Uint8Array>): Promise<ValStat<IMessageHead>>;
+  update(op: IUpdateParams<Uint8Array>): Promise<ValStat<IMessageHead>>;
   /**
    * Delete by `{ prior }` (preferred) or `{ eid }` (archive lookup).
    */

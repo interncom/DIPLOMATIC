@@ -569,6 +569,36 @@ Deno.test("readVarString insufficient data for string", () => {
   assertEquals(str, undefined);
 });
 
+Deno.test("writeVarStrings count then strings", () => {
+  const enc = new Encoder();
+  const st = enc.writeVarStrings(["a", "bb"]);
+  assertEquals(st, Status.Success);
+  assertEquals(enc.result(), new Uint8Array([2, 1, 0x61, 2, 0x62, 0x62]));
+
+  const empty = new Encoder();
+  assertEquals(empty.writeVarStrings([]), Status.Success);
+  assertEquals(empty.result(), new Uint8Array([0]));
+});
+
+Deno.test("readVarStrings count then strings", () => {
+  const enc = new Encoder();
+  enc.writeVarStrings(["a", "bb"]);
+  const dec = new Decoder(enc.result());
+  const [strs, st] = dec.readVarStrings();
+  assertEquals(st, Status.Success);
+  assertEquals(strs, ["a", "bb"]);
+  assertEquals(dec.done(), true);
+
+  const noneDec = new Decoder(new Uint8Array([0]));
+  const [none, s0] = noneDec.readVarStrings();
+  assertEquals(s0, Status.Success);
+  assertEquals(none, []);
+
+  const over = new Decoder(new Uint8Array([0x05]));
+  const [, so] = over.readVarStrings();
+  assertEquals(so, Status.InvalidMessage);
+});
+
 Deno.test("integration writeVarString with other methods", () => {
   const enc = new Encoder();
   enc.writeBigInt(42n);

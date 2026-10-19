@@ -48,10 +48,10 @@
 // the first list would hide every other row of that type until restart.
 // Unknown durable tombstones are corrected on reconcile, not before notify.
 
-import { encode } from "@msgpack/msgpack";
 import { btob64, bytesEqual } from "../shared/binary";
 import { Status } from "../shared/consts";
 import { EntityID, Hash, ICrypto, IOp } from "../shared/types";
+import { objEq } from "../objEq";
 import { err, ok, ValStat } from "../shared/valstat";
 import {
   applyOp,
@@ -571,11 +571,7 @@ function sameBody(a: unknown, b: unknown): boolean {
   if (a instanceof Date && b instanceof Date) {
     return a.getTime() === b.getTime();
   }
-  try {
-    return bytesEqual(encode(a), encode(b));
-  } catch {
-    return false;
-  }
+  return objEq(a, b);
 }
 
 function rowWins(a: IEntRow, b: IEntRow): boolean {

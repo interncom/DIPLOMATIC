@@ -1,4 +1,3 @@
-import { decode } from '@msgpack/msgpack'
 import * as Diplomatic from '@interncom/diplomatic'
 
 const msgType = "status";
@@ -19,7 +18,7 @@ export async function register(): Promise<void> {
     const stateMgr = new Diplomatic.SingletonStateManager(msgType)
     stateMgr.on(msgType, () => {
       if (!stateMgr.latest) return;
-      const bodyStr = decode(stateMgr.latest) as string
+      const bodyStr = new TextDecoder().decode(stateMgr.latest)
       localStorage.setItem('status', bodyStr)
       statusDiv.textContent = bodyStr
     })

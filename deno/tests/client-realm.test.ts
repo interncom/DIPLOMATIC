@@ -2,7 +2,7 @@
 
 import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { bytesEqual } from "../../shared/binary.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI, { hostBagMgrs } from "../../shared/client.ts";
 import { Clock } from "../../shared/clock.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { authTimestampCodec } from "../../shared/codecs/authTimestamp.ts";
@@ -95,17 +95,18 @@ Deno.test("client realm kdm", async () => {
   };
   const hostKDM: IKDM = { label: host.label, index: 0 };
   const sent: Uint8Array[] = [];
+  const [bagMgrs, mst] = await hostBagMgrs(enclave, hostKDM, [nullKDM, inbox]);
+  if (mst !== Status.Success) throw new Error(`bagMgrs ${mst}`);
   const client = new DiplomaticClientAPI(
-    enclave,
+    bagMgrs,
     libsodiumCrypto,
-    host,
     new Clock(),
     transport(sent),
     () => Promise.resolve(Status.Success),
   );
 
-  const [home, hs] = await enclave.hostRlm(nullKDM, hostKDM);
-  const [box, bs] = await enclave.hostRlm(inbox, hostKDM);
+  const [home, hs] = await client.hostRlm();
+  const [box, bs] = await client.hostRlm(inbox);
   if (hs !== Status.Success || bs !== Status.Success) {
     throw new Error(`rlm ${hs} ${bs}`);
   }
@@ -141,26 +142,27 @@ Deno.test("client realm kdm", async () => {
   assert(bytesEqual(bag.rlm, box));
 
   const [id, ist] = await client.identity();
-  if (ist !== Status.Success || id === undefined) throw new Error(`id ${ist}`);
+  if (ist !== Status.Success) throw new Error(`id ${ist}`);
   const verifyKey = await libsodiumCrypto.importVerifyKey(id.publicKey);
+  const boxBagMgr = client.bagMgrFor(inbox);
+  const homeBagMgr = client.bagMgrFor(nullKDM);
+  if (boxBagMgr === undefined || homeBagMgr === undefined) {
+    throw new Error("bagMgr");
+  }
   const item = { seq: 1, headCph: peekHead(bag) };
   const [opened, ost] = await decryptPeekItem(
     item,
     verifyKey,
-    enclave,
+    boxBagMgr,
     libsodiumCrypto,
-    bag.rlm,
-    inbox,
   );
   assertEquals(ost, Status.Success);
   assert(opened !== undefined && opened.headEnc.length > 0);
   const [, wrong] = await decryptPeekItem(
     item,
     verifyKey,
-    enclave,
+    homeBagMgr,
     libsodiumCrypto,
-    bag.rlm,
-    nullKDM,
   );
   assert(wrong !== Status.Success);
 });

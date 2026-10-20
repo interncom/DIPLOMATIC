@@ -7,8 +7,6 @@ GENERAL
 - Fix `// TODO:` in codebase
 
 ARCH
-- use codec in EntDB message body for all but application-specific portion, and for that, use an app-provided codec (msgpack) can avoid msgpack dependency
-
 CLIENT
 - client override server skewed push rejection by adjusting local timestamp with host offset (no API change necessary)
 - determine if it's a risk to allow arbitrary labels upon import (could be used to induce client to derive the keys necessary to hack a targeted host). maybe possible to compute only the pubkey without the privkey? could do that all within Enclave at least and only expose the pubKey

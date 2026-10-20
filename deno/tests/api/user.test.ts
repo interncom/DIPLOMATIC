@@ -3,7 +3,7 @@ import { userEnd } from "../../../shared/api/user.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../../shared/consts.ts";
-import type { Identity } from "../../../shared/crypto/enclave.ts";
+import type { BagManager } from "../../../shared/crypto/bagman.ts";
 import {
   createMockHost,
   createMockHostOutOfSync,
@@ -16,7 +16,7 @@ const mockHost = createMockHost({ clock: mockClockForPush });
 
 Deno.test("userEnd.encodeReq", () => {
   const client = {}; // Mock, not used
-  const keys = {} as Identity; // Mock, not used
+  const keys = {} as BagManager; // Mock, not used
   const tsAuth = createTestAuthTimestamp(
     testPubKeyAlt,
     new Date("2023-01-01T00:00:00.000Z"),

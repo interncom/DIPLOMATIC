@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI, { hostBagMgrs } from "../../shared/client.ts";
 import { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 import { Status } from "../../shared/consts.ts";
@@ -9,21 +9,20 @@ import memStorage from "../../shared/storage/memory.ts";
 import {
   ICrypto,
   IProtoHost,
+  IPushNotifier,
   IPushOpenResponse,
-  IWebSocketPushNotifier,
   PublicKey,
   PushReceiver,
 } from "../../shared/types.ts";
-import denoMsgpack from "../src/codec.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
 import { Clock, MockClock } from "../../shared/clock.ts";
 import { Encoder } from "../../shared/codec.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
+import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { HTTPTransport } from "../../shared/http.ts";
 import { IHostConnectionInfo } from "../../shared/types.ts";
-import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 
 // Server config.
 const port = 3331;
@@ -35,7 +34,7 @@ if (est !== Status.Success || enclave === undefined) {
   throw new Error(`enclave ${est}`);
 }
 
-class MockPushNotifier implements IWebSocketPushNotifier {
+class MockPushNotifier implements IPushNotifier {
   handle(_host: IProtoHost, _request: Request): Promise<Response> {
     return Promise.resolve(new Response());
   }
@@ -84,10 +83,14 @@ Deno.test("server", async (t) => {
   };
   const wsURL = new URL(hostURL);
   wsURL.protocol = hostURL.protocol === "https" ? "wss" : "ws";
+  const [bagMgrs, mst] = await hostBagMgrs(enclave, {
+    label: host.label,
+    index: host.idx ?? 0,
+  });
+  if (mst !== Status.Success) throw new Error(`bagMgrs ${mst}`);
   const client = new DiplomaticClientAPI(
-    enclave,
+    bagMgrs,
     libsodiumCrypto,
-    host,
     clock,
     new HTTPTransport(host.handle),
     () => Promise.resolve(Status.Success),
@@ -98,7 +101,7 @@ Deno.test("server", async (t) => {
   });
 
   // Test PUSH
-  const bod = denoMsgpack.encode("test operation data");
+  const bod = new TextEncoder().encode("test operation data");
   const [op1, s1] = await genInsert({ now, bod, crypto: libsodiumCrypto });
   if (s1 !== Status.Success) {
     assertEquals(s1, Status.Success);

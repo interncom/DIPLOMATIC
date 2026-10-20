@@ -91,6 +91,11 @@ export class WorkerClient implements IClient<URL> {
   private store: IStore<URL>;
   /** Main-thread writer: msg archive + local apply for fast UI. */
   private local: SyncClient<URL>;
+  // Main-thread writer's blob methods, bound so `this` stays that client.
+  insertBlob: IClient<URL>["insertBlob"];
+  updateBlob: IClient<URL>["updateBlob"];
+  deleteBlob: IClient<URL>["deleteBlob"];
+  readBlob: IClient<URL>["readBlob"];
   private nextId = 1;
   private pending = new Map<number, Pending>();
   /** Max wait for setSeed worker handshake. */
@@ -151,6 +156,10 @@ export class WorkerClient implements IClient<URL> {
         this.scheduledSync.schedule();
       },
     );
+    this.insertBlob = this.local.insertBlob.bind(this.local);
+    this.updateBlob = this.local.updateBlob.bind(this.local);
+    this.deleteBlob = this.local.deleteBlob.bind(this.local);
+    this.readBlob = this.local.readBlob.bind(this.local);
 
     // Local apply enqueues uploads on the shared store and emits local.xferState.
     // The UI listens to this façade; without forwarding, offline writes never
@@ -539,14 +548,14 @@ export class WorkerClient implements IClient<URL> {
     return this.local.updateRaw(prior, content, force, typ);
   }
 
-  async insert<T = unknown>(
-    op: IInsertParams<T>,
+  async insert(
+    op: IInsertParams<Uint8Array>,
   ): Promise<ValStat<IMessageHead>> {
     return this.local.insert(op);
   }
 
-  async update<T = unknown>(
-    op: IUpdateParams<T>,
+  async update(
+    op: IUpdateParams<Uint8Array>,
   ): Promise<ValStat<IMessageHead>> {
     return this.local.update(op);
   }

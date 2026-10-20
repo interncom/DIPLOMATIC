@@ -4,12 +4,13 @@ import { makeAuthTimestamp } from "./auth.ts";
 import { sealBag } from "./bag.ts";
 import { IClock, offset } from "./clock.ts";
 import { Encoder } from "./codec.ts";
-import type { IKDM } from "./codecs/kdm.ts";
+import { type IKDM, kdmEq } from "./codecs/kdm.ts";
 import type { IBagPeekItem } from "./codecs/peekItem.ts";
 import type { IBagPullItem } from "./codecs/pullItem.ts";
 import { respHeadCodec } from "./codecs/respHead.ts";
 import { APICallName, Status } from "./consts.ts";
-import { Enclave, type Identity } from "./crypto/enclave.ts";
+import type { BagManager } from "./crypto/bagman.ts";
+import type { Enclave } from "./crypto/enclave.ts";
 import { type HostRlm, nullKDM } from "./crypto/derivation.ts";
 import { IAuthenticatedEndpoint } from "./endpoint.ts";
 import { api } from "./http.ts";
@@ -17,23 +18,40 @@ import type {
   HostHandle,
   IBag,
   ICrypto,
-  IHostConnectionInfo,
   IHostMetadata,
   IMessage,
   ITransport,
   PushReceiver,
 } from "./types.ts";
-import { err, ValStat } from "./valstat.ts";
+import { err, ok, ValStat } from "./valstat.ts";
+
+// One manager per realm for this identity. The default realm is nullKDM.
+export async function hostBagMgrs(
+  enclave: Enclave,
+  idKDM: IKDM,
+  realms: readonly IKDM[] = [nullKDM],
+): Promise<ValStat<BagManager[]>> {
+  const out: BagManager[] = [];
+  for (const realm of realms) {
+    const [bagMgr, st] = await enclave.bagman(idKDM, realm);
+    if (st !== Status.Success) return err(st);
+    out.push(bagMgr);
+  }
+  return ok(out);
+}
 
 export default class DiplomaticClientAPI<Handle extends HostHandle> {
+  #bagMgrs: BagManager[];
+
   constructor(
-    public enclave: Enclave,
+    bagMgrs: BagManager[],
     public crypto: ICrypto,
-    private host: IHostConnectionInfo<Handle>,
     public clock: IClock,
     private transport: ITransport,
     private updateHostMeta: (meta: IHostMetadata) => Promise<Status>,
-  ) {}
+  ) {
+    this.#bagMgrs = bagMgrs;
+  }
 
   private async call<ReqInput, Resp>(
     apiCall: {
@@ -101,27 +119,44 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     return respVS;
   }
 
-  // Host KDM for this connection. A missing index is 0.
-  #hostKDM(): IKDM {
-    return { label: this.host.label, index: this.host.idx ?? 0 };
+  // bagMgr for `realm` on this host. The default realm is nullKDM.
+  bagMgrFor(realm: IKDM = nullKDM): BagManager | undefined {
+    return this.#bagMgrs.find((bagMgr) => kdmEq(realm, bagMgr.realmKDM));
   }
 
-  identity = (): Promise<ValStat<Identity>> =>
-    this.enclave.deriveIdentity(this.#hostKDM());
+  // bagMgrs this connection can seal and open.
+  bagMgrs(): readonly BagManager[] {
+    return this.#bagMgrs;
+  }
+
+  // Keeps `bagMgr` unless this realm is already present.
+  add(bagMgr: BagManager): void {
+    if (this.bagMgrFor(bagMgr.realmKDM) !== undefined) return;
+    this.#bagMgrs.push(bagMgr);
+  }
+
+  // BagManager for this host. The null realm when present, otherwise any.
+  identity = (): Promise<ValStat<BagManager>> => {
+    const home = this.bagMgrFor(nullKDM) ?? this.#bagMgrs[0];
+    if (home === undefined) return Promise.resolve(err(Status.NotFound));
+    return Promise.resolve(ok(home));
+  };
 
   // HostRLM for `realm` on this host. The default realm is nullKDM.
-  hostRlm = (realm: IKDM = nullKDM): Promise<ValStat<HostRlm>> =>
-    this.enclave.hostRlm(realm, this.#hostKDM());
+  hostRlm = (realm: IKDM = nullKDM): Promise<ValStat<HostRlm>> => {
+    const bagMgr = this.bagMgrFor(realm);
+    if (bagMgr === undefined) return Promise.resolve(err(Status.NotFound));
+    return Promise.resolve(ok(bagMgr.rlm));
+  };
 
   // Seals `msg` for `realm` on this host. The default realm is nullKDM.
   seal = async (
     msg: IMessage,
     realm: IKDM = nullKDM,
   ): Promise<ValStat<IBag>> => {
-    const { crypto, enclave } = this;
-    const [id, st] = await this.identity();
-    if (st !== Status.Success) return err(st);
-    return sealBag(msg, id, crypto, enclave, this.#hostKDM(), realm);
+    const bagMgr = this.bagMgrFor(realm);
+    if (bagMgr === undefined) return err(Status.NotFound);
+    return sealBag(msg, bagMgr, this.crypto);
   };
 
   register = () => this.call(api.user, undefined);

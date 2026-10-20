@@ -4,17 +4,23 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { btoh, bytesEqual, htob } from "../../shared/binary.ts";
 import { Status } from "../../shared/consts.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { blake3 } from "../../shared/crypto/noble.ts";
 import { asSealedMasterKey } from "../../shared/seed.ts";
+import { applyTtyChunk, emptyMix, MIN_KEYS, takeMusec } from "./musec.ts";
 
 export const CLI_RP_ID = "diplomatic";
 export const CLI_USER = "diplomatic-cli";
 const SALT_DOM = new TextEncoder().encode("diplomatic.cli.prf.v1");
-const MIN_KEYS = 16;
 const KEYRING_MAX = 8;
 
 export type CliEntry = {
@@ -76,10 +82,14 @@ function hexField(
   n?: number,
 ): Uint8Array {
   const v = o[k];
-  if (typeof v !== "string" || !/^[0-9a-fA-F]+$/.test(v) || v.length % 2 !== 0) {
+  if (
+    typeof v !== "string" || !/^[0-9a-fA-F]+$/.test(v) || v.length % 2 !== 0
+  ) {
     die(`bad binding field ${k}`);
   }
-  if (n !== undefined && v.length !== n * 2) die(`bad binding field ${k} length`);
+  if (n !== undefined && v.length !== n * 2) {
+    die(`bad binding field ${k} length`);
+  }
   return htob(v);
 }
 
@@ -131,7 +141,7 @@ export async function persistNewLabel(
   console.error(`Using ${dev}`);
   const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
   const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
-  const [sealed, sst] = await enc.sealWithIkm(ikm);
+  const [sealed, sst] = await enc.sealWithIKM(ikm);
   if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
   upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
   writeRing(path, ring);
@@ -236,7 +246,9 @@ export function makeHmacCred(
       : "Touch the key / enter PIN to create a resident PRF credential...",
   );
   const out = runFido(argv, input);
-  const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const lines = out.split("\n").map((l) => l.trim()).filter((l) =>
+    l.length > 0
+  );
   const idLine = lines[4];
   if (idLine === undefined) die("fido2-cred: no credential id");
   const id = b64pad(idLine);
@@ -247,7 +259,9 @@ export function makeHmacCred(
 }
 
 function parseHmacOut(out: string): Uint8Array | undefined {
-  const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const lines = out.split("\n").map((l) => l.trim()).filter((l) =>
+    l.length > 0
+  );
   for (let i = 4; i < lines.length; i++) {
     const line = lines[i];
     if (line === undefined) continue;
@@ -293,66 +307,58 @@ export function evalHmac(
 
 /** Collect keystroke timings from a TTY (musec for Enclave.fromRandom). */
 export async function collectMusec(): Promise<Uint8Array> {
-  console.error(`Type random keys, then Enter (${MIN_KEYS}+ keys).`);
+  console.error(
+    `Type random keys, unevenly, then Enter (${MIN_KEYS}+ keys).`,
+  );
   return await readKeys(MIN_KEYS);
 }
 
-/** Collect keystroke timings from a TTY until Enter. */
+// Normalizes one stdin chunk to bytes.
+function asBytes(buf: Buffer | string): Uint8Array {
+  if (typeof buf === "string") return new TextEncoder().encode(buf);
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+// Reads human keystrokes. Bracketed paste is armed so a paste is one region.
 async function readKeys(min: number): Promise<Uint8Array> {
   const stdin = process.stdin;
   if (!stdin.isTTY) die("gen needs a TTY for keystroke entropy");
+  const st = emptyMix(min);
   stdin.setRawMode(true);
   stdin.resume();
-  const chunks: number[] = [];
-  let n = 0;
+  let aborted = false;
   try {
+    writeSync(stdin.fd, "\x1b[?2004h");
     await new Promise<void>((resolve, reject) => {
       const onData = (buf: Buffer | string) => {
-        const bytes = typeof buf === "string"
-          ? new TextEncoder().encode(buf)
-          : new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-        for (let i = 0; i < bytes.byteLength; i++) {
-          const c = bytes[i];
-          if (c === undefined) continue;
-          if (c === 3) {
-            stdin.off("data", onData);
-            reject(new Error("aborted"));
-            return;
-          }
-          if (c === 13 || c === 10) {
-            if (n < min) {
-              process.stderr.write(` (${min - n} more)\n`);
-              continue;
-            }
-            stdin.off("data", onData);
-            resolve();
-            return;
-          }
-          if (c === 127 || c === 8) continue;
-          const now = BigInt(Math.floor(performance.now() * 1e6));
-          chunks.push(Number((now >> 56n) & 0xffn));
-          chunks.push(Number((now >> 48n) & 0xffn));
-          chunks.push(Number((now >> 40n) & 0xffn));
-          chunks.push(Number((now >> 32n) & 0xffn));
-          chunks.push(Number((now >> 24n) & 0xffn));
-          chunks.push(Number((now >> 16n) & 0xffn));
-          chunks.push(Number((now >> 8n) & 0xffn));
-          chunks.push(Number(now & 0xffn));
-          chunks.push(c);
-          n++;
-          process.stderr.write(".");
+        const r = applyTtyChunk(st, asBytes(buf), performance.now());
+        if (r === "abort") {
+          stdin.off("data", onData);
+          reject(new Error("aborted"));
+          return;
         }
+        if (r === "done") {
+          stdin.off("data", onData);
+          resolve();
+          return;
+        }
+        if (r !== "") process.stderr.write(r);
       };
       stdin.on("data", onData);
     });
   } catch {
-    die("aborted");
+    aborted = true;
   } finally {
     stdin.setRawMode(false);
     stdin.pause();
+    writeSync(stdin.fd, "\x1b[?2004l");
+  }
+  if (aborted) {
+    takeMusec(st).fill(0);
+    die("aborted");
   }
   process.stderr.write("\n");
-  return new Uint8Array(chunks);
+  return takeMusec(st);
 }
 
 /** UV-eval each keyring cred until one unseals. */
@@ -366,7 +372,7 @@ export async function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
     if (sst !== Status.Success || sm === undefined) continue;
     const ikm = tryEvalHmac(dev, ring.rpId, e.credId, ring.salt);
     if (ikm === undefined) continue;
-    const [enc, est] = await Enclave.unsealWithIkm(sm, ikm);
+    const [enc, est] = await Enclave.unsealWithIKM(sm, ikm);
     if (est === Status.Success && enc !== undefined) return enc;
   }
   die("no keyring entry unsealed (wrong YubiKey?)");

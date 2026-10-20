@@ -26,7 +26,7 @@ async function handleNotif(item: IBagNotifItem): Promise<Status> {
     return Status.MissingBody;
   }
 
-  const text = Diplomatic.msgpack.decode(body);
+  const text = new TextDecoder().decode(body);
   console.log(text);
 
   return Status.Success;

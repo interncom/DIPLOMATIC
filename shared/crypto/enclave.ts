@@ -1,6 +1,6 @@
-// Enclave is the sole long-lived holder of the master seed — a one-way door.
-// Public methods are locked after the class (non-writable, non-configurable)
-// so they cannot be replaced after load.
+// Enclave is the outer layer. InnerEnclave holds the master seed and is not
+// exported. Public methods are locked after the class (non-writable,
+// non-configurable) so they cannot be replaced after load.
 //
 // IRON LAW — never break these:
 //   1. Never return unencrypted seed (or seed-bearing plaintext wire) to callers.
@@ -11,12 +11,14 @@
 //      that handoff is pinned in web/test/enclave.test.ts. sealPair returns
 //      the pair key; Enclave encrypts the seed wire. crypto/prf.ts seal and
 //      unseal ceremonies return PRF IKM; Enclave seals, unseals, and wipes it.
-//      Do not export a seed helper for outer layers.
+//      Do not export a seed helper. Inner returns derived bytes or a status.
 //
-// Callers may receive only: derived public handles (Identity, ciphers), AEAD
+// Callers may receive only: BagManager (one identity and one realm), AEAD
 // ciphertext, Status/booleans, and new Enclave instances from factories.
+// bagman copies an Identity PDK (from the master seed), a realm key, and an rlm out. bagman.ts
+// never receives the seed.
 //
-// dumpToTty (paper): 8×8 hex to /dev/tty, Status only. Fail closed: the write
+// dumpToTTY (paper): 8×8 hex to /dev/tty, Status only. Fail closed: the write
 // runs only when DIP_CLI_DUMP is defined and true. Keep
 // `typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP` inlined in the method.
 // The write itself is crypto/tty.ts, imported only inside that branch so a
@@ -37,98 +39,51 @@
 // fill(0)'d before return. JS cannot OPENSSL_cleanse, but an uncleared buffer
 // is a standing copy a heap dump can steal without another UV.
 
+import type { BundleHost } from "../codecs/bundleHost.ts";
+import type { IKDM } from "../codecs/kdm.ts";
+import type { MasterSeed, SealedMasterKey } from "../seed.ts";
+import type { ValStat } from "../valstat.ts";
+import type { PDK } from "./derivation.ts";
+import type { DHKEReq, DHKEResp } from "./pairing.ts";
+import type {
+  LargeBlobCreateOpts,
+  LargeBlobRp,
+} from "../webauthn/largeBlob.ts";
+import type {
+  BindPrior,
+  PasskeyPrfOpts,
+  PrfBinding,
+  PrfBound,
+  PrfSealedMaster,
+} from "./prf.ts";
 import { concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
-import type { BundleHost } from "../codecs/bundleHost.ts";
-import type { IKDM } from "../codecs/kdm.ts";
-import { kdmBytes, Status } from "../consts.ts";
-import {
-  asSealedMasterKey,
-  MASTER_SEED_LEN,
-  type MasterSeed,
-  type SealedMasterKey,
-} from "../seed.ts";
-import type { DerivationSeed, KeyPair, PublicKey } from "../types.ts";
-import { err, ok, type ValStat } from "../valstat.ts";
-import {
-  deriveKey,
-  type HostRlm,
-  nullKDM,
-  type PDK,
-  Purpose,
-} from "./derivation.ts";
+import { Status } from "../consts.ts";
+import { asSealedMasterKey, MASTER_SEED_LEN } from "../seed.ts";
+import { err, ok } from "../valstat.ts";
+import { deriveKey, nullKDM, Purpose } from "./derivation.ts";
 import {
   blake3,
   decryptXSalsa20Poly1305Combined,
-  deriveEd25519KeyPair,
   encryptXSalsa20Poly1305Combined,
   gen256BitSecureRandomSeed,
-  signEd25519,
 } from "./noble.ts";
-import {
-  asDHKEResp,
-  type DHKEReq,
-  type DHKEResp,
-  PairRequest,
-  sealPair,
-} from "./pairing.ts";
-import {
-  type LargeBlobCreateOpts,
-  largeBlobRead,
-  type LargeBlobRp,
-} from "../webauthn/largeBlob.ts";
+import { asDHKEResp, PairRequest, sealPair } from "./pairing.ts";
+import { largeBlobRead } from "../webauthn/largeBlob.ts";
 import {
   postToDiplomaticWorker,
   spawnDiplomaticSyncWorker,
 } from "../worker/spawn.ts";
 // Stay last. Seed-trace pins hash Vite's import index, so a module inserted
-// earlier renumbers later imports and their pins.
+// earlier renumbers later imports and their pins. Type imports are not indexed.
 import { largeBlobCredId, wipeLargeBlob, writeLargeBlob } from "./largeBlob.ts";
-import {
-  type BindPrior,
-  type PasskeyPrfOpts,
-  type PrfBinding,
-  type PrfBound,
-  type PrfSealedMaster,
-  sealPRF,
-  unsealPRF,
-} from "./prf.ts";
+import { sealPRF, unsealPRF } from "./prf.ts";
 import { deriveHostRLM, deriveRealmID, deriveRealmKey } from "./realms.ts";
+import { BagManager } from "./bagman.ts";
+import { bytesEqual } from "./binary.ts";
 
-export type EncryptCipher = {
-  encrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
-
-export type DecryptCipher = {
-  decrypt: (data: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
-
-/** Encrypt + decrypt capability for one KDM. */
-export type DerivedCipher = EncryptCipher & DecryptCipher;
-
-/** Which ops the caller needs; only those methods are present on the handle. */
-export type CipherUsage = "encrypt" | "decrypt" | "both";
-
-/** Return shape of `deriveCipher` for a given usage (type-level enforcement). */
-export type CipherForUsage<U extends CipherUsage> = {
-  encrypt: EncryptCipher;
-  decrypt: DecryptCipher;
-  both: DerivedCipher;
-}[U];
-
-/**
- * KDM-scoped signing identity: public key is public; sign/kdmFor re-enter
- * the enclave so the private key never leaves. Used for hosts, export files, etc.
- */
-export type Identity = {
-  readonly publicKey: PublicKey;
-  sign: (message: Uint8Array | string) => Promise<ValStat<Uint8Array>>;
-  /** Per-bag 8-byte KDM (bag-kdm PDK child keyed by the encoded head). */
-  kdmFor: (msgHeadEnc: Uint8Array) => Promise<ValStat<Uint8Array>>;
-};
-
-// bun --define DIP_CLI_DUMP=true to enable dumpToTty (hexdump.ts). Absent or
+// bun --define DIP_CLI_DUMP=true to enable dumpToTTY (hexdump.ts). Absent or
 // false → NotImplemented; web/worker/pkg-cli define false so the write is DCE'd.
 declare const DIP_CLI_DUMP: boolean | undefined;
 
@@ -138,19 +93,10 @@ const SEAL_PRF_MIN_LEN = 16;
 /** Minimum musec length (Mandatory User-Space Entropy Contribution). */
 export const MUSEC_MIN_LEN = 32;
 
-// Host rows for IdentityBundle wire (idx defaults to 0).
-function bundleHosts(hosts: BundleHost[]): BundleHost[] {
-  return hosts.map((h) => ({
-    handle: h.handle,
-    label: h.label,
-    idx: h.idx ?? 0,
-  }));
-}
-
 // Absorb seed‖hosts wire. Encoder/Decoder see only the host list.
 // fromLargeBlob calls this in-file. PairRequest.finish imports it.
 export function fromSeedHosts(buf: Uint8Array): ValStat<{
-  enclave: Enclave;
+  enclave: OuterEnclave;
   hosts: BundleHost[];
 }> {
   if (buf.byteLength === 0 || buf.every((b) => b === 0)) {
@@ -167,7 +113,7 @@ export function fromSeedHosts(buf: Uint8Array): ValStat<{
   if (hst !== Status.Success) return err(hst);
   if (rows === undefined) return err(Status.InvalidMessage);
   if (!dec.done()) return err(Status.InvalidMessage);
-  const [enclave, est] = Enclave.fromBytes(seedRaw);
+  const [enclave, est] = OuterEnclave.fromBytes(seedRaw);
   if (est !== Status.Success) return err(est);
   return ok({
     enclave,
@@ -182,42 +128,226 @@ export function asMasterSeed(bytes: Uint8Array): ValStat<MasterSeed> {
   return [bytes as MasterSeed, Status.Success];
 }
 
-// Constant-time compare. Length differs before the loop.
-function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.byteLength !== b.byteLength) return false;
-  let d = 0;
-  for (let i = 0; i < a.byteLength; i++) {
-    const x = a[i];
-    const y = b[i];
-    if (x === undefined || y === undefined) return false;
-    d |= x ^ y;
-  }
-  return d === 0;
+// Seal KEK: null-KDM child of the bind PDK. The parent is the PRF IKM.
+async function sealKeyFromPRF(prf: Uint8Array): Promise<ValStat<PDK["Bind"]>> {
+  if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
+  const purpose = Purpose.Bind;
+  return deriveKey({ parent: prf, purpose, kdm: nullKDM });
 }
 
-export class Enclave {
+// Byte machine. Holds the master. Returns derived bytes or a status.
+class InnerEnclave {
   #seed: MasterSeed;
 
   private constructor(seed: MasterSeed) {
     this.#seed = seed;
   }
 
-  /**
-   * New enclave: blake3(OS CSPRNG ‖ musec). musec is required (MUSEC_MIN_LEN).
-   * Mix stays in this method; musec is wiped before return.
-   */
-  static async fromRandom(musec: Uint8Array): Promise<ValStat<Enclave>> {
-    if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
-    const os = await gen256BitSecureRandomSeed();
-    const mix = concat(os, musec);
+  // blake3(OS CSPRNG ‖ musec). Keeps the digest and wipes both inputs.
+  // Rejects a short musec. A rejected digest is wiped.
+  static async mix(musec: Uint8Array): Promise<ValStat<InnerEnclave>> {
+    let os: Uint8Array | undefined;
+    let buf: Uint8Array | undefined;
+    let hashed: Uint8Array | undefined;
     try {
-      const hashed = await blake3(mix);
+      if (musec.byteLength < MUSEC_MIN_LEN) return err(Status.InvalidParam);
+      os = await gen256BitSecureRandomSeed();
+      buf = new Uint8Array(os.byteLength + musec.byteLength);
+      buf.set(os, 0);
+      buf.set(musec, os.byteLength);
+      hashed = await blake3(buf);
       const [seed, st] = asMasterSeed(hashed);
       if (st !== Status.Success) return err(st);
-      return ok(new Enclave(seed));
+      const inner = new InnerEnclave(seed);
+      // Digest buffer is #seed. Drop the local so finally does not wipe it.
+      hashed = undefined;
+      return ok(inner);
     } finally {
-      os.fill(0);
-      mix.fill(0);
+      os?.fill(0);
+      buf?.fill(0);
+      musec.fill(0);
+      hashed?.fill(0);
+    }
+  }
+
+  // Opens a session from raw seed bytes. Copies so the caller can wipe theirs.
+  static importSeed(bytes: Uint8Array): ValStat<InnerEnclave> {
+    const [seed, st] = asMasterSeed(bytes);
+    if (st !== Status.Success) return err(st);
+    const [owned, ost] = asMasterSeed(seed.slice());
+    if (ost !== Status.Success) return err(ost);
+    return ok(new InnerEnclave(owned));
+  }
+
+  // Opens a session by decrypting a sealed master. Caller wipes `ikm`.
+  static async unseal(
+    sealed: SealedMasterKey,
+    ikm: Uint8Array,
+  ): Promise<ValStat<InnerEnclave>> {
+    const [, sst] = asSealedMasterKey(sealed);
+    if (sst !== Status.Success) return err(sst);
+    const [key, kst] = await sealKeyFromPRF(ikm);
+    if (kst !== Status.Success) return err(kst);
+    let plain: Uint8Array | undefined;
+    try {
+      try {
+        plain = await decryptXSalsa20Poly1305Combined(sealed, key);
+      } catch {
+        return err(Status.DecryptionError);
+      }
+      // importSeed copies; wipe the decrypt buffer.
+      return InnerEnclave.importSeed(plain);
+    } finally {
+      key.fill(0);
+      plain?.fill(0);
+    }
+  }
+
+  // Identity PDK for this label, from the master.
+  async idnt(kdm: IKDM): Promise<ValStat<PDK["Identity"]>> {
+    const purpose = Purpose.Identity;
+    return deriveKey({ parent: this.#seed, purpose, kdm });
+  }
+
+  // Realm key for this realm KDM.
+  async realmKey(kdm: IKDM): Promise<ValStat<PDK["RealmKey"]>> {
+    return deriveRealmKey(this.#seed, kdm);
+  }
+
+  // Stable realm id (account key + realm KDM). No host material.
+  async realmID(realmKDM: IKDM): Promise<ValStat<PDK["RealmID"]>> {
+    return deriveRealmID(this.#seed, realmKDM);
+  }
+
+  // Fingerprint-PDK child. No kdm is the paper check (null KDM).
+  async fingerprint(
+    kdm: Uint8Array | IKDM,
+  ): Promise<ValStat<PDK["Fingerprint"]>> {
+    const purpose = Purpose.Fingerprint;
+    return await deriveKey({ parent: this.#seed, purpose, kdm });
+  }
+
+  // Bind-tag child keyed by credId. Not a global fingerprint.
+  async bindTag(credId: Uint8Array): Promise<ValStat<PDK["BindTag"]>> {
+    const purpose = Purpose.BindTag;
+    return await deriveKey({ parent: this.#seed, purpose, kdm: credId });
+  }
+
+  // AEAD-seal the master under KDF(IKM). Caller wipes `ikm`.
+  async seal(ikm: Uint8Array): Promise<ValStat<SealedMasterKey>> {
+    const [key, kst] = await sealKeyFromPRF(ikm);
+    if (kst !== Status.Success) return err(kst);
+    try {
+      const sealed = await encryptXSalsa20Poly1305Combined(this.#seed, key);
+      return asSealedMasterKey(sealed);
+    } catch {
+      return err(Status.InternalError);
+    } finally {
+      key.fill(0);
+    }
+  }
+
+  // Encrypts seed‖hosts under `wrapKey`. Wipes the plaintext wire.
+  async sealSeedHosts(
+    wrapKey: Uint8Array,
+    hosts: BundleHost[],
+  ): Promise<ValStat<Uint8Array>> {
+    const [plain, pst] = this.#exportSeedHosts(hosts);
+    if (pst !== Status.Success) return err(pst);
+    try {
+      return ok(await encryptXSalsa20Poly1305Combined(plain, wrapKey));
+    } catch {
+      return err(Status.InternalError);
+    } finally {
+      plain.fill(0);
+    }
+  }
+
+  // seed‖hosts wire. Callers wipe the buffer. Do not pass it to imported ok.
+  #exportSeedHosts(hosts: BundleHost[]): ValStat<Uint8Array> {
+    const enc = new Encoder();
+    const st = enc.writeStruct(identityHostsCodec, {
+      hosts: hosts.map((h) => ({
+        handle: h.handle,
+        label: h.label,
+        idx: h.idx ?? 0,
+      })),
+    });
+    if (st !== Status.Success) return err(st);
+    const hostsEnc = enc.result();
+    const out = new Uint8Array(MASTER_SEED_LEN + hostsEnc.byteLength);
+    out.set(this.#seed, 0);
+    out.set(hostsEnc, MASTER_SEED_LEN);
+    return [out, Status.Success];
+  }
+
+  // UV-writes seed‖hosts. Wipes the wire. Returns the credential id used.
+  async persistToLargeBlob(
+    hosts: BundleHost[],
+    opts?: LargeBlobCreateOpts & { credId?: Uint8Array },
+  ): Promise<ValStat<Uint8Array>> {
+    const [credId, cst] = await largeBlobCredId(opts);
+    if (cst !== Status.Success) return err(cst);
+    const [encoded, est] = this.#exportSeedHosts(hosts);
+    if (est !== Status.Success) return err(est);
+    try {
+      const wst = await writeLargeBlob(credId, encoded, opts);
+      if (wst !== Status.Success) return err(wst);
+      return ok(credId);
+    } finally {
+      encoded.fill(0);
+    }
+  }
+
+  // Paper hex of the master. NotImplemented unless DIP_CLI_DUMP is true.
+  async dumpToTTY(): Promise<Status> {
+    if (!(typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP)) {
+      return Status.NotImplemented;
+    }
+    // Non-literal so the bundler does not pull tty.ts in before DCE.
+    const ttySpec = "./tty.ts";
+    const mod: unknown = await import(ttySpec);
+    if (mod === null || typeof mod !== "object" || !("dumpToTTY" in mod)) {
+      return Status.NotImplemented;
+    }
+    const write = mod.dumpToTTY;
+    if (typeof write !== "function") return Status.NotImplemented;
+    const seed = this.#seed.slice();
+    try {
+      return await write(seed, () => this.fingerprint(nullKDM));
+    } finally {
+      seed.fill(0);
+    }
+  }
+
+  // Copies the master for a worker this process just spawned.
+  // A hardware boundary drops this with spawnSyncWorker.
+  // TODO: eliminate this by giving the worker a minimal keyset (TWKs).
+  copyForWorker(): Uint8Array {
+    return this.#seed.slice();
+  }
+}
+
+// Outer layer. Ceremonies and BagManagers. The master stays in InnerEnclave.
+class OuterEnclave {
+  #inner: InnerEnclave;
+
+  private constructor(inner: InnerEnclave) {
+    this.#inner = inner;
+  }
+
+  /**
+   * New enclave: blake3(OS CSPRNG ‖ musec). musec is required (MUSEC_MIN_LEN).
+   * Musec is wiped on every return, including rejection and a throw from the
+   * OS generator. A rejected digest is wiped. The stored seed is that digest
+   * buffer, so the success path must not wipe it.
+   */
+  static async fromRandom(musec: Uint8Array): Promise<ValStat<OuterEnclave>> {
+    try {
+      const [inner, st] = await InnerEnclave.mix(musec);
+      if (st !== Status.Success) return err(st);
+      return ok(new OuterEnclave(inner));
+    } finally {
       musec.fill(0);
     }
   }
@@ -227,12 +357,10 @@ export class Enclave {
    * Copies the seed so callers may zero their buffer after success.
    * Prefer {@link fromRandom} or {@link unsealWithPasskey} for normal flows.
    */
-  static fromBytes(bytes: Uint8Array): ValStat<Enclave> {
-    const [seed, st] = asMasterSeed(bytes);
+  static fromBytes(bytes: Uint8Array): ValStat<OuterEnclave> {
+    const [inner, st] = InnerEnclave.importSeed(bytes);
     if (st !== Status.Success) return err(st);
-    const [owned, ost] = asMasterSeed(seed.slice());
-    if (ost !== Status.Success) return err(ost);
-    return ok(new Enclave(owned));
+    return ok(new OuterEnclave(inner));
   }
 
   /**
@@ -248,7 +376,7 @@ export class Enclave {
     const [out, ost] = await sealPRF(opts);
     if (ost !== Status.Success) return err(ost);
     try {
-      const [sealedMaster, sst] = await this.#sealUnderPrf(out.prf);
+      const [sealedMaster, sst] = await this.#inner.seal(out.prf);
       if (sst !== Status.Success) return err(sst);
       return ok({
         sealedMaster,
@@ -275,14 +403,19 @@ export class Enclave {
   ): Promise<ValStat<PrfBound>> {
     if (prior !== undefined) {
       for (const p of prior) {
-        if (!await this.#tagMatches(p.credId, p.tag)) {
-          return err(Status.InvalidParam);
+        if (p.tag.byteLength !== BIND_TAG_LEN) return err(Status.InvalidParam);
+        const [got, gst] = await this.#inner.bindTag(p.credId);
+        if (gst !== Status.Success) return err(gst);
+        try {
+          if (!bytesEqual(got, p.tag)) return err(Status.InvalidParam);
+        } finally {
+          got.fill(0);
         }
       }
     }
     const [sealed, sst] = await this.sealWithPasskey(opts);
     if (sst !== Status.Success) return err(sst);
-    const [tag, tst] = await this.#bindTag(sealed.credId);
+    const [tag, tst] = await this.#inner.bindTag(sealed.credId);
     if (tst !== Status.Success) return err(tst);
     return ok({ ...sealed, tag });
   }
@@ -294,18 +427,18 @@ export class Enclave {
   static async unsealWithPasskey(
     bindings: readonly PrfBinding[],
     opts: PasskeyPrfOpts & { salt: Uint8Array },
-  ): Promise<ValStat<{ enclave: Enclave; credId: Uint8Array }>> {
+  ): Promise<ValStat<{ enclave: OuterEnclave; credId: Uint8Array }>> {
     if (bindings.length === 0) return err(Status.MissingSeed);
     const [out, ost] = await unsealPRF(bindings, opts);
     if (ost !== Status.Success) return err(ost);
     try {
       for (const w of out.order) {
-        const [enclave] = await Enclave.#unsealUnderPrf(
+        const [inner, ist] = await InnerEnclave.unseal(
           w.sealedMaster,
           out.prf,
         );
-        if (enclave !== undefined) {
-          return ok({ enclave, credId: out.credId });
+        if (ist === Status.Success) {
+          return ok({ enclave: new OuterEnclave(inner), credId: out.credId });
         }
       }
       return err(Status.DecryptionError);
@@ -318,9 +451,9 @@ export class Enclave {
    * AEAD-seal master under caller-supplied PRF IKM (CLI hmac-secret).
    * Wipes `ikm` before return. Ciphertext only — never the seed.
    */
-  async sealWithIkm(ikm: Uint8Array): Promise<ValStat<SealedMasterKey>> {
+  async sealWithIKM(ikm: Uint8Array): Promise<ValStat<SealedMasterKey>> {
     try {
-      return await this.#sealUnderPrf(ikm);
+      return await this.#inner.seal(ikm);
     } finally {
       ikm.fill(0);
     }
@@ -330,12 +463,14 @@ export class Enclave {
    * Unseal a PRF binding given IKM (CLI hmac-secret eval). Returns Enclave.
    * Wipes `ikm` before return.
    */
-  static async unsealWithIkm(
+  static async unsealWithIKM(
     sealed: SealedMasterKey,
     ikm: Uint8Array,
-  ): Promise<ValStat<Enclave>> {
+  ): Promise<ValStat<OuterEnclave>> {
     try {
-      return await Enclave.#unsealUnderPrf(sealed, ikm);
+      const [inner, st] = await InnerEnclave.unseal(sealed, ikm);
+      if (st !== Status.Success) return err(st);
+      return ok(new OuterEnclave(inner));
     } finally {
       ikm.fill(0);
     }
@@ -343,8 +478,8 @@ export class Enclave {
 
   /**
    * UV + write IdentityBundle (seed + hosts) to largeBlob.
-   * Encode stays here; {@link writeLargeBlob} does the UV write. Nothing
-   * seed-bearing is returned. Prefer empty `hosts` for seed-only backup.
+   * Inner encodes the wire and {@link writeLargeBlob} does the UV write.
+   * Nothing seed-bearing is returned. Prefer empty `hosts` for seed-only backup.
    *
    * Pass `opts.credId` to write an existing credential (one UV). Omit it to
    * create a largeBlob-capable credential then write (two UV). Returns the
@@ -354,17 +489,7 @@ export class Enclave {
     hosts: BundleHost[] = [],
     opts?: LargeBlobCreateOpts & { credId?: Uint8Array },
   ): Promise<ValStat<Uint8Array>> {
-    const [credId, cst] = await largeBlobCredId(opts);
-    if (cst !== Status.Success) return err(cst);
-    const [encoded, est] = this.#encodeSeedHosts(hosts);
-    if (est !== Status.Success) return err(est);
-    try {
-      const wst = await writeLargeBlob(credId, encoded, opts);
-      if (wst !== Status.Success) return err(wst);
-      return ok(credId);
-    } finally {
-      encoded.fill(0);
-    }
+    return this.#inner.persistToLargeBlob(hosts, opts);
   }
 
   /**
@@ -377,7 +502,7 @@ export class Enclave {
   static async fromLargeBlob(
     opts?: LargeBlobRp & { credId?: Uint8Array },
   ): Promise<
-    ValStat<{ enclave: Enclave; hosts: BundleHost[]; credId: Uint8Array }>
+    ValStat<{ enclave: OuterEnclave; hosts: BundleHost[]; credId: Uint8Array }>
   > {
     const [raw, rst] = await largeBlobRead(opts?.credId, opts);
     if (rst !== Status.Success) return err(rst);
@@ -403,19 +528,8 @@ export class Enclave {
    * Paced mode erases the previous line before the next (Enter between).
    * Web bundles set DIP_CLI_DUMP=false; the write is compiled out.
    */
-  async dumpToTty(): Promise<Status> {
-    if (!(typeof DIP_CLI_DUMP !== "undefined" && DIP_CLI_DUMP)) {
-      return Status.NotImplemented;
-    }
-    // Non-literal so the bundler does not pull tty.ts in before DCE.
-    const ttySpec = "./tty.ts";
-    const mod: unknown = await import(ttySpec);
-    if (mod === null || typeof mod !== "object" || !("dumpToTty" in mod)) {
-      return Status.NotImplemented;
-    }
-    const write = mod.dumpToTty;
-    if (typeof write !== "function") return Status.NotImplemented;
-    return write(this.#seed, () => this.fingerprint());
+  async dumpToTTY(): Promise<Status> {
+    return this.#inner.dumpToTTY();
   }
 
   // Starts an enrollee pairing session. Carry dhkeReq to the enroller.
@@ -445,21 +559,9 @@ export class Enclave {
     const [seal, sst] = await sealPair(dhkeReq);
     if (sst !== Status.Success) return err(sst);
     try {
-      const [plain, pst] = this.#encodeSeedHosts(hosts);
-      if (pst !== Status.Success) return err(pst);
-      try {
-        try {
-          const body = await encryptXSalsa20Poly1305Combined(
-            plain,
-            seal.key,
-          );
-          return asDHKEResp(concat(seal.pub, body));
-        } catch {
-          return err(Status.InternalError);
-        }
-      } finally {
-        plain.fill(0);
-      }
+      const [body, bst] = await this.#inner.sealSeedHosts(seal.key, hosts);
+      if (bst !== Status.Success) return err(bst);
+      return asDHKEResp(concat(seal.pub, body));
     } finally {
       seal.key.fill(0);
     }
@@ -475,7 +577,7 @@ export class Enclave {
    */
   spawnSyncWorker(opts: { id: number; persist?: boolean }): Worker {
     const worker = spawnDiplomaticSyncWorker();
-    const seed = this.#seed.slice();
+    const seed = this.#inner.copyForWorker();
     postToDiplomaticWorker(
       worker,
       {
@@ -489,81 +591,32 @@ export class Enclave {
     return worker;
   }
 
-  // Stable realm id (account key + realm KDM). No host material.
-  async realmID(realmKDM: IKDM): Promise<ValStat<PDK["RealmID"]>> {
-    return deriveRealmID(this.#seed, realmKDM);
-  }
-
-  // Bag rlm for one realm on one host (realm id, then HostRLM + host KDM).
-  async hostRlm(
-    realmKDM: IKDM,
-    hostKDM: IKDM,
-  ): Promise<ValStat<PDK["HostRLM"]>> {
-    const [id, st] = await this.realmID(realmKDM);
-    if (st !== Status.Success) return err(st);
+  // Returns the BagManager for one identity KDM x realm combination.
+  async bagman(idKDM: IKDM, realmKDM: IKDM): Promise<ValStat<BagManager>> {
+    const [idnt, ist] = await this.#inner.idnt(idKDM);
+    if (ist !== Status.Success) return err(ist);
+    const [realm, rst] = await this.#inner.realmKey(realmKDM);
+    if (rst !== Status.Success) {
+      idnt.fill(0);
+      return err(rst);
+    }
+    const [rid, idst] = await this.#inner.realmID(realmKDM);
+    if (idst !== Status.Success) {
+      idnt.fill(0);
+      realm.fill(0);
+      return err(idst);
+    }
     try {
-      return await deriveHostRLM(id, hostKDM);
-    } finally {
-      id.fill(0);
-    }
-  }
-
-  // Realm KDM whose host rlm equals `rlm`. NotFound if none of `realms` do.
-  async realmForRlm(
-    hostKDM: IKDM,
-    rlm: HostRlm,
-    realms: readonly IKDM[],
-  ): Promise<ValStat<IKDM>> {
-    for (const realmKDM of realms) {
-      const [got, st] = await this.hostRlm(realmKDM, hostKDM);
-      if (st !== Status.Success) return err(st);
-      const match = bytesEq(got, rlm);
-      got.fill(0);
-      if (match) {
-        return ok({ label: realmKDM.label, index: realmKDM.index });
+      const [rlm, lst] = await deriveHostRLM(rid, idKDM);
+      if (lst !== Status.Success) {
+        idnt.fill(0);
+        realm.fill(0);
+        return err(lst);
       }
+      return BagManager.init(idnt, realm, rlm, idKDM, realmKDM);
+    } finally {
+      rid.fill(0);
     }
-    return err(Status.NotFound);
-  }
-
-  /**
-   * Cipher for public KDM under a realm (default: nullKDM). Does not hold
-   * key bytes; each op re-enters the enclave. `usage` selects the shape:
-   * `"encrypt"` → `{ encrypt }`, `"decrypt"` → `{ decrypt }`, `"both"` → both.
-   */
-  deriveCipher<U extends CipherUsage>(
-    kdm: Uint8Array,
-    usage: U,
-    realmKDM: IKDM = nullKDM,
-  ): CipherForUsage<U> {
-    const kdmBound = kdm.slice();
-    const realm: IKDM = { label: realmKDM.label, index: realmKDM.index };
-    const encrypt = (data: Uint8Array) => this.#encrypt(kdmBound, data, realm);
-    const decrypt = (data: Uint8Array) => this.#decrypt(kdmBound, data, realm);
-    const byUsage: { [K in CipherUsage]: CipherForUsage<K> } = {
-      encrypt: Object.freeze({ encrypt }),
-      decrypt: Object.freeze({ decrypt }),
-      both: Object.freeze({ encrypt, decrypt }),
-    };
-    return byUsage[usage];
-  }
-
-  /**
-   * Identity from the identity PDK + KDM. Private key stays in the enclave;
-   * only publicKey and capability methods are returned.
-   */
-  async deriveIdentity(kdm: IKDM): Promise<ValStat<Identity>> {
-    const kdmBound: IKDM = { label: kdm.label, index: kdm.index };
-    const [keys, st] = await this.#deriveSubkeys(kdmBound);
-    if (st !== Status.Success) return err(st);
-    const publicKey = keys.publicKey;
-    // Handle only needs the pub; priv would outlive this call on the Identity.
-    keys.privateKey.fill(0);
-    return ok(Object.freeze({
-      publicKey,
-      sign: (message: Uint8Array | string) => this.#sign(kdmBound, message),
-      kdmFor: (msgHeadEnc: Uint8Array) => this.#kdmFor(kdmBound, msgHeadEnc),
-    }));
   }
 
   // Fingerprint-PDK child. No kdm is the paper check (null KDM).
@@ -571,240 +624,12 @@ export class Enclave {
   async fingerprint(
     kdm: Uint8Array | IKDM = nullKDM,
   ): Promise<ValStat<PDK["Fingerprint"]>> {
-    return await deriveKey({
-      parent: this.#seed,
-      purpose: Purpose.Fingerprint,
-      kdm,
-    });
-  }
-
-  // Bind-tag child keyed by credId. Not a global fingerprint.
-  async #bindTag(credId: Uint8Array): Promise<ValStat<PDK["BindTag"]>> {
-    return await deriveKey({
-      parent: this.#seed,
-      purpose: Purpose.BindTag,
-      kdm: credId,
-    });
-  }
-
-  // Constant-time match of a stored tag against this master + credId.
-  async #tagMatches(credId: Uint8Array, tag: PDK["BindTag"]): Promise<boolean> {
-    if (tag.byteLength !== BIND_TAG_LEN) return false;
-    const [got, gst] = await this.#bindTag(credId);
-    if (gst !== Status.Success) return false;
-    try {
-      if (got.byteLength !== tag.byteLength) return false;
-      let d = 0;
-      for (let i = 0; i < got.byteLength; i++) {
-        const a = got[i];
-        const b = tag[i];
-        if (a === undefined || b === undefined) return false;
-        d |= a ^ b;
-      }
-      return d === 0;
-    } finally {
-      got.fill(0);
-    }
-  }
-
-  // Derive seal KEK from PRF IKM (null-KDM child of the bind PDK).
-  static async #sealKeyFromPrf(prf: Uint8Array): Promise<ValStat<PDK["Bind"]>> {
-    if (prf.byteLength < SEAL_PRF_MIN_LEN) return err(Status.InvalidParam);
-    return deriveKey({
-      parent: prf,
-      purpose: Purpose.Bind,
-      kdm: nullKDM,
-    });
-  }
-
-  /** AEAD-seal master under KDF(PRF). Caller wipes the PRF bytes. */
-  async #sealUnderPrf(prf: Uint8Array): Promise<ValStat<SealedMasterKey>> {
-    const [key, kst] = await Enclave.#sealKeyFromPrf(prf);
-    if (kst !== Status.Success) return err(kst);
-    try {
-      const sealed = await encryptXSalsa20Poly1305Combined(
-        this.#seed,
-        key,
-      );
-      return asSealedMasterKey(sealed);
-    } catch {
-      return err(Status.InternalError);
-    } finally {
-      // Binding KEK decrypts durable master; do not leave it after seal.
-      key.fill(0);
-    }
-  }
-
-  static async #unsealUnderPrf(
-    sealed: SealedMasterKey,
-    prf: Uint8Array,
-  ): Promise<ValStat<Enclave>> {
-    const [, sst] = asSealedMasterKey(sealed);
-    if (sst !== Status.Success) return err(sst);
-    const [key, kst] = await Enclave.#sealKeyFromPrf(prf);
-    if (kst !== Status.Success) return err(kst);
-    let plain: Uint8Array | undefined;
-    try {
-      try {
-        plain = await decryptXSalsa20Poly1305Combined(sealed, key);
-      } catch {
-        return err(Status.DecryptionError);
-      }
-      // fromBytes copies; wipe the decrypt buffer so two seed copies do not remain.
-      return Enclave.fromBytes(plain);
-    } finally {
-      key.fill(0);
-      plain?.fill(0);
-    }
-  }
-
-  /**
-   * Private: seed‖hosts wire (largeBlob persist and pair AEAD inner).
-   * Never expose this buffer outside Enclave methods.
-   */
-  #encodeSeedHosts(hosts: BundleHost[]): ValStat<Uint8Array> {
-    const enc = new Encoder();
-    const st = enc.writeStruct(identityHostsCodec, {
-      hosts: bundleHosts(hosts),
-    });
-    if (st !== Status.Success) return err(st);
-    const hostsEnc = enc.result();
-    const out = new Uint8Array(MASTER_SEED_LEN + hostsEnc.byteLength);
-    out.set(this.#seed, 0);
-    out.set(hostsEnc, MASTER_SEED_LEN);
-    // Inline ValStat ok: do not pass seed-bearing `out` to imported `ok`.
-    return [out, Status.Success];
-  }
-
-  async #encrypt(
-    kdm: Uint8Array,
-    data: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await encryptXSalsa20Poly1305Combined(data, key));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      key.fill(0);
-    }
-  }
-
-  async #decrypt(
-    kdm: Uint8Array,
-    data: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<Uint8Array>> {
-    const [key, st] = await this.#keyFromKDM(kdm, realmKDM);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await decryptXSalsa20Poly1305Combined(data, key));
-      } catch {
-        return err(Status.DecryptionError);
-      }
-    } finally {
-      key.fill(0);
-    }
-  }
-
-  // Cipher key for one bag. Parent is the realm key (later, a TWK).
-  async #keyFromKDM(
-    kdm: Uint8Array,
-    realmKDM: IKDM,
-  ): Promise<ValStat<PDK["Cipher"]>> {
-    const [parent, pst] = await this.#bagKeyParent(realmKDM);
-    if (pst !== Status.Success) return err(pst);
-    try {
-      return await deriveKey({
-        parent,
-        purpose: Purpose.Cipher,
-        kdm,
-      });
-    } finally {
-      parent.fill(0);
-    }
-  }
-
-  // TODO(realms): a bag wnd (start seconds, window size seconds) replaces
-  // this parent with a TWK derived from the realm key.
-  async #bagKeyParent(realmKDM: IKDM): Promise<ValStat<PDK["RealmKey"]>> {
-    return deriveRealmKey(this.#seed, realmKDM);
-  }
-
-  async #deriveSeed(kdm: IKDM): Promise<ValStat<PDK["Identity"]>> {
-    return await deriveKey({
-      parent: this.#seed,
-      purpose: Purpose.Identity,
-      kdm,
-    });
-  }
-
-  async #deriveSubkeys(kdm: IKDM): Promise<ValStat<KeyPair>> {
-    const [seed, st] = await this.#deriveSeed(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await deriveEd25519KeyPair(asDerivSeed(seed)));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      // Pair already holds seed‖pub; this 32-byte deriv must not linger.
-      seed.fill(0);
-    }
-  }
-
-  async #sign(
-    kdm: IKDM,
-    message: Uint8Array | string,
-  ): Promise<ValStat<Uint8Array>> {
-    const [keys, st] = await this.#deriveSubkeys(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      try {
-        return ok(await signEd25519(message, keys.privateKey));
-      } catch {
-        return err(Status.CryptoError);
-      }
-    } finally {
-      // Re-derived per sign so the caller never holds a long-lived priv.
-      keys.privateKey.fill(0);
-    }
-  }
-
-  async #kdmFor(
-    kdm: IKDM,
-    msgHeadEnc: Uint8Array,
-  ): Promise<ValStat<Uint8Array>> {
-    const [idSeed, st] = await this.#deriveSeed(kdm);
-    if (st !== Status.Success) return err(st);
-    try {
-      const [child, cst] = await deriveKey({
-        parent: idSeed,
-        purpose: Purpose.BagKdm,
-        kdm: msgHeadEnc,
-      });
-      if (cst !== Status.Success) return err(cst);
-      try {
-        return ok(child.slice(0, kdmBytes));
-      } finally {
-        child.fill(0);
-      }
-    } finally {
-      idSeed.fill(0);
-    }
+    return this.#inner.fingerprint(kdm);
   }
 }
 
-// Brands an identity child as the Ed25519 derivation seed for that identity.
-function asDerivSeed(child: PDK["Identity"]): DerivationSeed {
-  return child as Uint8Array as DerivationSeed;
-}
+// Callers keep this name. It is OuterEnclave.
+export { OuterEnclave as Enclave };
 
 const LOCK_SKIP = new Set(["constructor", "prototype", "length", "name"]);
 
@@ -822,5 +647,5 @@ function lockAll(obj: object): void {
   }
 }
 
-lockAll(Enclave);
-lockAll(Enclave.prototype);
+lockAll(OuterEnclave);
+lockAll(OuterEnclave.prototype);

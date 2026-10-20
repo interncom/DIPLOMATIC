@@ -272,7 +272,7 @@ async function sealedRing(
   credId: Uint8Array,
   salt: Uint8Array,
 ): Promise<Keyring> {
-  const [sealed, sst] = await enc.sealWithIkm(prf.slice());
+  const [sealed, sst] = await enc.sealWithIKM(prf.slice());
   if (sst !== Status.Success || sealed === undefined) {
     throw new Error("seal");
   }

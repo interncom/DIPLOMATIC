@@ -31,12 +31,8 @@ export const typeParentIndexName = "entity_type_parent_id";
 export const tagsIndexName = "entity_tags";
 /** Realm label. Rows in the default realm omit rlm and are not in this index. */
 export const realmIndexName = "entity_rlm";
-/** Dropped in v14; name kept so upgrade can deleteIndex. */
-const typeGroupIndexName = "entity_type_group_id";
 
-/** Pre-split EntDB name. New accounts use `ents-<acct>`. */
-export const ENT_IDB_NAME = "db";
-/** v15: optional rlm (realm label) index. Omitted on the default realm. */
+/** Current EntDB schema. Default-realm rows omit rlm. */
 export const ENT_IDB_VERSION = 15;
 
 interface IStoredEntity<T = unknown> {
@@ -627,9 +623,6 @@ function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
       unique: false,
     });
   }
-  if (store.indexNames.contains(typeGroupIndexName)) {
-    store.deleteIndex(typeGroupIndexName);
-  }
   if (!store.indexNames.contains(typeParentIndexName)) {
     store.createIndex(typeParentIndexName, ["typ", "pid"], {
       unique: false,
@@ -637,12 +630,6 @@ function upgradeEntIdb(db: IDBDatabase, tx: IDBTransaction) {
   }
   // multiEntry on array keyPath only (IDB forbids multiEntry + compound
   // keyPath). Lookup by tag, then filter typ in app code.
-  // v13: keyPath is tgs (was tags). Drop wrong-keyPath index if present.
-  if (store.indexNames.contains(tagsIndexName)) {
-    if (store.index(tagsIndexName).keyPath !== "tgs") {
-      store.deleteIndex(tagsIndexName);
-    }
-  }
   if (!store.indexNames.contains(tagsIndexName)) {
     store.createIndex(tagsIndexName, "tgs", {
       unique: false,

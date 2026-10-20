@@ -43,7 +43,7 @@ const dev = fidoDev();
 console.error(`Using ${dev}`);
 const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
 const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
-const [sealed, sst] = await enc.sealWithIkm(ikm);
+const [sealed, sst] = await enc.sealWithIKM(ikm);
 if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
 upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
 writeRing(path, ring);

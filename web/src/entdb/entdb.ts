@@ -12,7 +12,7 @@
 // 3. "tags" - Optional string[]; multi-value reverse index (multiEntry).
 //    Like pid reverse lookup, but N:M. Opaque strings; clients define semantics
 //    (e.g. impl:<btob64(eid)>). Query: exact string, { range }, or { prefix }.
-// pid/tags plus the application payload are msgpack-encoded in the msg body.
+// The msg body is pid (var-bytes), a tag count, var-strings, then raw bytes.
 //
 // Deletes leave permanent tombstones ({ eid, updatedAt, ctr }). Without them,
 // out-of-order / newest-first apply of older mutates would resurrect ents.

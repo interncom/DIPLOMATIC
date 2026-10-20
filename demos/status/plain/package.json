@@ -8,11 +8,10 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^5.2.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vite": "^5.2.0"
   },
   "dependencies": {
-    "@interncom/diplomatic": "0.1.2",
-    "@msgpack/msgpack": "^3.0.0"
+    "@interncom/diplomatic": "file:../../../web"
   }
 }

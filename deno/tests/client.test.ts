@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.200.0/testing/asserts.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI, { hostBagMgrs } from "../../shared/client.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { respHeadCodec } from "../../shared/codecs/respHead.ts";
 import { Status } from "../../shared/consts.ts";
@@ -19,14 +19,6 @@ const mockHost = {
   idx: 0,
 };
 
-const mockEnclave = {
-  deriveIdentity: async () =>
-    ok({
-      publicKey: new Uint8Array(32),
-      sign: async () => ok(new Uint8Array(64)),
-      kdmFor: async () => ok(new Uint8Array(8)),
-    }),
-};
 const mockCrypto = {
   blake3: async () => new Uint8Array(32),
   signEd25519: async () => new Uint8Array(64),
@@ -70,21 +62,21 @@ Deno.test("DiplomaticClientAPI updates host metadata on successful call", async 
     return Status.Success;
   };
 
+  const seed = new Uint8Array(32).fill(3);
+  const [enclave, est] = Enclave.fromBytes(seed);
+  if (est !== Status.Success) throw new Error(`enclave ${est}`);
+  const [bagMgrs, mst] = await hostBagMgrs(enclave, {
+    label: mockHost.label,
+    index: mockHost.idx,
+  });
+  if (mst !== Status.Success) throw new Error(`bagMgrs ${mst}`);
   const client = new DiplomaticClientAPI(
-    mockEnclave as unknown as Enclave,
+    bagMgrs,
     mockCrypto as unknown as ICrypto,
-    mockHost,
     mockClock,
     mockTransport,
     updateHostMeta,
   );
-
-  // Mock the keys method
-  client.keys = async () => ({
-    pubKey: new Uint8Array(32),
-    privKey: new Uint8Array(32),
-    // deno-lint-ignore no-explicit-any
-  } as any);
 
   // Mock endpoint for register
   const mockEndpoint = {

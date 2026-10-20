@@ -15,7 +15,7 @@ import {
   DHKE_RESP_MIN,
   pairKey,
 } from "../src/shared/crypto/pairing";
-import { genX25519 } from "../src/shared/crypto/noble";
+import { blake3, genX25519 } from "../src/shared/crypto/noble";
 import type { MasterSeed } from "../src/shared/seed";
 import { DEFAULT_PRF_SALT } from "../src/shared/webauthn/prf";
 
@@ -223,9 +223,66 @@ describe("Enclave persist IdentityBundle", () => {
 });
 
 describe("enclave fromRandom musec", () => {
-  it("rejects musec shorter than MUSEC_MIN_LEN", async () => {
-    const [, st] = await Enclave.fromRandom(new Uint8Array(MUSEC_MIN_LEN - 1));
+  it("rejects musec shorter than MUSEC_MIN_LEN and wipes it", async () => {
+    const musec = new Uint8Array(MUSEC_MIN_LEN - 1).fill(4);
+    const [, st] = await Enclave.fromRandom(musec);
     expect(st).toBe(Status.InvalidParam);
+    expect(musec.every((b) => b === 0)).toBe(true);
+  });
+
+  it("wipes musec when the OS generator throws", async () => {
+    const musec = new Uint8Array(32).fill(5);
+    const draw = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = () => {
+      throw new Error("rng");
+    };
+    try {
+      await expect(Enclave.fromRandom(musec)).rejects.toThrow("rng");
+    } finally {
+      crypto.getRandomValues = draw;
+    }
+    expect(musec.every((b) => b === 0)).toBe(true);
+  });
+
+  it("hashes OS bytes then musec", async () => {
+    const os = new Uint8Array(32).fill(3);
+    const musec = new Uint8Array(32).fill(9);
+    const mix = new Uint8Array(os.byteLength + musec.byteLength);
+    mix.set(os, 0);
+    mix.set(musec, os.byteLength);
+    const digest = await blake3(mix);
+    mix.fill(0);
+    const draw = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = (buf: ArrayBufferView) => {
+      if (buf.byteLength !== os.byteLength) throw new Error("rng len");
+      new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength).set(os);
+      return buf;
+    };
+    try {
+      const [got, gst] = await Enclave.fromRandom(musec.slice());
+      expect(gst).toBe(Status.Success);
+      expect(got).toBeDefined();
+      if (got === undefined) return;
+      const [want, wst] = Enclave.fromBytes(digest);
+      expect(wst).toBe(Status.Success);
+      expect(want).toBeDefined();
+      if (want === undefined) return;
+      const a = await mustIdnt(got, "t", 0);
+      const b = await mustIdnt(want, "t", 0);
+      expect(a.publicKey).toEqual(b.publicKey);
+
+      const [other, ost] = await Enclave.fromRandom(new Uint8Array(32).fill(8));
+      expect(ost).toBe(Status.Success);
+      expect(other).toBeDefined();
+      if (other === undefined) return;
+      const c = await mustIdnt(other, "t", 0);
+      expect(c.publicKey).not.toEqual(a.publicKey);
+    } finally {
+      crypto.getRandomValues = draw;
+      os.fill(0);
+      musec.fill(0);
+      digest.fill(0);
+    }
   });
 
   it("mixes musec and returns an enclave", async () => {
@@ -233,6 +290,7 @@ describe("enclave fromRandom musec", () => {
     const [e, st] = await Enclave.fromRandom(musec);
     expect(st).toBe(Status.Success);
     expect(e).toBeDefined();
+    expect(musec.every((b) => b === 0)).toBe(true);
     if (e === undefined) return;
     const idnt = await mustIdnt(e, "test", 0);
     expect(idnt.publicKey.byteLength).toBeGreaterThan(0);
@@ -240,16 +298,16 @@ describe("enclave fromRandom musec", () => {
 });
 
 describe("enclave seal/unseal via caller IKM", () => {
-  it("round-trips master under sealWithIkm / unsealWithIkm", async () => {
+  it("round-trips master under sealWithIKM / unsealWithIKM", async () => {
     const enc = enclaveOf(9);
     const ikm = new Uint8Array(32).fill(4);
-    const [sealed, sst] = await enc.sealWithIkm(ikm.slice());
+    const [sealed, sst] = await enc.sealWithIKM(ikm.slice());
     expect(sst).toBe(Status.Success);
     expect(sealed).toBeDefined();
     if (sealed === undefined) return;
     expect(sealed.byteLength).toBe(72);
 
-    const [opened, ust] = await Enclave.unsealWithIkm(sealed, ikm.slice());
+    const [opened, ust] = await Enclave.unsealWithIKM(sealed, ikm.slice());
     expect(ust).toBe(Status.Success);
     expect(opened).toBeDefined();
     if (opened === undefined) return;

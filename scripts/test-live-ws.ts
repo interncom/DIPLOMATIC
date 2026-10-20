@@ -68,7 +68,7 @@ console.log(
 );
 
 // Send something that will cause a notification for this user.
-const body = Diplomatic.msgpack.encode(
+const body = new TextEncoder().encode(
   `live-ws-test ${new Date().toISOString()}`,
 );
 

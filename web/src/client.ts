@@ -1,14 +1,15 @@
 // This is the web client for DIPLOMATIC.
 
-import { encode } from "@msgpack/msgpack";
-
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
 import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
+import { encodeEnt } from "./shared/codecs/ent";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
+import type { IKDM } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
+import { nullKDM } from "./shared/crypto/derivation";
 import { realmKDMs } from "./stores/cursor";
 import { accountLabel } from "./stores/label";
 import { Exim } from "./shared/exim";
@@ -25,7 +26,6 @@ import {
   IInsertParams,
   IMessage,
   IMessageHead,
-  IMsgEntBody,
   IStateManager,
   ITransport,
   IUpdateParams,
@@ -42,6 +42,13 @@ import {
   idleProgress,
   SyncProgressEvent,
 } from "./progress";
+import {
+  blobBytes,
+  type IBlobUpdate,
+  type IBlobWrite,
+  insertBlobMsg,
+  updateBlobMsg,
+} from "./shared/blobs";
 import { saveBlob } from "./saveBlob";
 import {
   defaultMaxPullBytes,
@@ -74,6 +81,9 @@ import {
   SetSeedOpts,
   WipeOpts,
 } from "./types";
+
+// Identity KDM for import and export files.
+const exportKDM: IKDM = Object.freeze({ label: "export", index: 0 });
 
 /** IMessage views of local write parts. */
 function msgsFromParts(parts: IMsgParts[]): IMessage[] {
@@ -580,26 +590,20 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return ok(parts.head);
   }
 
-  public async insert<T = unknown>(op: IInsertParams<T>) {
-    const { body, type, pid, tags } = op;
-    const entBody: IMsgEntBody = { body };
-    if (pid !== undefined) entBody.pid = pid;
-    if (tags !== undefined) entBody.tags = tags;
-    const entBodyEnc = encode(entBody);
-    return this.insertRaw(entBodyEnc, type);
+  public async insert(op: IInsertParams<Uint8Array>) {
+    const [bod, st] = encodeEnt(op);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.insertRaw(bod, op.type);
   }
 
-  public async update<T = unknown>(op: IUpdateParams<T>) {
-    const { prior, body, type, pid, tags, force } = op;
-    const entBody: IMsgEntBody = { body };
-    if (pid !== undefined) entBody.pid = pid;
-    if (tags !== undefined) entBody.tags = tags;
-    const entBodyEnc = encode(entBody);
+  public async update(op: IUpdateParams<Uint8Array>) {
+    const [bod, st] = encodeEnt(op);
+    if (st !== Status.Success) return err<IMessageHead>(st);
     return this.updateRaw(
-      prior,
-      entBodyEnc,
-      force ?? this.forceSkewHandlingByDefault,
-      type,
+      op.prior,
+      bod,
+      op.force ?? this.forceSkewHandlingByDefault,
+      op.type,
     );
   }
 
@@ -617,6 +621,47 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       return err<IMessageHead>(st);
     }
     return this.updateRaw(prior, undefined, force);
+  }
+
+  // Inserts a blob. mime is the part after "blob:", such as "image/jpeg".
+  public async insertBlob(
+    mime: string,
+    bytes: Uint8Array,
+    opts?: IBlobWrite,
+  ): Promise<ValStat<IMessageHead>> {
+    const [msg, st] = insertBlobMsg(mime, bytes, opts);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.insertRaw(msg.bod, msg.typ);
+  }
+
+  // Replaces the bytes of an existing blob. Omit a key to keep the archived value.
+  public async updateBlob(
+    eid: EntityID,
+    bytes: Uint8Array,
+    opts?: IBlobUpdate,
+  ): Promise<ValStat<IMessageHead>> {
+    const [msg, st] = updateBlobMsg(await this.lastMsg(eid), bytes, opts);
+    if (st !== Status.Success) return err<IMessageHead>(st);
+    return this.updateRaw(msg.prior, msg.bod, undefined, msg.typ);
+  }
+
+  // Deletes the blob ent. Archived bytes stay until msg pruning exists.
+  public deleteBlob(eid: EntityID): Promise<ValStat<IMessageHead>> {
+    return this.delete({ eid });
+  }
+
+  // Reads a copy of the latest bytes for eid.
+  public async readBlob(eid: EntityID): Promise<ValStat<Uint8Array>> {
+    return blobBytes(await this.lastMsg(eid));
+  }
+
+  // Latest archived msg for eid, including bod when the row has one.
+  private async lastMsg(eid: EntityID): Promise<IMessage | undefined> {
+    const stored = await this.store.messages.last(eid);
+    if (stored === undefined) return undefined;
+    const msg: IMessage = { ...stored.head };
+    if (stored.body !== undefined) msg.bod = stored.body;
+    return msg;
   }
 
   /**
@@ -674,10 +719,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       const host = await store.hosts.get(label);
       if (!host) continue;
 
+      const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
+      if (bagMgrsSt !== Status.Success) {
+        this.emitProgress({ phase: "idle" });
+        return bagMgrsSt;
+      }
+
       const syncParams: ISyncParams<Handle> = {
         conn,
         store,
-        enclave,
         host,
         crypto,
         maxPushBytes: this.maxPushBytes,
@@ -807,10 +857,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     }
     if (!conn) return err(Status.InternalError);
 
+    const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
+    if (bagMgrsSt !== Status.Success) return err(bagMgrsSt);
+
     const peekParams = {
       conn,
       store,
-      enclave,
       crypto,
       maxPushBytes: this.maxPushBytes,
       maxPullBytes: this.maxPullBytes,
@@ -893,10 +945,15 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       if (!host) continue;
 
       // Full inventory: every realm starts at seq 0.
+      const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
+      if (bagMgrsSt !== Status.Success) {
+        this.emitProgress({ phase: "idle" });
+        return bagMgrsSt;
+      }
+
       const syncParams: ISyncParams<Handle> = {
         conn,
         store,
-        enclave,
         host: { ...host, lastSeq: 0, seqs: undefined },
         crypto,
         maxPushBytes: this.maxPushBytes,
@@ -1029,7 +1086,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     console.time("import: decoding file...");
     const bytes = await file.bytes();
-    const [msgs, statDec] = await Exim.decodeFile(bytes, crypto, enclave);
+    const [bagMgr, bst] = await enclave.bagman(exportKDM, nullKDM);
+    if (bst !== Status.Success) return bst;
+    const [msgs, statDec] = await Exim.decodeFile(bytes, crypto, bagMgr);
     if (statDec !== Status.Success) return statDec;
     console.timeEnd("import: decoding file...");
 
@@ -1098,8 +1157,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = this.#enclave();
     if (!enclave) return err(Status.MissingSeed);
 
+    const [bagMgr, bst] = await enclave.bagman(exportKDM, nullKDM);
+    if (bst !== Status.Success) return err(bst);
     const msgs = await store.messages.list();
-    return Exim.encodeFile("export", 0, msgs, crypto, enclave);
+    return Exim.encodeFile(msgs, crypto, bagMgr);
   }
 
   public async export(filename: string) {
@@ -1165,9 +1226,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     console.info(`Connecting to ${host.handle} (${host.label})`);
     const conn = new DiplomaticClientAPI(
-      enclave,
+      [],
       crypto,
-      host,
       clock,
       transport(host),
       async (meta) => {
@@ -1177,15 +1237,18 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         return st;
       },
     );
+    const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
+    if (bagMgrsSt !== Status.Success) return;
     await conn.register();
 
     if (listen) {
       await conn.listen(
         async (bytes: Uint8Array) => {
+          const st = await this.#ensureBagMgrs(conn, host);
+          if (st !== Status.Success) return;
           const syncParams: ISyncParams<Handle> = {
             conn,
             store,
-            enclave,
             host,
             crypto,
             maxPushBytes: this.maxPushBytes,
@@ -1207,6 +1270,24 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       this.scheduleSync();
     }
   };
+
+  // Derives any realm manager this connection does not have yet.
+  async #ensureBagMgrs(
+    conn: DiplomaticClientAPI<Handle>,
+    host: { label: string; idx?: number },
+  ): Promise<Status> {
+    const enclave = this.#enclave();
+    if (!enclave) return Status.MissingSeed;
+    const idKDM: IKDM = { label: host.label, index: host.idx ?? 0 };
+    const realms = realmKDMs(await this.store.realms.list());
+    for (const realm of realms) {
+      if (conn.bagMgrFor(realm) !== undefined) continue;
+      const [bagMgr, st] = await enclave.bagman(idKDM, realm);
+      if (st !== Status.Success) return st;
+      conn.add(bagMgr);
+    }
+    return Status.Success;
+  }
 
   // Manage active host connections.
   public async connect(listen = true, sync = true) {

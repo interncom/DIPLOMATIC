@@ -1,12 +1,13 @@
 import { IOpenBag, openBagBody } from "../../shared/bag.ts";
 import { htob } from "../../shared/binary.ts";
-import DiplomaticClientAPI from "../../shared/client.ts";
+import DiplomaticClientAPI, { hostBagMgrs } from "../../shared/client.ts";
 import { Clock, IClock } from "../../shared/clock.ts";
 import type { IBagPeekItem } from "../../shared/codecs/peekItem.ts";
 import { IBagPullItem } from "../../shared/codecs/pullItem.ts";
 import { IBagPushItem } from "../../shared/codecs/pushItem.ts";
 import type { IKDM } from "../../shared/codecs/kdm.ts";
 import { Status } from "../../shared/consts.ts";
+import { nullKDM } from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { genSingletonUpsert } from "../../shared/singleton.ts";
 import { decryptPeekItem } from "../../shared/sync.ts";
@@ -39,10 +40,14 @@ export class CLIClient<Handle extends HostHandle> {
   ): Promise<Status> {
     const clock = new Clock();
     const updateHostMeta = () => Promise.resolve(Status.Success);
+    const [bagMgrs, mst] = await hostBagMgrs(this.enclave, {
+      label: host.label,
+      index: host.idx ?? 0,
+    });
+    if (mst !== Status.Success) return mst;
     this.conn = new DiplomaticClientAPI<Handle>(
-      this.enclave,
+      bagMgrs,
       crypto,
-      host,
       clock,
       transport,
       updateHostMeta,
@@ -58,6 +63,8 @@ export class CLIClient<Handle extends HostHandle> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
+    const stRealm = await this.#realm(realm);
+    if (stRealm !== Status.Success) return err(stRealm);
 
     const bags: IBag[] = [];
     for (const msg of msgs) {
@@ -83,6 +90,8 @@ export class CLIClient<Handle extends HostHandle> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
+    const stRealm = await this.#realm(realm);
+    if (stRealm !== Status.Success) return err(stRealm);
 
     return this.conn.peek(lastSeq, realm);
   }
@@ -94,6 +103,8 @@ export class CLIClient<Handle extends HostHandle> {
     if (!this.conn) {
       return err(Status.ConnectionClosed);
     }
+    const stRealm = await this.#realm(realm);
+    if (stRealm !== Status.Success) return err(stRealm);
 
     return this.conn.pull(seqs, realm);
   }
@@ -104,6 +115,10 @@ export class CLIClient<Handle extends HostHandle> {
     realm?: IKDM,
   ): Promise<ValStat<IOpenBag>> {
     if (!this.conn) return err(Status.ConnectionClosed);
+    const stRealm = await this.#realm(realm);
+    if (stRealm !== Status.Success) return err(stRealm);
+    const bagMgr = this.conn.bagMgrFor(realm ?? nullKDM);
+    if (bagMgr === undefined) return err(Status.NotFound);
 
     const [hostIdnt, ist] = await this.conn.identity();
     if (ist !== Status.Success) return err(ist);
@@ -113,20 +128,33 @@ export class CLIClient<Handle extends HostHandle> {
     } catch {
       return err(Status.CryptoError);
     }
-    const [rlm, rlmSt] = await this.conn.hostRlm(realm);
-    if (rlmSt !== Status.Success) return err(rlmSt);
     const [itemDec, statPeekItem] = await decryptPeekItem(
       peekItem,
       verifyKey,
-      this.enclave,
+      bagMgr,
       crypto,
-      rlm,
-      realm,
     );
     if (statPeekItem !== Status.Success) return err(statPeekItem);
 
-    const cipher = this.enclave.deriveCipher(itemDec.kdm, "decrypt", realm);
-    return openBagBody(itemDec.headEnc, pullItem.bodyCph, cipher, crypto);
+    return openBagBody(
+      itemDec.headEnc,
+      pullItem.bodyCph,
+      { decrypt: (data) => bagMgr.decrypt(itemDec.kdm, data) },
+      crypto,
+    );
+  }
+
+  // Derives `realm` for this host unless the connection already has it.
+  async #realm(realm: IKDM = nullKDM): Promise<Status> {
+    const conn = this.conn;
+    if (!conn) return Status.ConnectionClosed;
+    if (conn.bagMgrFor(realm) !== undefined) return Status.Success;
+    const [home, st] = await conn.identity();
+    if (st !== Status.Success) return st;
+    const [bagMgr, bst] = await this.enclave.bagman(home.idKDM, realm);
+    if (bst !== Status.Success) return bst;
+    conn.add(bagMgr);
+    return Status.Success;
   }
 
   async upsertSingletonSync(type: string, body: Uint8Array): Promise<Status> {

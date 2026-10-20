@@ -5,6 +5,7 @@ import { makeEID } from "../../shared/codecs/eid.ts";
 import type { IMessage } from "../../shared/types.ts";
 
 import { Status } from "../../shared/consts.ts";
+import { nullKDM } from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import libsodiumCrypto from "../src/crypto.ts";
 
@@ -13,11 +14,11 @@ const crypto = libsodiumCrypto;
 const seed = await libsodiumCrypto.gen256BitSecureRandomSeed();
 const [enclave, est] = Enclave.fromBytes(seed);
 if (est !== Status.Success) throw new Error(`enclave ${est}`);
-const [hostIdnt, ist] = await enclave.deriveIdentity({
-  label: "benchmark-host",
-  index: 0,
-});
-if (ist !== Status.Success) throw new Error(`idnt ${ist}`);
+const [hostIdnt, ist] = await enclave.bagman(
+  { label: "benchmark-host", index: 0 },
+  nullKDM,
+);
+if (ist !== Status.Success) throw new Error(`bagman ${ist}`);
 
 function createBod(size: number): Uint8Array {
   const arr = new Uint8Array(size);
@@ -28,7 +29,7 @@ function createBod(size: number): Uint8Array {
 }
 
 async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
-  const [bag, stat] = await sealBag(op, hostIdnt, crypto, enclave);
+  const [bag, stat] = await sealBag(op, hostIdnt, crypto);
   if (stat !== Status.Success) {
     throw new Error("sealing bag");
   }
@@ -65,12 +66,7 @@ async function bench(size: number, suffix: string) {
     if (stat !== Status.Success) {
       throw new Error(`Error decoding bag: ${stat}`);
     }
-    const [, openStat] = await openBag(
-      bag,
-      verifyKey,
-      crypto,
-      enclave,
-    );
+    const [, openStat] = await openBag(bag, verifyKey, crypto, hostIdnt);
     if (openStat !== Status.Success) {
       throw new Error(`Open bag failed: ${openStat}`);
     }

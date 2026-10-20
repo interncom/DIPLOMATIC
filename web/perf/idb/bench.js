@@ -10,7 +10,7 @@ const DEFAULT_POINT = 1000;
 /** Distinct parents for typ+pid fan-out (EntDB child lists). */
 const N_PARENTS = 500;
 const TYPES = ["task", "note", "file", "tag", "evt"];
-/** Small structured body (msgpack-ish payload stand-in). */
+/** Small structured body (payload stand-in). */
 const BODY = { k: "v", n: 42, s: "x".repeat(32) };
 
 // --- codecs -----------------------------------------------------------------

@@ -8,7 +8,9 @@ Run `style.sh` in the root of the project to enforce style rules after completin
 
 Write the minimum amount of code you can to achieve the task without sacrificing clarity. Don't do "code golf" tricks to shorten the code, but look for refactors or even rearchitectures that would reduce LOC.
 
-Do not introduce new jargon without good reason.
+Do not introduce new jargon. Consult the human before coining a term. Use the names in GLOSSARY.md.
+
+Capitalize acronyms in names (`BlobAPI`, not `BlobApi`).
 
 ## Change-Minimization
 
@@ -16,26 +18,25 @@ When implementing a change, there is sometimes a refactor that looks useful to d
 
 ## Terseness
 
-To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are *not* desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
+To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are _not_ desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
 
 A short name still names the thing. Bare words like `Group` are too vague. Name the contents.
 
+A single `BagManager` is `bagMgr`. Several are `bagMgrs`. Do not abbreviate either as `bags`; that name is the protocol envelope (`IBag`).
+
 ## Function Documentation
+
 Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. You can explain special cases on a follow-up line. For instance:
 
 // Finds the greatest common divisor of two numbers.
 // Returns undefined if a or b is not a number.
 function gcd(a, b) {
-  // ... implementation
+// ... implementation
 }
 
 ## File Documentation
 
 Start each file with a brief one-line comment describing the file's purpose. Use a grammatical sentence.
-
-## Upgrades
-
-One-time upgrade code is tagged `TODO(realms-sunset):` or `TODO(accounts-sunset):` and says when it is safe to delete.
 
 ## Feedback
 
@@ -56,6 +57,10 @@ Do not re-export a symbol from a module that only imports it. Callers import it 
 When handling security-critical data like private keys, always ensure that they are zero-ed out ASAP to minimize the time window in which they can be caught by inspecting memory.
 
 Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts yourself. The human must look at these.
+
+## Bytes
+
+Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buffer: bytes outside the view stay reachable on `.buffer`, and wiping either side wipes both. Copy when the caller will zero the source or the result, or when a view would keep secret bytes alive. `Encoder.writeBytes` copies because callers zero seeds and PRF output after encode.
 
 ## Constraints
 
@@ -86,15 +91,15 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 ## Checking Work
 
 - Run tests before and after making changes to ensure you haven't broken anything.
-  - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
-  - `npm test` from `web` dir.
+    - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
+    - `npm test` from `web` dir.
 
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.
 
 - Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully. Then `node check.mjs` from `pkg` (`prepublishOnly` / `publish.sh` also run it).
 
 - Run the benchmarks before and after as well, to check for meaningful regressions.
-  - `deno bench` from `deno` dir.
+    - `deno bench` from `deno` dir.
 
 - Ensure that changes have not introduced new sensitive cryptographic operations outside the `shared/crypto` folder.
 - Ensure that changes have not resulted in the unencrypted master seed (key) being accessible outside of the Enclave in `shared/crypto`.

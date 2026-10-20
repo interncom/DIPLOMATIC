@@ -154,12 +154,7 @@ describe("pullBodies + openPulled", () => {
       len: body.length,
       bod: body,
     };
-    const [bag, bagStat] = await sealBag(
-      message,
-      hostIdnt,
-      libsodiumCrypto,
-      enclave,
-    );
+    const [bag, bagStat] = await sealBag(message, hostIdnt, libsodiumCrypto);
     expect(bagStat).toBe(Status.Success);
     if (!bag) return;
 
@@ -187,7 +182,7 @@ describe("pullBodies + openPulled", () => {
 
     const [opened, openStat] = await openPulled(
       store,
-      enclave,
+      [hostIdnt],
       libsodiumCrypto,
       pulled ?? [],
     );

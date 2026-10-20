@@ -11,7 +11,7 @@
 //   2) fresh client: peek all heads, then pull/open/exec (syncPeek + syncPull)
 //
 // Optional:
-//   DATASET=path/to/msgs.msgpack
+//   DATASET=path/to/msgs.bin
 //   CLIENT_UP_DB=...    (uploader client archive)
 //   CLIENT_DOWN_DB=...  (downloader client archive)
 
@@ -21,13 +21,12 @@ import { fileURLToPath } from "node:url";
 import libsodiumCrypto from "../src/crypto";
 import { entStateManager } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
-import DiplomaticClientAPI from "../src/shared/client";
+import DiplomaticClientAPI, { hostBagMgrs } from "../src/shared/client";
 import { MockClock } from "../src/shared/clock";
 import { Encoder } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
-import { nullKDM } from "../src/shared/crypto/derivation";
 import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { DiplomaticLPCServer, LPCTransport } from "../src/shared/lpc/server";
 import { createMemoryStorage } from "../src/shared/storage/memory";
@@ -44,7 +43,7 @@ import {
 } from "./productivity";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const defaultDataset = join(here, "../../fixtures/productivity/msgs.msgpack");
+const defaultDataset = join(here, "../../fixtures/productivity/msgs.bin");
 const defaultClientUpDb = join(
   here,
   "../../fixtures/productivity/client-up-perf.db",
@@ -172,10 +171,14 @@ async function main() {
   const upHost = await upStore.hosts.get(HOST_LABEL);
   if (!upHost) throw new Error("missing host");
 
+  const [upBagMgrs, upSt] = await hostBagMgrs(enclave, {
+    label: HOST_LABEL,
+    index: HOST_IDX,
+  });
+  if (upSt !== Status.Success) throw new Error(`bagMgrs ${upSt}`);
   const upConn = new DiplomaticClientAPI(
-    enclave,
+    upBagMgrs,
     libsodiumCrypto,
-    upHost,
     hostClock,
     makeTransport(),
     () => Promise.resolve(Status.Success),
@@ -203,7 +206,6 @@ async function main() {
   const pushStat = await syncPush({
     conn: upConn,
     store: upStore,
-    enclave,
     host: upHost,
     crypto: libsodiumCrypto,
   });
@@ -220,10 +222,7 @@ async function main() {
 
   const [keys, kst] = await upConn.identity();
   if (kst !== Status.Success) throw new Error(`identity ${kst}`);
-  const [rlm, rlmSt] = await enclave.hostRlm(nullKDM, {
-    label: HOST_LABEL,
-    index: HOST_IDX,
-  });
+  const [rlm, rlmSt] = await upConn.hostRlm();
   if (rlmSt !== Status.Success) throw new Error(`hostRlm ${rlmSt}`);
   const [heads, listSt] = await storage.listHeads(keys.publicKey, rlm, 0);
   if (listSt !== Status.Success) throw new Error(`listHeads ${listSt}`);
@@ -243,10 +242,14 @@ async function main() {
   const downHostRow = await downStore.hosts.get(HOST_LABEL);
   if (!downHostRow) throw new Error("missing host");
 
+  const [downBagMgrs, downSt] = await hostBagMgrs(downEnclave, {
+    label: HOST_LABEL,
+    index: HOST_IDX,
+  });
+  if (downSt !== Status.Success) throw new Error(`bagMgrs ${downSt}`);
   const downConn = new DiplomaticClientAPI(
-    downEnclave,
+    downBagMgrs,
     libsodiumCrypto,
-    downHostRow,
     hostClock,
     makeTransport(),
     () => Promise.resolve(Status.Success),
@@ -257,7 +260,7 @@ async function main() {
   const peekStat = await syncPeek({
     conn: downConn,
     store: downStore,
-    enclave: downEnclave,
+
     host: downHostRow,
     crypto: libsodiumCrypto,
   });
@@ -281,7 +284,7 @@ async function main() {
     {
       conn: downConn,
       store: downStore,
-      enclave: downEnclave,
+
       host: refreshedHost,
       crypto: libsodiumCrypto,
     },

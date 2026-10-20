@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "vitest";
-import { encode } from "@msgpack/msgpack";
 import { CachedEntDB } from "../src/entdb/cached";
 import { EntDBMemory } from "../src/entdb/memory";
 import { setVerbose } from "../src/verbose";
@@ -7,6 +6,7 @@ import { revFromEntity } from "../src/entdb/entdb";
 import { msgToOp } from "../src/state";
 import { Status } from "../src/shared/consts";
 import { makeEID } from "../src/shared/codecs/eid";
+import { encodeEnt } from "../src/shared/codecs/ent";
 import type { EntityID, IMessage, IOp } from "../src/shared/types";
 
 /** Resolve when `notifies` has at least `want` entries. */
@@ -32,7 +32,7 @@ function waitNotifies(notifies: unknown[], want: number): Promise<void> {
 }
 
 async function mutateOp(
-  body: unknown,
+  n: number,
   type: string,
   eidTs = new Date(1000),
   off = 0,
@@ -43,7 +43,9 @@ async function mutateOp(
   const [eid, st] = makeEID({ id, ts: eidTs });
   expect(st).toBe(Status.Success);
   if (!eid) throw new Error("eid");
-  const bod = encode({ body });
+  const [bod, stBod] = encodeEnt({ body: Uint8Array.of(n) });
+  expect(stBod).toBe(Status.Success);
+  if (stBod !== Status.Success) throw new Error("bod");
   const msg: IMessage = { eid, off, ctr, typ: type, len: bod.length, bod };
   const [op, stOp] = msgToOp(msg);
   expect(stOp).toBe(Status.Success);
@@ -58,7 +60,7 @@ describe("CachedEntDB", () => {
     const notifies: string[][] = [];
     cache.subscribe((types) => notifies.push([...types]));
 
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     await cache.apply([op]);
     await waitNotifies(notifies, 1);
     expect(notifies[0]).toContain("note");
@@ -72,29 +74,29 @@ describe("CachedEntDB", () => {
   test("after apply, mem matches durable even if durable rejects op", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const newer = await mutateOp({ n: 9 }, "note", new Date(1000), 100, 1);
+    const newer = await mutateOp(9, "note", new Date(1000), 100, 1);
     await durable.apply([newer]);
     await cache.ingestFromDurable([newer.eid]);
 
-    const older = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const older = await mutateOp(1, "note", new Date(1000), 0, 0);
     await cache.apply([older]);
 
     const [d] = await durable.getEntities({ type: "note" });
     const [m] = await cache.getEntities({ type: "note" });
-    expect(d?.[0]?.body).toEqual({ n: 9 });
-    expect(m?.[0]?.body).toEqual({ n: 9 });
+    expect(d?.[0]?.body).toEqual(Uint8Array.of(9));
+    expect(m?.[0]?.body).toEqual(Uint8Array.of(9));
   });
 
   test("getEntities warms from durable", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 2 }, "todo", new Date(2000), 0, 0);
+    const op = await mutateOp(2, "todo", new Date(2000), 0, 0);
     await durable.apply([op]);
 
     const [after, st] = await cache.getEntities({ type: "todo" });
     expect(st).toBe(Status.Success);
     expect(after).toHaveLength(1);
-    expect(after?.[0]?.body).toEqual({ n: 2 });
+    expect(after?.[0]?.body).toEqual(Uint8Array.of(2));
     if (after?.[0]) {
       expect(revFromEntity(after[0]).ctr).toBe(0);
     }
@@ -104,32 +106,32 @@ describe("CachedEntDB", () => {
   // warm with only that row in mem (would hide every other durable row).
   test("apply before first list still warms full type from durable", async () => {
     const durable = new EntDBMemory();
-    const existing = await mutateOp({ n: 1 }, "diary", new Date(1000), 0, 0, 1);
+    const existing = await mutateOp(1, "diary", new Date(1000), 0, 0, 1);
     await durable.apply([existing]);
 
     const cache = new CachedEntDB(durable);
-    const created = await mutateOp({ n: 2 }, "diary", new Date(2000), 0, 0, 2);
+    const created = await mutateOp(2, "diary", new Date(2000), 0, 0, 2);
     await cache.apply([created]);
 
     const [ents, st] = await cache.getEntities({ type: "diary" });
     expect(st).toBe(Status.Success);
     expect(ents).toHaveLength(2);
-    const bodies = ents?.map((e) => e.body).sort((a, b) =>
-      (a as { n: number }).n - (b as { n: number }).n
-    );
-    expect(bodies).toEqual([{ n: 1 }, { n: 2 }]);
+    const bodies = ents?.map((e) =>
+      e.body instanceof Uint8Array ? e.body[0] : -1
+    ).sort((a, b) => a - b);
+    expect(bodies).toEqual([1, 2]);
   });
 
   test("getEnt before first list still warms full type from durable", async () => {
     const durable = new EntDBMemory();
-    const a = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
-    const b = await mutateOp({ n: 2 }, "note", new Date(2000), 0, 0, 2);
+    const a = await mutateOp(1, "note", new Date(1000), 0, 0, 1);
+    const b = await mutateOp(2, "note", new Date(2000), 0, 0, 2);
     await durable.apply([a, b]);
 
     const cache = new CachedEntDB(durable);
     const [one, st1] = await cache.getEnt(a.eid);
     expect(st1).toBe(Status.Success);
-    expect(one?.body).toEqual({ n: 1 });
+    expect(one?.body).toEqual(Uint8Array.of(1));
 
     const [ents, st] = await cache.getEntities({ type: "note" });
     expect(st).toBe(Status.Success);
@@ -139,7 +141,7 @@ describe("CachedEntDB", () => {
   test("ingestFromDurable pulls eids only and notifies types on change", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 1 }, "item", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "item", new Date(1000), 0, 0);
     await cache.apply([op]);
 
     let n = 0;
@@ -154,20 +156,20 @@ describe("CachedEntDB", () => {
     expect(n).toBe(0);
 
     // Peer write on same eid.
-    const peer = await mutateOp({ n: 3 }, "item", new Date(1000), 50, 1);
+    const peer = await mutateOp(3, "item", new Date(1000), 50, 1);
     await durable.apply([peer]);
     await cache.ingestFromDurable([peer.eid]);
     expect(n).toBe(1);
     expect(heard).toContain("item");
 
     const [m] = await cache.getEntities({ type: "item" });
-    expect(m?.[0]?.body).toEqual({ n: 3 });
+    expect(m?.[0]?.body).toEqual(Uint8Array.of(3));
   });
 
   test("newest-first delete then older mutate stays dead", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const create = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const create = await mutateOp(1, "note", new Date(1000), 0, 0);
     const del: IOp = { eid: create.eid, off: 50, ctr: 1 };
     // Newest first (rebuild / catch-up order).
     await cache.apply([del, create]);
@@ -189,19 +191,19 @@ describe("CachedEntDB", () => {
   test("getEnt read-through on cold eid", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 7 }, "x", new Date(3000), 0, 0, 9);
+    const op = await mutateOp(7, "x", new Date(3000), 0, 0, 9);
     await durable.apply([op]);
     const eid = op.eid as EntityID;
 
     const [ent, st] = await cache.getEnt(eid);
     expect(st).toBe(Status.Success);
-    expect(ent?.body).toEqual({ n: 7 });
+    expect(ent?.body).toEqual(Uint8Array.of(7));
   });
 
   test("warm getEntities does not re-hit durable", async () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 2 }, "todo", new Date(2000), 0, 0);
+    const op = await mutateOp(2, "todo", new Date(2000), 0, 0);
     await durable.apply([op]);
 
     const [first, st1] = await cache.getEntities({ type: "todo" });
@@ -257,29 +259,29 @@ describe("CachedEntDB", () => {
     const notifies: string[][] = [];
     cache.subscribe((types) => notifies.push([...types]));
 
-    const op1 = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    const op1 = await mutateOp(1, "note", new Date(1000), 0, 0, 1);
     const p1 = cache.apply([op1]);
     await waitNotifies(notifies, 1);
     expect(getRows).toBe(0);
     const [m1] = await cache.getEntities({ type: "note" });
     expect(m1).toHaveLength(1);
-    expect(m1?.[0]?.body).toEqual({ n: 1 });
+    expect(m1?.[0]?.body).toEqual(Uint8Array.of(1));
     const [d1] = await durable.getEntities({ type: "note" });
     expect(d1).toHaveLength(0);
 
-    const op2 = await mutateOp({ n: 2 }, "note", new Date(1000), 50, 1, 1);
+    const op2 = await mutateOp(2, "note", new Date(1000), 50, 1, 1);
     const p2 = cache.apply([op2]);
     await waitNotifies(notifies, 2);
     expect(getRows).toBe(0);
     const [m2] = await cache.getEntities({ type: "note" });
-    expect(m2?.[0]?.body).toEqual({ n: 2 });
+    expect(m2?.[0]?.body).toEqual(Uint8Array.of(2));
 
     releaseGet();
     releaseApply();
     await p1;
     await p2;
     const [done] = await durable.getEntities({ type: "note" });
-    expect(done?.[0]?.body).toEqual({ n: 2 });
+    expect(done?.[0]?.body).toEqual(Uint8Array.of(2));
   });
 
   test("second apply emits before first durable.apply (distinct eids)", async () => {
@@ -300,8 +302,8 @@ describe("CachedEntDB", () => {
     const notifies: string[][] = [];
     cache.subscribe((types) => notifies.push([...types]));
 
-    const op1 = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
-    const op2 = await mutateOp({ n: 2 }, "note", new Date(2000), 0, 0, 2);
+    const op1 = await mutateOp(1, "note", new Date(1000), 0, 0, 1);
+    const op2 = await mutateOp(2, "note", new Date(2000), 0, 0, 2);
     const p1 = cache.apply([op1]);
     await waitNotifies(notifies, 1);
     const p2 = cache.apply([op2]);
@@ -340,7 +342,7 @@ describe("CachedEntDB", () => {
       void cache.getEntities({ type: "note" });
     });
 
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     const p = cache.apply([op]);
     await waitNotifies(heard, 1);
     expect(applyStarted).toBe(1);
@@ -364,7 +366,7 @@ describe("CachedEntDB", () => {
     const notifies: string[][] = [];
     cache.subscribe((types) => notifies.push([...types]));
 
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     const p = cache.apply([op]);
     const [ents] = await cache.getEntities({ type: "note" });
     expect(ents).toHaveLength(1);
@@ -377,7 +379,7 @@ describe("CachedEntDB", () => {
 
   test("first list does not wait for ingestFromDurable", async () => {
     const durable = new EntDBMemory();
-    const existing = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0, 1);
+    const existing = await mutateOp(1, "note", new Date(1000), 0, 0, 1);
     await durable.apply([existing]);
     let releaseGet = () => {};
     const getHold = new Promise<void>((resolve) => {
@@ -409,12 +411,12 @@ describe("CachedEntDB", () => {
       return origApply(ops);
     };
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     const p = cache.apply([op]);
     const [ents, st] = await cache.getEntities({ type: "note" });
     expect(st).toBe(Status.Success);
     expect(ents).toHaveLength(1);
-    expect(ents?.[0]?.body).toEqual({ n: 1 });
+    expect(ents?.[0]?.body).toEqual(Uint8Array.of(1));
     releaseApply();
     await p;
   });
@@ -428,7 +430,7 @@ describe("CachedEntDB", () => {
       return origGet(eid);
     };
     const cache = new CachedEntDB(durable);
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     await cache.apply([op]);
     expect(getRows).toBe(0);
   });
@@ -450,7 +452,7 @@ describe("CachedEntDB", () => {
     const notifies: string[][] = [];
     cache.subscribe((types) => notifies.push([...types]));
 
-    const op = await mutateOp({ n: 1 }, "note", new Date(1000), 0, 0);
+    const op = await mutateOp(1, "note", new Date(1000), 0, 0);
     const p = cache.apply([op]);
     expect(notifies.length).toBe(0);
     const [before] = await cache.getEntities({ type: "note" });
@@ -468,9 +470,9 @@ describe("CachedEntDB", () => {
     const durable = new EntDBMemory();
     const cache = new CachedEntDB(durable);
     const ops = await Promise.all([
-      mutateOp({ n: 1 }, "item", new Date(1000), 0, 0, 1),
-      mutateOp({ n: 2 }, "item", new Date(1000), 0, 0, 2),
-      mutateOp({ n: 3 }, "item", new Date(1000), 0, 0, 3),
+      mutateOp(1, "item", new Date(1000), 0, 0, 1),
+      mutateOp(2, "item", new Date(1000), 0, 0, 2),
+      mutateOp(3, "item", new Date(1000), 0, 0, 3),
     ]);
     await durable.apply(ops);
 

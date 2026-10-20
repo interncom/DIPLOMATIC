@@ -38,7 +38,7 @@ App API: `Enclave.pairRequest` / `enclave.pairAccept`, then `sealWithPasskey` on
 
 `Enclave.fromBytes` (web hex paste, CLI `DIP_SEED`). No WebAuthn. Session-only unless the app then binds with PRF or writes largeBlob.
 
-CLI paper backup: `Enclave.dumpToTty` writes 8 lines of `n] xxxx xxxx` plus a `#] xxxx xxxx` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter, erasing the previous line (`tools/keys/hexdump.ts`). The fingerprint is the null-KDM child of the fingerprint PDK (`diplomatic.fingerprint.v1`). Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` prompts `n] ` one line at a time (erasing the previous), then prints `#]` for the user to check against the paper.
+CLI paper backup: `Enclave.dumpToTTY` writes 8 lines of `n] xxxx xxxx` plus a `#] xxxx xxxx` check (seed fingerprint, first 4 bytes) to `/dev/tty`, one line per Enter, erasing the previous line (`tools/keys/hexdump.ts`). The fingerprint is the null-KDM child of the fingerprint PDK (`diplomatic.fingerprint.v1`). Fail closed: the write runs only with `DIP_CLI_DUMP=true` (`hexdump.ts` re-execs with that define); missing or false is `NotImplemented`. Web/worker/pkg-cli also pin `DIP_CLI_DUMP=false` so minify can drop the write from those bundles entirely. Not a web API. Restore: `tools/keys/hexload.ts` prompts `n] ` one line at a time (erasing the previous), then prints `#]` for the user to check against the paper.
 
 ## Platform support
 
@@ -90,6 +90,6 @@ Other CTAP2.1 keys with hmac-secret and/or largeBlob work the same way when the 
 | Move identity to another device in person | QR pair (`pairRequest` / `pairAccept`), then PRF binding on the new device |
 | Survive a wiped profile / new machine without cloud passkeys | largeBlob on a YubiKey (desktop), then optional PRF bind |
 | CLI / tests | Raw seed |
-| Paper (CLI TTY) | `dumpToTty` / `tools/keys/hexdump.ts` |
+| Paper (CLI TTY) | `dumpToTTY` / `tools/keys/hexdump.ts` |
 
 A typical app (see LIFE): platform PRF for daily unlock; optional `cross-platform` largeBlob write as a YubiKey backup; QR pair for a second device. On iPhone, only the platform PRF path is available after the pair.

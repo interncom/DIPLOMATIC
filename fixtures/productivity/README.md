@@ -7,7 +7,7 @@ Simulated dump matching a real personal productivity workload:
 | Messages | ~42,000 |
 | Entities | ~6,500 |
 | Msgs / entity | ~6.5 (avg) |
-| Body | `{ type: "todo", body: { text, note?, done } }` (msgpack) |
+| Body | ent frame; payload is text, done, optional note |
 
 Used to time LPC sync flows while optimizing the client architecture:
 
@@ -16,7 +16,7 @@ Used to time LPC sync flows while optimizing the client architecture:
 
 ## Files
 
-- `msgs.msgpack` — packed records (`web/perf/productivity.ts`)
+- `msgs.bin` — packed records (`web/perf/productivity.ts`)
 - `meta.json` — counts and size summary
 
 ## Regenerate

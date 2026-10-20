@@ -1,0 +1,8 @@
+{
+  "name": "entframe",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@msgpack/msgpack": "3.1.3"
+  }
+}

@@ -1,8 +1,6 @@
-import { fileCodec } from "../../shared/codecs/file.ts";
-import { Decoder } from "../../shared/codec.ts";
-import { Exim } from "../../shared/exim.ts";
-import { Status } from "../../shared/consts.ts";
-import { nullKDM } from "../../shared/crypto/derivation.ts";
+import { Exim } from "../../shared/crypto/exim.ts";
+import { hashBytes, Status } from "../../shared/consts.ts";
+import { randomBytes } from "../../shared/crypto/entropy.ts";
 import crypto from "../../bun/src/crypto.ts";
 import {
   die,
@@ -71,28 +69,40 @@ if (input.length === 0) die("Input file is empty.");
 console.error(`Read ${input.length} bytes from ${inputFile}.`);
 
 console.error("Migrating export to new master key...");
-const [fileStruct, stFile] = fileCodec.decode(new Decoder(input));
-if (stFile !== Status.Success) {
-  die(`Failed to read export head: ${Status[stFile]}`);
+const [nonceIn, nst] = Exim.exportNonce(input);
+if (nst !== Status.Success || nonceIn === undefined) {
+  die(`Failed to read export nonce: ${Status[nst]}`);
 }
-const idKDM = { label: fileStruct.head.lbl, index: fileStruct.head.idx };
-const [bagMgrIn, stIn] = await oldEnclave.bagman(idKDM, nullKDM);
-if (stIn !== Status.Success) {
+const [keyIn, stIn] = await oldEnclave.exportKey(nonceIn);
+if (stIn !== Status.Success || keyIn === undefined) {
   die(`Failed to open old export key: ${Status[stIn]}`);
 }
-const [bagMgrOut, stOut] = await newEnclave.bagman(idKDM, nullKDM);
-if (stOut !== Status.Success) {
+let msgs;
+try {
+  const [decoded, stDec] = await Exim.decodeFile(input, crypto, keyIn);
+  if (stDec !== Status.Success || decoded === undefined) {
+    keyIn.fill(0);
+    die(`Failed to decode: ${Status[stDec]}`);
+  }
+  msgs = decoded;
+} finally {
+  keyIn.fill(0);
+}
+const nonce = randomBytes(hashBytes);
+const [keyOut, stOut] = await newEnclave.exportKey(nonce);
+if (stOut !== Status.Success || keyOut === undefined) {
   die(`Failed to open new export key: ${Status[stOut]}`);
 }
-const [outBytes, statMig] = await Exim.migrateFile(
-  input,
-  crypto,
-  bagMgrIn,
-  bagMgrOut,
-  (msgs) => msgs,
-);
-if (statMig !== Status.Success || outBytes === undefined) {
-  die(`Failed to migrate: ${Status[statMig]}`);
+let outBytes: Uint8Array;
+try {
+  const [sealed, sst] = await Exim.sealExport(msgs, crypto, keyOut, nonce);
+  if (sst !== Status.Success || sealed === undefined) {
+    keyOut.fill(0);
+    die(`Failed to migrate: ${Status[sst]}`);
+  }
+  outBytes = sealed;
+} finally {
+  keyOut.fill(0);
 }
 
 console.error("Writing rekeyed data...");

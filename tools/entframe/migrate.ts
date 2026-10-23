@@ -4,6 +4,7 @@ import { cmpBytes } from "../../shared/checksum.ts";
 import { Decoder, Encoder } from "../../shared/codec.ts";
 import { eidCodec, makeEID } from "../../shared/codecs/eid.ts";
 import { encodeEnt, entCodec } from "../../shared/codecs/ent.ts";
+import type { IKDM } from "../../shared/codecs/kdm.ts";
 import { Status } from "../../shared/consts.ts";
 import type {
   EntityID,
@@ -21,6 +22,7 @@ export interface MsgPack {
 export interface ExportMsg {
   head: IMessageHead;
   body?: Uint8Array;
+  realm?: IKDM;
 }
 
 const kept = new Set(["body", "pid", "tags", "type"]);
@@ -235,6 +237,7 @@ export async function entFrameMsgs(
     out.push({
       head: { ...msg.head, typ, len: bod.length, hsh: await hash(bod) },
       body: bod,
+      ...(msg.realm !== undefined ? { realm: msg.realm } : {}),
     });
   }
   return ok(out);

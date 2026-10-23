@@ -15,7 +15,7 @@ application payload. The digest is the same for the old bodies and the frames.
 digest is printed on stderr.
 
 Unlock uses `~/.diplomatic/<LABEL>` via `tools/keys`, same as rekey. LABEL is
-which master to unseal. The file keeps its own key label.
+which master to unseal. The file nonce is in the header. The tool re-seals under that same nonce.
 
 ```
 bun run entframe.ts LIFE export.dpl framed.dpl

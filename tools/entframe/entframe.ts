@@ -2,11 +2,8 @@
 
 import { decode, encode } from "@msgpack/msgpack";
 import { btoh, bytesEqual } from "../../shared/binary.ts";
-import { Decoder } from "../../shared/codec.ts";
-import { fileCodec } from "../../shared/codecs/file.ts";
 import { Status } from "../../shared/consts.ts";
-import { nullKDM } from "../../shared/crypto/derivation.ts";
-import { Exim } from "../../shared/exim.ts";
+import { Exim } from "../../shared/crypto/exim.ts";
 import crypto from "../../bun/src/crypto.ts";
 import {
   die,
@@ -66,45 +63,66 @@ try {
 if (input.length === 0) die("Input file is empty.");
 console.error(`Read ${input.length} bytes from ${inputFile}.`);
 
-const [fileStruct, stFile] = fileCodec.decode(new Decoder(input));
-if (stFile !== Status.Success) {
-  die(`Failed to read export head: ${Status[stFile]}`);
+const [nonce, nst] = Exim.exportNonce(input);
+if (nst !== Status.Success || nonce === undefined) {
+  die(`Failed to read export nonce: ${Status[nst]}`);
 }
-const idKDM = { label: fileStruct.head.lbl, index: fileStruct.head.idx };
-const [bagMgr, stBag] = await enclave.bagman(idKDM, nullKDM);
-if (stBag !== Status.Success) {
-  die(`Failed to open export key: ${Status[stBag]}`);
+const [key, kst] = await enclave.exportKey(nonce);
+if (kst !== Status.Success || key === undefined) {
+  die(`Failed to open export key: ${Status[kst]}`);
 }
 
 console.error("Decoding export...");
-const [msgs, stDec] = await Exim.decodeFile(input, crypto, bagMgr);
-if (stDec !== Status.Success) die(`Failed to decode: ${Status[stDec]}`);
+const [realms, stDec] = await Exim.decodeFile(input, crypto, key);
+if (stDec !== Status.Success || realms === undefined) {
+  key.fill(0);
+  die(`Failed to decode: ${Status[stDec]}`);
+}
 
 const pack = { encode, decode };
 const hash = (data: Uint8Array) => crypto.blake3(data);
-console.error(`Checking ${msgs.length} messages...`);
-const [sum0, st0] = await checksumEntInfo(msgs, hash, pack);
+const before = [];
+for (const part of realms) {
+  for (const msg of part.msgs) before.push(msg);
+}
+console.error(`Checking ${before.length} messages...`);
+const [sum0, st0] = await checksumEntInfo(before, hash, pack);
 if (st0 !== Status.Success || sum0 === undefined) {
+  key.fill(0);
   die(`Failed to checksum: ${Status[st0]}`);
 }
 
-console.error(`Migrating ${msgs.length} messages...`);
-const [next, stMig] = await entFrameMsgs(msgs, hash, pack);
-if (stMig !== Status.Success || next === undefined) {
-  die(`Failed to migrate: ${Status[stMig]}`);
+console.error(`Migrating ${before.length} messages...`);
+const next = [];
+for (const part of realms) {
+  const [framed, stMig] = await entFrameMsgs(part.msgs, hash, pack);
+  if (stMig !== Status.Success || framed === undefined) {
+    key.fill(0);
+    die(`Failed to migrate: ${Status[stMig]}`);
+  }
+  next.push({ realm: part.realm, msgs: framed });
 }
-const [sum1, st1] = await checksumEntInfo(next, hash, pack);
+const after = [];
+for (const part of next) {
+  for (const msg of part.msgs) after.push(msg);
+}
+const [sum1, st1] = await checksumEntInfo(after, hash, pack);
 if (st1 !== Status.Success || sum1 === undefined) {
+  key.fill(0);
   die(`Failed to checksum migrated data: ${Status[st1]}`);
 }
 if (!bytesEqual(sum0, sum1)) {
+  key.fill(0);
   die(`Info checksum mismatch ${btoh(sum0)} ${btoh(sum1)}`);
 }
 console.error(`Info checksum ${btoh(sum0)}.`);
 
 console.error("Encoding export...");
-const [outBytes, stEnc] = await Exim.encodeFile(next, crypto, bagMgr);
-if (stEnc !== Status.Success) die(`Failed to encode: ${Status[stEnc]}`);
+const [outBytes, stEnc] = await Exim.encodeFile(next, crypto, key, nonce);
+key.fill(0);
+if (stEnc !== Status.Success || outBytes === undefined) {
+  die(`Failed to encode: ${Status[stEnc]}`);
+}
 
 console.error("Writing migrated data...");
 if (outputFile !== undefined && outputFile.length > 0) {

@@ -47,6 +47,7 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, genSingletonEID } from "./shared/codecs/eid";
 import { encodeEnt, entCodec } from "./shared/codecs/ent";
 import { Status } from "./shared/consts";
+import { Exim } from "./shared/crypto/exim";
 import { hostHTTPTransport, HTTPTransport } from "./shared/http";
 import { TypedEventEmitter } from "./shared/events";
 import {
@@ -204,6 +205,7 @@ export {
   EntitiesQuery,
   EntityID,
   entStateManager,
+  Exim,
   genSingletonEID,
   hostHTTPTransport,
   htob,

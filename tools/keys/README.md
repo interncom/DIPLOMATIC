@@ -15,6 +15,7 @@ master.
 | `pair.ts accept LABEL [DHKEREQ_HEX]` | Enroller: unlock, print `DHKEResp` |
 | `hexdump.ts LABEL` | Unlock, print 8×8 hex master on the TTY (paper) |
 | `hexload.ts LABEL [--non-resident]` | Read 8×8 hex from the TTY, bind first YubiKey |
+| `export.ts LABEL` | Unlock, print one-file export key (nonce‖key hex) |
 
 Requires [fido2-tools](https://developers.yubico.com/libfido2/). Optional
 `DIP_FIDO_DEV`. CLI PRF salt is raw hmac-secret, not the browser SHA-256
@@ -30,6 +31,7 @@ bun run tools/keys/pair.ts request LIFE
 bun run tools/keys/hexdump.ts LIFE
 bun run tools/keys/hexload.ts LIFE
 bun run tools/keys/hexload.ts LIFE --non-resident
+bun run tools/keys/export.ts NOTE
 ```
 
 Default is a discoverable cred (`fido2-cred -r`): Yubico Authenticator
@@ -41,3 +43,6 @@ paste its `DHKEResp` back, then bind the plugged YubiKey. `hexdump`: 8 lines of 
 Enter (previous line erased), on the controlling TTY only (not stdout).
 `hexload`: prompts `n] ` one line at a time (previous line erased), then
 `#]` to compare; bind a YubiKey; refuses if `~/.diplomatic/LABEL` exists.
+`export`: touch the YubiKey, then stdout is 128 hex characters (32-byte
+nonce, then the file key keyed by that nonce). The key seals one file.
+Pipe it into an importer. Do not pass it as an argument.

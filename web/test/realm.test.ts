@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SyncClient } from "../src/client";
 import libsodiumCrypto from "../src/crypto";
 import { EntDBMemory } from "../src/entdb/memory";
+import { bytesEqual } from "../src/shared/binary";
 import { MockClock } from "../src/shared/clock";
 import { makeEID } from "../src/shared/codecs/eid";
 import { Status } from "../src/shared/consts";
@@ -12,6 +13,7 @@ import type { IProtoHost } from "../src/shared/types";
 import { MemoryRealmStore } from "../src/stores/memory/realms";
 import { MemoryStore } from "../src/stores/memory/store";
 import { advanceRealm, decodeRealm, realmLabel } from "../src/stores/realm";
+import { defaultMaxPullBytes, defaultMaxPushBytes } from "../src/sync";
 import { nullStateManager } from "../src/state";
 import { APLD_PENDING } from "../src/types";
 
@@ -21,6 +23,22 @@ function enclave(): Enclave {
     throw new Error(`enclave ${st}`);
   }
   return e;
+}
+
+function client(store: MemoryStore<IProtoHost>): SyncClient<IProtoHost> {
+  return new SyncClient(
+    new MockClock(new Date(1_000)),
+    nullStateManager,
+    store,
+    () => {
+      throw new Error("no transport");
+    },
+    libsodiumCrypto,
+    true,
+    defaultMaxPushBytes,
+    defaultMaxPullBytes,
+    () => {},
+  );
 }
 
 describe("advanceRealm", () => {
@@ -140,6 +158,60 @@ describe("realm label on ents and messages", () => {
       data: { eid, apld: APLD_PENDING, rlm: inbox },
     }]);
     expect((await store.messages.get(hash))?.rlm).toBe("inbox");
+  });
+
+  test("an import omits rlm on the default realm", async () => {
+    const srcStore = new MemoryStore<IProtoHost>(libsodiumCrypto);
+    const src = client(srcStore);
+    expect(await src.setSeed(enclave())).toBe(Status.Success);
+    const defBody = new Uint8Array([1, 1]);
+    const [, hst] = await src.insertRaw(defBody, "note");
+    expect(hst).toBe(Status.Success);
+
+    const notesBody = new Uint8Array([2, 2]);
+    const [eid, est] = makeEID({
+      id: new Uint8Array(8).fill(9),
+      ts: new Date(1),
+    });
+    expect(est).toBe(Status.Success);
+    if (eid === undefined) return;
+    const notes = realmLabel("notes");
+    expect(notes).toBe("notes");
+    if (notes === undefined) return;
+    expect(await srcStore.realms.put("notes", 2)).toBe(Status.Success);
+    await srcStore.messages.add([{
+      key: await libsodiumCrypto.blake3(notesBody),
+      data: {
+        eid,
+        body: notesBody,
+        apld: APLD_PENDING,
+        typ: "note",
+        rlm: notes,
+      },
+    }]);
+
+    const [file, fst] = await src.exportBytes();
+    expect(fst).toBe(Status.Success);
+    if (file === undefined) return;
+
+    const destStore = new MemoryStore<IProtoHost>(libsodiumCrypto);
+    const dest = client(destStore);
+    expect(await dest.setSeed(enclave())).toBe(Status.Success);
+    expect(await dest.import(new File([file], "a.dpl"))).toBe(Status.Success);
+
+    const rows = [...destStore.messages.messages.values()];
+    expect(rows).toHaveLength(2);
+    const def = rows.find((row) =>
+      row.body !== undefined && bytesEqual(row.body, defBody)
+    );
+    const labeled = rows.find((row) =>
+      row.body !== undefined && bytesEqual(row.body, notesBody)
+    );
+    expect(def).toBeDefined();
+    expect(labeled).toBeDefined();
+    if (def === undefined || labeled === undefined) return;
+    expect(Object.hasOwn(def, "rlm")).toBe(false);
+    expect(labeled.rlm).toBe("notes");
   });
 
   test("opening an account copies the realms table", async () => {

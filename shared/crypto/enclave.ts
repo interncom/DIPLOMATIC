@@ -59,7 +59,7 @@ import type {
 import { concat } from "../binary.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
-import { Status } from "../consts.ts";
+import { hashBytes, Status } from "../consts.ts";
 import { asSealedMasterKey, MASTER_SEED_LEN } from "../seed.ts";
 import { err, ok } from "../valstat.ts";
 import { deriveKey, nullKDM, Purpose } from "./derivation.ts";
@@ -217,6 +217,12 @@ class InnerEnclave {
   // Stable realm id (account key + realm KDM). No host material.
   async realmID(realmKDM: IKDM): Promise<ValStat<PDK["RealmID"]>> {
     return deriveRealmID(this.#seed, realmKDM);
+  }
+
+  // Export file key. `nonce` is the KDM. Parent is the master.
+  async exportFileKey(nonce: Uint8Array): Promise<ValStat<PDK["Export"]>> {
+    const purpose = Purpose.Export;
+    return deriveKey({ parent: this.#seed, purpose, kdm: nonce });
   }
 
   // Fingerprint-PDK child. No kdm is the paper check (null KDM).
@@ -589,6 +595,12 @@ class OuterEnclave {
       [seed.buffer],
     );
     return worker;
+  }
+
+  // File key for one export. `nonce` is the KDM. Parent is the master.
+  async exportKey(nonce: Uint8Array): Promise<ValStat<PDK["Export"]>> {
+    if (nonce.byteLength !== hashBytes) return err(Status.InvalidParam);
+    return this.#inner.exportFileKey(nonce);
   }
 
   // Returns the BagManager for one identity KDM x realm combination.

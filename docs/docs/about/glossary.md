@@ -20,7 +20,7 @@ Short for _revision_. Snapshot of an ent's latest observed state, used as the ba
 
 ## identity
 
-Cryptographic persona for one identity KDM and one realm. A `BagManager`: **publicKey**, **sign**, and **kdmFor**, plus **encrypt** and **decrypt** for that realm. Derived at unlock from the master seed (an Identity PDK, a realm key, and a host rlm); the client can then drop the enclave. The identity KDM is a host label or an export-file key label. Used to authenticate to hosts, seal bags, and sign export files. Not a host-specific concept—hosts are one common label among others.
+Cryptographic persona for one identity KDM and one realm. A `BagManager`: **publicKey**, **sign**, and **kdmFor**, plus **encrypt** and **decrypt** for that realm. Derived at unlock from the master seed (an Identity PDK, a realm key, and a host rlm); the client can then drop the enclave. The identity KDM is a host label. An export file is signed by the null-KDM Identity PDK of that file's export key. Used to authenticate to hosts, seal bags, and sign export files. Not a host-specific concept—hosts are one common label among others.
 
 In code, prefer **`idnt`** (or **`hostIdnt`** when the path is a host) over **`id` / `hostId`**, which read as “identifier” rather than “identity.”
 

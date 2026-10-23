@@ -65,6 +65,24 @@ const permits: Permit[] = [
       "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
   },
   {
+    caller: "exportKey",
+    callee: "derivation.deriveKey",
+    how: "exact",
+    src: "0de5207b092b952756705bc0fc7f250d",
+    callerSrc: "63c21ea13b9b6bab713840036aeec2b4",
+    why:
+      "To derive the export file key from the master. The nonce is the KDM.",
+  },
+  {
+    caller: "exportKey",
+    callee: "NobleCrypto.blake3",
+    how: "exact",
+    src: "ac2d00162c47b0171aee8576da4a9689",
+    callerSrc: "63c21ea13b9b6bab713840036aeec2b4",
+    why:
+      "PDK derivation hashes the master with a purpose context (BLAKE3 KDF).",
+  },
+  {
     caller: "bagman",
     callee: "derivation.deriveKey",
     how: "exact",
@@ -635,6 +653,16 @@ const traces: Record<string, () => void | Promise<void>> = {
     arm("dumpToTTY", seed);
     const st = await e.dumpToTTY();
     expect(st).toBe(Status.NotImplemented);
+    assertPermitted();
+  },
+  async exportKey() {
+    const seed = randomSeed();
+    const e = enclaveOf(seed);
+    arm("exportKey", seed);
+    const [key, st] = await e.exportKey(new Uint8Array(32).fill(1));
+    expect(st).toBe(Status.Success);
+    expect(key).toBeDefined();
+    key?.fill(0);
     assertPermitted();
   },
   async fingerprint() {

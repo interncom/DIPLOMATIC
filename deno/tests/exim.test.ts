@@ -1,12 +1,16 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { bytesEqual } from "../../shared/binary.ts";
 import { Decoder } from "../../shared/codec.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import { fileCodec } from "../../shared/codecs/file.ts";
-import { Status } from "../../shared/consts.ts";
-import type { BagManager } from "../../shared/crypto/bagman.ts";
-import { nullKDM } from "../../shared/crypto/derivation.ts";
+import { hashBytes, Status } from "../../shared/consts.ts";
+import { nullKDM, type PDK } from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
-import { Exim } from "../../shared/exim.ts";
+import {
+  Exim,
+  type IExportMsg,
+  type IExportRealm,
+} from "../../shared/crypto/exim.ts";
 import { genDeleteHead, genUpsertHead } from "../../shared/message.ts";
 import type {
   DerivationSeed,
@@ -18,6 +22,7 @@ import type {
   PrivateKey,
   PublicKey,
 } from "../../shared/types.ts";
+import { type ValStat } from "../../shared/valstat.ts";
 
 // Mock implementations for deterministic testing
 class MockCrypto implements ICrypto {
@@ -88,14 +93,59 @@ class MockCrypto implements ICrypto {
   }
 }
 
-const lbl = "test-label";
 const testSeed = new Uint8Array(32).fill(0x11);
+const nonce = new Uint8Array(hashBytes).fill(0x42);
+const nonceOut = new Uint8Array(hashBytes).fill(0x43);
 
-// Export manager for `lbl` at `index`. The default realm is nullKDM.
-async function fileBagMgr(enclave: Enclave, index = 0): Promise<BagManager> {
-  const [bagMgr, st] = await enclave.bagman({ label: lbl, index }, nullKDM);
-  if (st !== Status.Success) throw new Error(`bagMgr ${st}`);
-  return bagMgr;
+function withRealm(
+  msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+): IExportRealm[] {
+  const list: IExportMsg[] = [];
+  for (const msg of msgs) list.push({ head: msg.head, body: msg.body });
+  if (list.length === 0) return [];
+  return [{ realm: nullKDM, msgs: list }];
+}
+
+function bags(realms: readonly IExportRealm[]): IExportMsg[] {
+  const out: IExportMsg[] = [];
+  for (const part of realms) {
+    for (const msg of part.msgs) out.push(msg);
+  }
+  return out;
+}
+
+async function fileKey(enclave: Enclave, n = nonce): Promise<PDK["Export"]> {
+  const [key, st] = await enclave.exportKey(n);
+  if (st !== Status.Success || key === undefined) {
+    throw new Error(`exportKey ${st}`);
+  }
+  return key;
+}
+
+async function seal(
+  enclave: Enclave,
+  crypto: ICrypto,
+  msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }>,
+): Promise<ValStat<Uint8Array>> {
+  const key = await fileKey(enclave);
+  try {
+    return await Exim.encodeFile(withRealm(msgs), crypto, key, nonce);
+  } finally {
+    key.fill(0);
+  }
+}
+
+async function open(
+  enclave: Enclave,
+  crypto: ICrypto,
+  file: Uint8Array,
+): Promise<ValStat<IExportRealm[]>> {
+  const key = await fileKey(enclave);
+  try {
+    return await Exim.decodeFile(file, crypto, key);
+  } finally {
+    key.fill(0);
+  }
 }
 
 Deno.test("Exim.encodeFile", async (t) => {
@@ -107,11 +157,7 @@ Deno.test("Exim.encodeFile", async (t) => {
 
   await t.step("empty messages", async () => {
     const msgs: Iterable<{ head: IMessageHead; body?: Uint8Array }> = [];
-    const [fileData, statFile] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [fileData, statFile] = await seal(enclave, crypto, msgs);
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
     assertEquals(fileData.length > 0, true);
@@ -121,11 +167,9 @@ Deno.test("Exim.encodeFile", async (t) => {
     const [file, status] = dec.readStruct(fileCodec);
     assertEquals(status, Status.Success);
     if (status !== Status.Success) return;
-    assertEquals(file.head.lbl, "test-label");
-    assertEquals(file.head.idx, 0);
-    assertEquals(file.head.num, 0);
-    assertEquals(file.indexEnc.length, 0);
-    assertEquals(file.bodyEnc.length, 0);
+    assertEquals(bytesEqual(file.head.nonce, nonce), true);
+    assertEquals(file.head.realms.length, 0);
+    assertEquals(file.chunks.length, 0);
   });
 
   await t.step("single message without body", async () => {
@@ -150,11 +194,7 @@ Deno.test("Exim.encodeFile", async (t) => {
       return;
     }
     const msgs = [{ head }];
-    const [fileData, statFile] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [fileData, statFile] = await seal(enclave, crypto, msgs);
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -163,11 +203,10 @@ Deno.test("Exim.encodeFile", async (t) => {
     const [file, status] = dec.readStruct(fileCodec);
     assertEquals(status, Status.Success);
     if (status !== Status.Success) return;
-    assertEquals(file.head.lbl, "test-label");
-    assertEquals(file.head.idx, 0);
-    assertEquals(file.head.num, 1);
-    assertEquals(file.indexEnc.length > 0, true);
-    assertEquals(file.bodyEnc.length, 0);
+    assertEquals(bytesEqual(file.head.nonce, nonce), true);
+    assertEquals(file.head.realms.length, 1);
+    assertEquals(file.head.realms[0]?.num, 1);
+    assertEquals(file.chunks.length > 0, true);
   });
 
   await t.step("single message with body", async () => {
@@ -194,11 +233,7 @@ Deno.test("Exim.encodeFile", async (t) => {
       return;
     }
     const msgs = [{ head, body }];
-    const [fileData, statFile] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [fileData, statFile] = await seal(enclave, crypto, msgs);
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -207,11 +242,10 @@ Deno.test("Exim.encodeFile", async (t) => {
     const [file, status] = dec.readStruct(fileCodec);
     assertEquals(status, Status.Success);
     if (status !== Status.Success) return;
-    assertEquals(file.head.lbl, "test-label");
-    assertEquals(file.head.idx, 0);
-    assertEquals(file.head.num, 1);
-    assertEquals(file.indexEnc.length > 0, true);
-    assertEquals(file.bodyEnc.length > 0, true);
+    assertEquals(bytesEqual(file.head.nonce, nonce), true);
+    assertEquals(file.head.realms.length, 1);
+    assertEquals(file.head.realms[0]?.num, 1);
+    assertEquals(file.chunks.length > 0, true);
   });
 
   await t.step("multiple messages", async () => {
@@ -243,11 +277,7 @@ Deno.test("Exim.encodeFile", async (t) => {
       }
       msgs.push({ head, body });
     }
-    const [fileData, statFile] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave, 1),
-    );
+    const [fileData, statFile] = await seal(enclave, crypto, msgs);
     assertEquals(statFile, Status.Success);
     if (statFile !== Status.Success) return;
 
@@ -256,11 +286,10 @@ Deno.test("Exim.encodeFile", async (t) => {
     const [file, status] = dec.readStruct(fileCodec);
     assertEquals(status, Status.Success);
     if (status !== Status.Success) return;
-    assertEquals(file.head.lbl, "test-label");
-    assertEquals(file.head.idx, 1);
-    assertEquals(file.head.num, 3);
-    assertEquals(file.indexEnc.length > 0, true);
-    assertEquals(file.bodyEnc.length > 0, true); // At least one message has body
+    assertEquals(bytesEqual(file.head.nonce, nonce), true);
+    assertEquals(file.head.realms.length, 1);
+    assertEquals(file.head.realms[0]?.num, 3);
+    assertEquals(file.chunks.length > 0, true);
   });
 });
 
@@ -272,23 +301,16 @@ Deno.test("Exim.decodeFile", async (t) => {
   }
 
   await t.step("round-trip empty messages", async () => {
-    const [file, statEnc] = await Exim.encodeFile(
-      [],
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [file, statEnc] = await seal(enclave, crypto, []);
     assertEquals(statEnc, Status.Success);
     if (statEnc !== Status.Success) return;
 
-    const [msgsDecoded, statDec] = await Exim.decodeFile(
-      file,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [realms, statDec] = await open(enclave, crypto, file);
     assertEquals(statDec, Status.Success);
     if (statDec !== Status.Success) return;
 
-    assertEquals(msgsDecoded.length, 0);
+    assertEquals(realms.length, 0);
+    assertEquals(bags(realms).length, 0);
   });
 
   await t.step("round-trip single message without body", async () => {
@@ -308,22 +330,16 @@ Deno.test("Exim.decodeFile", async (t) => {
       return;
     }
     const msgs = [{ head }];
-    const [file, statEnc] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [file, statEnc] = await seal(enclave, crypto, msgs);
     assertEquals(statEnc, Status.Success);
     if (statEnc !== Status.Success) return;
 
-    const [msgsDecoded, statDec] = await Exim.decodeFile(
-      file,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [realms, statDec] = await open(enclave, crypto, file);
     assertEquals(statDec, Status.Success);
     if (statDec !== Status.Success) return;
 
+    const msgsDecoded = bags(realms);
+    assertEquals(realms.length, 1);
     assertEquals(msgsDecoded.length, 1);
     const msgDecoded = msgsDecoded[0];
     assertEquals(msgDecoded.head.eid, head.eid);
@@ -354,22 +370,16 @@ Deno.test("Exim.decodeFile", async (t) => {
       return;
     }
     const originalMsgs = [{ head, body }];
-    const [fileData, statEnc] = await Exim.encodeFile(
-      originalMsgs,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [fileData, statEnc] = await seal(enclave, crypto, originalMsgs);
     assertEquals(statEnc, Status.Success);
     if (statEnc !== Status.Success) return;
 
-    const [msgsDecoded, statDec] = await Exim.decodeFile(
-      fileData,
-      crypto,
-      await fileBagMgr(enclave),
-    );
+    const [realms, statDec] = await open(enclave, crypto, fileData);
     assertEquals(statDec, Status.Success);
     if (statDec !== Status.Success) return;
 
+    const msgsDecoded = bags(realms);
+    assertEquals(realms.length, 1);
     assertEquals(msgsDecoded.length, 1);
     const msgDecoded = msgsDecoded[0];
     assertEquals(msgDecoded.head.eid, head.eid);
@@ -405,22 +415,16 @@ Deno.test("Exim.decodeFile", async (t) => {
       }
       msgs.push({ head, body });
     }
-    const [file, statEnc] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      await fileBagMgr(enclave, 1),
-    );
+    const [file, statEnc] = await seal(enclave, crypto, msgs);
     assertEquals(statEnc, Status.Success);
     if (statEnc !== Status.Success) return;
 
-    const [msgsDecoded, statDec] = await Exim.decodeFile(
-      file,
-      crypto,
-      await fileBagMgr(enclave, 1),
-    );
+    const [realms, statDec] = await open(enclave, crypto, file);
     assertEquals(statDec, Status.Success);
     if (statDec !== Status.Success) return;
 
+    const msgsDecoded = bags(realms);
+    assertEquals(realms.length, 1);
     assertEquals(msgsDecoded.length, 3);
     for (let i = 0; i < 3; i++) {
       const msg = msgsDecoded[i];
@@ -465,45 +469,52 @@ Deno.test("Exim.migrateFile", async (t) => {
       assertEquals(statHead, Status.Success);
       return;
     }
-    const inBagMgr = await fileBagMgr(enclaveIn, 1);
-    const outBagMgr = await fileBagMgr(enclaveOut, 1);
-    const [file, statEnc] = await Exim.encodeFile(
-      [{ head, body }],
-      crypto,
-      inBagMgr,
-    );
-    assertEquals(statEnc, Status.Success);
-    if (statEnc !== Status.Success) return;
+    const keyIn = await fileKey(enclaveIn);
+    const keyOut = await fileKey(enclaveOut, nonceOut);
+    try {
+      const [file, statEnc] = await Exim.encodeFile(
+        withRealm([{ head, body }]),
+        crypto,
+        keyIn,
+        nonce,
+      );
+      assertEquals(statEnc, Status.Success);
+      if (statEnc !== Status.Success) return;
 
-    const [migrated, stMig] = await Exim.migrateFile(
-      file,
-      crypto,
-      inBagMgr,
-      outBagMgr,
-      (msgs) => msgs,
-    );
-    assertEquals(stMig, Status.Success);
-    if (stMig !== Status.Success) return;
+      const [migrated, stMig] = await Exim.migrateFile(
+        file,
+        crypto,
+        keyIn,
+        keyOut,
+        nonceOut,
+        (msgs) => msgs,
+      );
+      assertEquals(stMig, Status.Success);
+      if (stMig !== Status.Success) return;
 
-    const [outStruct, stOutFile] = fileCodec.decode(new Decoder(migrated));
-    assertEquals(stOutFile, Status.Success);
-    if (stOutFile !== Status.Success) return;
-    assertEquals(outStruct.head.lbl, lbl);
-    assertEquals(outStruct.head.idx, 1);
+      const [outStruct, stOutFile] = fileCodec.decode(new Decoder(migrated));
+      assertEquals(stOutFile, Status.Success);
+      if (stOutFile !== Status.Success) return;
+      assertEquals(bytesEqual(outStruct.head.nonce, nonceOut), true);
 
-    const [msgsOut, stDecOut] = await Exim.decodeFile(
-      migrated,
-      crypto,
-      outBagMgr,
-    );
-    assertEquals(stDecOut, Status.Success);
-    if (stDecOut !== Status.Success) return;
-    assertEquals(msgsOut.length, 1);
-    assertEquals(msgsOut[0].head.eid, head.eid);
-    assertEquals(msgsOut[0].body, body);
+      const [realmsOut, stDecOut] = await Exim.decodeFile(
+        migrated,
+        crypto,
+        keyOut,
+      );
+      assertEquals(stDecOut, Status.Success);
+      if (stDecOut !== Status.Success) return;
+      const msgsOut = bags(realmsOut);
+      assertEquals(msgsOut.length, 1);
+      assertEquals(msgsOut[0].head.eid, head.eid);
+      assertEquals(msgsOut[0].body, body);
 
-    const [, stDecIn] = await Exim.decodeFile(migrated, crypto, inBagMgr);
-    assertEquals(stDecIn, Status.DecryptionError);
+      const [, stDecIn] = await Exim.decodeFile(migrated, crypto, keyIn);
+      assertEquals(stDecIn, Status.DecryptionError);
+    } finally {
+      keyIn.fill(0);
+      keyOut.fill(0);
+    }
   });
 
   await t.step("applies transform to plaintext msgs", async () => {
@@ -530,34 +541,48 @@ Deno.test("Exim.migrateFile", async (t) => {
       }
       msgs.push({ head, body });
     }
-    const inBagMgr = await fileBagMgr(enclaveIn);
-    const outBagMgr = await fileBagMgr(enclaveOut);
-    const [file, statEnc] = await Exim.encodeFile(
-      msgs,
-      crypto,
-      inBagMgr,
-    );
-    assertEquals(statEnc, Status.Success);
-    if (statEnc !== Status.Success) return;
+    const keyIn = await fileKey(enclaveIn);
+    const keyOut = await fileKey(enclaveOut, nonceOut);
+    let msgsOut: IExportMsg[] | undefined;
+    let stDec = Status.InternalError;
+    try {
+      const [file, statEnc] = await Exim.encodeFile(
+        withRealm(msgs),
+        crypto,
+        keyIn,
+        nonce,
+      );
+      assertEquals(statEnc, Status.Success);
+      if (statEnc !== Status.Success) return;
 
-    const [migrated, stMig] = await Exim.migrateFile(
-      file,
-      crypto,
-      inBagMgr,
-      outBagMgr,
-      (inMsgs) => {
-        const [first] = inMsgs;
-        return first ? [first] : [];
-      },
-    );
-    assertEquals(stMig, Status.Success);
-    if (stMig !== Status.Success) return;
+      const [migrated, stMig] = await Exim.migrateFile(
+        file,
+        crypto,
+        keyIn,
+        keyOut,
+        nonceOut,
+        (inRealms) => {
+          const [part] = inRealms;
+          if (part === undefined) return [];
+          const msg = part.msgs[0];
+          if (msg === undefined) return [];
+          return [{ realm: part.realm, msgs: [msg] }];
+        },
+      );
+      assertEquals(stMig, Status.Success);
+      if (stMig !== Status.Success) return;
 
-    const [msgsOut, stDec] = await Exim.decodeFile(
-      migrated,
-      crypto,
-      outBagMgr,
-    );
+      const [decoded, st] = await Exim.decodeFile(
+        migrated,
+        crypto,
+        keyOut,
+      );
+      if (st === Status.Success) msgsOut = bags(decoded);
+      stDec = st;
+    } finally {
+      keyIn.fill(0);
+      keyOut.fill(0);
+    }
     assertEquals(stDec, Status.Success);
     if (stDec !== Status.Success) return;
     assertEquals(msgsOut.length, 1);

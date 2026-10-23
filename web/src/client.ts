@@ -7,12 +7,12 @@ import { Decoder, Encoder } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { encodeEnt } from "./shared/codecs/ent";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
-import type { IKDM } from "./shared/codecs/kdm";
+import { type IKDM, kdmEq } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
-import { nullKDM } from "./shared/crypto/derivation";
-import { realmKDMs } from "./stores/cursor";
+import { realmKDM, realmKDMs } from "./stores/cursor";
 import { accountLabel } from "./stores/label";
-import { Exim } from "./shared/exim";
+import type { IRealm } from "./stores/realm";
+import { Exim, type IExportRealm } from "./shared/crypto/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import type { Enclave } from "./shared/crypto/enclave";
 import {
@@ -56,6 +56,7 @@ import {
   deqDownloadsForHeadHashes,
   handleNotif,
   ISyncParams,
+  msg2StoredMsgData,
   reconcileHost,
   syncPeek,
   syncPull,
@@ -82,15 +83,30 @@ import {
   WipeOpts,
 } from "./types";
 
-// Identity KDM for import and export files.
-const exportKDM: IKDM = Object.freeze({ label: "export", index: 0 });
-
 /** IMessage views of local write parts. */
 function msgsFromParts(parts: IMsgParts[]): IMessage[] {
   return parts.map(({ head, body }) => ({
     ...head,
     bod: body,
   }));
+}
+
+// Groups an archive into export realms, in first-seen order.
+function exportRealms(
+  stored: readonly IStoredMessage[],
+  rows: readonly IRealm[],
+): IExportRealm[] {
+  const realms: IExportRealm[] = [];
+  for (const m of stored) {
+    const realm = realmKDM(m.rlm, rows);
+    let part = realms.find((row) => kdmEq(row.realm, realm));
+    if (part === undefined) {
+      part = { realm, msgs: [] };
+      realms.push(part);
+    }
+    part.msgs.push({ head: m.head, body: m.body });
+  }
+  return realms;
 }
 
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
@@ -278,7 +294,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    */
   private apply = (
     parts: IMsgParts[],
-    options?: { enqueueUpload: boolean; triggerUpload: boolean },
+    options?: {
+      enqueueUpload: boolean;
+      triggerUpload: boolean;
+      realm?: IKDM;
+    },
   ): Promise<Status[]> => {
     dipLog("apply kick", { n: parts.length });
     const applyP = this.state.apply(msgsFromParts(parts));
@@ -292,7 +312,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    */
   private async doApply(
     parts: IMsgParts[],
-    options: { enqueueUpload: boolean; triggerUpload: boolean } = {
+    options: {
+      enqueueUpload: boolean;
+      triggerUpload: boolean;
+      realm?: IKDM;
+    } = {
       enqueueUpload: true,
       triggerUpload: true,
     },
@@ -301,19 +325,12 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const hashes: Hash[] = [];
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
-    for (const { head, body } of parts) {
+    for (const part of parts) {
       const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
+      enc.writeStruct(messageHeadCodec, part.head);
       const headEnc = enc.result();
       const hash = await this.crypto.blake3(headEnc);
-      const data: IStoredMessageWrite = {
-        eid: head.eid,
-        body,
-        apld: APLD_PENDING,
-      };
-      if (head.off !== 0) data.off = head.off;
-      if (head.ctr !== 0) data.ctr = head.ctr;
-      if (head.typ) data.typ = head.typ;
+      const data = msg2StoredMsgData(part, options.realm);
       hashes.push(hash);
       storables.push({ key: hash, data });
     }
@@ -1086,50 +1103,86 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
 
     console.time("import: decoding file...");
     const bytes = await file.bytes();
-    const [bagMgr, bst] = await enclave.bagman(exportKDM, nullKDM);
-    if (bst !== Status.Success) return bst;
-    const [msgs, statDec] = await Exim.decodeFile(bytes, crypto, bagMgr);
+    const [nonce, nst] = Exim.exportNonce(bytes);
+    if (nst !== Status.Success) {
+      console.timeEnd("import: decoding file...");
+      return nst;
+    }
+    const [key, kst] = await enclave.exportKey(nonce);
+    if (kst !== Status.Success) {
+      console.timeEnd("import: decoding file...");
+      return kst;
+    }
+    let decoded: Awaited<ReturnType<typeof Exim.decodeFile>>;
+    try {
+      decoded = await Exim.decodeFile(bytes, crypto, key);
+    } finally {
+      key.fill(0);
+      console.timeEnd("import: decoding file...");
+    }
+    const [realms, statDec] = decoded;
     if (statDec !== Status.Success) return statDec;
-    console.timeEnd("import: decoding file...");
 
-    let processed = 0;
-    while (processed < msgs.length) {
-      let totalBytes = 0;
-      let count = 0;
-      let end = processed;
-      for (
-        let i = processed;
-        i < msgs.length && count < 100 && totalBytes < 100 * 1024;
-        i++
-      ) {
-        totalBytes += msgs[i].head.len;
-        count++;
-        end = i + 1;
+    let total = 0;
+    const maxIndex = new Map<string, number>();
+    for (const part of realms) {
+      total += part.msgs.length;
+      if (part.realm.label === "") continue;
+      const prev = maxIndex.get(part.realm.label);
+      if (prev === undefined || part.realm.index > prev) {
+        maxIndex.set(part.realm.label, part.realm.index);
       }
-      const batch = msgs.slice(processed, end);
-      console.time(`import: applying [${processed}, ${end}]`);
-      const statsBatch = await this.apply(batch, {
-        enqueueUpload: true,
-        triggerUpload: false,
-      });
-      console.timeEnd(`import: applying [${processed}, ${end}]`);
-      for (let i = 0; i < batch.length; i++) {
-        const stat = statsBatch[i];
-        if (stat !== Status.Success && stat !== Status.NoChange) {
-          console.warn(
-            `failed to import msg ${processed + i}: ${Status[stat]}`,
-          );
+    }
+    for (const [label, index] of maxIndex) {
+      const stRealm = await this.store.realms.put(label, index);
+      if (stRealm === Status.InvalidParam) continue;
+      if (stRealm !== Status.Success) return stRealm;
+    }
+    if (maxIndex.size > 0) await this.#pullRealms();
+
+    let done = 0;
+    for (const part of realms) {
+      let processed = 0;
+      while (processed < part.msgs.length) {
+        let totalBytes = 0;
+        let count = 0;
+        let end = processed;
+        for (
+          let i = processed;
+          i < part.msgs.length && count < 100 && totalBytes < 100 * 1024;
+          i++
+        ) {
+          totalBytes += part.msgs[i].head.len;
+          count++;
+          end = i + 1;
         }
+        const batch = part.msgs.slice(processed, end);
+        console.time(`import: applying [${done}, ${done + batch.length}]`);
+        const statsBatch = await this.apply(batch, {
+          enqueueUpload: true,
+          triggerUpload: false,
+          realm: part.realm,
+        });
+        console.timeEnd(`import: applying [${done}, ${done + batch.length}]`);
+        for (let i = 0; i < batch.length; i++) {
+          const stat = statsBatch[i];
+          if (stat !== Status.Success && stat !== Status.NoChange) {
+            console.warn(
+              `failed to import msg ${done + i}: ${Status[stat]}`,
+            );
+          }
+        }
+        done += batch.length;
+        if (onProgress) {
+          queueMicrotask(() => onProgress(done, total, Status.Success));
+        }
+        this.emitProgress({
+          phase: "import",
+          done,
+          total,
+        });
+        processed = end;
       }
-      if (onProgress) {
-        queueMicrotask(() => onProgress(end, msgs.length, Status.Success));
-      }
-      this.emitProgress({
-        phase: "import",
-        done: end,
-        total: msgs.length,
-      });
-      processed = end;
     }
 
     this.scheduleSync();
@@ -1157,10 +1210,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = this.#enclave();
     if (!enclave) return err(Status.MissingSeed);
 
-    const [bagMgr, bst] = await enclave.bagman(exportKDM, nullKDM);
-    if (bst !== Status.Success) return err(bst);
-    const msgs = await store.messages.list();
-    return Exim.encodeFile(msgs, crypto, bagMgr);
+    const rows = await store.realms.list();
+    const stored = await store.messages.list();
+    return Exim.exportFile(enclave, crypto, exportRealms(stored, rows));
   }
 
   public async export(filename: string) {

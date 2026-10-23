@@ -17,6 +17,8 @@ export const Purpose = {
   RealmID: "diplomatic.realmID.v1",
   // Bag rlm: realm id, then this purpose with the host's label/index.
   HostRLM: "diplomatic.hostRLM.v1",
+  // Export file key: child of the master, keyed by the file nonce.
+  Export: "diplomatic.export.v1",
 } as const;
 export type Purpose = typeof Purpose[keyof typeof Purpose];
 

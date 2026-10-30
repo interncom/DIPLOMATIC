@@ -1,4 +1,7 @@
-import { Database } from "https://deno.land/x/sqlite3/mod.ts";
+// SQLite bag store. Uses the SQLite built into Deno, so a second
+// libsqlite3 is never loaded.
+
+import { DatabaseSync } from "node:sqlite";
 import { btoh } from "../../../shared/binary.ts";
 import type { ISetBagResult, IStorage } from "../../../shared/types.ts";
 import { Encoder } from "../../../shared/codec.ts";
@@ -7,7 +10,36 @@ import { hashBytes, Status } from "../../../shared/consts.ts";
 import { nullSubMeta } from "../../../web/src/shared/types.ts";
 import { err, ok } from "../../../shared/valstat.ts";
 
-const db = new Database("diplomatic.db");
+type SqlVal = string | number | null | Uint8Array;
+
+// Runs one statement that binds values.
+function run(db: DatabaseSync, sql: string, args: SqlVal[]): void {
+  db.prepare(sql).run(...args);
+}
+
+// One column of a row object. Missing name or row is undefined.
+function col(row: unknown, name: string): unknown {
+  if (typeof row !== "object" || row === null) return undefined;
+  if (!Object.hasOwn(row, name)) return undefined;
+  for (const [key, val] of Object.entries(row)) {
+    if (key === name) return val;
+  }
+  return undefined;
+}
+
+// One row, or undefined when nothing matches.
+function one(db: DatabaseSync, sql: string, args: SqlVal[]): unknown {
+  const row = db.prepare(sql).get(...args);
+  if (typeof row !== "object" || row === null) return undefined;
+  return row;
+}
+
+// Every row from a query.
+function all(db: DatabaseSync, sql: string, args: SqlVal[]): unknown[] {
+  return db.prepare(sql).all(...args);
+}
+
+const db = new DatabaseSync("diplomatic.db");
 db.exec("PRAGMA journal_mode=WAL;");
 db.exec("PRAGMA synchronous=NORMAL;");
 db.exec(`
@@ -28,9 +60,10 @@ const sqliteStorage: IStorage = {
   async addUser(pubKey) {
     try {
       const pubKeyHex = btoh(pubKey);
-      db.exec(
+      run(
+        db,
         "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
-        pubKeyHex,
+        [pubKeyHex],
       );
       return ok(undefined);
     } catch {
@@ -41,11 +74,12 @@ const sqliteStorage: IStorage = {
   async hasUser(pubKey) {
     try {
       const pubKeyHex = btoh(pubKey);
-      const row = db.prepare(
-        "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)",
-      ).value<[boolean]>(pubKeyHex);
-      const has = row ? row[0] : false;
-      return ok(has);
+      const row = one(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?) AS n",
+        [pubKeyHex],
+      );
+      return ok(col(row, "n") === 1);
     } catch {
       return err(Status.StorageError);
     }
@@ -71,29 +105,24 @@ const sqliteStorage: IStorage = {
         db.exec("BEGIN IMMEDIATE");
         try {
           const maxBy = new Map<string, number>();
-          const maxStmt = db.prepare(
-            "SELECT MAX(seq) FROM bags WHERE userPubKey = ? AND rlm = ?",
-          );
+          const maxSql =
+            "SELECT MAX(seq) AS n FROM bags WHERE userPubKey = ? AND rlm = ?";
           for (const i of good) {
             const bag = bags[i];
             const key = btoh(bag.rlm);
             let max = maxBy.get(key);
             if (max === undefined) {
-              const row = maxStmt.value<[number | null]>(pubKeyHex, bag.rlm);
-              const n = row?.[0];
+              const n = col(one(db, maxSql, [pubKeyHex, bag.rlm]), "n");
               max = typeof n === "number" ? n : 0;
             }
             max += 1;
             maxBy.set(key, max);
             const enc = new Encoder();
             enc.writeStruct(peekItemHeadCodec, bag);
-            db.exec(
+            run(
+              db,
               "INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph) VALUES (?, ?, ?, ?, ?)",
-              pubKeyHex,
-              bag.rlm,
-              max,
-              enc.result(),
-              bag.bodyCph,
+              [pubKeyHex, bag.rlm, max, enc.result(), bag.bodyCph],
             );
             seqByIdx.set(i, max);
           }
@@ -137,11 +166,16 @@ const sqliteStorage: IStorage = {
       for (let i = 0; i < seqs.length; i += chunk) {
         const part = seqs.slice(i, i + chunk);
         const placeholders = part.map(() => "?").join(",");
-        const rows = db.prepare(
+        const rows = all(
+          db,
           `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
-        ).values<[number, Uint8Array]>(pubKeyHex, rlm, ...part);
-        for (const [seq, bodyCph] of rows) {
-          if (!bodyCph) continue;
+          [pubKeyHex, rlm, ...part],
+        );
+        for (const rec of rows) {
+          const seq = col(rec, "seq");
+          const bodyCph = col(rec, "bodyCph");
+          if (typeof seq !== "number") continue;
+          if (!(bodyCph instanceof Uint8Array)) continue;
           out.push({ seq, bodyCph: new Uint8Array(bodyCph) });
         }
       }
@@ -155,13 +189,20 @@ const sqliteStorage: IStorage = {
     if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
     try {
       const pubKeyHex = btoh(pubKey);
-      const rows = db.prepare(
+      const rows = all(
+        db,
         "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq > ? ORDER BY seq",
-      ).values<[number, Uint8Array]>(pubKeyHex, rlm, minSeq);
-      return ok(rows.map(([seq, headCph]: [number, Uint8Array]) => ({
-        seq,
-        headCph: new Uint8Array(headCph),
-      })));
+        [pubKeyHex, rlm, minSeq],
+      );
+      const heads: { seq: number; headCph: Uint8Array }[] = [];
+      for (const rec of rows) {
+        const seq = col(rec, "seq");
+        const headCph = col(rec, "headCph");
+        if (typeof seq !== "number") continue;
+        if (!(headCph instanceof Uint8Array)) continue;
+        heads.push({ seq, headCph: new Uint8Array(headCph) });
+      }
+      return ok(heads);
     } catch {
       return err(Status.StorageError);
     }

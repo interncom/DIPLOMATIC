@@ -1,6 +1,6 @@
 {
   "name": "@interncom/diplomatic",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "type": "module",
   "description": "Secure sync layer and CLI utilities for DIPLOMATIC",
   "files": [
@@ -33,7 +33,7 @@
     "clean": "rm -rf dist",
     "release": "./publish.sh",
     "tsc": "tsc --project ../web/tsconfig.json && tsc --project tsconfig-cli.json --noEmit",
-    "test": "npm test --workspace=web && deno test --allow-net --allow-ffi --allow-env ../deno/"
+    "test": "npm test --workspace=web && deno test --allow-net --allow-ffi --allow-env --allow-read=diplomatic.db,/tmp --allow-write=diplomatic.db,/tmp ../deno/"
   },
   "author": "The Internet Committee",
   "license": "ISC",

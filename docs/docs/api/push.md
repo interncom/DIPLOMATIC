@@ -90,9 +90,9 @@ For a TODO list application, a message like `{ "todo": "take out the trash", don
 
 1. Validate `authTS` and that the user is registered.
 2. Decode the bag list. For each bag, verify the signature; invalid signatures get a push item with an error status and are **not** stored.
-3. Persist all valid bags with a single host storage call, [`setBags`](./host#setbags), which returns one host `seq` per bag. Implementations batch writes and assign seqs atomically (see host storage docs).
+3. Persist valid bags with a single host storage call, [`setBags`](./host#setbags). Each stored bag gets a host seq. A bag whose external body cannot be written is not stored; its result is `StorageError` and has no seq. The other bags are still stored. Implementations assign seqs atomically (see host storage docs).
 4. Build [NOTF](./notf) items for stored bags and push them to the user's websocket listeners.
-5. Return push items for every bag in the request (successes and signature failures).
+5. Return push items for every bag in the request (successes, signature failures, and per-bag storage failures). A non-success item omits `seq`.
 
 ## Response
 

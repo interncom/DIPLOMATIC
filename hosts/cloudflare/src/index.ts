@@ -19,6 +19,11 @@ import { btoh } from "../../../shared/binary.ts";
 import { Clock } from "../../../shared/clock.ts";
 import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
+import {
+  isBodyKey,
+  maxInlineBodyBytes,
+  newBodyKey,
+} from "../../../shared/bodykey.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
 import {
   DiplomaticHTTPServer,
@@ -31,11 +36,40 @@ import type {
   IStorage,
 } from "../../../shared/types";
 import { nullSubMeta } from "../../../shared/types.ts";
-import { err, ok } from "../../../shared/valstat.ts";
+import { err, ok, type ValStat } from "../../../shared/valstat.ts";
 
 interface Env {
   DIP_DB: D1Database;
+  DIP_BLOBS: R2Bucket;
   WEBSOCKET_SERVER: DurableObjectNamespace<WebSocketServerV2>;
+}
+
+// dropBlobs deletes R2 objects whose bag row did not commit.
+async function dropBlobs(bucket: R2Bucket, keys: string[]): Promise<void> {
+  for (const key of keys) {
+    try {
+      await bucket.delete(key);
+    } catch (e) {
+      logStorageError("dropBlobs", e, { key });
+    }
+  }
+}
+
+// readBlob reads one off-row body.
+// readBlob returns StorageError for a bad key or a missing object.
+async function readBlob(
+  bucket: R2Bucket,
+  key: string,
+): Promise<ValStat<Uint8Array>> {
+  if (!isBodyKey(key)) return err(Status.StorageError);
+  try {
+    const obj = await bucket.get(key);
+    if (!obj) return err(Status.StorageError);
+    return ok(new Uint8Array(await obj.arrayBuffer()));
+  } catch (e) {
+    logStorageError("readBlob", e, { key });
+    return err(Status.StorageError);
+  }
 }
 
 function logStorageError(
@@ -49,7 +83,7 @@ function logStorageError(
 }
 
 const cloudflareCrypto: IHostCrypto = {
-  // Imports an Ed25519 verify key. Reuse it across a batch of checks.
+  // importVerifyKey imports an Ed25519 verify key for reuse across a batch of checks.
   async importVerifyKey(pubKey) {
     return await crypto.subtle.importKey(
       "raw",
@@ -142,9 +176,9 @@ const createCloudflareWebsocketNotifier = (
         }`,
       );
     } catch (e) {
+      // Bags are already stored. A missed notify does not fail the push.
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[DO] notify failed:`, msg, { bytes: data.length });
-      throw e;
     }
   },
 });
@@ -182,42 +216,94 @@ export default {
         return ok(nullSubMeta);
       },
 
-      // Assign seq via MAX+1 subquery inside the INSERT so concurrent writers
+      // setBags assigns seq via MAX+1 inside each INSERT so concurrent writers
       // cannot both claim the same seq. D1 batch() = one SQL transaction per
       // chunk (statements run sequentially; each sees prior inserts in the txn).
+      // An oversized body is put in R2 before its row. A failed put returns
+      // StorageError for that bag and skips the row. A failed batch deletes
+      // objects whose rows did not commit and fails the call.
       async setBags(pubKey, bags) {
         if (bags.length < 1) return ok([]);
-        const good: number[] = [];
+        const validBagIndexes: number[] = [];
         for (let i = 0; i < bags.length; i++) {
-          if (bags[i].rlm.byteLength === hashBytes) good.push(i);
+          if (bags[i].rlm.byteLength === hashBytes) validBagIndexes.push(i);
         }
-        if (good.length < 1) {
+        if (validBagIndexes.length < 1) {
           return ok(bags.map(() => ({ status: Status.InvalidParam })));
         }
         const t0 = Date.now();
+        const blobErr = new Set<number>();
+        // slots are the bags that will get a row: input index, and R2 key or null if inline.
+        const slots: { i: number; key: string | null }[] = [];
+        const seqByIdx = new Map<number, number>();
+        // numCommittedStmts counts insert statements whose batch() has returned.
+        // numCommittedStmts indexes slots. It is not a byte count.
+        let numCommittedStmts = 0;
         try {
           const pubKeyHex = btoh(pubKey);
           // seq is allocated per rlm, relative to current rows (and prior
           // inserts in the same batch transaction).
           const insertSql = `
-            INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph)
+            INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph, bodyKey)
             VALUES (
               ?,
               ?,
               (SELECT COALESCE(MAX(seq), 0) + 1 FROM bags
                 WHERE userPubKey = ? AND rlm = ?),
               ?,
+              ?,
               ?
             )
             RETURNING seq`;
 
           const stmts: D1PreparedStatement[] = [];
-          let totalBody = 0;
-          for (const i of good) {
+          // numBodyBytes sums bodyCph bytes of valid-rlm bags, including a put that fails.
+          let numBodyBytes = 0;
+          // numExternal counts off-row bodies written to R2. A failed put is not counted.
+          let numExternal = 0;
+          // puts are the R2 uploads for oversized bodies. They run together.
+          // puts skip a failed upload: that bag gets no row and no seq.
+          const puts: Promise<{ i: number; key: string; ok: boolean }>[] = [];
+          for (const i of validBagIndexes) {
             const bag = bags[i];
-            totalBody += bag.bodyCph.length;
+            numBodyBytes += bag.bodyCph.byteLength;
+            if (bag.bodyCph.byteLength <= maxInlineBodyBytes) continue;
+            const key = newBodyKey(pubKeyHex, bag.rlm);
+            const bodyCph = bag.bodyCph;
+            puts.push(
+              env.DIP_BLOBS.put(key, bodyCph).then(
+                () => ({ i, key, ok: true }),
+                async (e: unknown) => {
+                  logStorageError("putBlob", e, { key });
+                  try {
+                    await dropBlobs(env.DIP_BLOBS, [key]);
+                  } catch (dropErr) {
+                    logStorageError("dropBlobs", dropErr, { key });
+                  }
+                  return { i, key, ok: false };
+                },
+              ),
+            );
+          }
+          const putByIdx = new Map<number, { key: string; ok: boolean }>();
+          for (const put of await Promise.all(puts)) putByIdx.set(put.i, put);
+          for (const i of validBagIndexes) {
+            const bag = bags[i];
             const enc = new Encoder();
             enc.writeStruct(peekItemHeadCodec, bag);
+            let body: Uint8Array | null = bag.bodyCph;
+            let key: string | null = null;
+            const put = putByIdx.get(i);
+            if (put) {
+              if (!put.ok) {
+                blobErr.add(i);
+                continue;
+              }
+              body = null;
+              key = put.key;
+              numExternal += 1;
+            }
+            slots.push({ i, key });
             stmts.push(
               env.DIP_DB.prepare(insertSql).bind(
                 pubKeyHex,
@@ -225,44 +311,84 @@ export default {
                 pubKeyHex,
                 bag.rlm,
                 enc.result(),
-                bag.bodyCph,
+                body,
+                key,
               ),
             );
           }
 
           // D1 max ~1000 statements per batch; each batch is one transaction.
-          const chunk = 500;
-          const seqs: number[] = [];
-          for (let i = 0; i < stmts.length; i += chunk) {
-            const results = await env.DIP_DB.batch(stmts.slice(i, i + chunk));
-            for (const r of results) {
-              const row = r.results?.[0] as { seq: number } | undefined;
-              if (!row || typeof row.seq !== "number") {
-                throw new Error("setBags: missing RETURNING seq");
+          if (stmts.length > 0) {
+            const chunkSize = 500;
+            let n = 0;
+            let badSeq = false;
+            for (let i = 0; i < stmts.length; i += chunkSize) {
+              const batchStmts = stmts.slice(i, i + chunkSize);
+              const results = await env.DIP_DB.batch<{ seq: number }>(
+                batchStmts,
+              );
+              numCommittedStmts = i + batchStmts.length;
+              for (const r of results) {
+                const row = r.results?.[0];
+                const slot = slots[n];
+                n += 1;
+                if (!slot || !row || typeof row.seq !== "number") {
+                  badSeq = true;
+                  break;
+                }
+                seqByIdx.set(slot.i, row.seq);
               }
-              seqs.push(row.seq);
+              if (badSeq) break;
+            }
+            // This chunk committed. Delete only objects from later chunks.
+            if (badSeq || n !== slots.length) {
+              const keys: string[] = [];
+              for (let i = numCommittedStmts; i < slots.length; i++) {
+                const key = slots[i].key;
+                if (key) keys.push(key);
+              }
+              await dropBlobs(env.DIP_BLOBS, keys);
+              logStorageError("setBags", "missing seq", {
+                n: bags.length,
+                ms: Date.now() - t0,
+              });
+              return err(Status.StorageError);
             }
           }
 
           console.info(
-            `[D1] setBags n=${bags.length} bodyBytes=${totalBody} ms=${
+            `[D1] setBags n=${bags.length} numBodyBytes=${numBodyBytes} numExternal=${numExternal} ms=${
               Date.now() - t0
             }`,
           );
-          let n = 0;
+          // One result per input bag, in the caller's order.
           const out: ISetBagResult[] = [];
           for (let i = 0; i < bags.length; i++) {
             if (bags[i].rlm.byteLength !== hashBytes) {
               out.push({ status: Status.InvalidParam });
               continue;
             }
-            const seq = seqs[n];
-            n += 1;
+            if (blobErr.has(i)) {
+              out.push({ status: Status.StorageError });
+              continue;
+            }
+            const seq = seqByIdx.get(i);
             if (seq === undefined) return err(Status.StorageError);
             out.push({ status: Status.Success, seq });
           }
           return ok(out);
         } catch (e) {
+          // D1 threw. Delete objects whose rows did not commit.
+          const keys: string[] = [];
+          for (let i = numCommittedStmts; i < slots.length; i++) {
+            const key = slots[i].key;
+            if (key) keys.push(key);
+          }
+          try {
+            await dropBlobs(env.DIP_BLOBS, keys);
+          } catch (dropErr) {
+            logStorageError("dropBlobs", dropErr, { n: keys.length });
+          }
           logStorageError("setBags", e, {
             n: bags.length,
             ms: Date.now() - t0,
@@ -275,6 +401,8 @@ export default {
         if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
         if (seqs.length < 1) return ok([]);
         const t0 = Date.now();
+        // reads is one R2 read per off-row body. The reads run together for this call.
+        const reads: Promise<{ seq: number; res: ValStat<Uint8Array> }>[] = [];
         try {
           const pubKeyHex = btoh(pubKey);
           const out: { seq: number; bodyCph: Uint8Array }[] = [];
@@ -287,17 +415,37 @@ export default {
             const part = seqs.slice(i, i + chunk);
             const placeholders = part.map(() => "?").join(",");
             const rows = await env.DIP_DB.prepare(
-              `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
+              `SELECT seq, bodyCph, bodyKey FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
             )
               .bind(pubKeyHex, rlm, ...part)
-              .all<{ seq: number; bodyCph: Uint8Array }>();
+              .all<{
+                seq: number;
+                bodyCph: ArrayBuffer | null;
+                bodyKey: string | null;
+              }>();
             for (const row of rows.results ?? []) {
-              if (!row.bodyCph) continue;
-              out.push({
-                seq: row.seq,
-                bodyCph: new Uint8Array(row.bodyCph),
-              });
+              if (typeof row.bodyKey === "string") {
+                const seq = row.seq;
+                const key = row.bodyKey;
+                reads.push(
+                  readBlob(env.DIP_BLOBS, key).then((res) => ({ seq, res })),
+                );
+                continue;
+              }
+              if (row.bodyCph) {
+                out.push({
+                  seq: row.seq,
+                  bodyCph: new Uint8Array(row.bodyCph),
+                });
+              }
             }
+          }
+          // One failed read fails the call.
+          const ext = await Promise.all(reads);
+          for (const body of ext) {
+            const [bodyCph, st] = body.res;
+            if (st !== Status.Success) return err(st);
+            out.push({ seq: body.seq, bodyCph });
           }
           console.info(
             `[D1] getBodies n=${seqs.length} found=${out.length} ms=${
@@ -306,6 +454,8 @@ export default {
           );
           return ok(out);
         } catch (e) {
+          // D1 threw. Drain in-flight reads so they do not reject unhandled.
+          await Promise.allSettled(reads);
           logStorageError("getBodies", e, { n: seqs.length });
           return err(Status.StorageError);
         }

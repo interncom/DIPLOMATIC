@@ -1,171 +1,283 @@
-import { Database } from "https://deno.land/x/sqlite3/mod.ts";
+// SQLite bag store. Large bodies are files beside the database.
+// Uses the SQLite built into Deno, so a second libsqlite3 is never loaded.
+
+import { DatabaseSync } from "node:sqlite";
 import { btoh } from "../../../shared/binary.ts";
-import type { ISetBagResult, IStorage } from "../../../shared/types.ts";
+import { dropBodyFiles, readBodyFile, writeBodyFile } from "./blobfile.ts";
+import { maxInlineBodyBytes, newBodyKey } from "../../../shared/bodykey.ts";
 import { Encoder } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
+import type { ISetBagResult, IStorage } from "../../../shared/types.ts";
 import { nullSubMeta } from "../../../web/src/shared/types.ts";
 import { err, ok } from "../../../shared/valstat.ts";
 
-const db = new Database("diplomatic.db");
-db.exec("PRAGMA journal_mode=WAL;");
-db.exec("PRAGMA synchronous=NORMAL;");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    pubKey TEXT PRIMARY KEY
-  );
-  CREATE TABLE IF NOT EXISTS bags (
-    userPubKey TEXT,
-    rlm BLOB,
-    seq INTEGER,
-    headCph BLOB,
-    bodyCph BLOB,
-    PRIMARY KEY (userPubKey, rlm, seq)
-  );
-`);
+type SqlVal = string | number | null | Uint8Array;
 
-const sqliteStorage: IStorage = {
-  async addUser(pubKey) {
-    try {
-      const pubKeyHex = btoh(pubKey);
-      db.exec(
-        "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
-        pubKeyHex,
-      );
-      return ok(undefined);
-    } catch {
-      return err(Status.StorageError);
-    }
-  },
+// run binds values and executes one statement.
+function run(db: DatabaseSync, sql: string, args: SqlVal[]): void {
+  db.prepare(sql).run(...args);
+}
 
-  async hasUser(pubKey) {
-    try {
-      const pubKeyHex = btoh(pubKey);
-      const row = db.prepare(
-        "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?)",
-      ).value<[boolean]>(pubKeyHex);
-      const has = row ? row[0] : false;
-      return ok(has);
-    } catch {
-      return err(Status.StorageError);
-    }
-  },
+// col returns one named field of a row object.
+// col returns undefined when the name or the row is missing.
+function col(row: unknown, name: string): unknown {
+  if (typeof row !== "object" || row === null) return undefined;
+  if (!Object.hasOwn(row, name)) return undefined;
+  for (const [key, val] of Object.entries(row)) {
+    if (key === name) return val;
+  }
+  return undefined;
+}
 
-  async subMeta(_pubKey) {
-    // NOTE: a real host implementation would compute subscription info here.
-    return ok(nullSubMeta);
-  },
+// one returns the first row, or undefined when nothing matches.
+function one(
+  db: DatabaseSync,
+  sql: string,
+  args: SqlVal[],
+): unknown {
+  const row = db.prepare(sql).get(...args);
+  if (typeof row !== "object" || row === null) return undefined;
+  return row;
+}
 
-  async setBags(pubKey, bags) {
-    if (bags.length < 1) return ok([]);
-    const good: number[] = [];
-    for (let i = 0; i < bags.length; i++) {
-      if (bags[i].rlm.byteLength === hashBytes) good.push(i);
-    }
-    const seqByIdx = new Map<number, number>();
-    if (good.length > 0) {
+// all returns every row from a query.
+function all(db: DatabaseSync, sql: string, args: SqlVal[]): unknown[] {
+  return db.prepare(sql).all(...args);
+}
+
+// Slot is one bag that will get a row.
+// Slot stores a null body when the ciphertext is a file.
+type Slot = {
+  i: number;
+  body: Uint8Array | null;
+  key: string | null;
+};
+
+// createSqliteStorage opens a WAL SQLite store.
+// createSqliteStorage defaults path to ./diplomatic.db. Bodies over maxInlineBodyBytes are files under `${path}.blobs/`.
+export function createSqliteStorage(path = "diplomatic.db"): IStorage {
+  const db = new DatabaseSync(path);
+  const blobDir = `${path}.blobs`;
+  db.exec("PRAGMA journal_mode=WAL;");
+  db.exec("PRAGMA synchronous=NORMAL;");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      pubKey TEXT PRIMARY KEY
+    );
+    CREATE TABLE IF NOT EXISTS bags (
+      userPubKey TEXT,
+      rlm BLOB,
+      seq INTEGER,
+      headCph BLOB,
+      bodyCph BLOB,
+      bodyKey TEXT,
+      PRIMARY KEY (userPubKey, rlm, seq)
+    );
+  `);
+
+  return {
+    async addUser(pubKey) {
       try {
         const pubKeyHex = btoh(pubKey);
-        // IMMEDIATE: take write lock before read so concurrent setBags cannot
-        // both observe the same MAX(seq) within an rlm.
-        db.exec("BEGIN IMMEDIATE");
-        try {
-          const maxBy = new Map<string, number>();
-          const maxStmt = db.prepare(
-            "SELECT MAX(seq) FROM bags WHERE userPubKey = ? AND rlm = ?",
-          );
-          for (const i of good) {
-            const bag = bags[i];
-            const key = btoh(bag.rlm);
-            let max = maxBy.get(key);
-            if (max === undefined) {
-              const row = maxStmt.value<[number | null]>(pubKeyHex, bag.rlm);
-              const n = row?.[0];
-              max = typeof n === "number" ? n : 0;
-            }
-            max += 1;
-            maxBy.set(key, max);
-            const enc = new Encoder();
-            enc.writeStruct(peekItemHeadCodec, bag);
-            db.exec(
-              "INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph) VALUES (?, ?, ?, ?, ?)",
-              pubKeyHex,
-              bag.rlm,
-              max,
-              enc.result(),
-              bag.bodyCph,
-            );
-            seqByIdx.set(i, max);
-          }
-          db.exec("COMMIT");
-        } catch (e) {
-          try {
-            db.exec("ROLLBACK");
-          } catch {
-            // ignore rollback errors
-          }
-          throw e;
-        }
+        run(
+          db,
+          "INSERT INTO users (pubKey) VALUES (?) ON CONFLICT DO NOTHING",
+          [pubKeyHex],
+        );
+        return ok(undefined);
       } catch {
         return err(Status.StorageError);
       }
-    }
-    const out: ISetBagResult[] = [];
-    for (let i = 0; i < bags.length; i++) {
-      if (bags[i].rlm.byteLength !== hashBytes) {
-        out.push({ status: Status.InvalidParam });
-        continue;
-      }
-      const seq = seqByIdx.get(i);
-      if (seq === undefined) return err(Status.StorageError);
-      out.push({ status: Status.Success, seq });
-    }
-    return ok(out);
-  },
+    },
 
-  async getBodies(pubKey, rlm, seqs) {
-    if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
-    if (seqs.length < 1) return ok([]);
-    try {
-      const pubKeyHex = btoh(pubKey);
-      const out: { seq: number; bodyCph: Uint8Array }[] = [];
-      // SQLite rejects queries with too many bound parameters
-      // ("too many SQL variables"). Match D1's ~100 bind budget; leave
-      // slots for userPubKey and rlm so each IN stays at maxBinds-2 seqs.
-      const maxBinds = 100;
-      const chunk = maxBinds - 2;
-      for (let i = 0; i < seqs.length; i += chunk) {
-        const part = seqs.slice(i, i + chunk);
-        const placeholders = part.map(() => "?").join(",");
-        const rows = db.prepare(
-          `SELECT seq, bodyCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
-        ).values<[number, Uint8Array]>(pubKeyHex, rlm, ...part);
-        for (const [seq, bodyCph] of rows) {
-          if (!bodyCph) continue;
-          out.push({ seq, bodyCph: new Uint8Array(bodyCph) });
+    async hasUser(pubKey) {
+      try {
+        const pubKeyHex = btoh(pubKey);
+        const row = one(
+          db,
+          "SELECT EXISTS (SELECT 1 FROM users WHERE pubKey = ?) AS n",
+          [pubKeyHex],
+        );
+        const has = col(row, "n") === 1;
+        return ok(has);
+      } catch {
+        return err(Status.StorageError);
+      }
+    },
+
+    async subMeta(_pubKey) {
+      // NOTE: a real host implementation would compute subscription info here.
+      return ok(nullSubMeta);
+    },
+
+    // setBags stores bags. A failed external body is StorageError for that bag and is not inserted.
+    async setBags(pubKey, bags) {
+      if (bags.length < 1) return ok([]);
+      // A bad rlm is skipped here and reported InvalidParam below.
+      const good: number[] = [];
+      for (let i = 0; i < bags.length; i++) {
+        if (bags[i].rlm.byteLength === hashBytes) good.push(i);
+      }
+      const seqByIdx = new Map<number, number>();
+      const blobErr = new Set<number>();
+      if (good.length > 0) {
+        const pubKeyHex = btoh(pubKey);
+        // slots are the bags that will get a row. A failed file write is left out.
+        const slots: Slot[] = [];
+        const wrote: string[] = [];
+        for (const i of good) {
+          const bag = bags[i];
+          // File first. A failed write skips the row and does not take a seq.
+          if (bag.bodyCph.byteLength > maxInlineBodyBytes) {
+            const key = newBodyKey(pubKeyHex, bag.rlm);
+            const [, wst] = await writeBodyFile(blobDir, key, bag.bodyCph);
+            if (wst !== Status.Success) {
+              await dropBodyFiles(blobDir, [key]);
+              blobErr.add(i);
+              continue;
+            }
+            wrote.push(key);
+            slots.push({ i, body: null, key });
+          } else {
+            slots.push({ i, body: bag.bodyCph, key: null });
+          }
+        }
+        if (slots.length > 0) {
+          // IMMEDIATE: take write lock before read so concurrent setBags
+          // cannot both observe the same MAX(seq) within an rlm.
+          let failed = false;
+          try {
+            db.exec("BEGIN IMMEDIATE");
+            const maxBy = new Map<string, number>();
+            const maxSql =
+              "SELECT MAX(seq) AS n FROM bags WHERE userPubKey = ? AND rlm = ?";
+            for (const slot of slots) {
+              const bag = bags[slot.i];
+              const key = btoh(bag.rlm);
+              let max = maxBy.get(key);
+              if (max === undefined) {
+                const n = col(one(db, maxSql, [pubKeyHex, bag.rlm]), "n");
+                max = typeof n === "number" ? n : 0;
+              }
+              max += 1;
+              maxBy.set(key, max);
+              const enc = new Encoder();
+              enc.writeStruct(peekItemHeadCodec, bag);
+              run(
+                db,
+                "INSERT INTO bags (userPubKey, rlm, seq, headCph, bodyCph, bodyKey) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                  pubKeyHex,
+                  bag.rlm,
+                  max,
+                  enc.result(),
+                  slot.body,
+                  slot.key,
+                ],
+              );
+              seqByIdx.set(slot.i, max);
+            }
+            db.exec("COMMIT");
+          } catch {
+            try {
+              db.exec("ROLLBACK");
+            } catch {
+              // ignore rollback errors
+            }
+            failed = true;
+          }
+          // SQL did not commit. Delete the files written for this call.
+          if (failed) {
+            await dropBodyFiles(blobDir, wrote);
+            return err(Status.StorageError);
+          }
         }
       }
+      // One result per input bag, in the caller's order.
+      const out: ISetBagResult[] = [];
+      for (let i = 0; i < bags.length; i++) {
+        if (bags[i].rlm.byteLength !== hashBytes) {
+          out.push({ status: Status.InvalidParam });
+          continue;
+        }
+        if (blobErr.has(i)) {
+          out.push({ status: Status.StorageError });
+          continue;
+        }
+        const seq = seqByIdx.get(i);
+        if (seq === undefined) return err(Status.StorageError);
+        out.push({ status: Status.Success, seq });
+      }
       return ok(out);
-    } catch {
-      return err(Status.StorageError);
-    }
-  },
+    },
 
-  async listHeads(pubKey, rlm, minSeq) {
-    if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
-    try {
-      const pubKeyHex = btoh(pubKey);
-      const rows = db.prepare(
-        "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq > ? ORDER BY seq",
-      ).values<[number, Uint8Array]>(pubKeyHex, rlm, minSeq);
-      return ok(rows.map(([seq, headCph]: [number, Uint8Array]) => ({
-        seq,
-        headCph: new Uint8Array(headCph),
-      })));
-    } catch {
-      return err(Status.StorageError);
-    }
-  },
-};
+    async getBodies(pubKey, rlm, seqs) {
+      if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
+      if (seqs.length < 1) return ok([]);
+      try {
+        const pubKeyHex = btoh(pubKey);
+        const out: { seq: number; bodyCph: Uint8Array }[] = [];
+        // SQLite rejects queries with too many bound parameters
+        // ("too many SQL variables"). Match D1's ~100 bind budget; leave
+        // slots for userPubKey and rlm so each IN stays at maxBinds-2 seqs.
+        const maxBinds = 100;
+        const chunk = maxBinds - 2;
+        for (let i = 0; i < seqs.length; i += chunk) {
+          const part = seqs.slice(i, i + chunk);
+          const placeholders = part.map(() => "?").join(",");
+          const rows = all(
+            db,
+            `SELECT seq, bodyCph, bodyKey FROM bags WHERE userPubKey = ? AND rlm = ? AND seq IN (${placeholders})`,
+            [pubKeyHex, rlm, ...part],
+          );
+          for (const rec of rows) {
+            const seq = col(rec, "seq");
+            const bodyCph = col(rec, "bodyCph");
+            const bodyKey = col(rec, "bodyKey");
+            if (typeof seq !== "number") continue;
+            // bodyKey set: ciphertext is the file, not the column.
+            if (typeof bodyKey === "string") {
+              const [body, bst] = await readBodyFile(blobDir, bodyKey);
+              if (bst !== Status.Success) return err(bst);
+              out.push({ seq, bodyCph: body });
+              continue;
+            }
+            if (bodyCph instanceof Uint8Array) {
+              out.push({ seq, bodyCph: new Uint8Array(bodyCph) });
+            }
+          }
+        }
+        return ok(out);
+      } catch {
+        return err(Status.StorageError);
+      }
+    },
 
+    async listHeads(pubKey, rlm, minSeq) {
+      if (rlm.byteLength !== hashBytes) return err(Status.InvalidParam);
+      try {
+        const pubKeyHex = btoh(pubKey);
+        const rows = all(
+          db,
+          "SELECT seq, headCph FROM bags WHERE userPubKey = ? AND rlm = ? AND seq > ? ORDER BY seq",
+          [pubKeyHex, rlm, minSeq],
+        );
+        const heads: { seq: number; headCph: Uint8Array }[] = [];
+        for (const rec of rows) {
+          const seq = col(rec, "seq");
+          const headCph = col(rec, "headCph");
+          if (typeof seq !== "number") continue;
+          if (!(headCph instanceof Uint8Array)) continue;
+          heads.push({ seq, headCph: new Uint8Array(headCph) });
+        }
+        return ok(heads);
+      } catch {
+        return err(Status.StorageError);
+      }
+    },
+  };
+}
+
+const sqliteStorage = createSqliteStorage();
 export default sqliteStorage;

@@ -8,5 +8,5 @@ A simple host for local testing.
 4. `DIPLOMATIC_HOST_PORT=31337 deno run --allow-net --allow-read --allow-write --allow-env hosts/deno/server.ts`
 5. Point your client at the URL that provides.
 
-This host stores data to a SQLite database named `diplomatic.db`.
+This host stores data to a SQLite database named `diplomatic.db`. Bodies over 1 MiB are files under `diplomatic.db.blobs/<userPubKey hex>/<realm hex>/<16 random bytes hex>`. The row keeps `headCph` and that path in `bodyKey`. A file write that fails does not insert that bag's row; the push item for that bag is `StorageError`.
 The demo projects in the git repo point at this host (`https://localhost:3311`). You may need to configure your system to accept the certificates at `certs/`.

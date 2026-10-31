@@ -136,9 +136,11 @@ export interface IStorage {
   /**
    * Store bags for a user. One result per input bag, same order.
    * An invalid rlm is InvalidParam for that bag; the others are still stored.
+   * A body that cannot be written outside the row is StorageError for that
+   * bag and no SQL row; the others are still stored.
    * Seqs are contiguous per rlm among stored bags, assigned atomically so
    * concurrent writers cannot claim the same seq in the same rlm.
-   * Empty list succeeds with []. A storage failure fails the call.
+   * Empty list succeeds with []. A SQL failure fails the call.
    */
   setBags: (
     pubKey: PublicKey,

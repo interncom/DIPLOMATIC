@@ -18,7 +18,7 @@ When implementing a change, there is sometimes a refactor that looks useful to d
 
 ## Terseness
 
-To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are _not_ desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment explaining the meaning. Rarely used variables, such as constants, can be relatively long and self-explanatory.
+To be useful this software must be trusted. To be trusted it must be understood. Therefore it is critical to keep the code compact. Long, explanatory variable and function names are _not_ desirable here. The more-often repeated a variable or function name is, the shorter it should be. Introduce these common, short names with a one-line comment that begins with the name. Rarely used variables, such as constants, can be relatively long and self-explanatory.
 
 A short name still names the thing. Bare words like `Group` are too vague. Name the contents.
 
@@ -26,10 +26,10 @@ A single `BagManager` is `bagMgr`. Several are `bagMgrs`. Do not abbreviate eith
 
 ## Function Documentation
 
-Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. You can explain special cases on a follow-up line. For instance:
+Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. Begin the comment with the function or variable name, Go-style. You can explain special cases on a follow-up line. For instance:
 
-// Finds the greatest common divisor of two numbers.
-// Returns undefined if a or b is not a number.
+// gcd finds the greatest common divisor of two numbers.
+// gcd returns undefined if a or b is not a number.
 function gcd(a, b) {
 // ... implementation
 }
@@ -68,6 +68,10 @@ Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buff
 - Do not use the `any` type in TypeScript.
 - Do not use the TypeScript `!` operator.
 
+## Host errors
+
+Host implementations return `ValStat` instead of throwing. Catch a failure from the platform (filesystem, D1, R2) and return a `Status`. Do not use `throw` for control flow inside a host.
+
 ## Directory Structure
 
 - `shared` holds common code. It's written in TypeScript, targeting deno.
@@ -77,7 +81,7 @@ Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buff
 - `shared/http` holds code implementing the HTTP transport for the protocol.
 - `shared/lpc` holds code implementing the LPC (local procedure call) transport.
 - `shared/types.ts` defines TypeScript types used.
-- `deno` has some deno platform-specific code, plus the tests for the shared deno code. Run those tests with `deno test --allow-net --allow-ffi --allow-env` from the `deno` dir. Use `deno bench` to run the benchmarks.
+- `deno` has some deno platform-specific code, plus the tests for the shared deno code. Run those tests with `deno test --allow-net --allow-ffi --allow-env --allow-read=diplomatic.db,/tmp --allow-write=diplomatic.db,/tmp` from the `deno` dir. Use `deno bench` to run the benchmarks.
 - `web` holds web client code, also written in TypeScript. Run tests from this dir using `npm test`.
 - `web/src/entdb` implements EntDB, an application-layer object database built on top of the eventually-consistent ordered message relay implemented by DIPLOMATIC. It has both IndexedDB and in-memory implementations.
 - `web/src/stores` implement data stores on both IndexedDB and in-memory, for data needed to use DIPLOMATIC + EntDB in a web client.
@@ -91,7 +95,7 @@ Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buff
 ## Checking Work
 
 - Run tests before and after making changes to ensure you haven't broken anything.
-    - `deno test --allow-net --allow-ffi --allow-env` from `deno` dir.
+    - `deno test --allow-net --allow-ffi --allow-env --allow-read=diplomatic.db,/tmp --allow-write=diplomatic.db,/tmp` from `deno` dir.
     - `npm test` from `web` dir.
 
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.

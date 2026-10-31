@@ -166,11 +166,17 @@ export class WorkerClient implements IClient<URL> {
     // update pending counts (worker only posts xferState after successful
     // peek/push/pull, which never runs while disconnected).
     this.local.xferState.listen((state) => {
+      const phase = state.progress.phase;
+      // Import runs here. Other phases stay the worker's.
+      const localProgress = phase === "import" ||
+        (phase === "idle" &&
+          this.cachedXferState.progress.phase === "import");
       this.cachedXferState = {
         numUploads: state.numUploads,
         numDownloads: state.numDownloads,
-        // Keep worker-driven phase progress; local writer never runs network.
-        progress: this.cachedXferState.progress,
+        progress: localProgress
+          ? state.progress
+          : this.cachedXferState.progress,
       };
       this.xferState.emit();
     });
@@ -667,12 +673,9 @@ export class WorkerClient implements IClient<URL> {
     this.xferState.emit();
   }
 
+  // Runs on this thread because using worker would require a full file copy.
   async import(file: File): Promise<Status> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return this.requestStatus(
-      { id: this.allocId(), op: "import", bytes },
-      [bytes.buffer],
-    );
+    return this.local.import(file);
   }
 
   async export(filename: string, _extension?: string): Promise<Status> {

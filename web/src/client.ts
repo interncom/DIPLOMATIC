@@ -12,7 +12,7 @@ import { Status } from "./shared/consts";
 import { realmKDM, realmKDMs } from "./stores/cursor";
 import { accountLabel } from "./stores/label";
 import type { IRealm } from "./stores/realm";
-import { Exim, type IExportRealm } from "./shared/crypto/exim";
+import { Exim, type IExportMsg, type IExportRealm } from "./shared/crypto/exim";
 import { EncodedMessage, genInsertHead, genUpsertHead } from "./shared/message";
 import type { Enclave } from "./shared/crypto/enclave";
 import {
@@ -1101,93 +1101,124 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = this.#enclave();
     if (!enclave) return Status.MissingSeed;
 
-    console.time("import: decoding file...");
-    const bytes = await file.bytes();
+    const bytesTotal = file.size;
+    // Bar moves from the first read. Message total arrives with the directory.
+    this.emitProgress({
+      phase: "import",
+      done: 0,
+      total: 0,
+      bytesDone: 0,
+      bytesTotal,
+    });
+
+    // One read on this thread. The file is not copied to the sync worker.
+    // TODO: read windows of at most 50MB, or a whole bag when it is larger.
+    console.time("import");
+    let bytes = await file.bytes();
     const [nonce, nst] = Exim.exportNonce(bytes);
     if (nst !== Status.Success) {
-      console.timeEnd("import: decoding file...");
+      console.timeEnd("import");
+      this.emitProgress({ phase: "idle" });
       return nst;
     }
     const [key, kst] = await enclave.exportKey(nonce);
     if (kst !== Status.Success) {
-      console.timeEnd("import: decoding file...");
+      console.timeEnd("import");
+      this.emitProgress({ phase: "idle" });
       return kst;
     }
-    let decoded: Awaited<ReturnType<typeof Exim.decodeFile>>;
-    try {
-      decoded = await Exim.decodeFile(bytes, crypto, key);
-    } finally {
-      key.fill(0);
-      console.timeEnd("import: decoding file...");
-    }
-    const [realms, statDec] = decoded;
-    if (statDec !== Status.Success) return statDec;
 
     let total = 0;
-    const maxIndex = new Map<string, number>();
-    for (const part of realms) {
-      total += part.msgs.length;
-      if (part.realm.label === "") continue;
-      const prev = maxIndex.get(part.realm.label);
-      if (prev === undefined || part.realm.index > prev) {
-        maxIndex.set(part.realm.label, part.realm.index);
-      }
-    }
-    for (const [label, index] of maxIndex) {
-      const stRealm = await this.store.realms.put(label, index);
-      if (stRealm === Status.InvalidParam) continue;
-      if (stRealm !== Status.Success) return stRealm;
-    }
-    if (maxIndex.size > 0) await this.#pullRealms();
-
     let done = 0;
-    for (const part of realms) {
-      let processed = 0;
-      while (processed < part.msgs.length) {
-        let totalBytes = 0;
-        let count = 0;
-        let end = processed;
-        for (
-          let i = processed;
-          i < part.msgs.length && count < 100 && totalBytes < 100 * 1024;
-          i++
-        ) {
-          totalBytes += part.msgs[i].head.len;
-          count++;
-          end = i + 1;
+    let bytesDone = 0;
+    let batch: IExportMsg[] = [];
+    let batchRealm: IKDM | undefined;
+    let batchBytes = 0;
+
+    const publish = () => {
+      if (onProgress) {
+        queueMicrotask(() => onProgress(done, total, Status.Success));
+      }
+      this.emitProgress({
+        phase: "import",
+        done,
+        total,
+        bytesDone,
+        bytesTotal,
+      });
+    };
+
+    // Apply and drop the batch. A later bad body leaves earlier msgs stored.
+    const flush = async (): Promise<Status> => {
+      const realm = batchRealm;
+      const msgs = batch;
+      if (realm === undefined || msgs.length < 1) return Status.Success;
+      batch = [];
+      batchBytes = 0;
+      console.time(`import: applying [${done}, ${done + msgs.length}]`);
+      const statsBatch = await this.apply(msgs, {
+        enqueueUpload: true,
+        triggerUpload: false,
+        realm,
+      });
+      console.timeEnd(`import: applying [${done}, ${done + msgs.length}]`);
+      for (let i = 0; i < msgs.length; i++) {
+        const stat = statsBatch[i];
+        if (stat !== Status.Success && stat !== Status.NoChange) {
+          console.warn(
+            `failed to import msg ${done + i}: ${Status[stat]}`,
+          );
         }
-        const batch = part.msgs.slice(processed, end);
-        console.time(`import: applying [${done}, ${done + batch.length}]`);
-        const statsBatch = await this.apply(batch, {
-          enqueueUpload: true,
-          triggerUpload: false,
-          realm: part.realm,
-        });
-        console.timeEnd(`import: applying [${done}, ${done + batch.length}]`);
-        for (let i = 0; i < batch.length; i++) {
-          const stat = statsBatch[i];
-          if (stat !== Status.Success && stat !== Status.NoChange) {
-            console.warn(
-              `failed to import msg ${done + i}: ${Status[stat]}`,
-            );
+      }
+      done += msgs.length;
+      publish();
+      return Status.Success;
+    };
+
+    let st = Status.Success;
+    try {
+      st = await Exim.eachMsg(bytes, crypto, key, async (realm, msg, at) => {
+        bytesDone = at;
+        if (batchRealm !== undefined && !kdmEq(batchRealm, realm)) {
+          const flushed = await flush();
+          if (flushed !== Status.Success) return flushed;
+        }
+        batchRealm = realm;
+        batch.push(msg);
+        batchBytes += msg.head.len;
+        if (batch.length >= 100 || batchBytes >= 100 * 1024) {
+          return await flush();
+        }
+        return Status.Success;
+      }, async (rows) => {
+        const maxIndex = new Map<string, number>();
+        for (const row of rows) {
+          total += row.num;
+          if (row.realm.label === "") continue;
+          const prev = maxIndex.get(row.realm.label);
+          if (prev === undefined || row.realm.index > prev) {
+            maxIndex.set(row.realm.label, row.realm.index);
           }
         }
-        done += batch.length;
-        if (onProgress) {
-          queueMicrotask(() => onProgress(done, total, Status.Success));
+        for (const [label, index] of maxIndex) {
+          const stRealm = await this.store.realms.put(label, index);
+          if (stRealm === Status.InvalidParam) continue;
+          if (stRealm !== Status.Success) return stRealm;
         }
-        this.emitProgress({
-          phase: "import",
-          done,
-          total,
-        });
-        processed = end;
-      }
+        if (maxIndex.size > 0) await this.#pullRealms();
+        publish();
+        return Status.Success;
+      });
+      await flush();
+    } finally {
+      key.fill(0);
+      bytes = new Uint8Array(0);
+      console.timeEnd("import");
     }
 
-    this.scheduleSync();
     this.emitProgress({ phase: "idle" });
-
+    if (st !== Status.Success) return st;
+    this.scheduleSync();
     // TODO: return the array of statuses for each import msg.
     return Status.Success;
   };

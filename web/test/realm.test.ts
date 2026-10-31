@@ -197,7 +197,16 @@ describe("realm label on ents and messages", () => {
     const destStore = new MemoryStore<IProtoHost>(libsodiumCrypto);
     const dest = client(destStore);
     expect(await dest.setSeed(enclave())).toBe(Status.Success);
+    const ticks: number[] = [];
+    const stop = dest.xferState.listen((s) => {
+      const n = s.progress.bytesDone;
+      if (s.progress.phase === "import" && n !== undefined) ticks.push(n);
+    });
     expect(await dest.import(new File([file], "a.dpl"))).toBe(Status.Success);
+    await new Promise((r) => setTimeout(r, 0));
+    stop();
+    expect(ticks.some((n) => n > 0)).toBe(true);
+    expect((await dest.xferState.get()).progress.phase).toBe("idle");
 
     const rows = [...destStore.messages.messages.values()];
     expect(rows).toHaveLength(2);

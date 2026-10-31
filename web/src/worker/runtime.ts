@@ -243,13 +243,6 @@ export class WorkerRuntime {
         return undefined;
       }
 
-      case "import": {
-        const copy = cmd.bytes.slice();
-        const blob = new Blob([copy]);
-        const file = new File([blob], "import.dip");
-        return await client.import(file);
-      }
-
       case "export": {
         const [bytes, stat] = await client.exportBytes();
         if (stat !== Status.Success) {

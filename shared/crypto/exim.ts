@@ -140,48 +140,85 @@ export namespace Exim {
   }
 
   // Decrypts and verifies an export file into realms. Does not wipe `key`.
+  // Holds every body until return. Import uses eachMsg so a large file does not.
   export async function decodeFile(
     file: Uint8Array,
     crypto: ICrypto,
     key: PDK["Export"],
   ): Promise<ValStat<IExportRealm[]>> {
+    const realms: IExportRealm[] = [];
+    let curr: IExportRealm | undefined;
+    const st = await eachMsg(file, crypto, key, async (realm, msg) => {
+      if (curr === undefined || !kdmEq(curr.realm, realm)) {
+        curr = { realm, msgs: [msg] };
+        realms.push(curr);
+        return Status.Success;
+      }
+      curr.msgs.push(msg);
+      return Status.Success;
+    });
+    if (st !== Status.Success) return err(st);
+    return ok(realms);
+  }
+
+  // Verifies an export and passes each message to `onMsg` in file order.
+  // Does not keep bodies after `onMsg` returns. Does not wipe `key`.
+  // `onDir` runs after the directory check and before the first body.
+  export async function eachMsg(
+    file: Uint8Array,
+    crypto: ICrypto,
+    key: PDK["Export"],
+    onMsg: (realm: IKDM, msg: IExportMsg, at: number) => Promise<Status>,
+    onDir?: (rows: readonly IFileRealm[]) => Promise<Status>,
+  ): Promise<Status> {
     const [fileStruct, statDecode] = fileCodec.decode(new Decoder(file));
-    if (statDecode !== Status.Success) return err(statDecode);
+    if (statDecode !== Status.Success) return statDecode;
     const { head, chunks } = fileStruct;
     const mgrs = realmBagMgrs(key);
     const [signer, sst] = await mgrs(nullKDM);
-    if (sst !== Status.Success) return err(sst);
+    if (sst !== Status.Success) return sst;
 
     let verifyKey: CryptoKey;
     try {
       verifyKey = await crypto.importVerifyKey(signer.publicKey);
     } catch {
-      return err(Status.CryptoError);
+      return Status.CryptoError;
     }
     const sigValid = await crypto.checkSigEd25519(
       head.sig,
       head.hsh,
       verifyKey,
     );
-    if (!sigValid) return err(Status.InvalidSignature);
+    if (!sigValid) return Status.InvalidSignature;
 
     const [pre, pst] = fileHeadPreimage(head.nonce, head.realms);
-    if (pst !== Status.Success) return err(pst);
+    if (pst !== Status.Success) return pst;
     const computedHsh = await crypto.blake3(pre);
-    if (!bytesEqual(computedHsh, head.hsh)) return err(Status.HashMismatch);
+    if (!bytesEqual(computedHsh, head.hsh)) return Status.HashMismatch;
 
-    // Authenticate the directory before reading counts out of it.
+    if (onDir) {
+      const dst = await onDir(head.realms);
+      if (dst !== Status.Success) return dst;
+    }
+
+    // Authenticate each head section before reading counts out of it.
+    const headerLen = file.byteLength - chunks.byteLength;
     const dec = new Decoder(chunks);
-    const realms: IExportRealm[] = [];
     for (const row of head.realms) {
       const [bagMgr, bst] = await mgrs(row.realm);
-      if (bst !== Status.Success) return err(bst);
-      const [msgs, mst] = await openChunk(dec, chunks, row, crypto, bagMgr);
-      if (mst !== Status.Success) return err(mst);
-      realms.push({ realm: row.realm, msgs });
+      if (bst !== Status.Success) return bst;
+      const mst = await openChunk(
+        dec,
+        chunks,
+        row,
+        crypto,
+        bagMgr,
+        (msg) => onMsg(row.realm, msg, headerLen + dec.consumed()),
+      );
+      if (mst !== Status.Success) return mst;
     }
-    if (!dec.done()) return err(Status.InvalidMessage);
-    return ok(realms);
+    if (!dec.done()) return Status.InvalidMessage;
+    return Status.Success;
   }
 
   // Re-encodes a file under `keyOut`. Does not wipe either key.
@@ -276,46 +313,49 @@ async function sealChunk(
   return ok(heads);
 }
 
-// Opens one realm chunk. The head-section hash is checked before the bodies.
+// Opens one realm chunk. The head-section hash is checked before any body.
+// `onMsg` sees one message at a time. This function does not keep the body.
 async function openChunk(
   dec: Decoder,
   chunks: Uint8Array,
   row: IFileRealm,
   crypto: ICrypto,
   bagMgr: BagManager,
-): Promise<ValStat<IExportMsg[]>> {
+  onMsg: (msg: IExportMsg) => Promise<Status>,
+): Promise<Status> {
   const start = dec.consumed();
   const items: IFileIndexItem[] = [];
   for (let i = 0; i < row.num; i++) {
     const [item, ist] = dec.readStruct(fileIndexItemCodec);
-    if (ist !== Status.Success) return err(ist);
+    if (ist !== Status.Success) return ist;
     items.push(item);
   }
   const got = await crypto.blake3(chunks.subarray(start, dec.consumed()));
-  if (!bytesEqual(got, row.hsh)) return err(Status.HashMismatch);
+  if (!bytesEqual(got, row.hsh)) return Status.HashMismatch;
 
-  const msgs: IExportMsg[] = [];
   for (const item of items) {
     const [headEnc, dst] = await bagMgr.decrypt(item.kdm, item.headCph);
-    if (dst !== Status.Success) return err(dst);
+    if (dst !== Status.Success) return dst;
     const [msgHead, headStatus] = messageHeadCodec.decode(
       new Decoder(headEnc),
     );
-    if (headStatus !== Status.Success) return err(headStatus);
+    if (headStatus !== Status.Success) return headStatus;
 
-    if (item.lenBody < 0) return err(Status.InvalidMessage);
+    if (item.lenBody < 0) return Status.InvalidMessage;
     if (item.lenBody === 0) {
-      msgs.push({ head: msgHead });
+      const st = await onMsg({ head: msgHead });
+      if (st !== Status.Success) return st;
       continue;
     }
-    if (msgHead.hsh === undefined) return err(Status.InvalidMessage);
+    if (msgHead.hsh === undefined) return Status.InvalidMessage;
     const [cph, cst] = dec.readBytes(item.lenBody);
-    if (cst !== Status.Success) return err(cst);
+    if (cst !== Status.Success) return cst;
     const [bod, bdst] = await bagMgr.decrypt(item.kdm, cph);
-    if (bdst !== Status.Success) return err(bdst);
+    if (bdst !== Status.Success) return bdst;
     const hashBody = await crypto.blake3(bod);
-    if (!bytesEqual(hashBody, msgHead.hsh)) return err(Status.HashMismatch);
-    msgs.push({ head: msgHead, body: bod });
+    if (!bytesEqual(hashBody, msgHead.hsh)) return Status.HashMismatch;
+    const st = await onMsg({ head: msgHead, body: bod });
+    if (st !== Status.Success) return st;
   }
-  return ok(msgs);
+  return Status.Success;
 }

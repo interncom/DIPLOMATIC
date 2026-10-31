@@ -563,7 +563,8 @@ export async function syncPush<Handle extends HostHandle>(
   };
 
   // One batch is one realm, so its seqs share a cursor.
-  type Ready = { hash: Hash; realm: IKDM; msg: IMessage };
+  // Sort hashes only. Holding every body here is wasteful.
+  type Ready = { hash: Hash; realm: IKDM };
   const ready: Ready[] = [];
   const realmRows = await store.realms.list();
   for (const msgHeadEncHash of pending) {
@@ -575,7 +576,6 @@ export async function syncPush<Handle extends HostHandle>(
     ready.push({
       hash: msgHeadEncHash,
       realm: realmKDM(storedMsg.rlm, realmRows),
-      msg: { ...storedMsg.head, bod: storedMsg.body },
     });
   }
   ready.sort((a, b) => {
@@ -585,11 +585,17 @@ export async function syncPush<Handle extends HostHandle>(
   });
 
   for (const item of ready) {
+    const storedMsg = await store.messages.get(item.hash);
+    if (!storedMsg) {
+      done += 1;
+      continue;
+    }
+    const msg: IMessage = { ...storedMsg.head, bod: storedMsg.body };
     if (bags.length > 0 && !sameRealm(batchRealm, item.realm)) {
       const st = await flush();
       if (st !== Status.Success) return st;
     }
-    const [bag, statBag] = await conn.seal(item.msg, item.realm);
+    const [bag, statBag] = await conn.seal(msg, item.realm);
     if (statBag !== Status.Success) return statBag;
     const size = bagBytes(bag);
     if (bags.length > 0 && batchBytes + size > limit) {

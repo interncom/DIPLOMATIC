@@ -61,7 +61,6 @@ export type WorkerCmd =
     meta?: boolean;
     seed?: boolean;
   }
-  | { id: number; op: "import"; bytes: Uint8Array }
   | { id: number; op: "export" }
   | { id: number; op: "getXferState" };
 

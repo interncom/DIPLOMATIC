@@ -436,6 +436,63 @@ Deno.test("Exim.decodeFile", async (t) => {
       }
     }
   });
+
+  await t.step("eachMsg yields one message at a time", async () => {
+    const now = new Date();
+    const id = await crypto.genRandomBytes(8);
+    const [eid, statEid] = makeEID({ id, ts: now });
+    if (statEid !== Status.Success) {
+      assertEquals(statEid, Status.Success);
+      return;
+    }
+    const body = new TextEncoder().encode("test body");
+    const [head, statHead] = await genUpsertHead({
+      now,
+      eid,
+      ctr: 1,
+      bod: body,
+      crypto,
+    });
+    if (statHead !== Status.Success) {
+      assertEquals(statHead, Status.Success);
+      return;
+    }
+    const [file, statEnc] = await seal(enclave, crypto, [{ head, body }]);
+    assertEquals(statEnc, Status.Success);
+    if (statEnc !== Status.Success) return;
+
+    const key = await fileKey(enclave);
+    let dirFirst = false;
+    let n = 0;
+    let sawBody = false;
+    try {
+      const st = await Exim.eachMsg(
+        file,
+        crypto,
+        key,
+        async (_realm, msg, at) => {
+          if (!dirFirst) throw new Error("body before directory");
+          n += 1;
+          sawBody = msg.body !== undefined && bytesEqual(msg.body, body);
+          assertEquals(at > 0, true);
+          assertEquals(at <= file.byteLength, true);
+          return Status.Success;
+        },
+        async (rows) => {
+          dirFirst = true;
+          assertEquals(rows.length, 1);
+          assertEquals(rows[0]?.num, 1);
+          assertEquals(n, 0);
+          return Status.Success;
+        },
+      );
+      assertEquals(st, Status.Success);
+    } finally {
+      key.fill(0);
+    }
+    assertEquals(n, 1);
+    assertEquals(sawBody, true);
+  });
 });
 
 Deno.test("Exim.migrateFile", async (t) => {

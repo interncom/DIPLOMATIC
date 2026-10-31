@@ -3,6 +3,7 @@
 // Runtime types generated with workerd@1.20260708.1 2026-02-28 nodejs_compat
 interface __BaseEnv_Env {
 	DIP_DB: D1Database;
+	DIP_BLOBS: R2Bucket;
 	WEBSOCKET_SERVER: DurableObjectNamespace<import("./src/index").WebSocketServerV2>;
 }
 declare namespace Cloudflare {

@@ -62,20 +62,22 @@ Wire endpoints are thin over a host-local storage abstraction (`IStorage`). Impl
 |--------|------|
 | `addUser` / `hasUser` | Registration |
 | `subMeta` | Subscription / quota metadata for response headers |
-| `setBags(pubKey, bags)` | Persist bags; return host `seq` for each bag **in order** |
+| `setBags(pubKey, bags)` | Persist bags; one result per bag **in order** (seq, or a per-bag error) |
 | `getBodies(pubKey, seqs)` | Ciphertext bodies for [PULL](./pull); missing seqs omitted |
 | `listHeads(pubKey, minSeq)` | Heads with `seq > minSeq` for [PEEK](./peek) |
 
 ### `setBags`
 
 ```ts
-setBags(pubKey: PublicKey, bags: IBag[]): Promise<ValStat<number[]>>
+setBags(pubKey: PublicKey, bags: IBag[]): Promise<ValStat<ISetBagResult[]>>
 ```
 
 - **Empty list** succeeds and returns `[]`.
-- **Return value** is one host sequence number per input bag, same order as `bags`.
-- **Atomic seq assignment:** a single call must allocate contiguous seqs without racing another concurrent `setBags` for the same user (e.g. one SQL transaction, or D1 `batch` with `MAX(seq)+1` inside each `INSERT … RETURNING seq`).
+- **Return value** is one result per input bag, same order as `bags`. Success carries the host seq. An invalid rlm is `InvalidParam` and has no seq; the other bags are still stored.
+- **Atomic seq assignment:** a single call must allocate contiguous seqs among the bags it stores, without racing another concurrent `setBags` for the same user (e.g. one SQL transaction, or D1 `batch` with `MAX(seq)+1` inside each `INSERT … RETURNING seq`).
 - A single bag is just `setBags(pubKey, [bag])` — there is no separate one-shot store API.
+- Bodies over 1 MiB are not stored in the row. The host keeps `headCph` in SQL and writes `bodyCph` outside it: R2 on Cloudflare, a file beside the database on the SQLite hosts. `getBodies` reads that copy back, so callers still receive ciphertext.
+- A body that cannot be written outside the row is `StorageError` for that bag. No SQL row is written for it. The other bags in the call are still stored, and their seqs stay contiguous. A SQL transaction failure fails the call.
 
 [PUSH](./push) verifies signatures, then stores all valid bags with one `setBags` call (not one write per bag).
 

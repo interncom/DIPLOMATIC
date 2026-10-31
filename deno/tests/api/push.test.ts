@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.200.0/testing/asserts.ts";
-import { pushEnd } from "../../../shared/api/push.ts";
+import { pushEnd, pushReqCodec } from "../../../shared/api/push.ts";
 import { bytesEqual } from "../../../shared/binary.ts";
 import { Decoder, Encoder } from "../../../shared/codec.ts";
 import { authTimestampCodec } from "../../../shared/codecs/authTimestamp.ts";
@@ -18,12 +18,14 @@ import { IBag, IPushNotifier, PublicKey } from "../../../shared/types.ts";
 import {
   baseMockCrypto,
   baseMockNotifier,
+  baseMockStorage,
   createMockHost,
   createMockHostOutOfSync,
   createTestAuthTimestamp,
   mockClockForPush,
   testPubKey,
 } from "./testUtils.ts";
+import { ok } from "../../../shared/valstat.ts";
 
 function hostRlm(fill: number): HostRlm {
   const [rlm, st] = asHostRlm(new Uint8Array(32).fill(fill));
@@ -146,6 +148,66 @@ Deno.test("pushEnd.handleReq - invalid signature", async () => {
   }
   assertEquals(results.length, 1);
   assertEquals(results[0].status, Status.InvalidSignature);
+});
+
+Deno.test("pushEnd.handleReq - blob write failure is per bag", async () => {
+  const pubKey = testPubKey;
+  const tsAuth = createTestAuthTimestamp(pubKey, new Date(1640995200000));
+  const bags: IBag[] = [0, 1].map((n) => ({
+    rlm: hostRlm(3),
+    sig: new Uint8Array(sigBytes).fill(n),
+    kdm: new Uint8Array(kdmBytes).fill(10),
+    headCph: new Uint8Array([1, 2, 3]),
+    bodyCph: new Uint8Array([4, 5, n]),
+  }));
+  const reqEnc = new Encoder();
+  reqEnc.writeStruct(authTimestampCodec, tsAuth);
+  reqEnc.writeStruct(pushReqCodec, bags);
+  const reqDec = new Decoder(reqEnc.result());
+  const respEnc = new Encoder();
+
+  let notified = 0;
+  const mockHost = createMockHost({
+    crypto: baseMockCrypto,
+    clock: mockClockForPush,
+    notifier: {
+      ...baseMockNotifier,
+      push: () => {
+        notified += 1;
+      },
+    },
+    storage: {
+      ...baseMockStorage,
+      setBags: (_pubKey, stored) => {
+        if (stored.length !== 2) {
+          return Promise.resolve(ok([{ status: Status.StorageError }]));
+        }
+        return Promise.resolve(ok([
+          { status: Status.StorageError },
+          { status: Status.Success, seq: 1 },
+        ]));
+      },
+    },
+  });
+
+  const status = await pushEnd.handleReq(mockHost, reqDec, respEnc);
+  assertEquals(status, Status.Success);
+  assertEquals(notified, 1);
+
+  const respDec = new Decoder(respEnc.result());
+  const [results, decodeStatus] = pushEnd.decodeResp(respDec);
+  assertEquals(decodeStatus, Status.Success);
+  assert(results);
+  assertEquals(results.length, 2);
+  assertEquals(results[0].status, Status.StorageError);
+  assertEquals("seq" in results[0], false);
+  const stored = results[1];
+  if (stored.status !== Status.Success) {
+    assertEquals(stored.status, Status.Success);
+    return;
+  }
+  assertEquals(stored.idx, 1);
+  assertEquals(stored.seq, 1);
 });
 
 Deno.test("pushEnd.decodeResp", () => {

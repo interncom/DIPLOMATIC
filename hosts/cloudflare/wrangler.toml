@@ -30,5 +30,11 @@ binding = "DIP_DB"
 database_name = "diplomatic"
 database_id = "936ba773-318d-4e12-a0ff-d74f95e20bbf"
 
+# Bodies over 1 MiB. Create the bucket once before the first deploy:
+#   npx wrangler r2 bucket create diplomatic-blobs
+[[r2_buckets]]
+binding = "DIP_BLOBS"
+bucket_name = "diplomatic-blobs"
+
 [observability]
 enabled = true

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS bags (
   rlm BLOB,
   seq INTEGER,
   headCph BLOB,
-  bodyCph BLOB,
+  bodyCph BLOB, -- null when the body is stored in R2
+  bodyKey TEXT, -- R2 object key when bodyCph is null
   PRIMARY KEY (userPubKey, rlm, seq)
 );

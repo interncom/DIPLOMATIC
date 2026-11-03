@@ -12,7 +12,9 @@ import { spawnDiplomaticSyncWorker } from "../src/shared/worker/spawn";
 import { WorkerClient } from "../src/worker/client";
 
 vi.mock("../src/shared/worker/spawn", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("../src/shared/worker/spawn")>();
+  const orig = await importOriginal<
+    typeof import("../src/shared/worker/spawn")
+  >();
   return {
     ...orig,
     spawnDiplomaticSyncWorker: vi.fn(),
@@ -225,6 +227,93 @@ describe("WorkerClient open / setSeed", () => {
       expect(state.hasHost).toBe(true);
       expect(state.hasSeed).toBe(true);
       await client.ping();
+    } finally {
+      client.terminate();
+    }
+  });
+
+  test("connect and sync during setSeed wait until the worker adopts", async () => {
+    const store = new MemoryStore(crypto);
+    const ops: string[] = [];
+    const waiting: (() => void)[] = [];
+    const w: {
+      postMessage: (data: unknown) => void;
+      terminate: ReturnType<typeof vi.fn>;
+      onmessage: ((ev: MessageEvent<unknown>) => void) | null;
+      onerror: ((ev: ErrorEvent) => void) | null;
+      onmessageerror: ((ev: MessageEvent<unknown>) => void) | null;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+      dispatchEvent: () => boolean;
+    } = {
+      postMessage(data: unknown) {
+        if (!data || typeof data !== "object") return;
+        if (!("op" in data) || !("id" in data)) return;
+        if (typeof data.op !== "string" || typeof data.id !== "number") return;
+        const id = data.id;
+        const op = data.op;
+        ops.push(op);
+        const reply = () => {
+          queueMicrotask(() => {
+            const handler = w.onmessage;
+            if (!handler) return;
+            const result = op === "getXferState"
+              ? {
+                numUploads: 0,
+                numDownloads: 0,
+                progress: {
+                  phase: "idle",
+                  startedAt: 0,
+                  updatedAt: 0,
+                },
+              }
+              : undefined;
+            handler({
+              data: { kind: "reply", id, ok: true, result },
+            } as MessageEvent<unknown>);
+          });
+        };
+        if (op === "setSeed") {
+          waiting.push(reply);
+          return;
+        }
+        reply();
+      },
+      terminate: vi.fn(),
+      onmessage: null,
+      onerror: null,
+      onmessageerror: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: () => true,
+    };
+    vi.mocked(spawnDiplomaticSyncWorker).mockReturnValue(
+      w as unknown as Worker,
+    );
+    const client = await WorkerClient.open(nullStateManager, store, {
+      syncDebounceMs: 0,
+    });
+    try {
+      const setP = client.setSeed(enclaveOrThrow());
+      for (let i = 0; i < 20 && !ops.includes("setSeed"); i++) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      expect(ops).toEqual(["setSeed"]);
+      let syncDone = false;
+      const connectP = client.connect();
+      const syncP = client.sync().then((st) => {
+        syncDone = true;
+        return st;
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(syncDone).toBe(false);
+      expect(ops).toEqual(["setSeed"]);
+      const queued = waiting.splice(0);
+      for (const reply of queued) reply();
+      await setP;
+      await connectP;
+      expect(await syncP).toBe(Status.Success);
+      expect(ops).toEqual(["setSeed", "getXferState", "connect", "sync"]);
     } finally {
       client.terminate();
     }

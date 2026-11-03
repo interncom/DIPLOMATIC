@@ -86,6 +86,8 @@ const logPrefix = "[DIPLOMATIC]";
 export class WorkerClient implements IClient<URL> {
   /** Set only by setSeed → Enclave.spawnSyncWorker. */
   private worker: Worker | undefined;
+  // chain queues the worker spawn and later RPCs, one at a time.
+  private chain: Promise<unknown> = Promise.resolve();
   private state: IStateManager;
   /** Shared protocol store (main connection). */
   private store: IStore<URL>;
@@ -129,14 +131,19 @@ export class WorkerClient implements IClient<URL> {
     this.readyTimeoutMs = readyTimeoutMs;
     this.clientState = new StateEmitter(async () => this.cachedClientState);
     this.xferState = new StateEmitter(async () => this.cachedXferState);
-    this.scheduledSync = new Debounced(syncDebounceMs, async () => {
+    // runSync posts sync once the worker exists. A write during setSeed waits.
+    const runSync = async () => {
       if (!this.worker) return;
       try {
         await this.request({ id: this.allocId(), op: "sync" });
       } catch (e) {
         console.error(`${logPrefix} worker sync after local write failed`, e);
       }
-    });
+    };
+    this.scheduledSync = new Debounced(
+      syncDebounceMs,
+      () => this.enqueue(runSync),
+    );
 
     // Local mutates write shared IDB and apply state on main; push/sync goes to worker.
     this.local = new SyncClient(
@@ -288,7 +295,9 @@ export class WorkerClient implements IClient<URL> {
 
   /** Lightweight RPC check after setSeed. */
   async ping(): Promise<void> {
-    const result = await this.request({ id: this.allocId(), op: "ping" });
+    const result = await this.enqueue(() =>
+      this.request({ id: this.allocId(), op: "ping" })
+    );
     if (result !== "pong") {
       throw new Error(`${logPrefix} worker ping failed`);
     }
@@ -393,7 +402,8 @@ export class WorkerClient implements IClient<URL> {
     });
   }
 
-  private async requestStatus(
+  // readStatus posts one command and maps the reply to a Status.
+  private async readStatus(
     cmd: WorkerCmd,
     transfer?: Transferable[],
   ): Promise<Status> {
@@ -412,6 +422,14 @@ export class WorkerClient implements IClient<URL> {
     }
   }
 
+  // requestStatus queues a command behind the worker spawn.
+  private requestStatus(
+    cmd: WorkerCmd,
+    transfer?: Transferable[],
+  ): Promise<Status> {
+    return this.enqueue(() => this.readStatus(cmd, transfer));
+  }
+
   private serializeHost(
     host: IHostConnectionInfo<URL>,
   ): SerializedHost {
@@ -425,6 +443,7 @@ export class WorkerClient implements IClient<URL> {
   /**
    * Persist seed on main, then Enclave.spawnSyncWorker (only worker spawn path).
    * Awaits the worker's setSeed reply (worker boots, then applies seed).
+   * hasSeed flips first. connect and sync are queued behind that spawn.
    */
   async setSeed(enclave: Enclave, opts?: SetSeedOpts): Promise<Status> {
     // Shared IDB (if persist); worker gets seed only via Enclave factory.
@@ -433,7 +452,23 @@ export class WorkerClient implements IClient<URL> {
     // New worker is not connected; hasSeed/hasHost come from the local store.
     await this.loadSession(false);
     this.clientState.emit();
+    // Linked onto chain before the first await so a load sync waits.
+    return this.enqueue(() => this.bootWorker(enclave, opts));
+  }
 
+  // enqueue runs fn after the worker spawn and any earlier RPC.
+  // Same shape as SyncClient's apply chain.
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(fn, fn);
+    this.chain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  // bootWorker spawns the sync worker and waits until it adopts the seed.
+  private async bootWorker(
+    enclave: Enclave,
+    opts?: SetSeedOpts,
+  ): Promise<Status> {
     const label = this.local.selected()?.label ?? "";
     // spawnSyncWorker cannot name the databases. Bind is a follow-up post.
     let bound: { data: string; ents: string } | undefined;
@@ -492,6 +527,14 @@ export class WorkerClient implements IClient<URL> {
     return Status.Success;
   }
 
+  // post queues a command behind the worker spawn.
+  private post(
+    cmd: WorkerCmd,
+    transfer?: Transferable[],
+  ): Promise<unknown> {
+    return this.enqueue(() => this.request(cmd, transfer));
+  }
+
   async link(
     host: IHostConnectionInfo<URL>,
     connect = true,
@@ -500,7 +543,7 @@ export class WorkerClient implements IClient<URL> {
     await this.local.link(host, false);
     await this.loadSession(this.cachedClientState.connected);
     this.clientState.emit();
-    await this.request({
+    await this.post({
       id: this.allocId(),
       op: "link",
       host: this.serializeHost(host),
@@ -512,6 +555,11 @@ export class WorkerClient implements IClient<URL> {
     await this.local.unlink(label);
     await this.loadSession(this.cachedClientState.connected);
     this.clientState.emit();
+    await this.enqueue(() => this.unlinkNow(label));
+  }
+
+  // unlinkNow posts unlink after the worker exists.
+  private async unlinkNow(label: string): Promise<void> {
     if (!this.worker) return;
     await this.request({ id: this.allocId(), op: "unlink", label });
   }
@@ -523,6 +571,12 @@ export class WorkerClient implements IClient<URL> {
 
   async connect(listen = true, sync = true): Promise<void> {
     // No worker until setSeed — same as SyncClient.connect with no enclave.
+    // Queued behind the spawn so a load sync cannot run before adopt.
+    await this.enqueue(() => this.connectNow(listen, sync));
+  }
+
+  // connectNow posts connect after the worker exists.
+  private async connectNow(listen: boolean, sync: boolean): Promise<void> {
     if (!this.worker) return;
     await this.request({
       id: this.allocId(),
@@ -533,6 +587,11 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async disconnect(): Promise<void> {
+    await this.enqueue(() => this.disconnectNow());
+  }
+
+  // disconnectNow posts disconnect after the worker exists.
+  private async disconnectNow(): Promise<void> {
     if (!this.worker) return;
     await this.request({ id: this.allocId(), op: "disconnect" });
   }
@@ -575,8 +634,14 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async sync(): Promise<Status> {
+    // Before any setSeed there is nothing to sync. Do not report failure.
+    return this.enqueue(() => this.syncNow());
+  }
+
+  // syncNow posts sync after the worker exists.
+  private async syncNow(): Promise<Status> {
     if (!this.worker) return Status.Success;
-    return this.requestStatus({ id: this.allocId(), op: "sync" });
+    return this.readStatus({ id: this.allocId(), op: "sync" });
   }
 
   async rebuild(options?: { checkHost?: boolean }): Promise<Status> {
@@ -607,7 +672,7 @@ export class WorkerClient implements IClient<URL> {
     opts?: ReconcileOpts,
   ): Promise<ValStat<ReconcileReport>> {
     try {
-      const result = await this.request({
+      const result = await this.post({
         id: this.allocId(),
         op: "reconcile",
         hostLabel,
@@ -629,7 +694,7 @@ export class WorkerClient implements IClient<URL> {
 
   /** Archive checksum via worker (listKeys + sort + blake3 off main). */
   async msgcheck(): Promise<Hash> {
-    const result = await this.request({
+    const result = await this.post({
       id: this.allocId(),
       op: "msgcheck",
     });
@@ -644,7 +709,7 @@ export class WorkerClient implements IClient<URL> {
    * SyncClient has no EntDB; use entDB.checksum(crypto) on the main path.
    */
   async entcheck(): Promise<Hash> {
-    const result = await this.request({
+    const result = await this.post({
       id: this.allocId(),
       op: "entcheck",
     });
@@ -655,7 +720,9 @@ export class WorkerClient implements IClient<URL> {
   }
 
   async wipe(opts?: WipeOpts): Promise<void> {
-    const ask = () =>
+    // ask tells the worker. Queued so it cannot pass the spawn.
+    // local.wipe stays off the chain: it may itself enqueue a sync.
+    const send = () =>
       this.request({
         id: this.allocId(),
         op: "wipe",
@@ -664,10 +731,15 @@ export class WorkerClient implements IClient<URL> {
         meta: opts?.meta,
         seed: opts?.seed,
       });
+    const ask = () =>
+      this.enqueue(async () => {
+        if (!this.worker) return;
+        await send();
+      });
     // Seed wipe deletes the databases. The worker must close them first.
-    if (opts?.seed === true && this.worker) await ask();
+    if (opts?.seed === true) await ask();
     await this.local.wipe(opts);
-    if (opts?.seed !== true && this.worker) await ask();
+    if (opts?.seed !== true) await ask();
     await this.hydrateStateFromStore(this.store);
     this.clientState.emit();
     this.xferState.emit();
@@ -680,7 +752,7 @@ export class WorkerClient implements IClient<URL> {
 
   async export(filename: string, _extension?: string): Promise<Status> {
     try {
-      const result = await this.request({
+      const result = await this.post({
         id: this.allocId(),
         op: "export",
       });

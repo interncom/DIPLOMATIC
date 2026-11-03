@@ -29,6 +29,10 @@ export class WorkerRuntime {
   private whenReady: Promise<void>;
   private resolveReady: (() => void) | undefined;
   private rejectReady: ((e: Error) => void) | undefined;
+  // seedWait holds cmds until setSeed adopts the enclave.
+  private seedWait: Promise<void>;
+  private resolveSeed: (() => void) | undefined;
+  private rejectSeed: ((e: Error) => void) | undefined;
 
   constructor(post: PostFn) {
     this.post = post;
@@ -36,6 +40,12 @@ export class WorkerRuntime {
       this.resolveReady = resolve;
       this.rejectReady = reject;
     });
+    this.seedWait = new Promise<void>((resolve, reject) => {
+      this.resolveSeed = resolve;
+      this.rejectSeed = reject;
+    });
+    // A failed setSeed rejects seedWait. Nothing may be awaiting it yet.
+    void this.seedWait.catch(() => {});
   }
 
   // Opens the account databases named by the main thread. Does not open meta.
@@ -109,6 +119,23 @@ export class WorkerRuntime {
     if (rej) rej(err);
   }
 
+  // markSeeded lets queued cmds run. Called after setSeed's adopt.
+  private markSeeded() {
+    const done = this.resolveSeed;
+    this.resolveSeed = undefined;
+    this.rejectSeed = undefined;
+    if (done) done();
+  }
+
+  // failSeeded rejects queued cmds when setSeed fails.
+  private failSeeded(e: unknown) {
+    const rej = this.rejectSeed;
+    this.resolveSeed = undefined;
+    this.rejectSeed = undefined;
+    if (!rej) return;
+    rej(e instanceof Error ? e : new Error(String(e)));
+  }
+
   private requireClient(): SyncClient<URL> {
     if (!this.client) {
       throw new Error("WorkerRuntime not initialized");
@@ -145,20 +172,36 @@ export class WorkerRuntime {
       return undefined;
     }
     await this.whenReady;
+    // setSeed opens seedWait. Other cmds wait so connect cannot pass adopt.
+    if (cmd.op !== "setSeed") {
+      await this.seedWait;
+    }
     const client = this.requireClient();
 
-    switch (cmd.op) {
-      case "ping":
-        return "pong";
-
-      case "setSeed": {
+    // adoptSeed opens the enclave. Failure rejects cmds waiting on seedWait.
+    const adoptSeed = async () => {
+      if (cmd.op !== "setSeed") return undefined;
+      try {
         const [enclave, st] = Enclave.fromBytes(cmd.seed);
         cmd.seed.fill(0);
         if (st !== Status.Success) throw new WorkerStatusError(st);
         const opened = await client.adopt(enclave, this.boundLabel);
         if (opened !== Status.Success) throw new WorkerStatusError(opened);
+        this.markSeeded();
         return undefined;
+      } catch (e) {
+        cmd.seed.fill(0);
+        this.failSeeded(e);
+        throw e;
       }
+    };
+
+    switch (cmd.op) {
+      case "ping":
+        return "pong";
+
+      case "setSeed":
+        return adoptSeed();
 
       case "link": {
         await client.link(

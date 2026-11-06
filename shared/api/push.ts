@@ -6,9 +6,19 @@ import { bagCodec } from "../codecs/bag.ts";
 import { IBagNotifItem, notifItemCodec } from "../codecs/notifItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
 import { type IBagPushItem, pushItemCodec } from "../codecs/pushItem.ts";
-import { notifInlineBodyBytesThreshold, Status } from "../consts.ts";
+import {
+  maxConnIDBytes,
+  notifInlineBodyBytesThreshold,
+  Status,
+} from "../consts.ts";
 import { IAuthenticatedEndpoint } from "../endpoint.ts";
 import { IBag } from "../types.ts";
+
+// IPushReq is one PUSH. connID is the listener to skip. 0 notifies every listener.
+export interface IPushReq {
+  connID: number;
+  bags: IBag[];
+}
 
 // A PUSH request is the bags to store, each one a bagCodec.
 export const pushReqCodec: ICodecStruct<IBag[]> = {
@@ -24,13 +34,15 @@ export const pushReqCodec: ICodecStruct<IBag[]> = {
 // Returned list items give the status of each bag and its index in the request.
 // For each successfully stored bag, the list item also includes its host seq.
 export const pushEnd: IAuthenticatedEndpoint<
-  IBag[],
+  IPushReq,
   IBagPushItem[]
 > = {
-  async encodeReq(_client, _identity, authTS, bags, reqEnc) {
+  async encodeReq(_client, _identity, authTS, req, reqEnc) {
     const s1 = reqEnc.writeStruct(authTimestampCodec, authTS);
     if (s1 !== Status.Success) return s1;
-    return reqEnc.writeStruct(pushReqCodec, bags);
+    const sConn = reqEnc.writeVarInt(req.connID, maxConnIDBytes);
+    if (sConn !== Status.Success) return sConn;
+    return reqEnc.writeStruct(pushReqCodec, req.bags);
   },
   async handleReq(host, reqDec, respEnc) {
     const { clock, crypto, storage, notifier } = host;
@@ -44,6 +56,10 @@ export const pushEnd: IAuthenticatedEndpoint<
     const [hasUser, hasStatus] = await storage.hasUser(pubKey);
     if (hasStatus !== Status.Success) return hasStatus;
     if (!hasUser) return Status.UserNotRegistered;
+
+    // connID identifies the listener connection of the device that pushed.
+    const [connID, sConn] = reqDec.readVarInt(maxConnIDBytes);
+    if (sConn !== Status.Success) return sConn;
 
     const [bags, s3] = reqDec.readStruct(pushReqCodec);
     if (s3 !== Status.Success) return s3;
@@ -121,7 +137,7 @@ export const pushEnd: IAuthenticatedEndpoint<
       const statBatch = encBatch.writeStructs(notifItemCodec, notifs);
       if (statBatch !== Status.Success) return statBatch;
       const batchEnc = encBatch.result();
-      await Promise.resolve(notifier.push(pubKey, batchEnc));
+      await Promise.resolve(notifier.push(pubKey, batchEnc, connID));
     }
 
     return Status.Success;

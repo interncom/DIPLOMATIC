@@ -16,15 +16,23 @@
 import { DurableObject } from "cloudflare:workers";
 import { validateAuthTimestamp } from "../../../shared/auth.ts";
 import { btoh } from "../../../shared/binary.ts";
+import { connIDSkip, nextConnID } from "../../../shared/connID.ts";
 import { Clock } from "../../../shared/clock.ts";
-import { Encoder } from "../../../shared/codec.ts";
+import { Encoder, encodeStruct } from "../../../shared/codec.ts";
+import { connIDFrameCodec } from "../../../shared/codecs/connID.ts";
+import { notifMsgCodec } from "../../../shared/codecs/notifMsg.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 import {
   isBodyKey,
   maxInlineBodyBytes,
   newBodyKey,
 } from "../../../shared/bodykey.ts";
-import { hashBytes, Status } from "../../../shared/consts.ts";
+import {
+  hashBytes,
+  initConnID,
+  NotifType,
+  Status,
+} from "../../../shared/consts.ts";
 import {
   DiplomaticHTTPServer,
   validateWebSocketAuth,
@@ -103,6 +111,34 @@ const cloudflareCrypto: IHostCrypto = {
   },
 };
 
+// notifyConnParam names the connID query on the worker-to-DO notify hop.
+const notifyConnParam = "c";
+
+// socketConnID reads the connection id stored on a hibernating socket.
+function socketConnID(socket: WebSocket): number {
+  const att: unknown = socket.deserializeAttachment();
+  if (typeof att !== "number" || !Number.isSafeInteger(att) || att < 1) {
+    return initConnID;
+  }
+  return att;
+}
+
+// notifyConnID reads the connID to skip. Missing or dirty input skips nobody.
+function notifyConnID(url: URL): number {
+  const raw = url.searchParams.get(notifyConnParam);
+  if (raw === null || raw.length === 0) return initConnID;
+  const n = Number(raw);
+  if (!Number.isSafeInteger(n) || n < 1) return initConnID;
+  return n;
+}
+
+// sendBytes writes a fresh buffer. A view's .buffer can be larger than the view.
+function sendBytes(socket: WebSocket, bytes: Uint8Array): void {
+  const buf = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buf).set(bytes);
+  socket.send(buf);
+}
+
 export class WebSocketServerV2 extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -114,7 +150,19 @@ export class WebSocketServerV2 extends DurableObject {
       const webSocketPair = new WebSocketPair();
       const [client, server] = Object.values(webSocketPair);
 
+      const [connID, idSt] = nextConnID(
+        this.ctx.getWebSockets().map((s) => socketConnID(s)),
+      );
+      if (idSt !== Status.Success) {
+        return new Response(null, { status: 503 });
+      }
+      const [frame, fst] = encodeStruct(connIDFrameCodec, connID);
+      if (fst !== Status.Success) {
+        return new Response(null, { status: 503 });
+      }
       this.ctx.acceptWebSocket(server);
+      server.serializeAttachment(connID);
+      sendBytes(server, frame);
       console.log("[DO] WS upgrade accepted");
 
       return new Response(null, {
@@ -123,13 +171,23 @@ export class WebSocketServerV2 extends DurableObject {
       });
     }
 
-    if (request.url.endsWith("/notify")) {
-      const body = await request.arrayBuffer();
-      const data = new Uint8Array(body);
+    const url = new URL(request.url);
+    if (url.pathname.endsWith("/notify")) {
+      const body = new Uint8Array(await request.arrayBuffer());
+      const [frame, fst] = encodeStruct(notifMsgCodec, {
+        typ: NotifType.Notif,
+        body,
+      });
+      if (fst !== Status.Success) {
+        return new Response(null, { status: 400 });
+      }
+      const pushConnID = notifyConnID(url);
       const sockets = this.ctx.getWebSockets();
       console.log(`[DO] /notify received, sockets: ${sockets.length}`);
       for (const socket of sockets) {
-        socket.send(data.buffer as ArrayBuffer);
+        const skip = connIDSkip(socketConnID(socket), pushConnID);
+        if (skip) continue;
+        sendBytes(socket, frame);
       }
       return new Response(null, { status: 200 });
     }
@@ -147,6 +205,8 @@ export class WebSocketServerV2 extends DurableObject {
 const createCloudflareWebsocketNotifier = (
   env: Env,
 ): IPushNotifier => ({
+  // The durable object assigns the connID on upgrade and sends it.
+  // This stub does not track sockets.
   open: async (authTS, _recv, crypto, clock) => {
     const status = await validateAuthTimestamp(authTS, crypto, clock);
     if (status !== Status.Success) {
@@ -159,11 +219,15 @@ const createCloudflareWebsocketNotifier = (
     };
   },
 
-  push: async (pubKey, data) => {
+  push: async (pubKey, data, connID) => {
     const pubKeyHex = btoh(pubKey);
     const id = env.WEBSOCKET_SERVER.idFromName(pubKeyHex);
     const stub = env.WEBSOCKET_SERVER.get(id);
-    const request = new Request("http://durableobject/notify", {
+    const url = new URL("http://durableobject/notify");
+    if (connID !== undefined && connID > initConnID) {
+      url.searchParams.set(notifyConnParam, String(connID));
+    }
+    const request = new Request(url, {
       method: "POST",
       body: data,
     });

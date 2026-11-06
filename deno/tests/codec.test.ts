@@ -209,6 +209,46 @@ Deno.test("Encoder writeVarInt negative", () => {
   assertEquals(status, Status.InvalidParam);
 });
 
+Deno.test("varint max length is checked on encode and decode", () => {
+  const enc = new Encoder();
+  assertEquals(enc.writeVarInt(127, 1), Status.Success);
+  assertEquals(enc.result(), new Uint8Array([0x7f]));
+  const over = new Encoder();
+  assertEquals(over.writeVarInt(128, 1), Status.VarLimitExceeded);
+  assertEquals(over.result().byteLength, 0);
+
+  const [n, st] = new Decoder(new Uint8Array([0x7f])).readVarInt(1);
+  assertEquals(st, Status.Success);
+  assertEquals(n, 127);
+  const [wide, wst] = new Decoder(new Uint8Array([0x80, 0x01])).readVarInt(1);
+  assertEquals(wst, Status.VarLimitExceeded);
+  assertEquals(wide, undefined);
+  // Overlong encoding of 1 is two bytes.
+  const [long, lst] = new Decoder(new Uint8Array([0x81, 0x00])).readVarInt(1);
+  assertEquals(lst, Status.VarLimitExceeded);
+  assertEquals(long, undefined);
+});
+
+Deno.test("varbytes max length is checked on encode and decode", () => {
+  const enc = new Encoder();
+  const payload = new Uint8Array([1, 2]);
+  assertEquals(enc.writeVarBytes(payload, 2), Status.Success);
+  const [got, st] = new Decoder(enc.result()).readVarBytes(2);
+  assertEquals(st, Status.Success);
+  assertEquals(got, payload);
+  const over = new Encoder();
+  assertEquals(
+    over.writeVarBytes(new Uint8Array([1, 2, 3]), 2),
+    Status.VarLimitExceeded,
+  );
+  assertEquals(over.result().byteLength, 0);
+  const fat = new Encoder();
+  assertEquals(fat.writeVarBytes(new Uint8Array([1, 2, 3])), Status.Success);
+  const [wide, wst] = new Decoder(fat.result()).readVarBytes(2);
+  assertEquals(wst, Status.VarLimitExceeded);
+  assertEquals(wide, undefined);
+});
+
 Deno.test("Encoder writeBytes empty", () => {
   const enc = new Encoder();
   enc.writeBytes(new Uint8Array(0));

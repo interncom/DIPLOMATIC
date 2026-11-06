@@ -238,15 +238,19 @@ export interface IPushOpenResponse {
   status: Status;
 }
 export interface IPushNotifier {
+  // open assigns a connID and delivers that assignment on recv.
   open(
     authTS: IAuthTimestamp,
     recv: PushReceiver,
     crypto: IHostCrypto,
     clock: IClock,
   ): Promise<IPushOpenResponse>;
-  push(pubKey: PublicKey, data: Uint8Array): void;
+  // connID, when it is not initConnID, is the listener to skip.
+  push(pubKey: PublicKey, data: Uint8Array, connID?: number): void;
 }
 export interface IPushListener {
+  // connID is the host-assigned id. initConnID until that assignment arrives.
+  connID(): number;
   connect(
     authTS: IAuthTimestamp,
     recv: PushReceiver,

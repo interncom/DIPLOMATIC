@@ -8,7 +8,7 @@ import { Decoder, Encoder } from "../../shared/codec.ts";
 import { authTimestampCodec } from "../../shared/codecs/authTimestamp.ts";
 import type { IKDM } from "../../shared/codecs/kdm.ts";
 import { peekItemHeadCodec } from "../../shared/codecs/peekItemHead.ts";
-import { Status } from "../../shared/consts.ts";
+import { initConnID, Status } from "../../shared/consts.ts";
 import { nullKDM } from "../../shared/crypto/derivation.ts";
 import { Enclave } from "../../shared/crypto/enclave.ts";
 import { peekCursorCodec } from "../../shared/api/peek.ts";
@@ -33,6 +33,9 @@ function transport(sent: Uint8Array[]): ITransport {
       return Promise.resolve(err(Status.ConnectionClosed));
     },
     listener: {
+      connID() {
+        return initConnID;
+      },
       connect() {
         return Promise.resolve(Status.Success);
       },

@@ -169,7 +169,8 @@ export default class DiplomaticClientAPI<Handle extends HostHandle> {
     if (st !== Status.Success) return err(st);
     return this.call(api.peek, { rlm, seq: lastSeq });
   };
-  push = (bags: IBag[]) => this.call(api.push, bags);
+  push = (bags: IBag[]) =>
+    this.call(api.push, { connID: this.transport.listener.connID(), bags });
   // Pulls `seqs` from `realm`. The default realm is nullKDM.
   pull = async (
     seqs: number[],

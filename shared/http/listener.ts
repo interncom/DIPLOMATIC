@@ -1,12 +1,20 @@
 import { btoh } from "../binary.ts";
 import { Encoder } from "../codec.ts";
 import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
-import { Status } from "../consts.ts";
+import { initConnID, Status } from "../consts.ts";
+import { takeNotif } from "../sockmsg.ts";
 import { IPushListener, PushReceiver } from "../types.ts";
 
 export class WebsocketListener implements IPushListener {
   private websocket?: WebSocket;
+  #connID = initConnID;
+
   constructor(private url: URL) {}
+
+  // connID is the host-assigned id. initConnID until the assignment frame arrives.
+  connID(): number {
+    return this.#connID;
+  }
 
   connected(): boolean {
     return this.websocket !== undefined &&
@@ -20,12 +28,8 @@ export class WebsocketListener implements IPushListener {
     onConnect: () => void = () => {},
   ): Promise<Status> {
     const { url } = this;
-
-    // Close any previous socket before creating a new one.
-    if (this.websocket) {
-      this.websocket.close();
-      this.websocket = undefined;
-    }
+    this.#drop();
+    this.#connID = initConnID;
 
     const enc = new Encoder();
     enc.writeStruct(authTimestampCodec, authTS);
@@ -33,29 +37,37 @@ export class WebsocketListener implements IPushListener {
     const authTSHex = btoh(authTSEnc);
 
     url.searchParams.set("t", authTSHex);
-    this.websocket = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.websocket = socket;
 
     // Set data type to ArrayBuffer (otherwise .onmessage receives Blobs).
-    this.websocket.binaryType = "arraybuffer";
+    socket.binaryType = "arraybuffer";
 
-    this.websocket.onopen = () => {
+    socket.onopen = () => {
       console.log("CONNECTED");
       onConnect();
     };
 
-    this.websocket.onclose = () => {
+    socket.onclose = () => {
+      if (this.websocket !== socket) return;
       console.log("DISCONNECTED");
+      this.#connID = initConnID;
       this.websocket = undefined;
       onDisconnect();
     };
 
-    this.websocket.onmessage = (e) => {
+    socket.onmessage = (e) => {
+      if (this.websocket !== socket) return;
       const bytes = new Uint8Array(e.data);
-      recv(bytes);
+      takeNotif(bytes, recv, (id) => {
+        this.#connID = id;
+      });
     };
 
-    this.websocket.onerror = (e) => {
+    socket.onerror = (e) => {
+      if (this.websocket !== socket) return;
       console.log(`ERROR: ${JSON.stringify(e)}`);
+      this.#connID = initConnID;
       this.websocket = undefined;
       onDisconnect();
     };
@@ -64,7 +76,14 @@ export class WebsocketListener implements IPushListener {
   }
 
   disconnect() {
-    this.websocket?.close();
+    this.#drop();
+    this.#connID = initConnID;
+  }
+
+  // #drop closes the current socket without clearing a replacement.
+  #drop() {
+    const socket = this.websocket;
     this.websocket = undefined;
+    socket?.close();
   }
 }

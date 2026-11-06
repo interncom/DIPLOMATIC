@@ -94,9 +94,15 @@ export class Decoder {
     return ok(new Date(offset));
   }
 
-  readVarInt(): ValStat<number> {
+  // readVarInt reads one varint.
+  // maxLen is the longest encoding in bytes. Longer is VarLimitExceeded.
+  readVarInt(maxLen?: number): ValStat<number> {
     const [res, status] = decodeVarInt(this.data, this.pos);
     if (status !== Status.Success) return err(status);
+    if (res === undefined) return err(Status.InvalidMessage);
+    if (maxLen !== undefined && res.bytesRead > maxLen) {
+      return err(Status.VarLimitExceeded);
+    }
     this.pos += res.bytesRead;
     const val = res.value;
     return ok(typeof val === "bigint" ? Number(val) : val);
@@ -138,9 +144,14 @@ export class Decoder {
     return ok(bytes);
   }
 
-  readVarBytes(): ValStat<Uint8Array> {
+  // readVarBytes reads a length prefix and that many bytes.
+  // maxLen is the longest payload. Longer is VarLimitExceeded.
+  readVarBytes(maxLen?: number): ValStat<Uint8Array> {
     const [len, statLen] = this.readVarInt();
     if (statLen !== Status.Success) return err(statLen);
+    if (maxLen !== undefined && len > maxLen) {
+      return err(Status.VarLimitExceeded);
+    }
     return this.readBytes(len);
   }
 
@@ -204,9 +215,15 @@ export class Encoder {
     return this.writeVarInt(timestampMs);
   }
 
-  writeVarInt(n: number): Status {
+  // writeVarInt appends n.
+  // maxLen is the longest encoding in bytes. Longer is VarLimitExceeded.
+  writeVarInt(n: number, maxLen?: number): Status {
     const [bytes, status] = encodeVarInt(n);
     if (status !== Status.Success) return status;
+    if (bytes === undefined) return Status.VarLimitExceeded;
+    if (maxLen !== undefined && bytes.byteLength > maxLen) {
+      return Status.VarLimitExceeded;
+    }
     this.parts.push(bytes);
     return Status.Success;
   }
@@ -243,7 +260,12 @@ export class Encoder {
     this.parts.push(bytes.slice());
   }
 
-  writeVarBytes(bytes: Uint8Array): Status {
+  // writeVarBytes appends bytes with a length prefix.
+  // maxLen is the longest payload. Longer is VarLimitExceeded.
+  writeVarBytes(bytes: Uint8Array, maxLen?: number): Status {
+    if (maxLen !== undefined && bytes.byteLength > maxLen) {
+      return Status.VarLimitExceeded;
+    }
     const statLen = this.writeVarInt(bytes.length);
     if (statLen !== Status.Success) return statLen;
     this.writeBytes(bytes);
@@ -295,4 +317,15 @@ export class Encoder {
 export interface ICodecStruct<T> {
   encode: (enc: Encoder, struct: T) => Status;
   decode: (dec: Decoder) => ValStat<T>;
+}
+
+// encodeStruct encodes str with codec and returns the bytes.
+export function encodeStruct<T>(
+  codec: ICodecStruct<T>,
+  str: T,
+): ValStat<Uint8Array> {
+  const enc = new Encoder();
+  const st = enc.writeStruct(codec, str);
+  if (st !== Status.Success) return err(st);
+  return ok(enc.result());
 }

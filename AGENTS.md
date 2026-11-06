@@ -24,6 +24,8 @@ A short name still names the thing. Bare words like `Group` are too vague. Name 
 
 A single `BagManager` is `bagMgr`. Several are `bagMgrs`. Do not abbreviate either as `bags`; that name is the protocol envelope (`IBag`).
 
+Do not abbreviate `notif` as `notf`.
+
 ## Function Documentation
 
 Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. Begin the comment with the function or variable name, Go-style. You can explain special cases on a follow-up line. For instance:
@@ -33,6 +35,16 @@ Introduce each new function or method with a brief comment explaining in one lin
 function gcd(a, b) {
 // ... implementation
 }
+
+## Chunk comments
+
+Inside a function, put a brief one-line comment in front of each chunk so the steps can be scanned. Name what that chunk does. Leave a blank line before the comment. For instance:
+
+// Validate authTS
+const status = await validateAuthTimestamp(authTS, crypto, clock);
+
+// Assign connID to this connection.
+const [connID, idSt] = nextConnID(list.map((row) => row.connID));
 
 ## File Documentation
 
@@ -61,6 +73,8 @@ Never commit a change to any code in shared/crypto/ or web/test/enclave.test.ts 
 ## Bytes
 
 Prefer a view (`subarray`) over a copy (`slice`). A view aliases the source buffer: bytes outside the view stay reachable on `.buffer`, and wiping either side wipes both. Copy when the caller will zero the source or the result, or when a view would keep secret bytes alive. `Encoder.writeBytes` copies because callers zero seeds and PRF output after encode.
+
+Every varint and every varbytes field must have a maximum length. Check it on encode and on decode, and return `Status.VarLimitExceeded` when the value is longer. Do not add a varint or varbytes field without specifying that limit.
 
 ## Constraints
 

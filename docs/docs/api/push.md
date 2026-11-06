@@ -80,18 +80,19 @@ Each of those two fields carries an encryption overhead of 40 bytes. Thus the es
 |Field|Bytes|Encoding|
 |-----|-----|--------|
 |authTS|101-104|[see docs](./host#authts-data-structure)|
+|connID|1-2|varint. The listener id from [NOTF](./notf). 0 notifies every listener. Longer than 2 bytes is `VarLimitExceeded`.|
 |bags|see above|see above|
 
-Taking the highest estimate for bag overhead (99 bytes), the estimated weight of a PUSH request is 104 bytes for authTS, plus 99 bytes per bag, plus the weight of each message body.
+Taking the highest estimate for bag overhead (99 bytes), the estimated weight of a PUSH request is 104 bytes for authTS, plus 1 or 2 bytes for the connection id, plus 99 bytes per bag, plus the weight of each message body.
 
 For a TODO list application, a message like `{ "todo": "take out the trash", done: true }` is a 44 byte JSON string, so the bag overhead os over double the size of the message contents. For this reason, DIPLOMATIC is designed to be prunable. Each message is a complete overwrite of the prior state of the ent. At first glance this may seem wasteful, but the consequence is that correct state of the system can be produced with only the final message for each ent. Clients only need to retain older messages if they want access to historical state, e.g. to support undo. A thin client can immediately discard older messages for an ent upon receiving a new valid one. And if the latest message is a DELETE, the client can discard that one too. This bounds the number of required messages at the size of the "working set" of ents. Even if the message and bag overhead is greater than the size of the message contents, the overhead is fixed-size and thus the data storage requirement of DIPLOMATIC is O(N) where N is the number of messages in the working set.
 
 ## Host processing
 
 1. Validate `authTS` and that the user is registered.
-2. Decode the bag list. For each bag, verify the signature; invalid signatures get a push item with an error status and are **not** stored.
+2. Read the connID, then decode the bag list. For each bag, verify the signature; invalid signatures get a push item with an error status and are **not** stored.
 3. Persist valid bags with a single host storage call, [`setBags`](./host#setbags). Each stored bag gets a host seq. A bag whose external body cannot be written is not stored; its result is `StorageError` and has no seq. The other bags are still stored. Implementations assign seqs atomically (see host storage docs).
-4. Build [NOTF](./notf) items for stored bags and push them to the user's websocket listeners.
+4. Build [NOTF](./notf) items for stored bags and push them to the user's other websocket listeners. The connID in this request is skipped. 0 notifies every listener.
 5. Return push items for every bag in the request (successes, signature failures, and per-bag storage failures). A non-success item omits `seq`.
 
 ## Response

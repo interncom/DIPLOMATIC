@@ -2,7 +2,10 @@ import libsodiumCrypto from "../../deno/src/crypto.ts";
 import sqliteStorage from "../../deno/src/storage/sqlite.ts";
 import denoWebsocketNotifer from "../../deno/src/websockets.ts";
 import { Clock } from "../../shared/clock.ts";
-import { DiplomaticHTTPServer, validateWebSocketAuth } from "../../shared/http/server.ts";
+import {
+  DiplomaticHTTPServer,
+  validateWebSocketAuth,
+} from "../../shared/http/server.ts";
 import { Status } from "../../shared/consts.ts";
 import type { IPushOpenResponse } from "../../shared/types.ts";
 
@@ -33,7 +36,12 @@ const fetchHandler = async (request: Request): Promise<Response> => {
     }
     const { socket, response } = Deno.upgradeWebSocket(request);
     socket.onopen = () => {
-      denoWebsocketNotifer.open(authTS, (data) => socket.send(data), server.crypto, server.clock).then(channel => {
+      denoWebsocketNotifer.open(
+        authTS,
+        (data) => socket.send(data),
+        server.crypto,
+        server.clock,
+      ).then((channel) => {
         if (channel.status !== Status.Success) {
           socket.close();
           return;

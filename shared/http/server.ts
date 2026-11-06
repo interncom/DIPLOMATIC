@@ -4,8 +4,8 @@ import { IClock } from "../clock.ts";
 import { Decoder, Encoder } from "../codec.ts";
 import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
-import { notifierTSAuthURLParam, Status } from "../consts.ts";
 import { binResp, callPaths, cors, errResp } from "../http.ts";
+import { notifierTSAuthURLParam, Status } from "../consts.ts";
 import {
   type IHostCrypto,
   type IProtoHost,

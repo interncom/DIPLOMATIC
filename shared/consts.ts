@@ -58,3 +58,16 @@ export enum APICallName {
 }
 
 export const notifierTSAuthURLParam = "t";
+// maxConnIDBytes is the longest connID varint. Longer is VarLimitExceeded.
+export const maxConnIDBytes = 2;
+// initConnID is the connID before the host assigns one.
+// A push carrying it notifies every listener.
+export const initConnID = 0;
+
+// NotifType is the varint prefix on each notif socket message.
+export enum NotifType {
+  ConnID = 1,
+  Notif = 2,
+}
+// maxNotifTypeBytes is the longest NotifType varint. Longer is VarLimitExceeded.
+export const maxNotifTypeBytes = 1;

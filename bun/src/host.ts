@@ -1,8 +1,6 @@
+// TODO: consolidate with src/server.ts. Same host, started by runBunHost.
 import crypto from "./crypto.ts";
 import sqliteStorage from "./storage/sqlite.ts";
-import { validateAuthTimestamp } from "../../shared/auth.ts";
-import { btoh } from "../../shared/binary.ts";
-import type { IClock } from "../../shared/clock.ts";
 import { Clock } from "../../shared/clock.ts";
 import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
 import { Status } from "../../shared/consts.ts";
@@ -10,62 +8,10 @@ import {
   DiplomaticHTTPServer,
   validateWebSocketAuth,
 } from "../../shared/http/server.ts";
-import type {
-  IHostCrypto,
-  IPushNotifier,
-  IPushOpenResponse,
-  PublicKey,
-  PushReceiver,
-} from "../../shared/types.ts";
+import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
+import type { IPushOpenResponse } from "../../shared/types.ts";
 
-// Bun WebSocket notifier
-class BunWebSocketNotifier implements IPushNotifier {
-  private recvs: Map<string, Set<PushReceiver>> = new Map();
-
-  async open(
-    authTS: IAuthTimestamp,
-    recv: PushReceiver,
-    crypto: IHostCrypto,
-    clock: IClock,
-  ): Promise<IPushOpenResponse> {
-    const status = await validateAuthTimestamp(authTS, crypto, clock);
-    if (status !== Status.Success) {
-      return {
-        send: () => status,
-        shut: () => status,
-        status,
-      };
-    }
-    const pubKeyHex = btoh(authTS.pubKey);
-    if (!this.recvs.has(pubKeyHex)) {
-      this.recvs.set(pubKeyHex, new Set());
-    }
-    this.recvs.get(pubKeyHex)?.add(recv);
-    return {
-      send: (data) => {
-        recv(data);
-        return Status.Success;
-      },
-      shut: () => {
-        this.recvs.get(pubKeyHex)?.delete(recv);
-        return Status.Success;
-      },
-      status: Status.Success,
-    };
-  }
-
-  async push(pubKey: PublicKey, data: Uint8Array): Promise<void> {
-    const pubKeyHex = btoh(pubKey);
-    const recvs = this.recvs.get(pubKeyHex);
-    if (recvs) {
-      for (const r of recvs) {
-        r(data);
-      }
-    }
-  }
-}
-
-const bunNotifier = new BunWebSocketNotifier();
+const bunNotifier = new CallbackNotifier();
 
 export async function runBunHost(
   port: number = Number.parseInt(process.env.DIPLOMATIC_HOST_PORT || "31337"),

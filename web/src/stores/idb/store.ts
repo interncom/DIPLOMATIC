@@ -4,6 +4,7 @@ import { err, ok, type ValStat } from "../../shared/valstat";
 import {
   IAccountStore,
   IDownloadQueue,
+  IErrorStore,
   IHostStore,
   IMessageStore,
   IStore,
@@ -12,6 +13,7 @@ import {
 import type { IRealmStore } from "../realm";
 import { IDBAccountStore } from "./account";
 import { IDBDownloadQueue } from "./dnlds";
+import { IDBErrorStore } from "./errors";
 import { IDBHostStore } from "./hosts";
 import { openDataDB, openMetaDB } from "./migrate";
 import { IDBMessageStore } from "./msgs";
@@ -23,6 +25,7 @@ export const HOSTS_TABLE = "hosts";
 export const HOST_SEQS_TABLE = "host_seqs";
 export const UPLOAD_QUEUE_TABLE = "uploadQueue";
 export const DOWNLOAD_QUEUE_TABLE = "downloadQueue";
+export const ERRORS_TABLE = "errors"; // Place to record failed heads.
 export const MESSAGES_TABLE = "messages";
 /**
  * Index on messages.apld ({@link APLD_PENDING} / {@link APLD_APPLIED} /
@@ -39,6 +42,7 @@ type Tables = {
   hosts: IHostStore<URL>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
+  errors: IErrorStore;
   messages: IMessageStore;
 };
 
@@ -49,6 +53,7 @@ function openTables(db: IDBDatabase, crypto: ICrypto): Tables {
     hosts: new IDBHostStore(db),
     uploads: new IDBUploadQueue(db),
     downloads: new IDBDownloadQueue(db),
+    errors: new IDBErrorStore(db),
     messages: new IDBMessageStore(db, crypto),
   };
 }
@@ -106,6 +111,17 @@ function idleTables(): Tables {
       },
       async wipe() {},
     },
+    errors: {
+      async put() {},
+      async deq() {},
+      async list() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async wipe() {},
+    },
     messages: {
       async add(rows) {
         return rows.map(() => Status.DatabaseError);
@@ -142,6 +158,7 @@ export class IDBStore implements IStore<URL> {
   hosts: IHostStore<URL>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
+  errors: IErrorStore;
   messages: IMessageStore;
   #db: IDBDatabase | undefined;
   #crypto: ICrypto;
@@ -161,6 +178,7 @@ export class IDBStore implements IStore<URL> {
     this.hosts = idle.hosts;
     this.uploads = idle.uploads;
     this.downloads = idle.downloads;
+    this.errors = idle.errors;
     this.messages = idle.messages;
     if (db !== undefined) this.#mount(db);
   }
@@ -191,6 +209,7 @@ export class IDBStore implements IStore<URL> {
     this.hosts = tables.hosts;
     this.uploads = tables.uploads;
     this.downloads = tables.downloads;
+    this.errors = tables.errors;
     this.messages = tables.messages;
   }
 
@@ -232,6 +251,7 @@ export class IDBStore implements IStore<URL> {
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();
+    await this.errors.wipe();
     await this.messages.wipe();
   }
 }

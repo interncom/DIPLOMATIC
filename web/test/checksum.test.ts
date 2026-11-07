@@ -74,15 +74,15 @@ describe("client.msgcheck", () => {
       async refresh() {},
       on() {},
       off() {} };
-    const client = new SyncClient(
-      { now: () => new Date(0) },
+    const client = new SyncClient({
+      clock: { now: () => new Date(0) },
       state,
       store,
-      () => {
+      transport: () => {
         throw new Error("no transport");
       },
-      libsodiumCrypto,
-    );
+      crypto: libsodiumCrypto,
+    });
     const [enclave, est] = Enclave.fromBytes(new Uint8Array(32).fill(7));
     if (est !== Status.Success || enclave === undefined) throw new Error(`enclave ${est}`);
     await client.setSeed(enclave);

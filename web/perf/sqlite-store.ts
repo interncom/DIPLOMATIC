@@ -37,6 +37,9 @@ import type {
   IAccountStore,
   IDownloadMessage,
   IDownloadQueue,
+  IErrorPut,
+  IErrorRow,
+  IErrorStore,
   IHostRow,
   IHostStore,
   IMessageStore,
@@ -135,6 +138,26 @@ function openDb(path: string): Database {
       hsh BLOB,
       headEnc BLOB,
       headEncHash BLOB,
+      PRIMARY KEY (host, rlabel, ridx, seq)
+    );
+    CREATE TABLE IF NOT EXISTS errors (
+      host TEXT NOT NULL,
+      rlabel TEXT NOT NULL DEFAULT '',
+      ridx INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER NOT NULL,
+      headCph BLOB NOT NULL,
+      kdm BLOB,
+      eid BLOB,
+      off INTEGER,
+      ctr INTEGER,
+      typ TEXT,
+      len INTEGER,
+      hsh BLOB,
+      headEnc BLOB,
+      headEncHash BLOB,
+      status INTEGER NOT NULL,
+      lastFailedAt INTEGER NOT NULL,
+      failureCount INTEGER NOT NULL,
       PRIMARY KEY (host, rlabel, ridx, seq)
     );
     CREATE TABLE IF NOT EXISTS messages (
@@ -477,6 +500,156 @@ class SqliteDownloadQueue implements IDownloadQueue {
   }
 }
 
+class SqliteErrorStore implements IErrorStore {
+  constructor(private db: Database) {}
+
+  async put(rows: Iterable<IErrorPut>) {
+    const sel = this.db.prepare(
+      "SELECT failureCount FROM errors WHERE host = ? AND rlabel = ? AND ridx = ? AND seq = ?",
+    );
+    const ins = this.db.prepare(
+      `INSERT INTO errors
+        (host, rlabel, ridx, seq, headCph, kdm, eid, off, ctr, typ, len, hsh,
+         headEnc, headEncHash, status, lastFailedAt, failureCount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(host, rlabel, ridx, seq) DO UPDATE SET
+         headCph = excluded.headCph,
+         kdm = excluded.kdm,
+         eid = excluded.eid,
+         off = excluded.off,
+         ctr = excluded.ctr,
+         typ = excluded.typ,
+         len = excluded.len,
+         hsh = excluded.hsh,
+         headEnc = excluded.headEnc,
+         headEncHash = excluded.headEncHash,
+         status = excluded.status,
+         lastFailedAt = excluded.lastFailedAt,
+         failureCount = excluded.failureCount`,
+    );
+    this.db.exec("BEGIN");
+    try {
+      for (const row of rows) {
+        const rlabel = row.realm?.label ?? "";
+        const ridx = row.realm?.index ?? 0;
+        const prev: unknown = sel.get(row.host, rlabel, ridx, row.seq);
+        let count = 1;
+        if (
+          isRec(prev) && typeof prev.failureCount === "number" &&
+          Number.isInteger(prev.failureCount) && prev.failureCount > 0
+        ) {
+          count = prev.failureCount + 1;
+        }
+        const head = row.head;
+        ins.run(
+          row.host,
+          rlabel,
+          ridx,
+          row.seq,
+          row.headCph,
+          row.kdm ?? null,
+          head?.eid ?? null,
+          head?.off ?? null,
+          head?.ctr ?? null,
+          head?.typ ?? null,
+          head?.len ?? null,
+          head?.hsh ?? null,
+          row.headEnc ?? null,
+          row.headEncHash ?? null,
+          row.status,
+          Date.now(),
+          count,
+        );
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  async deq(host: string, seqs: Iterable<number>, realm?: IKDM) {
+    const del = this.db.prepare(
+      "DELETE FROM errors WHERE host = ? AND rlabel = ? AND ridx = ? AND seq = ?",
+    );
+    const rlabel = realm?.label ?? "";
+    const ridx = realm?.index ?? 0;
+    this.db.exec("BEGIN");
+    try {
+      for (const seq of seqs) {
+        del.run(host, rlabel, ridx, seq);
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  async list(): Promise<IErrorRow[]> {
+    const raw: unknown = this.db.prepare(
+      `SELECT host, rlabel, ridx, seq, headCph, kdm, eid, off, ctr, typ, len, hsh,
+              headEnc, headEncHash, status, lastFailedAt, failureCount
+       FROM errors`,
+    ).all();
+    if (!Array.isArray(raw)) return [];
+    const out: IErrorRow[] = [];
+    for (const item of raw) {
+      const row = errorFromSql(item);
+      if (row !== undefined) out.push(row);
+    }
+    return out;
+  }
+
+  async count() {
+    const raw: unknown = this.db.prepare(
+      "SELECT COUNT(*) AS n FROM errors",
+    ).get();
+    if (!isRec(raw) || typeof raw.n !== "number") return 0;
+    return raw.n;
+  }
+
+  async wipe() {
+    this.db.exec("DELETE FROM errors");
+  }
+}
+
+function bytesOf(v: unknown): Uint8Array | undefined {
+  if (v instanceof Uint8Array) return v;
+  return undefined;
+}
+
+function errorFromSql(v: unknown): IErrorRow | undefined {
+  if (!isRec(v)) return undefined;
+  const headCph = bytesOf(v.headCph);
+  if (typeof v.host !== "string" || typeof v.seq !== "number") return undefined;
+  if (headCph === undefined) return undefined;
+  if (typeof v.status !== "number" || typeof v.lastFailedAt !== "number") {
+    return undefined;
+  }
+  if (typeof v.failureCount !== "number") return undefined;
+  const row: IErrorRow = {
+    host: v.host,
+    seq: v.seq,
+    headCph,
+    status: v.status,
+    lastFailedAt: v.lastFailedAt,
+    failureCount: v.failureCount,
+  };
+  if (
+    typeof v.rlabel === "string" &&
+    typeof v.ridx === "number" &&
+    (v.rlabel !== "" || v.ridx !== 0)
+  ) {
+    row.realm = { label: v.rlabel, index: v.ridx };
+  }
+  const kdm = bytesOf(v.kdm);
+  if (kdm !== undefined) row.kdm = kdm;
+  const headEnc = bytesOf(v.headEnc);
+  if (headEnc !== undefined) row.headEnc = headEnc;
+  return row;
+}
+
 class SqliteMessageStore implements IMessageStore {
   constructor(private db: Database, private crypto: ICrypto) {}
 
@@ -773,6 +946,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
   hosts: SqliteHostStore<Handle>;
   uploads: SqliteUploadQueue;
   downloads: SqliteDownloadQueue;
+  errors: SqliteErrorStore;
   messages: SqliteMessageStore;
   private db: Database;
 
@@ -783,6 +957,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
     this.hosts = new SqliteHostStore<Handle>(this.db);
     this.uploads = new SqliteUploadQueue(this.db);
     this.downloads = new SqliteDownloadQueue(this.db);
+    this.errors = new SqliteErrorStore(this.db);
     this.messages = new SqliteMessageStore(this.db, crypto);
   }
 
@@ -796,6 +971,7 @@ export class SqliteStore<Handle extends HostHandle> implements IStore<Handle> {
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();
+    await this.errors.wipe();
     await this.messages.wipe();
   }
 

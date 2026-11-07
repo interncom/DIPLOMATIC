@@ -151,13 +151,13 @@ async function openMain(
   state: IStateManager,
   store: IStore<URL>,
 ): Promise<OpenedDiplomaticClient> {
-  const main = new SyncClient(
+  const main = new SyncClient({
     clock,
     state,
     store,
-    hostHTTPTransport,
+    transport: hostHTTPTransport,
     crypto,
-  );
+  });
   return {
     client: main,
     mode: "main",

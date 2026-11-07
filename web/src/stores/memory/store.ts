@@ -2,6 +2,7 @@ import { Status } from "../../shared/consts";
 import { HostHandle, ICrypto } from "../../shared/types";
 import { IStore } from "../../types";
 import { MemoryDownloadQueue } from "./dnlds";
+import { MemoryErrorStore } from "./errors";
 import { MemoryHostStore } from "./hosts";
 import { MemoryMessageStore } from "./msgs";
 import { MemoryAccountStore } from "./account";
@@ -14,6 +15,7 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
   hosts = new MemoryHostStore<Handle>();
   uploads = new MemoryUploadQueue();
   downloads = new MemoryDownloadQueue();
+  errors = new MemoryErrorStore();
   messages: MemoryMessageStore;
 
   constructor(crypto: ICrypto) {
@@ -31,6 +33,7 @@ export class MemoryStore<Handle extends HostHandle> implements IStore<Handle> {
     await this.hosts.wipe();
     await this.uploads.wipe();
     await this.downloads.wipe();
+    await this.errors.wipe();
     await this.messages.wipe();
   }
 }

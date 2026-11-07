@@ -26,6 +26,10 @@ A single `BagManager` is `bagMgr`. Several are `bagMgrs`. Do not abbreviate eith
 
 Do not abbreviate `notif` as `notf`.
 
+A count has a `num` prefix (`numBags`, `numDownloads`).
+
+Do not duplicate a source of truth. A comment, doc, or second constant that copies a value will drift. Point at the definition instead of restating it.
+
 ## Function Documentation
 
 Introduce each new function or method with a brief comment explaining in one line, what this function does in general and (if not obvious) in what situations you would use it. Use a grammatical sentence, but it's ok to elide bits that are implicit. Begin the comment with the function or variable name, Go-style. You can explain special cases on a follow-up line. For instance:

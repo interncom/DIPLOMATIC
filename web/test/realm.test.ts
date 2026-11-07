@@ -13,7 +13,6 @@ import type { IProtoHost } from "../src/shared/types";
 import { MemoryRealmStore } from "../src/stores/memory/realms";
 import { MemoryStore } from "../src/stores/memory/store";
 import { advanceRealm, decodeRealm, realmLabel } from "../src/stores/realm";
-import { defaultMaxPullBytes, defaultMaxPushBytes } from "../src/sync";
 import { nullStateManager } from "../src/state";
 import { APLD_PENDING } from "../src/types";
 
@@ -26,19 +25,16 @@ function enclave(): Enclave {
 }
 
 function client(store: MemoryStore<IProtoHost>): SyncClient<IProtoHost> {
-  return new SyncClient(
-    new MockClock(new Date(1_000)),
-    nullStateManager,
+  return new SyncClient({
+    clock: new MockClock(new Date(1_000)),
+    state: nullStateManager,
     store,
-    () => {
+    transport: () => {
       throw new Error("no transport");
     },
-    libsodiumCrypto,
-    true,
-    defaultMaxPushBytes,
-    defaultMaxPullBytes,
-    () => {},
-  );
+    crypto: libsodiumCrypto,
+    onScheduleSync: () => {},
+  });
 }
 
 describe("advanceRealm", () => {
@@ -227,15 +223,15 @@ describe("realm label on ents and messages", () => {
     const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
     expect(await store.realms.put("inbox", 0)).toBe(Status.Success);
     expect(await store.realms.put("inbox", 1)).toBe(Status.Success);
-    const client = new SyncClient(
-      new MockClock(),
-      nullStateManager,
+    const client = new SyncClient({
+      clock: new MockClock(),
+      state: nullStateManager,
       store,
-      () => {
+      transport: () => {
         throw new Error("no transport");
       },
-      libsodiumCrypto,
-    );
+      crypto: libsodiumCrypto,
+    });
     expect(await client.setSeed(enclave())).toBe(Status.Success);
     expect(client.selected()?.realms).toEqual([
       { label: "inbox", index: 1, prior: [0] },

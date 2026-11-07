@@ -81,13 +81,13 @@ function makeClient(
   },
   clock = new MockClock(new Date(1_000_000)),
 ) {
-  return new SyncClient(
+  return new SyncClient({
     clock,
     state,
     store,
     transport,
-    libsodiumCrypto,
-  );
+    crypto: libsodiumCrypto,
+  });
 }
 
 describe("apld helpers", () => {

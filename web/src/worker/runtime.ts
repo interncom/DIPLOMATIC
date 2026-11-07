@@ -77,13 +77,13 @@ export class WorkerRuntime {
         }
         return st;
       };
-      const client = new SyncClient(
-        new Clock(),
+      const client = new SyncClient({
+        clock: new Clock(),
         state,
         store,
-        hostHTTPTransport,
+        transport: hostHTTPTransport,
         crypto,
-      );
+      });
       this.client = client;
       this.store = store;
       this.entDB = entDB;

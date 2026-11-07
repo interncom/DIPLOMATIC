@@ -234,13 +234,13 @@ describe("SyncClient.sync coalesce+trailing", () => {
       new CallbackNotifier(),
       new MockClock(new Date(0)),
     );
-    const client = new SyncClient(
-      new MockClock(new Date(0)),
+    const client = new SyncClient({
+      clock: new MockClock(new Date(0)),
       state,
       store,
-      () => new LPCTransport(lpcHost),
-      libsodiumCrypto,
-    );
+      transport: () => new LPCTransport(lpcHost),
+      crypto: libsodiumCrypto,
+    });
 
     // No open account. doSync returns before its first await, so the stampede
     // has to join the in-flight drain synchronously.

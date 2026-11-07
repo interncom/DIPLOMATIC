@@ -53,13 +53,13 @@ const createClient = async (seed: Uint8Array) => {
     on(_type, _listener) {},
     off(_type, _listener) {},
   };
-  const client = new SyncClient(
-    new MockClock(new Date(0)),
+  const client = new SyncClient({
+    clock: new MockClock(new Date(0)),
     state,
     store,
     transport,
-    libsodiumCrypto,
-  );
+    crypto: libsodiumCrypto,
+  });
   const [enclave, est] = Enclave.fromBytes(seed);
   if (est !== Status.Success || enclave === undefined) {
     throw new Error(`enclave ${est}`);

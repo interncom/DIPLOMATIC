@@ -18,6 +18,7 @@ import {
   EntityID,
   Hash,
   HostHandle,
+  IBag,
   IMessage,
   ISetBagResult,
 } from "../src/shared/types";
@@ -79,6 +80,13 @@ function testMsg(n: number, body: number[]): IMessage {
     len: bod.length,
     bod,
   };
+}
+
+// corruptHead flips one ciphertext byte so the bag signature fails.
+function corruptHead(bag: IBag): IBag {
+  const headCph = new Uint8Array(bag.headCph);
+  headCph[0] ^= 0xff;
+  return { ...bag, headCph };
 }
 
 describe("syncPeek", () => {
@@ -272,6 +280,67 @@ describe("syncPeek", () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0]?.rlm).toBe("inbox");
     expect(Array.from(await store.downloads.list())).toHaveLength(0);
+  });
+
+  test("records a failed head and downloads the next", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
+    const [badBag, s1] = await createTestBag(testMsg(11, [1]), enclave);
+    const [goodBag, s2] = await createTestBag(testMsg(12, [2, 3]), enclave);
+    expect(s1).toBe(Status.Success);
+    expect(s2).toBe(Status.Success);
+    if (!badBag || !goodBag) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [
+      corruptHead(badBag),
+      goodBag,
+    ]);
+
+    const stat = await syncPeek({
+      conn,
+      store,
+      host,
+      crypto: libsodiumCrypto,
+    });
+    expect(stat).toBe(Status.Success);
+    const row = await store.hosts.get("test");
+    expect(row?.lastSeq).toBe(2);
+    const errs = await store.errors.list();
+    expect(errs).toHaveLength(1);
+    expect(errs[0]?.seq).toBe(1);
+    expect(errs[0]?.status).toBe(Status.InvalidSignature);
+    expect(errs[0]?.failureCount).toBe(1);
+    expect(errs[0]?.headCph.byteLength).toBeGreaterThan(0);
+    const dls = Array.from(await store.downloads.list());
+    expect(dls).toHaveLength(1);
+    expect(dls[0]?.seq).toBe(2);
+  });
+
+  test("keeps the opened prefix when the next failure cannot be recorded", async () => {
+    await store.hosts.add({ label: "test", handle: lpcHost, idx: 1 });
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
+    const [goodBag, s1] = await createTestBag(testMsg(16, [8]), enclave);
+    const [badBag, s2] = await createTestBag(testMsg(17, [9]), enclave);
+    expect(s1).toBe(Status.Success);
+    expect(s2).toBe(Status.Success);
+    if (!goodBag || !badBag) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [
+      goodBag,
+      corruptHead(badBag),
+    ]);
+    store.errors.put = () => Promise.reject(new Error("full"));
+
+    const stat = await syncPeek({
+      conn,
+      store,
+      host,
+      crypto: libsodiumCrypto,
+    });
+    expect(stat).toBe(Status.DatabaseError);
+    expect((await store.hosts.get("test"))?.lastSeq).toBe(1);
+    expect(await store.errors.count()).toBe(0);
+    const dls = Array.from(await store.downloads.list());
+    expect(dls).toHaveLength(1);
+    expect(dls[0]?.seq).toBe(1);
   });
 });
 
@@ -565,6 +634,37 @@ describe("reconcileHost", () => {
     const row = await store.hosts.get("test");
     expect(row?.lastSeq).toBeLessThan(999);
     expect(row?.lastSeq).toBeGreaterThan(0);
+  });
+
+  test("records a failed head and sets lastSeq past it", async () => {
+    const hostIdnt = await mustIdnt(enclave, "test", 1);
+    const [badBag, s1] = await createTestBag(testMsg(21, [1]), enclave);
+    const [goodBag, s2] = await createTestBag(testMsg(22, [2]), enclave);
+    expect(s1).toBe(Status.Success);
+    expect(s2).toBe(Status.Success);
+    if (!badBag || !goodBag) return;
+    await lpcHost.storage.setBags(hostIdnt.publicKey, [
+      corruptHead(badBag),
+      goodBag,
+    ]);
+
+    const [report, st] = await reconcileHost({
+      conn,
+      store,
+      host: { ...host, handle: lpcHost },
+      crypto: libsodiumCrypto,
+    });
+    expect(st).toBe(Status.Success);
+    expect(report?.numBags).toBe(2);
+    expect(report?.uniqueMsgs).toBe(1);
+    expect(report?.missingLocal).toBe(1);
+    expect((await store.hosts.get("test"))?.lastSeq).toBe(2);
+    const errs = await store.errors.list();
+    expect(errs).toHaveLength(1);
+    expect(errs[0]?.seq).toBe(1);
+    expect(errs[0]?.failureCount).toBe(1);
+    expect(errs[0]?.status).toBe(Status.InvalidSignature);
+    expect(Array.from(await store.downloads.list())).toHaveLength(1);
   });
 });
 

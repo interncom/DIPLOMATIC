@@ -230,6 +230,46 @@ export interface IDownloadQueue {
 }
 
 /**
+ * One bag whose head failed to open. Keyed like a download: host, realm, and seq.
+ * `head` and `kdm` are set only once those bytes exist. `headCph` is the peek
+ * ciphertext of the bag that failed.
+ */
+export interface IErrorRow {
+  host: string;
+  seq: number;
+  /** Realm KDM. Omit for the default realm. */
+  realm?: IKDM;
+  /** Peek head ciphertext. */
+  headCph: Uint8Array;
+  kdm?: Uint8Array;
+  head?: IMessageHead;
+  headEnc?: Uint8Array;
+  headEncHash?: Hash;
+  /** Status from the open that failed. */
+  status: Status;
+  /** Milliseconds since epoch of the latest failure. */
+  lastFailedAt: number;
+  /** How many times this bag has been recorded. */
+  failureCount: number;
+}
+
+/** A new failure. The store fills {@link IErrorRow.lastFailedAt} and the count. */
+export type IErrorPut = Omit<IErrorRow, "lastFailedAt" | "failureCount">;
+
+export interface IErrorStore {
+  /**
+   * Record bag failures.
+   * A repeat of the same host, realm, and seq bumps `failureCount` and
+   * refreshes `lastFailedAt` and `status`.
+   */
+  put: (rows: Iterable<IErrorPut>) => Promise<void>;
+  deq: (host: string, seqs: Iterable<number>, realm?: IKDM) => Promise<void>;
+  list: () => Promise<IErrorRow[]>;
+  count: () => Promise<number>;
+  wipe(): Promise<void>;
+}
+
+/**
  * Apply lifecycle values for archive rows (IDB-indexable single-char strings;
  * booleans are not valid IndexedDB keys). Defined first so {@link ApldState}
  * is only those three literals.
@@ -426,6 +466,8 @@ export interface IStore<Handle extends HostHandle> {
   hosts: IHostStore<Handle>;
   uploads: IUploadQueue;
   downloads: IDownloadQueue;
+  /** Bags whose open failed. Cleared by {@link IStore.wipe}. */
+  errors: IErrorStore;
   messages: IMessageStore;
   /**
    * Open the protocol database for `label`.
@@ -433,7 +475,7 @@ export interface IStore<Handle extends HostHandle> {
    */
   bind(label: string): Promise<Status>;
   /**
-   * Clear protocol tables (hosts, queues, messages). Does not call account.wipe.
+   * Clear protocol tables (hosts, queues, messages, errors). Does not call account.wipe.
    */
   wipe(): Promise<void>;
 }

@@ -93,13 +93,13 @@ const createClient = async (clock = mockClock) => {
     on(_type, _listener) {},
     off(_type, _listener) {},
   };
-  const client = new SyncClient<IProtoHost>(
+  const client = new SyncClient<IProtoHost>({
     clock,
     state,
     store,
     transport,
-    libsodiumCrypto,
-  );
+    crypto: libsodiumCrypto,
+  });
   return { store, state, client };
 };
 
@@ -216,13 +216,13 @@ describe("Client", () => {
       const entDB = new EntDBMemory();
       const stateMgr = entStateManager(entDB);
       const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
-      const client = new SyncClient(
-        mockClock,
-        stateMgr,
+      const client = new SyncClient({
+        clock: mockClock,
+        state: stateMgr,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
 
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(3)));
       // No host link: local-only archive.
@@ -270,13 +270,13 @@ describe("Client", () => {
         on() {},
         off() {},
       };
-      const client = new SyncClient(
-        mockClock,
+      const client = new SyncClient({
+        clock: mockClock,
         state,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(4)));
       await client.insertRaw(new Uint8Array([1]));
       await client.insertRaw(new Uint8Array([2]));
@@ -293,13 +293,13 @@ describe("Client", () => {
       const entDB = new EntDBMemory();
       const stateMgr = entStateManager(entDB);
       const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
-      const client = new SyncClient(
+      const client = new SyncClient({
         clock,
-        stateMgr,
+        state: stateMgr,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(5)));
 
       const [head, stIns] = await client.insert({
@@ -353,13 +353,13 @@ describe("Client", () => {
         on(_type, _listener) {},
         off(_type, _listener) {},
       };
-      const client = new SyncClient(
-        mockClock,
+      const client = new SyncClient({
+        clock: mockClock,
         state,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
 
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(9)));
       await client.link(testHost, false);
@@ -406,13 +406,13 @@ describe("Client", () => {
       const entDB = new EntDBMemory();
       const stateMgr = entStateManager(entDB);
       const store = new MemoryStore<IProtoHost>(libsodiumCrypto);
-      const client = new SyncClient(
-        mockClock,
-        stateMgr,
+      const client = new SyncClient({
+        clock: mockClock,
+        state: stateMgr,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
 
       await client.setSeed(enclaveFrom(new Uint8Array(32).fill(7)));
       await client.link(testHost, false);
@@ -715,13 +715,13 @@ describe("Client", () => {
         return origAdd(msgs);
       };
 
-      const client = new SyncClient(
-        mockClock,
-        stateMgr,
+      const client = new SyncClient({
+        clock: mockClock,
+        state: stateMgr,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
       await cache.getEntities({ type: "todo" });
       const notifies: string[][] = [];
       cache.subscribe((types) => notifies.push([...types]));
@@ -763,13 +763,13 @@ describe("Client", () => {
         return origAdd(msgs);
       };
 
-      const client = new SyncClient(
-        mockClock,
-        stateMgr,
+      const client = new SyncClient({
+        clock: mockClock,
+        state: stateMgr,
         store,
         transport,
-        libsodiumCrypto,
-      );
+        crypto: libsodiumCrypto,
+      });
       await cache.getEntities({ type: "todo" });
       const notifies: string[][] = [];
       cache.subscribe((types) => notifies.push([...types]));

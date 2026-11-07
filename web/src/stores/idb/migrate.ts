@@ -5,6 +5,7 @@ import { DATA_DB_VERSION, META_DB_NAME, META_DB_VERSION } from "./names";
 import {
   ACCOUNTS_TABLE,
   DOWNLOAD_QUEUE_TABLE,
+  ERRORS_TABLE,
   HOST_SEQS_TABLE,
   HOSTS_TABLE,
   MESSAGES_APLD_INDEX,
@@ -38,6 +39,9 @@ function upgradeData(db: IDBDatabase, tx: IDBTransaction): void {
   }
   if (!db.objectStoreNames.contains(DOWNLOAD_QUEUE_TABLE)) {
     db.createObjectStore(DOWNLOAD_QUEUE_TABLE);
+  }
+  if (!db.objectStoreNames.contains(ERRORS_TABLE)) {
+    db.createObjectStore(ERRORS_TABLE);
   }
   let msgStore: IDBObjectStore;
   if (!db.objectStoreNames.contains(MESSAGES_TABLE)) {

@@ -45,15 +45,15 @@ function mockState(): IStateManager & { applied: IMessage[] } {
 function clientOf() {
   const state = mockState();
   const store = new MemoryStore(libsodiumCrypto);
-  const client = new SyncClient(
-    new MockClock(new Date(1_700_000_000_000)),
+  const client = new SyncClient({
+    clock: new MockClock(new Date(1_700_000_000_000)),
     state,
     store,
-    () => {
+    transport: () => {
       throw new Error("no transport");
     },
-    libsodiumCrypto,
-  );
+    crypto: libsodiumCrypto,
+  });
   return { client, state };
 }
 

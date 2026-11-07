@@ -146,23 +146,20 @@ export class WorkerClient implements IClient<URL> {
     );
 
     // Local mutates write shared IDB and apply state on main; push/sync goes to worker.
-    this.local = new SyncClient(
+    this.local = new SyncClient({
       clock,
       state,
       store,
-      () => {
+      transport: () => {
         throw new Error(
           `${logPrefix} local writer has no transport (use worker for network)`,
         );
       },
       crypto,
-      true,
-      undefined,
-      undefined,
-      () => {
+      onScheduleSync: () => {
         this.scheduledSync.schedule();
       },
-    );
+    });
     this.insertBlob = this.local.insertBlob.bind(this.local);
     this.updateBlob = this.local.updateBlob.bind(this.local);
     this.deleteBlob = this.local.deleteBlob.bind(this.local);
@@ -243,7 +240,13 @@ export class WorkerClient implements IClient<URL> {
     const clock = opts.clock ?? new Clock();
     const debounce = opts.syncDebounceMs ?? defaultSyncDebounceMs;
     const timeoutMs = opts.readyTimeoutMs ?? 15_000;
-    const client = new WorkerClient(state, store, clock, debounce, timeoutMs);
+    const client = new WorkerClient(
+      state,
+      store,
+      clock,
+      debounce,
+      timeoutMs,
+    );
     await client.hydrateStateFromStore(store);
     return client;
   }

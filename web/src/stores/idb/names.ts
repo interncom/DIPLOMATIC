@@ -7,7 +7,7 @@ export const META_DB_NAME = "meta";
 export const META_DB_VERSION = 1;
 
 /** Protocol database: archive, queues, hosts, realm counters, host cursors. */
-export const DATA_DB_VERSION = 9;
+export const DATA_DB_VERSION = 10;
 
 // Mints the stable account id stored on the catalog row.
 export function mintAcct(): string {

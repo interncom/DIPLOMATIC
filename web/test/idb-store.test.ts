@@ -37,6 +37,8 @@ describe("IDBStore with no data database", () => {
     ).toBe(Status.NotFound);
     expect(await store.uploads.count()).toBe(0);
     expect(await store.downloads.count()).toBe(0);
+    expect(await store.errors.count()).toBe(0);
+    expect(await store.errors.list()).toEqual([]);
     expect([...(await store.downloads.list())]).toEqual([]);
     expect(await store.realms.list()).toEqual([]);
     expect(await store.realms.put("inbox", 1)).toBe(Status.NotFound);

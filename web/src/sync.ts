@@ -37,6 +37,7 @@ import {
 import {
   APLD_PENDING,
   IDownloadMessage,
+  type IErrorPut,
   IHostRow,
   IMsgParts,
   IStorableMessage,
@@ -318,12 +319,79 @@ export async function openPulled<Handle extends HostHandle>(
 type PeekCryptoOk = {
   ok: true;
   seq: number;
+  headCph: Uint8Array;
   kdm: Uint8Array;
   headEnc: Uint8Array;
   headEncHash: Hash;
 };
-type PeekCryptoFail = { ok: false; seq: number; stat: Status };
+type PeekCryptoFail = {
+  ok: false;
+  seq: number;
+  headCph: Uint8Array;
+  stat: Status;
+};
 type PeekCryptoResult = PeekCryptoOk | PeekCryptoFail;
+
+// openPeekHead verifies and decrypts one peek head.
+async function openPeekHead(
+  item: { seq: number; headCph: Uint8Array },
+  verifyKey: CryptoKey,
+  bagMgr: BagManager,
+  crypto: ICrypto,
+): Promise<PeekCryptoResult> {
+  const [itemDec, stat] = await decryptPeekItem(
+    item,
+    verifyKey,
+    bagMgr,
+    crypto,
+  );
+  if (stat !== Status.Success) {
+    return { ok: false, seq: item.seq, headCph: item.headCph, stat };
+  }
+  const headEncHash = await crypto.blake3(itemDec.headEnc);
+  return {
+    ok: true,
+    seq: item.seq,
+    headCph: item.headCph,
+    kdm: itemDec.kdm,
+    headEnc: itemDec.headEnc,
+    headEncHash,
+  };
+}
+
+// errorRow builds one errors-table row for a failed head open.
+function errorRow(
+  host: string,
+  realm: IKDM,
+  seq: number,
+  headCph: Uint8Array,
+  status: Status,
+  opened?: { kdm: Uint8Array; headEnc: Uint8Array; headEncHash: Hash },
+): IErrorPut {
+  const row: IErrorPut = { host, seq, headCph, status };
+  const tagged = storedRealm(realm);
+  if (tagged !== undefined) row.realm = tagged;
+  if (opened !== undefined) {
+    row.kdm = opened.kdm;
+    row.headEnc = opened.headEnc;
+    row.headEncHash = opened.headEncHash;
+  }
+  return row;
+}
+
+// noteHeadFail records one failed head open.
+// Returns false when the row could not be written.
+async function noteHeadFail<Handle extends HostHandle>(
+  store: IStore<Handle>,
+  row: IErrorPut,
+): Promise<boolean> {
+  try {
+    await store.errors.put([row]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** headEnc + blake3 key for a download item (peek cache or re-encode). */
 async function resolveHeadEnc(
@@ -402,6 +470,7 @@ export async function syncPeek<Handle extends HostHandle>(
   } catch {
     return Status.CryptoError;
   }
+
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(cursorOf(host, realm), realm);
   if (peekStatus !== Status.Success) {
@@ -418,25 +487,7 @@ export async function syncPeek<Handle extends HostHandle>(
   // Overlapping WebCrypto verifies is the main win vs serial await.
   let cryptoDone = 0;
   const cryptoResults = await mapPool(items, conc, async (item) => {
-    const [itemDec, stat] = await decryptPeekItem(
-      item,
-      verifyKey,
-      bagMgr,
-      crypto,
-    );
-    let result: PeekCryptoResult;
-    if (stat !== Status.Success) {
-      result = { ok: false, seq: item.seq, stat };
-    } else {
-      const headEncHash = await crypto.blake3(itemDec.headEnc);
-      result = {
-        ok: true,
-        seq: item.seq,
-        kdm: itemDec.kdm,
-        headEnc: itemDec.headEnc,
-        headEncHash,
-      };
-    }
+    const result = await openPeekHead(item, verifyKey, bagMgr, crypto);
     cryptoDone += 1;
     if (
       onProgress &&
@@ -453,59 +504,88 @@ export async function syncPeek<Handle extends HostHandle>(
   });
 
   // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
-  // De-dupe downloads within this batch (same msg, multiple bags).
+  // A failed head is recorded, then its seq is consumed.
+  // Stop before a hole or a failure that could not be recorded.
   const enqMsgs = new Set<string>();
-  for (const result of cryptoResults) {
-    if (!result.ok) {
-      // Skip desyncs client vs host until CHECK reconciles message sets.
-      console.error("peek: decrypting item head", result.stat);
+  let cursor = cursorOf(host, realm);
+  const start = cursor;
+  let unwritten = false;
+  for (const res of cryptoResults) {
+    if (res.seq !== cursor + 1) break;
+
+    if (!res.ok) {
+      console.error("peek: decrypting item head", res.stat);
+      const err = errorRow(host.label, realm, res.seq, res.headCph, res.stat);
+      const wrote = await noteHeadFail(store, err);
+      if (!wrote) {
+        unwritten = true;
+        break;
+      }
+      cursor = res.seq;
       continue;
     }
 
-    const msgKey = btob64(result.headEncHash);
-    const msgExists = await store.messages.has(result.headEncHash);
+    const msgKey = btob64(res.headEncHash);
+    const msgExists = await store.messages.has(res.headEncHash);
     if (msgExists) {
       // Already archived (import or prior sync): no download. Drop any stale
       // download-queue row and redundant upload (host already has this msg).
       console.info("peek: local msg; skip download, deq upload");
-      await store.uploads.deq(host.label, [result.headEncHash]);
-      await store.downloads.deq(host.label, [result.seq], realm);
+      await store.uploads.deq(host.label, [res.headEncHash]);
+      await store.downloads.deq(host.label, [res.seq], realm);
+      cursor = res.seq;
       continue;
     }
 
     // Already enqueueing a download for this msg from an earlier bag in batch.
     if (enqMsgs.has(msgKey)) {
-      await store.downloads.deq(host.label, [result.seq], realm);
+      await store.downloads.deq(host.label, [res.seq], realm);
+      cursor = res.seq;
       continue;
     }
 
-    const headDec = new Decoder(result.headEnc);
+    const headDec = new Decoder(res.headEnc);
     const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
+    if (headStatus !== Status.Success || head === undefined) {
       console.error("peek: reading item head", headStatus);
+      const err = errorRow(
+        host.label,
+        realm,
+        res.seq,
+        res.headCph,
+        headStatus,
+        res,
+      );
+      const wrote = await noteHeadFail(store, err);
+      if (!wrote) {
+        unwritten = true;
+        break;
+      }
+      cursor = res.seq;
       continue;
     }
 
     enqMsgs.add(msgKey);
     const dl: IDownloadMessage = {
-      kdm: result.kdm,
+      kdm: res.kdm,
       head,
-      seq: result.seq,
+      seq: res.seq,
       host: host.label,
-      headEnc: result.headEnc,
-      headEncHash: result.headEncHash,
+      headEnc: res.headEnc,
+      headEncHash: res.headEncHash,
     };
     const tagged = storedRealm(realm);
     if (tagged !== undefined) dl.realm = tagged;
     dls.push(dl);
+    cursor = res.seq;
   }
   await store.downloads.enq(dls);
 
-  // Advance cursor only (bag tallies are not tracked on the host row).
-  if (items.length > 0) {
-    const maxSeq = Math.max(...items.map((i) => i.seq));
-    await store.hosts.recordSeqs(host.label, { lastSeq: maxSeq }, realm);
+  // Advance through heads that opened or were recorded.
+  if (cursor > start) {
+    await store.hosts.recordSeqs(host.label, { lastSeq: cursor }, realm);
   }
+  if (unwritten) return Status.DatabaseError;
 
   if (onProgress) {
     onProgress({
@@ -950,25 +1030,7 @@ export async function reconcileHost<Handle extends HostHandle>(
 
     let cryptoDone = 0;
     const cryptoResults = await mapPool(items, conc, async (item) => {
-      const [itemDec, stat] = await decryptPeekItem(
-        item,
-        verifyKey,
-        bagMgr,
-        crypto,
-      );
-      let result: PeekCryptoResult;
-      if (stat !== Status.Success) {
-        result = { ok: false, seq: item.seq, stat };
-      } else {
-        const headEncHash = await crypto.blake3(itemDec.headEnc);
-        result = {
-          ok: true,
-          seq: item.seq,
-          kdm: itemDec.kdm,
-          headEnc: itemDec.headEnc,
-          headEncHash,
-        };
-      }
+      const result = await openPeekHead(item, verifyKey, bagMgr, crypto);
       cryptoDone += 1;
       if (onProgress && shouldEmitItemProgress(cryptoDone, total, every)) {
         onProgress({
@@ -981,8 +1043,46 @@ export async function reconcileHost<Handle extends HostHandle>(
       return result;
     });
 
+    // Record failed heads and keep only the contiguous prefix.
+    let cursor = 0;
+    let unwritten = false;
     for (const result of cryptoResults) {
-      if (!result.ok) continue;
+      if (result.seq !== cursor + 1) break;
+      if (!result.ok) {
+        const err = errorRow(
+          host.label,
+          realm,
+          result.seq,
+          result.headCph,
+          result.stat,
+        );
+        const wrote = await noteHeadFail(store, err);
+        if (!wrote) {
+          unwritten = true;
+          break;
+        }
+        cursor = result.seq;
+        continue;
+      }
+      const headDec = new Decoder(result.headEnc);
+      const [head, headStatus] = headDec.readStruct(messageHeadCodec);
+      if (headStatus !== Status.Success || head === undefined) {
+        const err = errorRow(
+          host.label,
+          realm,
+          result.seq,
+          result.headCph,
+          headStatus,
+          result,
+        );
+        const wrote = await noteHeadFail(store, err);
+        if (!wrote) {
+          unwritten = true;
+          break;
+        }
+        cursor = result.seq;
+        continue;
+      }
       const k = btob64(result.headEncHash);
       const cur = byMsg.get(k);
       if (cur) {
@@ -995,12 +1095,10 @@ export async function reconcileHost<Handle extends HostHandle>(
           realm,
         });
       }
+      cursor = result.seq;
     }
-
-    const setLastSeq = items.length > 0
-      ? Math.max(...items.map((i) => i.seq))
-      : 0;
-    await store.hosts.recordSeqs(host.label, { setLastSeq }, realm);
+    await store.hosts.recordSeqs(host.label, { setLastSeq: cursor }, realm);
+    if (unwritten) return err(Status.DatabaseError);
 
     if (onProgress) {
       onProgress({ phase: "peek", host: host.label, done: total, total });

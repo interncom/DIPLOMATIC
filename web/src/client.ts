@@ -109,6 +109,29 @@ function exportRealms(
   return realms;
 }
 
+/** Arguments for {@link SyncClient}. */
+export type SyncClientOpts<Handle extends HostHandle> = {
+  clock: IClock;
+  state: IStateManager;
+  store: IStore<Handle>;
+  transport: (host: IHostConnectionInfo<Handle>) => ITransport;
+  crypto: ICrypto;
+  /**
+   * Always correct clock skew without asking.
+   * Default true.
+   */
+  forceSkewHandlingByDefault?: boolean;
+  /** Soft cap for one push. Default {@link defaultMaxPushBytes}. */
+  maxPushBytes?: number;
+  /** Soft cap for one pull. Default {@link defaultMaxPullBytes}. */
+  maxPullBytes?: number;
+  /**
+   * When set, called instead of running sync on this client.
+   * The main-thread writer next to a sync worker uses this to hand off.
+   */
+  onScheduleSync?: () => void;
+};
+
 export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
   connections = new Map<string, DiplomaticClientAPI<Handle>>();
   /** Account this client is operating as. The account store is only the list. */
@@ -149,25 +172,26 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * Debounced full sync after local writes (when not handing off via onScheduleSync).
    */
   private scheduledSync: Debounced;
+  private clock: IClock;
+  private state: IStateManager;
+  private store: IStore<Handle>;
+  private transport: (host: IHostConnectionInfo<Handle>) => ITransport;
+  private crypto: ICrypto;
+  // forceSkewHandlingByDefault corrects skew without asking. Default true.
+  private forceSkewHandlingByDefault: boolean;
+  // onScheduleSync replaces this client's own sync when set.
+  private onScheduleSync?: () => void;
 
-  constructor(
-    private clock: IClock,
-    private state: IStateManager,
-    private store: IStore<Handle>,
-    private transport: (host: IHostConnectionInfo<Handle>) => ITransport,
-    private crypto: ICrypto,
-    // Client can be set to always force skew handling, to hide the pain.
-    private forceSkewHandlingByDefault = true,
-    maxPushBytes = defaultMaxPushBytes,
-    maxPullBytes = defaultMaxPullBytes,
-    /**
-     * When set (e.g. main-thread local writer next to a sync worker), called
-     * instead of running sync on this client. Use to hand off push to the worker.
-     */
-    private onScheduleSync?: () => void,
-  ) {
-    this.maxPushBytes = maxPushBytes;
-    this.maxPullBytes = maxPullBytes;
+  constructor(opts: SyncClientOpts<Handle>) {
+    this.clock = opts.clock;
+    this.state = opts.state;
+    this.store = opts.store;
+    this.transport = opts.transport;
+    this.crypto = opts.crypto;
+    this.forceSkewHandlingByDefault = opts.forceSkewHandlingByDefault ?? true;
+    this.maxPushBytes = opts.maxPushBytes ?? defaultMaxPushBytes;
+    this.maxPullBytes = opts.maxPullBytes ?? defaultMaxPullBytes;
+    this.onScheduleSync = opts.onScheduleSync;
     this.clientState = new StateEmitter(() => this.getClientState());
     this.xferState = new StateEmitter(() => this.getXferState());
     this.scheduledSync = new Debounced(defaultSyncDebounceMs, async () => {

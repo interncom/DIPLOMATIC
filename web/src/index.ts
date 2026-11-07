@@ -1,6 +1,6 @@
 // Public exports for module.
 
-import { SyncClient } from "./client";
+import { SyncClient, type SyncClientOpts } from "./client";
 import crypto from "./crypto";
 import {
   CachedEntDB,
@@ -315,6 +315,7 @@ export type {
   ReconcileReport,
   SealedMasterKey,
   SetSeedOpts,
+  SyncClientOpts,
   SyncProgressEvent,
   TagSpec,
   WipeOpts,

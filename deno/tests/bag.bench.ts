@@ -1,5 +1,5 @@
 import { openBag, sealBag } from "../../shared/bag.ts";
-import { Decoder, Encoder } from "../../shared/codec.ts";
+import { Decoder, encodeStruct } from "../../shared/codec.ts";
 import { bagCodec } from "../../shared/codecs/bag.ts";
 import { makeEID } from "../../shared/codecs/eid.ts";
 import type { IMessage } from "../../shared/types.ts";
@@ -33,9 +33,9 @@ async function fullyEncodeBag(op: IMessage): Promise<Uint8Array> {
   if (stat !== Status.Success) {
     throw new Error("sealing bag");
   }
-  const enc = new Encoder();
-  enc.writeStruct(bagCodec, bag);
-  return enc.result();
+  const [bytes, st] = encodeStruct(bagCodec, bag);
+  if (st !== Status.Success) throw new Error("encode bag");
+  return bytes;
 }
 
 async function bench(size: number, suffix: string) {

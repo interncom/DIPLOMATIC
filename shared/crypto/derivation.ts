@@ -1,4 +1,4 @@
-import { Encoder } from "../codec.ts";
+import { encodeStruct } from "../codec.ts";
 import { type IKDM, kdmCodec } from "../codecs/kdm.ts";
 import { hashBytes, Status } from "../consts.ts";
 import { err, ok, type ValStat } from "../valstat.ts";
@@ -71,10 +71,7 @@ export function asHostRlm(bytes: Uint8Array): ValStat<HostRlm> {
 // Encodes structured KDM; raw bytes pass through.
 function kdm2bytes(kdm: Uint8Array | IKDM): ValStat<Uint8Array> {
   if (kdm instanceof Uint8Array) return ok(kdm);
-  const enc = new Encoder();
-  const stat = kdmCodec.encode(enc, kdm);
-  if (stat !== Status.Success) return err(stat);
-  return ok(enc.result());
+  return encodeStruct(kdmCodec, kdm);
 }
 
 // BLAKE3 throws on a bad key length, or if both key and context are set.

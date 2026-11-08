@@ -3,7 +3,7 @@
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { Decoder, Encoder } from "./shared/codec";
+import { Decoder, encodeStruct } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { encodeEnt } from "./shared/codecs/ent";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
@@ -329,9 +329,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
     for (const part of parts) {
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, part.head);
-      const headEnc = enc.result();
+      const [headEnc, st] = encodeStruct(messageHeadCodec, part.head);
+      if (st !== Status.Success) {
+        await applyP;
+        return parts.map(() => st);
+      }
       const hash = await this.crypto.blake3(headEnc);
       const data = msg2StoredMsgData(part, options.realm);
       hashes.push(hash);
@@ -440,7 +442,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         }
         send.push(hash);
       }
-      if (known !== undefined && known.size === 0) this.hostMsgHashes.delete(host.label);
+      if (known !== undefined && known.size === 0) {
+        this.hostMsgHashes.delete(host.label);
+      }
 
       // Queue the hashes that remain.
       if (send.length < 1) continue;

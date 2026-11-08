@@ -2,7 +2,7 @@
 // This is where we define export file format.
 
 import { bytesEqual } from "../binary.ts";
-import { Decoder, Encoder } from "../codec.ts";
+import { Decoder, Encoder, encodeStruct } from "../codec.ts";
 import { fileCodec } from "../codecs/file.ts";
 import { fileHeadCodec, fileHeadPreimage } from "../codecs/fileHead.ts";
 import {
@@ -126,8 +126,7 @@ export namespace Exim {
     const [sig, sst] = await signer.sign(hsh);
     if (sst !== Status.Success) return err(sst);
 
-    const encHead = new Encoder();
-    const stHead = encHead.writeStruct(fileHeadCodec, {
+    const [headBytes, stHead] = encodeStruct(fileHeadCodec, {
       nonce,
       realms: dir,
       hsh,
@@ -135,7 +134,7 @@ export namespace Exim {
     });
     if (stHead !== Status.Success) return err(stHead);
     // Chunks are already in `enc`. The header is small, so it can go in front.
-    enc.prependBytes(encHead.result());
+    enc.prependBytes(headBytes);
     return ok(enc.result());
   }
 
@@ -278,10 +277,8 @@ async function sealChunk(
   const encHeads = new Encoder();
   const kdms: Uint8Array[] = [];
   for (const msg of part.msgs) {
-    const encHead = new Encoder();
-    const stHead = encHead.writeStruct(messageHeadCodec, msg.head);
+    const [headEnc, stHead] = encodeStruct(messageHeadCodec, msg.head);
     if (stHead !== Status.Success) return err(stHead);
-    const headEnc = encHead.result();
     const [kdm, kst] = await bagMgr.bagKDM(headEnc);
     if (kst !== Status.Success) return err(kst);
     const [headCph, hst] = await bagMgr.encrypt(kdm, headEnc);

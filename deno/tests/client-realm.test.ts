@@ -4,7 +4,7 @@ import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { bytesEqual } from "../../shared/binary.ts";
 import DiplomaticClientAPI, { hostBagMgrs } from "../../shared/client.ts";
 import { Clock } from "../../shared/clock.ts";
-import { Decoder, Encoder } from "../../shared/codec.ts";
+import { Decoder, encodeStruct } from "../../shared/codec.ts";
 import { authTimestampCodec } from "../../shared/codecs/authTimestamp.ts";
 import type { IKDM } from "../../shared/codecs/kdm.ts";
 import { peekItemHeadCodec } from "../../shared/codecs/peekItemHead.ts";
@@ -75,14 +75,13 @@ function pullRlm(bytes: Uint8Array): Uint8Array {
 
 // Peek-item head bytes for a sealed bag.
 function peekHead(bag: IBag): Uint8Array {
-  const enc = new Encoder();
-  const st = enc.writeStruct(peekItemHeadCodec, {
+  const [bytes, st] = encodeStruct(peekItemHeadCodec, {
     sig: bag.sig,
     kdm: bag.kdm,
     headCph: bag.headCph,
   });
   if (st !== Status.Success) throw new Error(`head ${st}`);
-  return enc.result();
+  return bytes;
 }
 
 Deno.test("client realm kdm", async () => {

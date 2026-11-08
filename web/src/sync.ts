@@ -8,7 +8,7 @@ import { sortByHlcDesc } from "./hlc";
 import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
-import { Decoder, Encoder } from "./shared/codec";
+import { Decoder, encodeStruct } from "./shared/codec";
 import { type IKDM, kdmEq } from "./shared/codecs/kdm";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
 import { IBagPeekItem } from "./shared/codecs/peekItem";
@@ -332,10 +332,9 @@ async function resolveHeadEnc(
 ): Promise<ValStat<{ headEnc: Uint8Array; headEncHash: Hash }>> {
   let headEnc = dl.headEnc;
   if (!headEnc) {
-    const enc = new Encoder();
-    const st = enc.writeStruct(messageHeadCodec, dl.head);
+    const [encoded, st] = encodeStruct(messageHeadCodec, dl.head);
     if (st !== Status.Success) return err(st);
-    headEnc = enc.result();
+    headEnc = encoded;
   }
   if (dl.headEncHash) {
     return ok({ headEnc, headEncHash: dl.headEncHash });

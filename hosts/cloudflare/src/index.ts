@@ -18,7 +18,7 @@ import { validateAuthTimestamp } from "../../../shared/auth.ts";
 import { btoh } from "../../../shared/binary.ts";
 import { connIDSkip, nextConnID } from "../../../shared/connID.ts";
 import { Clock } from "../../../shared/clock.ts";
-import { Encoder, encodeStruct } from "../../../shared/codec.ts";
+import { encodeStruct } from "../../../shared/codec.ts";
 import { connIDFrameCodec } from "../../../shared/codecs/connID.ts";
 import { notifMsgCodec } from "../../../shared/codecs/notifMsg.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
@@ -353,8 +353,6 @@ export default {
           for (const put of await Promise.all(puts)) putByIdx.set(put.i, put);
           for (const i of validBagIndexes) {
             const bag = bags[i];
-            const enc = new Encoder();
-            enc.writeStruct(peekItemHeadCodec, bag);
             let body: Uint8Array | null = bag.bodyCph;
             let key: string | null = null;
             const put = putByIdx.get(i);
@@ -365,8 +363,14 @@ export default {
               }
               body = null;
               key = put.key;
-              numExternal += 1;
             }
+            const [headCph, hst] = encodeStruct(peekItemHeadCodec, bag);
+            if (hst !== Status.Success) {
+              if (key !== null) await dropBlobs(env.DIP_BLOBS, [key]);
+              blobErr.add(i);
+              continue;
+            }
+            if (key !== null) numExternal += 1;
             slots.push({ i, key });
             stmts.push(
               env.DIP_DB.prepare(insertSql).bind(
@@ -374,7 +378,7 @@ export default {
                 bag.rlm,
                 pubKeyHex,
                 bag.rlm,
-                enc.result(),
+                headCph,
                 body,
                 key,
               ),

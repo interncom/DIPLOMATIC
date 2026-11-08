@@ -1,5 +1,5 @@
 import { btoh } from "../binary.ts";
-import { Encoder } from "../codec.ts";
+import { encodeStruct } from "../codec.ts";
 import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { initConnID, Status } from "../consts.ts";
 import { takeNotif } from "../sockmsg.ts";
@@ -31,9 +31,8 @@ export class WebsocketListener implements IPushListener {
     this.#drop();
     this.#connID = initConnID;
 
-    const enc = new Encoder();
-    enc.writeStruct(authTimestampCodec, authTS);
-    const authTSEnc = enc.result();
+    const [authTSEnc, st] = encodeStruct(authTimestampCodec, authTS);
+    if (st !== Status.Success) return st;
     const authTSHex = btoh(authTSEnc);
 
     url.searchParams.set("t", authTSHex);

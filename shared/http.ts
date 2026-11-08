@@ -3,7 +3,7 @@
 // For instance, we avoid using HTTP status codes to signal status.
 // We can easily swap in a new transport layer.
 
-import { Decoder, Encoder } from "./codec.ts";
+import { Decoder, Encoder, encodeStruct } from "./codec.ts";
 import { APICallName, Status } from "./consts.ts";
 
 import { peekEnd } from "./api/peek.ts";
@@ -75,18 +75,21 @@ export const hostHTTPTransport = (host: IHostConnectionInfo<URL>) => {
 };
 
 export function errResp(head: IRespHead): Response {
-  const enc = new Encoder();
-  const statEnc = enc.writeStruct(respHeadCodec, head);
+  const [bytes, statEnc] = encodeStruct(respHeadCodec, head);
   if (statEnc !== Status.Success) {
     return new Response(null, { status: 500 });
   }
-  return binResp(enc);
+  return octetResp(bytes);
 }
 
 export function binResp(encoder: Encoder): Response {
-  // TODO: fix types so it doesn't need the .slice().
-  const data = encoder.result().slice();
-  return new Response(data, {
+  return octetResp(encoder.result());
+}
+
+// octetResp is a 200 application/octet-stream body.
+// TODO: fix types so it doesn't need the .slice().
+function octetResp(data: Uint8Array): Response {
+  return new Response(data.slice(), {
     status: 200,
     headers: { "content-type": "application/octet-stream" },
   });

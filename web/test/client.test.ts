@@ -19,7 +19,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
 import { EncodedMessage } from "../src/shared/message";
 import { bytesEqual } from "../src/shared/binary";
-import { Decoder, Encoder } from "../src/shared/codec";
+import { Decoder, encodeStruct } from "../src/shared/codec";
 import { entCodec } from "../src/shared/codecs/ent";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import {
@@ -609,9 +609,9 @@ describe("Client", () => {
           len: 0,
           hsh: undefined,
         };
-        const enc = new Encoder();
-        enc.writeStruct(messageHeadCodec, head);
-        const headEnc = enc.result();
+        const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+        expect(st).toBe(Status.Success);
+        if (st !== Status.Success) return;
         const hash = await libsodiumCrypto.blake3(headEnc);
         const data: IStoredMessageData = {
           eid: head.eid,
@@ -686,9 +686,9 @@ describe("Client", () => {
         len: 2,
         hsh: undefined,
       };
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
-      const headEnc = enc.result();
+      const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+      expect(st).toBe(Status.Success);
+      if (st !== Status.Success) return;
       const hash = await libsodiumCrypto.blake3(headEnc);
       const data: IStoredMessageData = {
         eid: head.eid,

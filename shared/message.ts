@@ -1,11 +1,10 @@
 // A message is the atomic unit of the DIPLOMATIC protocol.
 // Sometimes we abbreviate message as "msg".
 
-import { Decoder, Encoder } from "./codec.ts";
-import { eidCodec } from "./codecs/eid.ts";
+import { Decoder } from "./codec.ts";
+import { eidCodec, makeEID } from "./codecs/eid.ts";
 import { Status } from "./consts.ts";
 import type {
-  EntityID,
   ICrypto,
   IDeleteMessage,
   IMessage,
@@ -28,12 +27,8 @@ export async function genInsertHead(
   { now, bod, crypto, typ = "" }: IInsertParams,
 ): Promise<ValStat<IMessageHead>> {
   const id = await crypto.genRandomBytes(8);
-  const encEid = new Encoder();
-  const statEid = encEid.writeStruct(eidCodec, { id, ts: now });
-  if (statEid !== Status.Success) {
-    return err(statEid);
-  }
-  const eid = encEid.result() as EntityID;
+  const [eid, statEid] = makeEID({ id, ts: now });
+  if (statEid !== Status.Success) return err(statEid);
 
   return genUpsertHead({ now, eid, ctr: 0, typ, bod, crypto });
 }

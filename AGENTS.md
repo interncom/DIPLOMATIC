@@ -36,6 +36,8 @@ function gcd(a, b) {
 // ... implementation
 }
 
+When a comment glosses a short name, say what that name means. Write "dupe means a later bag of a msg already seen in this batch", not "dupe is a later bag".
+
 ## Chunk comments
 
 Inside a function, put a brief one-line comment in front of each chunk so the steps can be scanned. Name what that chunk does. Leave a blank line before the comment. For instance:

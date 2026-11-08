@@ -23,8 +23,9 @@ export class MemoryHostStore<Handle extends HostHandle>
   /**
    * Upsert connection info. Same label + same handle/idx keeps cursors and
    * host meta (safe re-link). Changing handle/idx clears cursors.
+   * Returns true when cursors are kept.
    */
-  async add(info: IHostConnectionInfo<Handle>) {
+  async add(info: IHostConnectionInfo<Handle>): Promise<boolean> {
     const prev = this.hosts.get(info.label);
     if (
       prev !== undefined &&
@@ -37,10 +38,17 @@ export class MemoryHostStore<Handle extends HostHandle>
         clockOffset: prev.clockOffset,
         subscription: prev.subscription,
       });
-      return;
+      return true;
     }
     this.#cursors.delete(info.label);
     this.hosts.set(info.label, { ...info, lastSeq: 0 });
+    return false;
+  }
+
+  // hasSeqs reports whether any cursor row is stored for this host.
+  async hasSeqs(label: string): Promise<boolean> {
+    const bucket = this.#cursors.get(label);
+    return bucket !== undefined && bucket.size > 0;
   }
 
   // Cursor only advances. Concurrent peek/push/notif must not regress it.

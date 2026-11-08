@@ -40,8 +40,10 @@ describe("MemoryHostStore.touch", () => {
 
   test("starts at 0 and accepts first positive seq", async () => {
     expect((await hosts.get("h"))?.lastSeq).toBe(0);
+    expect(await hosts.hasSeqs("h")).toBe(false);
     await hosts.touch("h", 1);
     expect((await hosts.get("h"))?.lastSeq).toBe(1);
+    expect(await hosts.hasSeqs("h")).toBe(true);
   });
 });
 
@@ -55,6 +57,13 @@ describe("MemoryHostStore.recordSeqs", () => {
       handle: new URL("http://localhost"),
       idx: 1,
     });
+  });
+
+  test("setLastSeq 0 stores a cursor", async () => {
+    expect(await hosts.hasSeqs("h")).toBe(false);
+    await hosts.recordSeqs("h", { setLastSeq: 0 });
+    expect(await hosts.hasSeqs("h")).toBe(true);
+    expect((await hosts.get("h"))?.lastSeq).toBe(0);
   });
 
   test("lastSeq advances only; setLastSeq can rewind", async () => {

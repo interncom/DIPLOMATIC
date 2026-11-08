@@ -69,7 +69,9 @@ function idleTables(): Tables {
       async wipe() {},
     },
     hosts: {
-      async add() {},
+      async add() {
+        return false;
+      },
       async get() {
         return undefined;
       },
@@ -83,6 +85,9 @@ function idleTables(): Tables {
       async wipe() {},
       async touch() {},
       async recordSeqs() {},
+      async hasSeqs() {
+        return false;
+      },
     },
     uploads: {
       async enq() {},

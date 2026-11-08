@@ -138,7 +138,8 @@ export type HostSeqsUpdate = {
 
 // IHostStore handles persistence of hosts table.
 export interface IHostStore<Handle extends HostHandle> {
-  add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
+  /** Upsert a host. Returns true when this identity's cursors are kept. */
+  add: (host: IHostConnectionInfo<Handle>) => Promise<boolean>;
   get: (label: string) => Promise<IHostRow<Handle> | undefined>;
   del: (label: string) => Promise<void>;
   set: (label: string, meta: IHostMetadata) => Promise<Status>;
@@ -152,6 +153,8 @@ export interface IHostStore<Handle extends HostHandle> {
     u: HostSeqsUpdate,
     realm?: IKDM,
   ) => Promise<void>;
+  /** True when any cursor row is stored for this host. */
+  hasSeqs: (label: string) => Promise<boolean>;
 }
 
 /** Options for {@link IClient.reconcile}. */

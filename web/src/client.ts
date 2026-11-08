@@ -1493,7 +1493,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return Status.Success;
   }
 
-  // Manage active host connections.
+  // connect opens a listener per linked host.
+  // sync schedules one catch-up. Pass false when the caller syncs.
   public async connect(listen = true, sync = true) {
     const { connectToHost, scheduleSync, store } = this;
     const enclave = this.#enclave();

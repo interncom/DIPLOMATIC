@@ -460,7 +460,11 @@ export interface IClient<Handle extends HostHandle> {
   /** Linked hosts from the protocol store (handle, label, lastSeq, …). */
   hosts(): Promise<IHostRow<Handle>[]>;
 
-  connect(): Promise<void>;
+  /**
+   * Open a listener per linked host.
+   * sync schedules one catch-up (default true). Pass false when the caller syncs.
+   */
+  connect(listen?: boolean, sync?: boolean): Promise<void>;
   disconnect(): Promise<void>;
 
   // insert/update/delete return the msg head. On clock skew, update/delete may

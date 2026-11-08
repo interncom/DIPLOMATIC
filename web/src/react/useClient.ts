@@ -59,7 +59,8 @@ export function useSyncOnResume(
         // Worker path: no sync Worker until setSeed — skip quietly.
         const st = await client.clientState.get();
         if (!st.hasSeed) return;
-        await client.connect();
+        // connect() would schedule a second sync behind this one.
+        await client.connect(true, false);
         await client.sync();
       } catch (err) {
         console.error("reconnectAndSync failed", err);

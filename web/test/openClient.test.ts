@@ -335,7 +335,11 @@ describe("WorkerClient open / setSeed", () => {
       const handler = w.onmessage;
       if (handler) {
         handler({
-          data: { kind: "clientState", connected: true },
+          data: {
+            kind: "clientState",
+            connected: true,
+            connectedHosts: ["host"],
+          },
         } as MessageEvent<unknown>);
       }
       expect(seen.length).toBeGreaterThan(0);
@@ -343,6 +347,20 @@ describe("WorkerClient open / setSeed", () => {
       const state = await client.clientState.get();
       expect(state.hasSeed).toBe(true);
       expect(state.connected).toBe(true);
+      expect(state.connectedHosts).toEqual(["host"]);
+      if (handler) {
+        handler({
+          data: {
+            kind: "clientState",
+            connected: true,
+            connectedHosts: ["host", "other"],
+          },
+        } as MessageEvent<unknown>);
+      }
+      expect((await client.clientState.get()).connectedHosts).toEqual([
+        "host",
+        "other",
+      ]);
     } finally {
       stop();
       client.terminate();

@@ -27,7 +27,6 @@ export class WebsocketListener implements IPushListener {
     onDisconnect: () => void = () => {},
     onConnect: () => void = () => {},
   ): Promise<Status> {
-    const { url } = this;
     this.#drop();
     this.#connID = initConnID;
 
@@ -35,6 +34,8 @@ export class WebsocketListener implements IPushListener {
     if (st !== Status.Success) return st;
     const authTSHex = btoh(authTSEnc);
 
+    // Copy so the auth query does not stick to the stored host handle.
+    const url = new URL(this.url.href);
     url.searchParams.set("t", authTSHex);
     const socket = new WebSocket(url);
     this.websocket = socket;

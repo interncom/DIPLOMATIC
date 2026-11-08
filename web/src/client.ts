@@ -254,20 +254,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = this.#enclave();
     const hosts = await store.hosts.list();
 
-    // Use the per-connection isConnected() which respects listener state
-    // (updated immediately via onConnect/onDisconnect callbacks).
-    let connected = false;
-    for (const conn of connections.values()) {
-      if (conn.isConnected()) {
-        connected = true;
-        break;
-      }
+    // isConnected tracks the listener (onConnect / onDisconnect).
+    const connectedHosts: string[] = [];
+    for (const [label, conn] of connections) {
+      if (conn.isConnected()) connectedHosts.push(label);
     }
 
     return {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
-      connected,
+      connected: connectedHosts.length > 0,
+      connectedHosts,
     };
   }
 

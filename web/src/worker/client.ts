@@ -6,7 +6,8 @@
 //   dirty/wiped signals so main re-reads shared IDB (no bulk msg transfer).
 //
 // No worker until setSeed → Enclave.spawnSyncWorker (only spawn path).
-// Session hasSeed/hasHost are the main store; the worker only reports connected.
+// Session hasSeed/hasHost are the main store.
+// The worker reports which hosts are up.
 
 import { SyncClient } from "../client";
 import { Debounced, defaultSyncDebounceMs } from "../coalesce";
@@ -56,6 +57,26 @@ import {
   WorkerEvent,
   xferStateFromUnknown,
 } from "./protocol";
+
+// hostsFromUnknown reads connectedHosts from a clientState event.
+// Non-strings are dropped. A missing list is empty.
+function hostsFromUnknown(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item === "string") out.push(item);
+  }
+  return out;
+}
+
+// sameLabels reports whether two label lists match in order.
+function sameLabels(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 type Pending = {
   resolve: (v: unknown) => void;
@@ -109,6 +130,7 @@ export class WorkerClient implements IClient<URL> {
     hasSeed: false,
     hasHost: false,
     connected: false,
+    connectedHosts: [],
   };
   private cachedXferState: IDiplomaticClientXferState = {
     numUploads: 0,
@@ -250,10 +272,10 @@ export class WorkerClient implements IClient<URL> {
 
   /**
    * Snapshot seed/host/queues from the shared main-thread store.
-   * `connected` stays false until the worker reports otherwise.
+   * No listener is up until the worker reports one.
    */
   private async hydrateStateFromStore(store: IStore<URL>): Promise<void> {
-    await this.loadSession(false);
+    await this.loadSession(false, []);
     const numUploads = await store.uploads.count();
     const numDownloads = await store.downloads.count();
     this.cachedXferState = {
@@ -263,14 +285,21 @@ export class WorkerClient implements IClient<URL> {
     };
   }
 
-  /** Seed + host from the local store. Worker never owns these. */
-  private async loadSession(connected: boolean): Promise<void> {
+  /** Refresh hasSeed and hasHost from the local store.
+   * Omit labels to keep the current live set. Pass [] when none are up.
+   */
+  private async loadSession(
+    connected: boolean,
+    connectedHosts?: string[],
+  ): Promise<void> {
     const enclave = this.local.selected()?.enclave;
     const hosts = await this.store.hosts.list();
     this.cachedClientState = {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
       connected,
+      connectedHosts: connectedHosts ??
+        this.cachedClientState.connectedHosts,
     };
   }
 
@@ -336,12 +365,19 @@ export class WorkerClient implements IClient<URL> {
         return;
       }
       case "clientState": {
-        if (this.cachedClientState.connected === msg.connected) {
+        // connected means this list is nonempty.
+        const connectedHosts = hostsFromUnknown(msg.connectedHosts);
+        const connected = connectedHosts.length > 0;
+        if (
+          this.cachedClientState.connected === connected &&
+          sameLabels(this.cachedClientState.connectedHosts, connectedHosts)
+        ) {
           return;
         }
         this.cachedClientState = {
           ...this.cachedClientState,
-          connected: msg.connected,
+          connected,
+          connectedHosts,
         };
         this.clientState.emit();
         return;
@@ -450,7 +486,7 @@ export class WorkerClient implements IClient<URL> {
     const st = await this.local.setSeed(enclave, opts);
     if (st !== Status.Success) return st;
     // New worker is not connected; hasSeed/hasHost come from the local store.
-    await this.loadSession(false);
+    await this.loadSession(false, []);
     this.clientState.emit();
     // Linked onto chain before the first await so a load sync waits.
     return this.enqueue(() => this.bootWorker(enclave, opts));
@@ -553,7 +589,10 @@ export class WorkerClient implements IClient<URL> {
 
   async unlink(label: string): Promise<void> {
     await this.local.unlink(label);
-    await this.loadSession(this.cachedClientState.connected);
+    const connectedHosts = this.cachedClientState.connectedHosts.filter(
+      (other) => other !== label,
+    );
+    await this.loadSession(connectedHosts.length > 0, connectedHosts);
     this.clientState.emit();
     await this.enqueue(() => this.unlinkNow(label));
   }

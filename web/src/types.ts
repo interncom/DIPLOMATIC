@@ -32,11 +32,14 @@ export interface IMsgParts {
   body?: EncodedMessage;
 }
 
-/** Seed/host from the local store; `connected` from the sync worker (if any). */
+/** Seed and hosts from the local store. The worker reports who is up. */
 export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;
+  /** connected means any host listener is up. */
   connected: boolean;
+  /** connectedHosts means the hosts whose listeners are up. */
+  connectedHosts: string[];
 }
 
 /**

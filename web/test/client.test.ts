@@ -19,7 +19,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { MockClock } from "../src/shared/clock";
 import { EncodedMessage } from "../src/shared/message";
 import { bytesEqual } from "../src/shared/binary";
-import { Decoder, Encoder } from "../src/shared/codec";
+import { Decoder, encodeStruct } from "../src/shared/codec";
 import { entCodec } from "../src/shared/codecs/ent";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import {
@@ -128,6 +128,31 @@ describe("Client", () => {
       await client.unlink("test");
       const hosts = Array.from(await store.hosts.list());
       expect(hosts).toHaveLength(0);
+    });
+
+    test("drops that host's queues and connection", async () => {
+      const { store, client } = await createClient();
+      await client.link(testHost, false);
+      const [, st] = await client.insertRaw(new Uint8Array([9]));
+      expect(st).toBe(Status.Success);
+      expect(await store.uploads.list("test")).toHaveLength(1);
+      const head = {
+        eid: new Uint8Array(16).fill(3),
+        ctr: 0,
+        len: 0,
+        off: 0,
+        typ: "",
+      };
+      await store.downloads.enq([
+        { kdm: new Uint8Array(8), seq: 1, head, host: "test" },
+        { kdm: new Uint8Array(8), seq: 2, head, host: "other" },
+      ]);
+      await client.unlink("test");
+      expect(await store.uploads.list("test")).toEqual([]);
+      const left = Array.from(await store.downloads.list());
+      expect(left).toHaveLength(1);
+      expect(left[0]?.host).toBe("other");
+      expect(client.connections.has("test")).toBe(false);
     });
   });
 
@@ -584,9 +609,9 @@ describe("Client", () => {
           len: 0,
           hsh: undefined,
         };
-        const enc = new Encoder();
-        enc.writeStruct(messageHeadCodec, head);
-        const headEnc = enc.result();
+        const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+        expect(st).toBe(Status.Success);
+        if (st !== Status.Success) return;
         const hash = await libsodiumCrypto.blake3(headEnc);
         const data: IStoredMessageData = {
           eid: head.eid,
@@ -661,9 +686,9 @@ describe("Client", () => {
         len: 2,
         hsh: undefined,
       };
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, head);
-      const headEnc = enc.result();
+      const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+      expect(st).toBe(Status.Success);
+      if (st !== Status.Success) return;
       const hash = await libsodiumCrypto.blake3(headEnc);
       const data: IStoredMessageData = {
         eid: head.eid,

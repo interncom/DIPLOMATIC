@@ -1,4 +1,4 @@
-import { Encoder, ICodecStruct } from "../codec.ts";
+import { encodeStruct, ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { err, ok, ValStat } from "../valstat.ts";
 import { EntityID } from "../types.ts";
@@ -29,13 +29,9 @@ export const eidCodec: ICodecStruct<IEntityID> = {
 };
 
 export function makeEID(eidObj: IEntityID): ValStat<EntityID> {
-  const encEid = new Encoder();
-  const stat = encEid.writeStruct(eidCodec, eidObj);
-  if (stat !== Status.Success) {
-    return err(stat);
-  }
-  const eid = encEid.result() as EntityID;
-  return ok(eid);
+  const [bytes, stat] = encodeStruct(eidCodec, eidObj);
+  if (stat !== Status.Success) return err(stat);
+  return ok(bytes as EntityID);
 }
 
 export async function genSingletonEID(

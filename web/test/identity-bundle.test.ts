@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mustIdnt } from "./mustIdnt";
-import { Decoder, Encoder } from "../src/shared/codec";
+import { Decoder, encodeStruct } from "../src/shared/codec";
 import { identityHostsCodec } from "../src/shared/codecs/identityBundle";
 import { Status } from "../src/shared/consts";
 import {
@@ -101,19 +101,19 @@ describe("IdentityHosts codec", () => {
       { handle: "https://sync.example.com", label: "host", idx: 0 },
       { handle: "https://b.example.com", label: "backup", idx: 1 },
     ];
-    const enc = new Encoder();
-    expect(enc.writeStruct(identityHostsCodec, { hosts })).toBe(Status.Success);
-    const [out, st] = new Decoder(enc.result()).readStruct(identityHostsCodec);
+    const [bytes, stEnc] = encodeStruct(identityHostsCodec, { hosts });
+    expect(stEnc).toBe(Status.Success);
+    if (stEnc !== Status.Success) return;
+    const [out, st] = new Decoder(bytes).readStruct(identityHostsCodec);
     expect(st).toBe(Status.Success);
     expect(out?.hosts).toEqual(hosts);
   });
 
   it("round-trips empty hosts", () => {
-    const enc = new Encoder();
-    expect(enc.writeStruct(identityHostsCodec, { hosts: [] })).toBe(
-      Status.Success,
-    );
-    const [out, st] = new Decoder(enc.result()).readStruct(identityHostsCodec);
+    const [bytes, stEnc] = encodeStruct(identityHostsCodec, { hosts: [] });
+    expect(stEnc).toBe(Status.Success);
+    if (stEnc !== Status.Success) return;
+    const [out, st] = new Decoder(bytes).readStruct(identityHostsCodec);
     expect(st).toBe(Status.Success);
     expect(out?.hosts).toEqual([]);
   });

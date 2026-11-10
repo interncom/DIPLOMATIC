@@ -147,7 +147,11 @@ export class WorkerRuntime {
     const client = this.client;
     if (!client) return;
     const state = await client.clientState.get();
-    this.post({ kind: "clientState", connected: state.connected });
+    this.post({
+      kind: "clientState",
+      connected: state.connected,
+      connectedHosts: state.connectedHosts,
+    });
   }
 
   private async emitXferState() {

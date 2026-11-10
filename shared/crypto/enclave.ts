@@ -57,7 +57,7 @@ import type {
   PrfSealedMaster,
 } from "./prf.ts";
 import { concat } from "../binary.ts";
-import { Decoder, Encoder } from "../codec.ts";
+import { Decoder, encodeStruct } from "../codec.ts";
 import { identityHostsCodec } from "../codecs/identityBundle.ts";
 import { hashBytes, Status } from "../consts.ts";
 import { asSealedMasterKey, MASTER_SEED_LEN } from "../seed.ts";
@@ -271,8 +271,7 @@ class InnerEnclave {
 
   // seed‖hosts wire. Callers wipe the buffer. Do not pass it to imported ok.
   #exportSeedHosts(hosts: BundleHost[]): ValStat<Uint8Array> {
-    const enc = new Encoder();
-    const st = enc.writeStruct(identityHostsCodec, {
+    const [hostsEnc, st] = encodeStruct(identityHostsCodec, {
       hosts: hosts.map((h) => ({
         handle: h.handle,
         label: h.label,
@@ -280,7 +279,6 @@ class InnerEnclave {
       })),
     });
     if (st !== Status.Success) return err(st);
-    const hostsEnc = enc.result();
     const out = new Uint8Array(MASTER_SEED_LEN + hostsEnc.byteLength);
     out.set(this.#seed, 0);
     out.set(hostsEnc, MASTER_SEED_LEN);

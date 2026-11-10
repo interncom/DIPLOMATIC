@@ -202,12 +202,15 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
 
   constructor(private db: Database) {}
 
-  async add(info: IHostConnectionInfo<Handle>) {
+  // add returns true when this idx already owned the row, so cursors stay.
+  async add(info: IHostConnectionInfo<Handle>): Promise<boolean> {
     this.handles.set(info.label, info.handle);
     const idx = info.idx ?? 0;
     const prev: unknown = this.db.prepare(
       "SELECT idx FROM hosts WHERE label = ?",
     ).get(info.label);
+    const kept = isRec(prev) && typeof prev.idx === "number" &&
+      prev.idx === idx;
     if (isRec(prev) && typeof prev.idx === "number" && prev.idx !== idx) {
       this.db.prepare(
         "DELETE FROM host_seqs WHERE host = ? AND NOT (label = '' AND idx = 0)",
@@ -217,6 +220,15 @@ class SqliteHostStore<Handle extends HostHandle> implements IHostStore<Handle> {
       `INSERT INTO hosts (label, idx) VALUES (?, ?)
        ON CONFLICT(label) DO UPDATE SET idx = excluded.idx`,
     ).run(info.label, idx);
+    return kept;
+  }
+
+  // hasSeqs reports whether any cursor row is stored for this host.
+  async hasSeqs(label: string): Promise<boolean> {
+    const row: unknown = this.db.prepare(
+      "SELECT 1 AS hit FROM host_seqs WHERE host = ? LIMIT 1",
+    ).get(label);
+    return isRec(row);
   }
 
   async touch(label: string, seq: number, realm?: IKDM) {

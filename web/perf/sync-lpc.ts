@@ -23,7 +23,7 @@ import { entStateManager } from "../src/entdb/entdb";
 import { EntDBMemory } from "../src/entdb/memory";
 import DiplomaticClientAPI, { hostBagMgrs } from "../src/shared/client";
 import { MockClock } from "../src/shared/clock";
-import { Encoder } from "../src/shared/codec";
+import { encodeStruct } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Status } from "../src/shared/consts";
 import { Enclave } from "../src/shared/crypto/enclave";
@@ -81,10 +81,9 @@ async function hashMessage(
   msg: IMessage,
   crypto: typeof libsodiumCrypto,
 ): Promise<Hash> {
-  const enc = new Encoder();
-  const st = messageHeadCodec.encode(enc, msg);
+  const [bytes, st] = encodeStruct(messageHeadCodec, msg);
   if (st !== Status.Success) throw new Error(`head encode ${st}`);
-  return await crypto.blake3(enc.result()) as Hash;
+  return await crypto.blake3(bytes) as Hash;
 }
 
 /** Persist msgs + enqueue upload for HOST_LABEL (no apply/exec). */

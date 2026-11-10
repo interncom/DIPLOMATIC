@@ -32,11 +32,14 @@ export interface IMsgParts {
   body?: EncodedMessage;
 }
 
-/** Seed/host from the local store; `connected` from the sync worker (if any). */
+/** Seed and hosts from the local store. The worker reports who is up. */
 export interface IDiplomaticClientState {
   hasSeed: boolean;
   hasHost: boolean;
+  /** connected means any host listener is up. */
   connected: boolean;
+  /** connectedHosts means the hosts whose listeners are up. */
+  connectedHosts: string[];
 }
 
 /**
@@ -138,7 +141,8 @@ export type HostSeqsUpdate = {
 
 // IHostStore handles persistence of hosts table.
 export interface IHostStore<Handle extends HostHandle> {
-  add: (host: IHostConnectionInfo<Handle>) => Promise<void>;
+  /** Upsert a host. Returns true when this identity's cursors are kept. */
+  add: (host: IHostConnectionInfo<Handle>) => Promise<boolean>;
   get: (label: string) => Promise<IHostRow<Handle> | undefined>;
   del: (label: string) => Promise<void>;
   set: (label: string, meta: IHostMetadata) => Promise<Status>;
@@ -152,6 +156,8 @@ export interface IHostStore<Handle extends HostHandle> {
     u: HostSeqsUpdate,
     realm?: IKDM,
   ) => Promise<void>;
+  /** True when any cursor row is stored for this host. */
+  hasSeqs: (label: string) => Promise<boolean>;
 }
 
 /** Options for {@link IClient.reconcile}. */
@@ -454,7 +460,11 @@ export interface IClient<Handle extends HostHandle> {
   /** Linked hosts from the protocol store (handle, label, lastSeq, …). */
   hosts(): Promise<IHostRow<Handle>[]>;
 
-  connect(): Promise<void>;
+  /**
+   * Open a listener per linked host.
+   * sync schedules one catch-up (default true). Pass false when the caller syncs.
+   */
+  connect(listen?: boolean, sync?: boolean): Promise<void>;
   disconnect(): Promise<void>;
 
   // insert/update/delete return the msg head. On clock skew, update/delete may

@@ -1,6 +1,6 @@
 // Encodes an ent body: optional pid, tags, then raw application bytes.
 
-import { Decoder, Encoder, ICodecStruct } from "../codec.ts";
+import { Decoder, encodeStruct, ICodecStruct } from "../codec.ts";
 import { Status } from "../consts.ts";
 import { EntityID, IMsgEntBody } from "../types.ts";
 import { err, ok, ValStat } from "../valstat.ts";
@@ -51,8 +51,5 @@ export const entCodec: ICodecStruct<IMsgEntBody<Uint8Array>> = {
 export function encodeEnt(
   ent: IMsgEntBody<Uint8Array>,
 ): ValStat<Uint8Array> {
-  const enc = new Encoder();
-  const st = enc.writeStruct(entCodec, ent);
-  if (st !== Status.Success) return err(st);
-  return ok(enc.result());
+  return encodeStruct(entCodec, ent);
 }

@@ -10,7 +10,7 @@ import { CallbackNotifier } from "../src/shared/lpc/pusher";
 import { createMemoryStorage } from "../src/shared/storage/memory";
 import { sealBag } from "../src/shared/bag";
 import { realmLabel } from "../src/stores/realm";
-import { Encoder } from "../src/shared/codec";
+import { encodeStruct } from "../src/shared/codec";
 import { makeEID } from "../src/shared/codecs/eid";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { checksumSet } from "../src/shared/checksum";
@@ -161,10 +161,12 @@ describe("syncPeek", () => {
     if (message.bod && message.len > 0) {
       hsh = await libsodiumCrypto.blake3(message.bod);
     }
-    const enc = new Encoder();
-    const encStat = messageHeadCodec.encode(enc, { ...message, hsh });
+    const [headEnc, encStat] = encodeStruct(messageHeadCodec, {
+      ...message,
+      hsh,
+    });
     expect(encStat).toBe(Status.Success);
-    const headEnc = enc.result();
+    if (encStat !== Status.Success) return;
     const headEncHash = await libsodiumCrypto.blake3(headEnc) as Hash;
 
     // Store locally (simulating we created it here).
@@ -287,9 +289,9 @@ describe("syncPeek download de-dupe", () => {
   async function msgHash(m: IMessage): Promise<Hash> {
     let hsh: Uint8Array | undefined;
     if (m.bod && m.len > 0) hsh = await libsodiumCrypto.blake3(m.bod);
-    const enc = new Encoder();
-    messageHeadCodec.encode(enc, { ...m, hsh });
-    return await libsodiumCrypto.blake3(enc.result()) as Hash;
+    const [bytes, st] = encodeStruct(messageHeadCodec, { ...m, hsh });
+    if (st !== Status.Success) throw new Error(`head ${st}`);
+    return await libsodiumCrypto.blake3(bytes) as Hash;
   }
 
   async function archive(m: IMessage, hash: Hash) {
@@ -440,9 +442,12 @@ describe("reconcileHost", () => {
     if (localOnly.bod && localOnly.len > 0) {
       hsh = await libsodiumCrypto.blake3(localOnly.bod);
     }
-    const enc = new Encoder();
-    messageHeadCodec.encode(enc, { ...localOnly, hsh });
-    const localHash = await libsodiumCrypto.blake3(enc.result()) as Hash;
+    const [headEnc, hst] = encodeStruct(messageHeadCodec, {
+      ...localOnly,
+      hsh,
+    });
+    if (hst !== Status.Success) throw new Error(`head ${hst}`);
+    const localHash = await libsodiumCrypto.blake3(headEnc) as Hash;
     await store.messages.add([{
       key: localHash,
       data: {
@@ -538,9 +543,9 @@ describe("reconcileHost", () => {
     const msgHash = async (m: IMessage) => {
       let hsh: Uint8Array | undefined;
       if (m.bod && m.len > 0) hsh = await libsodiumCrypto.blake3(m.bod);
-      const enc = new Encoder();
-      messageHeadCodec.encode(enc, { ...m, hsh });
-      return await libsodiumCrypto.blake3(enc.result()) as Hash;
+      const [bytes, st] = encodeStruct(messageHeadCodec, { ...m, hsh });
+      if (st !== Status.Success) throw new Error(`head ${st}`);
+      return await libsodiumCrypto.blake3(bytes) as Hash;
     };
     const ha = await msgHash(msgA);
     const hb = await msgHash(msgB);
@@ -616,9 +621,8 @@ describe("syncPush", () => {
       len: body.length,
       bod: body,
     };
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, message);
-    const headEnc = enc.result();
+    const [headEnc, st] = encodeStruct(messageHeadCodec, message);
+    if (st !== Status.Success) throw new Error(`head ${st}`);
     const hash = await libsodiumCrypto.blake3(headEnc) as Hash;
     const storedData: IStoredMessageData = {
       eid: message.eid,
@@ -783,9 +787,8 @@ describe("syncPull", () => {
       bod: body,
       hsh: await libsodiumCrypto.blake3(body),
     };
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, message);
-    const headEnc = enc.result();
+    const [headEnc, hst] = encodeStruct(messageHeadCodec, message);
+    if (hst !== Status.Success) throw new Error(`head ${hst}`);
     const headEncHash = await libsodiumCrypto.blake3(headEnc) as Hash;
 
     await store.downloads.enq([{

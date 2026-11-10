@@ -3,13 +3,13 @@
 import { StateEmitter } from "./events";
 import DiplomaticClientAPI from "./shared/client";
 import { IClock } from "./shared/clock";
-import { Decoder, Encoder } from "./shared/codec";
+import { Decoder, encodeStruct } from "./shared/codec";
 import { eidCodec, makeEID } from "./shared/codecs/eid";
 import { encodeEnt } from "./shared/codecs/ent";
 import { messageHeadCodec } from "./shared/codecs/messageHead";
 import { type IKDM, kdmEq } from "./shared/codecs/kdm";
 import { Status } from "./shared/consts";
-import { realmKDM, realmKDMs } from "./stores/cursor";
+import { realmKDM, realmKDMs, realmKey } from "./stores/cursor";
 import { accountLabel } from "./stores/label";
 import type { IRealm } from "./stores/realm";
 import { Exim, type IExportMsg, type IExportRealm } from "./shared/crypto/exim";
@@ -120,6 +120,9 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
    * chain so a prior persist cannot delay the list.
    */
   private applyChain: Promise<unknown> = Promise.resolve();
+
+  // have maps a host label to head hashes that host already stores.
+  private hostMsgHashes = new Map<string, Set<string>>();
 
   /**
    * Coalesces overlapping sync() (one in flight + trailing pass).
@@ -251,20 +254,17 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const enclave = this.#enclave();
     const hosts = await store.hosts.list();
 
-    // Use the per-connection isConnected() which respects listener state
-    // (updated immediately via onConnect/onDisconnect callbacks).
-    let connected = false;
-    for (const conn of connections.values()) {
-      if (conn.isConnected()) {
-        connected = true;
-        break;
-      }
+    // isConnected tracks the listener (onConnect / onDisconnect).
+    const connectedHosts: string[] = [];
+    for (const [label, conn] of connections) {
+      if (conn.isConnected()) connectedHosts.push(label);
     }
 
     return {
       hasSeed: enclave !== undefined,
       hasHost: Array.from(hosts).length > 0,
-      connected,
+      connected: connectedHosts.length > 0,
+      connectedHosts,
     };
   }
 
@@ -326,9 +326,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     const storables: { key: Hash; data: IStoredMessageWrite }[] = [];
 
     for (const part of parts) {
-      const enc = new Encoder();
-      enc.writeStruct(messageHeadCodec, part.head);
-      const headEnc = enc.result();
+      const [headEnc, st] = encodeStruct(messageHeadCodec, part.head);
+      if (st !== Status.Success) {
+        await applyP;
+        return parts.map(() => st);
+      }
       const hash = await this.crypto.blake3(headEnc);
       const data = msg2StoredMsgData(part, options.realm);
       hashes.push(hash);
@@ -358,11 +360,7 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
         }
       }
       if (toUpload.length > 0) {
-        const hosts = await this.store.hosts.list();
-        for (const host of hosts) {
-          await this.store.uploads.enq(host.label, toUpload);
-        }
-        this.xferState.emit();
+        await this.enqUploads(toUpload);
       }
     }
     // Peer (worker) or local debounced sync drains the upload queue.
@@ -395,7 +393,88 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     // Newest HLC first: final ent state appears early; obsolete ops still
     // no-op in EntDB. (IDB list order by apld index is not HLC order.)
     const ordered = sortByHlcDesc(pending, (m) => m.head);
-    return this.applyStored(ordered);
+    const stats = await this.applyStored(ordered);
+
+    // Fan out applied inbound msgs. noteHave already names hosts that have them.
+    const toUpload: Hash[] = [];
+    for (let i = 0; i < ordered.length; i++) {
+      const st = stats[i];
+      if (st === Status.Success || st === Status.NoChange) {
+        toUpload.push(ordered[i].hash);
+      }
+    }
+    if (toUpload.length > 0) await this.enqUploads(toUpload);
+    return stats;
+  }
+
+  // markHostInventory records hashes the host already has so fan-out skips it.
+  private markHostInventory(label: string, hashes: Hash[]) {
+    if (hashes.length < 1) return;
+
+    // Create this host's set on first use, then record each hash.
+    let set = this.hostMsgHashes.get(label);
+    if (set === undefined) {
+      set = new Set();
+      this.hostMsgHashes.set(label, set);
+    }
+    for (const hash of hashes) set.add(btob64(hash));
+  }
+
+  // enqUploads queues hashes on every linked host.
+  // A hash noted for that host is left off its queue.
+  private async enqUploads(hashes: Hash[]) {
+    if (hashes.length < 1) return;
+    const hosts = await this.store.hosts.list();
+    let queued = false;
+    for (const host of hosts) {
+      const known = this.hostMsgHashes.get(host.label);
+      const send: Hash[] = [];
+
+      // Skip a hash already recorded for this host, and forget it.
+      for (const hash of hashes) {
+        const key = btob64(hash);
+        if (known !== undefined && known.has(key)) {
+          known.delete(key);
+          continue;
+        }
+        send.push(hash);
+      }
+      if (known !== undefined && known.size === 0) {
+        this.hostMsgHashes.delete(host.label);
+      }
+
+      // Queue the hashes that remain.
+      if (send.length < 1) continue;
+      await this.store.uploads.enq(host.label, send);
+      queued = true;
+    }
+
+    // Emit only when a queue changed.
+    if (queued) this.xferState.emit();
+  }
+
+  // dropHostQueues removes this host's upload and download rows.
+  private async dropHostQueues(label: string) {
+    // Clear this host's uploads in one deq.
+    const ups = await this.store.uploads.list(label);
+    await this.store.uploads.deq(label, ups);
+
+    // Downloads are keyed by realm, so deq each realm's seqs.
+    const groups = new Map<string, { realm?: IKDM; seqs: number[] }>();
+    for (const dl of await this.store.downloads.list()) {
+      if (dl.host !== label) continue;
+      const realm = dl.realm;
+      const key = realm === undefined ? "" : realmKey(realm);
+      let group = groups.get(key);
+      if (group === undefined) {
+        group = { realm, seqs: [] };
+        groups.set(key, group);
+      }
+      group.seqs.push(dl.seq);
+    }
+    for (const group of groups.values()) {
+      await this.store.downloads.deq(label, group.seqs, group.realm);
+    }
   }
 
   /** Apply specific archive keys via IStateManager and mark applied. */
@@ -732,61 +811,74 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await this.#pullRealms();
     const realms = realmKDMs(this.#account?.realms ?? []);
 
+    // One dead host must not keep the others from syncing.
+    let failed: Status | undefined;
+    let anyOk = false;
     for (const [label, conn] of connections) {
-      const host = await store.hosts.get(label);
-      if (!host) continue;
+      try {
+        const host = await store.hosts.get(label);
+        if (!host) continue;
 
-      const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
-      if (bagMgrsSt !== Status.Success) {
-        this.emitProgress({ phase: "idle" });
-        return bagMgrsSt;
-      }
+        const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
+        if (bagMgrsSt !== Status.Success) {
+          console.error(`Failed to prepare ${label}: ${bagMgrsSt}`);
+          if (failed === undefined) failed = bagMgrsSt;
+          continue;
+        }
 
-      const syncParams: ISyncParams<Handle> = {
-        conn,
-        store,
-        host,
-        crypto,
-        maxPushBytes: this.maxPushBytes,
-        maxPullBytes: this.maxPullBytes,
-        onProgress: this.emitProgress,
-        peekProgressEvery: this.peekProgressEvery,
-      };
+        const syncParams: ISyncParams<Handle> = {
+          conn,
+          store,
+          host,
+          crypto,
+          maxPushBytes: this.maxPushBytes,
+          maxPullBytes: this.maxPullBytes,
+          onProgress: this.emitProgress,
+          peekProgressEvery: this.peekProgressEvery,
+        };
 
-      for (const realm of realms) {
-        const peekStat = await syncPeek({ ...syncParams, realm });
-        if (peekStat !== Status.Success) {
-          console.error(`Failed to peek: ${peekStat}`);
-          // Still publish queue depths (e.g. offline after local enqueue) and
-          // clear any mid-phase progress so Sync UI is not stuck on "peek".
-          this.emitProgress({ phase: "idle" });
-          return peekStat;
+        let hostOk = true;
+        for (const realm of realms) {
+          const peekStat = await syncPeek({ ...syncParams, realm });
+          if (peekStat !== Status.Success) {
+            console.error(`Failed to peek ${label}: ${peekStat}`);
+            if (failed === undefined) failed = peekStat;
+            hostOk = false;
+            break;
+          }
+          this.xferState.emit();
+        }
+        if (!hostOk) continue;
+
+        // Push before pull: a host that already has the msg drops the upload.
+        const pushStat = await syncPush(syncParams);
+        if (pushStat !== Status.Success) {
+          console.error(`Failed to push ${label}: ${pushStat}`);
+          if (failed === undefined) failed = pushStat;
+          continue;
         }
         this.xferState.emit();
-      }
 
-      // Push before pull: local redundancy first.
-      const pushStat = await syncPush(syncParams);
-      if (pushStat !== Status.Success) {
-        console.error(`Failed to push: ${pushStat}`);
-        this.emitProgress({ phase: "idle" });
-        return pushStat;
+        // Depth-1: next pull ‖ open/exec of current pull batch.
+        const pullStat = await syncPull(syncParams, async (hashes) => {
+          this.markHostInventory(host.label, hashes);
+          await this.drainApplyQueue();
+        });
+        if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
+          console.error(`Failed to pull ${label}: ${pullStat}`);
+          if (failed === undefined) failed = pullStat;
+          continue;
+        }
+        this.xferState.emit();
+        anyOk = true;
+      } catch (e) {
+        console.error(`Failed to sync ${label}`, e);
+        if (failed === undefined) failed = Status.InternalError;
       }
-      this.xferState.emit();
-
-      // Depth-1: next pull ‖ open/exec of current pull batch.
-      const pullStat = await syncPull(syncParams, async () => {
-        await this.drainApplyQueue();
-      });
-      if (pullStat !== Status.Success && pullStat !== Status.NoChange) {
-        console.error(`Failed to pull: ${pullStat}`);
-        this.emitProgress({ phase: "idle" });
-        return pullStat;
-      }
-      this.xferState.emit();
     }
 
     this.emitProgress({ phase: "idle" });
+    if (!anyOk && failed !== undefined) return failed;
     return Status.Success;
   }
 
@@ -1263,15 +1355,38 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await this.#pullRealms();
     this.clientState.emit();
 
-    if (connect) {
-      const row = await this.store.hosts.get(host.label);
-      if (row) {
-        await this.connectToHost(row);
+    // connect false only stores the host. No enclave means no peek.
+    if (!connect || this.#enclave() === undefined) return;
+
+    // Peek before queueing uploads when this host has no cursor yet.
+    if (!await this.store.hosts.hasSeqs(host.label)) {
+      const [, st] = await this.reconcile(host.label, {
+        push: true,
+        sync: false,
+      });
+      if (st !== Status.Success) {
+        console.error(`Failed to reconcile ${host.label}: ${st}`);
       }
+    }
+
+    const row = await this.store.hosts.get(host.label);
+    if (row) {
+      await this.connectToHost(row);
     }
   }
 
   public async unlink(label: string) {
+    const conn = this.connections.get(label);
+    if (conn !== undefined) {
+      try {
+        conn.closeListener();
+      } catch {
+        // ignore teardown errors
+      }
+      this.connections.delete(label);
+    }
+    this.hostMsgHashes.delete(label);
+    await this.dropHostQueues(label);
     await this.store.hosts.del(label);
     await this.#pullHosts();
     await this.#pullRealms();
@@ -1321,7 +1436,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
       },
     );
     const bagMgrsSt = await this.#ensureBagMgrs(conn, host);
-    if (bagMgrsSt !== Status.Success) return;
+    if (bagMgrsSt !== Status.Success) {
+      console.error(`Failed to connect ${host.label}: ${bagMgrsSt}`);
+      return;
+    }
     await conn.register();
 
     if (listen) {
@@ -1339,7 +1457,10 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
             onProgress: this.emitProgress,
             peekProgressEvery: this.peekProgressEvery,
           };
-          return handleNotif(bytes, syncParams, this.scheduleSync);
+          return handleNotif(bytes, syncParams, (hashes, sync) => {
+            this.markHostInventory(host.label, hashes);
+            if (sync) this.scheduleSync();
+          });
         },
         () => this.clientState.emit(), // onDisconnect
         () => this.clientState.emit(), // onConnect
@@ -1372,7 +1493,8 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     return Status.Success;
   }
 
-  // Manage active host connections.
+  // connect opens a listener per linked host.
+  // sync schedules one catch-up. Pass false when the caller syncs.
   public async connect(listen = true, sync = true) {
     const { connectToHost, scheduleSync, store } = this;
     const enclave = this.#enclave();
@@ -1383,7 +1505,11 @@ export class SyncClient<Handle extends HostHandle> implements IClient<Handle> {
     await this.drainApplyQueue();
     const hosts = await store.hosts.list();
     for (const host of hosts) {
-      await connectToHost(host, listen, false);
+      try {
+        await connectToHost(host, listen, false);
+      } catch (e) {
+        console.error(`Failed to connect ${host.label}`, e);
+      }
     }
     if (sync) {
       scheduleSync();

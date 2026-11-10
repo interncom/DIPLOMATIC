@@ -87,8 +87,9 @@ export class IDBHostStore implements IHostStore<URL> {
   /**
    * Upsert connection info. Same label + same handle/idx keeps cursors and
    * host meta (safe re-link). Changing handle/idx clears host_seqs.
+   * Returns true when cursors are kept.
    */
-  async add(info: IHostConnectionInfo<URL>) {
+  async add(info: IHostConnectionInfo<URL>): Promise<boolean> {
     const prev = await this.get(info.label);
     const same = prev !== undefined &&
       prev.handle.href === info.handle.href &&
@@ -108,8 +109,8 @@ export class IDBHostStore implements IHostStore<URL> {
     );
     const hosts = tx.objectStore(HOSTS_TABLE);
     const seqs = tx.objectStore(HOST_SEQS_TABLE);
-    return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
+    return new Promise<boolean>((resolve, reject) => {
+      tx.oncomplete = () => resolve(same);
       tx.onerror = () => reject(tx.error);
       if (same) {
         hosts.put(row);
@@ -120,6 +121,17 @@ export class IDBHostStore implements IHostStore<URL> {
         for (const key of keys.result) seqs.delete(key);
         hosts.put(row);
       };
+    });
+  }
+
+  // hasSeqs reports whether any cursor row is stored for this host.
+  async hasSeqs(label: string): Promise<boolean> {
+    const tx = this.db.transaction(HOST_SEQS_TABLE, "readonly");
+    const seqs = tx.objectStore(HOST_SEQS_TABLE);
+    return new Promise<boolean>((resolve, reject) => {
+      tx.onerror = () => reject(tx.error);
+      const req = seqs.index("host").count(label);
+      req.onsuccess = () => resolve(req.result > 0);
     });
   }
 

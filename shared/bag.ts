@@ -2,7 +2,7 @@
 // Wire prefix: signature (64), rlm (32), kdm (8).
 // The signature covers rlm ‖ headCph.
 
-import { Decoder, Encoder } from "./codec.ts";
+import { Decoder, encodeStruct } from "./codec.ts";
 import { IMessageHead, messageHeadCodec } from "./codecs/messageHead.ts";
 import { hashBytes, Status } from "./consts.ts";
 import type { HostRlm } from "./crypto/derivation.ts";
@@ -52,12 +52,8 @@ export async function sealBag(
   }
 
   // Encode message.
-  const enc = new Encoder();
-  const statEnc = messageHeadCodec.encode(enc, { ...msg, hsh });
-  if (statEnc !== Status.Success) {
-    return err(statEnc);
-  }
-  const headEnc = enc.result();
+  const [headEnc, statEnc] = encodeStruct(messageHeadCodec, { ...msg, hsh });
+  if (statEnc !== Status.Success) return err(statEnc);
 
   const [kdm, kst] = await bagMgr.bagKDM(headEnc);
   if (kst !== Status.Success) return err(kst);

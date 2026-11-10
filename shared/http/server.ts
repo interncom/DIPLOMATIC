@@ -1,7 +1,7 @@
 import { validateAuthTimestamp } from "../auth.ts";
 import { htob } from "../binary.ts";
 import { IClock } from "../clock.ts";
-import { Decoder, Encoder } from "../codec.ts";
+import { Decoder, Encoder, encodeStruct } from "../codec.ts";
 import { authTimestampCodec, IAuthTimestamp } from "../codecs/authTimestamp.ts";
 import { IRespHead, respHeadCodec } from "../codecs/respHead.ts";
 import { binResp, callPaths, cors, errResp } from "../http.ts";
@@ -93,8 +93,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
         timeSent: this.clock.now(),
         subscription: meta,
       };
-      const encHead = new Encoder();
-      const statEnc = encHead.writeStruct(respHeadCodec, head);
+      const [headBytes, statEnc] = encodeStruct(respHeadCodec, head);
       if (statEnc !== Status.Success) {
         return new Response(null, { status: 500 });
       }
@@ -111,7 +110,7 @@ export class DiplomaticHTTPServer implements IProtoHost {
       }
 
       // Prepend header to response encoder.
-      enc.prependBytes(encHead.result());
+      enc.prependBytes(headBytes);
 
       return binResp(enc);
     } catch (err) {

@@ -3,7 +3,7 @@ import { SyncClient } from "../src/client";
 import { MemoryStore } from "../src/stores/memory/store";
 import libsodiumCrypto from "../src/crypto";
 import { Status } from "../src/shared/consts";
-import { Encoder } from "../src/shared/codec";
+import { encodeStruct } from "../src/shared/codec";
 import { messageHeadCodec } from "../src/shared/codecs/messageHead";
 import { Enclave } from "../src/shared/crypto/enclave";
 import type { EntityID, Hash, IMessage, IProtoHost, IStateManager } from "../src/shared/types";
@@ -466,9 +466,10 @@ describe("SyncClient apply queue", () => {
       ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 0, ctr: 0, len: 3 };
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const hash = await libsodiumCrypto.blake3(enc.result());
+    const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+    expect(st).toBe(Status.Success);
+    if (st !== Status.Success) return;
+    const hash = await libsodiumCrypto.blake3(headEnc);
     await store.messages.add([{
       key: hash,
       data: { eid, body: new Uint8Array([1, 2, 3]), apld: APLD_PENDING } }]);
@@ -502,9 +503,10 @@ describe("SyncClient apply queue", () => {
       ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 0, ctr: 0, len: 1 };
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const hash = await libsodiumCrypto.blake3(enc.result());
+    const [headEnc, st] = encodeStruct(messageHeadCodec, head);
+    expect(st).toBe(Status.Success);
+    if (st !== Status.Success) return;
+    const hash = await libsodiumCrypto.blake3(headEnc);
     await store.messages.add([{
       key: hash,
       data: { eid, body: new Uint8Array([9]), apld: APLD_PENDING } }]);
@@ -547,9 +549,10 @@ describe("SyncClient apply queue", () => {
       ts: new Date(0) });
     expect(eidStat).toBe(Status.Success);
     const head = { eid, off: 1, ctr: 0, len: 1 };
-    const enc = new Encoder();
-    enc.writeStruct(messageHeadCodec, head);
-    const hash = await libsodiumCrypto.blake3(enc.result());
+    const [headEnc, hst] = encodeStruct(messageHeadCodec, head);
+    expect(hst).toBe(Status.Success);
+    if (hst !== Status.Success) return;
+    const hash = await libsodiumCrypto.blake3(headEnc);
     await store.messages.add([{
       key: hash,
       data: { eid, off: 1, body: new Uint8Array([8]), apld: APLD_PENDING } }]);

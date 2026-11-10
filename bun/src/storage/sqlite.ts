@@ -4,7 +4,7 @@ import { Database } from "bun:sqlite";
 import { btoh } from "../../../shared/binary.ts";
 import { dropBodyFiles, readBodyFile, writeBodyFile } from "./blobfile.ts";
 import { maxInlineBodyBytes, newBodyKey } from "../../../shared/bodykey.ts";
-import { Encoder } from "../../../shared/codec.ts";
+import { encodeStruct } from "../../../shared/codec.ts";
 import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
 import { hashBytes, Status } from "../../../shared/consts.ts";
 import type { ISetBagResult, IStorage } from "../../../shared/types.ts";
@@ -129,19 +129,23 @@ export function createSqliteStorage(path = "diplomatic.db"): IStorage {
               }
               max += 1;
               maxBy.set(key, max);
-              const enc = new Encoder();
-              enc.writeStruct(peekItemHeadCodec, bag);
+              const [headCph, hst] = encodeStruct(peekItemHeadCodec, bag);
+              if (hst !== Status.Success) {
+                db.exec("ROLLBACK");
+                failed = true;
+                break;
+              }
               insert.run(
                 pubKeyHex,
                 bag.rlm,
                 max,
-                enc.result(),
+                headCph,
                 slot.body,
                 slot.key,
               );
               seqByIdx.set(slot.i, max);
             }
-            db.exec("COMMIT");
+            if (!failed) db.exec("COMMIT");
           } catch {
             try {
               db.exec("ROLLBACK");

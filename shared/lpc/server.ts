@@ -1,5 +1,5 @@
 import { IClock } from "../clock.ts";
-import { Decoder, Encoder } from "../codec.ts";
+import { Decoder, Encoder, encodeStruct } from "../codec.ts";
 import { APICallName, Status } from "../consts.ts";
 import { apiCalls } from "../http.ts";
 import {
@@ -58,16 +58,13 @@ export class LPCTransport implements ITransport {
     const respEnc = new Encoder();
     const status = await this.host.handler(name, reqDec, respEnc);
 
-    const headEnc = new Encoder();
     const timeSent = clock.now();
     const subscription = nullSubMeta;
     const head: IRespHead = { status, timeRcvd, timeSent, subscription };
-    const statEnc = headEnc.writeStruct(respHeadCodec, head);
-    if (statEnc !== Status.Success) {
-      return err(statEnc);
-    }
+    const [headBytes, statEnc] = encodeStruct(respHeadCodec, head);
+    if (statEnc !== Status.Success) return err(statEnc);
 
-    respEnc.prependBytes(headEnc.result());
+    respEnc.prependBytes(headBytes);
     const respDec = new Decoder(respEnc.result());
     return ok(respDec);
   };

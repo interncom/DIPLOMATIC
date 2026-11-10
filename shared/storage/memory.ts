@@ -1,5 +1,5 @@
 import { btoh } from "../binary.ts";
-import { Encoder } from "../codec.ts";
+import { encodeStruct } from "../codec.ts";
 import type { IBagPeekItem } from "../codecs/peekItem.ts";
 import { peekItemHeadCodec } from "../codecs/peekItemHead.ts";
 import { hashBytes, Status } from "../consts.ts";
@@ -77,11 +77,10 @@ export function createMemoryStorage(): IMemoryStorage {
         }
         max += 1;
         maxBy.set(rlmHex, max);
-        const enc = new Encoder();
-        const status = enc.writeStruct(peekItemHeadCodec, bag);
+        const [headCph, status] = encodeStruct(peekItemHeadCodec, bag);
         if (status !== Status.Success) return err(status);
         realm.set(max, {
-          headCph: enc.result(),
+          headCph,
           bodyCph: bag.bodyCph,
         });
         out.push({ status: Status.Success, seq: max });

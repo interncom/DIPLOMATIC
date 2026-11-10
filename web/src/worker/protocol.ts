@@ -73,7 +73,7 @@ export type WorkerEvent =
   /** Worker init failed (e.g. IDB open); main should fail handshake, not hang. */
   | { kind: "initError"; message: string }
   /** Socket state only. Seed/host stay on the main-thread store. */
-  | { kind: "clientState"; connected: boolean }
+  | { kind: "clientState"; connected: boolean; connectedHosts: string[] }
   /** Queues + sync phase progress (see IDiplomaticClientXferState.progress). */
   | { kind: "xferState"; state: IDiplomaticClientXferState }
   /**

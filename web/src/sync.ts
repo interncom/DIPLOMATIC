@@ -8,9 +8,10 @@ import { sortByHlcDesc } from "./hlc";
 import { mapPool } from "./mapPool";
 import { openBagBody } from "./shared/bag";
 import DiplomaticClientAPI from "./shared/client";
-import { Decoder, Encoder } from "./shared/codec";
+import { Decoder, encodeStruct } from "./shared/codec";
 import { type IKDM, kdmEq } from "./shared/codecs/kdm";
 import { IMessageHead, messageHeadCodec } from "./shared/codecs/messageHead";
+import { IBagPeekItem } from "./shared/codecs/peekItem";
 import { notifItemCodec } from "./shared/codecs/notifItem";
 import { Status } from "./shared/consts";
 import type { BagManager } from "./shared/crypto/bagman";
@@ -104,6 +105,21 @@ function bagBytes(bag: IBag): number {
     bag.bodyCph.length;
 }
 
+// hostVerifyKey loads the host identity's Ed25519 verify key.
+async function hostVerifyKey<Handle extends HostHandle>(
+  conn: Pick<SyncConn<Handle>, "identity">,
+  crypto: ICrypto,
+): Promise<ValStat<CryptoKey>> {
+  const [hostIdnt, ist] = await conn.identity();
+  if (ist !== Status.Success) return err(ist);
+  try {
+    const key = await crypto.importVerifyKey(hostIdnt.publicKey);
+    return ok(key);
+  } catch {
+    return err(Status.CryptoError);
+  }
+}
+
 type DeqGroup = { host: string; realm?: IKDM; seqs: number[] };
 
 // Groups download seqs so one deq is one host and one realm.
@@ -147,9 +163,6 @@ export async function pushBatch<Handle extends HostHandle>(
   const [results, pushStatus] = await conn.push(bags);
   if (pushStatus !== Status.Success) {
     return pushStatus;
-  }
-  if (!results) {
-    return Status.InvalidResponse;
   }
 
   for (const item of results) {
@@ -225,9 +238,6 @@ export async function pullBodies<Handle extends HostHandle>(
     if (stat !== Status.Success) {
       // TODO: per-row pull errors (which seqs failed); track on download queue.
       return err(stat);
-    }
-    if (!result) {
-      return err(Status.InvalidResponse);
     }
     for (const { seq, bodyCph } of result) {
       const dl = pull.dls.get(seq);
@@ -315,16 +325,6 @@ export async function openPulled<Handle extends HostHandle>(
   return ok({ parts, hashes });
 }
 
-type PeekCryptoOk = {
-  ok: true;
-  seq: number;
-  kdm: Uint8Array;
-  headEnc: Uint8Array;
-  headEncHash: Hash;
-};
-type PeekCryptoFail = { ok: false; seq: number; stat: Status };
-type PeekCryptoResult = PeekCryptoOk | PeekCryptoFail;
-
 /** headEnc + blake3 key for a download item (peek cache or re-encode). */
 async function resolveHeadEnc(
   dl: IDownloadMessage,
@@ -332,10 +332,9 @@ async function resolveHeadEnc(
 ): Promise<ValStat<{ headEnc: Uint8Array; headEncHash: Hash }>> {
   let headEnc = dl.headEnc;
   if (!headEnc) {
-    const enc = new Encoder();
-    const st = enc.writeStruct(messageHeadCodec, dl.head);
+    const [encoded, st] = encodeStruct(messageHeadCodec, dl.head);
     if (st !== Status.Success) return err(st);
-    headEnc = enc.result();
+    headEnc = encoded;
   }
   if (dl.headEncHash) {
     return ok({ headEnc, headEncHash: dl.headEncHash });
@@ -378,6 +377,114 @@ export async function deqDownloadsForHeadHashes<Handle extends HostHandle>(
   await flushDeq(store, deqGroups);
 }
 
+// OpenedHead is a peeked head after verify and hash.
+type OpenedHead = {
+  seq: number;
+  kdm: Uint8Array;
+  headEnc: Uint8Array;
+  headEncHash: Hash;
+};
+
+type HeadFate =
+  | { fate: "have" }
+  | { fate: "dupe" }
+  | { fate: "fresh"; head: IMessageHead }
+  | { fate: "bad"; stat: Status };
+
+// openHead verifies one peeked head and hashes it.
+async function openHead(
+  item: IBagPeekItem,
+  verifyKey: CryptoKey,
+  bagMgr: BagManager,
+  crypto: ICrypto,
+): Promise<ValStat<OpenedHead>> {
+  const [opened, stat] = await decryptPeekItem(
+    item,
+    verifyKey,
+    bagMgr,
+    crypto,
+  );
+  if (stat !== Status.Success) return err(stat);
+  const headEncHash = await crypto.blake3(opened.headEnc);
+  return ok({
+    seq: item.seq,
+    kdm: opened.kdm,
+    headEnc: opened.headEnc,
+    headEncHash,
+  });
+}
+
+// openPeekHeads verifies and hashes each peeked head.
+async function openPeekHeads(
+  items: IBagPeekItem[],
+  verifyKey: CryptoKey,
+  bagMgr: BagManager,
+  crypto: ICrypto,
+  conc: number,
+  onItem?: (done: number, total: number) => void,
+): Promise<ValStat<OpenedHead>[]> {
+  const total = items.length;
+  let done = 0;
+  return mapPool(items, conc, async (item) => {
+    const result = await openHead(item, verifyKey, bagMgr, crypto);
+    done += 1;
+    onItem?.(done, total);
+    return result;
+  });
+}
+
+// downloadFor builds one queued download from an opened head.
+function downloadFor(
+  hostLabel: string,
+  realm: IKDM,
+  head: IMessageHead,
+  item: OpenedHead,
+): IDownloadMessage {
+  const dl: IDownloadMessage = {
+    kdm: item.kdm,
+    head,
+    seq: item.seq,
+    host: hostLabel,
+    headEnc: item.headEnc,
+    headEncHash: item.headEncHash,
+  };
+  // A default realm is stored with no realm field.
+  const tagged = storedRealm(realm);
+  if (tagged !== undefined) dl.realm = tagged;
+  return dl;
+}
+
+// takeHead processes one opened bag head (item).
+async function takeHead<Handle extends HostHandle>(
+  store: Pick<IStore<Handle>, "messages" | "uploads" | "downloads">,
+  hostLabel: string,
+  realm: IKDM,
+  item: OpenedHead,
+  seen: Set<string>,
+): Promise<HeadFate> {
+  const key = btob64(item.headEncHash);
+
+  // This head is already in the archive.
+  if (await store.messages.has(item.headEncHash)) {
+    await store.uploads.deq(hostLabel, [item.headEncHash]);
+    await store.downloads.deq(hostLabel, [item.seq], realm);
+    return { fate: "have" };
+  }
+
+  // This batch already processed this bag.
+  if (seen.has(key)) {
+    await store.downloads.deq(hostLabel, [item.seq], realm);
+    return { fate: "dupe" };
+  }
+
+  // Parse the head and remember it for the rest of the batch.
+  const headDec = new Decoder(item.headEnc);
+  const [head, stat] = headDec.readStruct(messageHeadCodec);
+  if (stat !== Status.Success) return { fate: "bad", stat };
+  seen.add(key);
+  return { fate: "fresh", head };
+}
+
 /** Discover unseen bags and enqueue download work; advance host lastSeq. */
 export async function syncPeek<Handle extends HostHandle>(
   {
@@ -394,14 +501,8 @@ export async function syncPeek<Handle extends HostHandle>(
   const realm = realmArg ?? nullKDM;
   const bagMgr = conn.bagMgrFor(realm);
   if (bagMgr === undefined) return Status.NotFound;
-  const [hostIdnt, ist] = await conn.identity();
-  if (ist !== Status.Success) return ist;
-  let verifyKey: CryptoKey;
-  try {
-    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
-  } catch {
-    return Status.CryptoError;
-  }
+  const [verifyKey, vst] = await hostVerifyKey(conn, crypto);
+  if (vst !== Status.Success) return vst;
   const dls: IDownloadMessage[] = [];
   const [items, peekStatus] = await conn.peek(cursorOf(host, realm), realm);
   if (peekStatus !== Status.Success) {
@@ -414,92 +515,45 @@ export async function syncPeek<Handle extends HostHandle>(
     onProgress({ phase: "peek", host: host.label, done: 0, total });
   }
 
-  // Phase 1: concurrent crypto (Ed25519 verify + head decrypt + blake3).
-  // Overlapping WebCrypto verifies is the main win vs serial await.
-  let cryptoDone = 0;
-  const cryptoResults = await mapPool(items, conc, async (item) => {
-    const [itemDec, stat] = await decryptPeekItem(
-      item,
-      verifyKey,
-      bagMgr,
-      crypto,
-    );
-    let result: PeekCryptoResult;
+  // Verify and hash every head, then decide in peek order.
+  const seen = new Set<string>();
+  const heads = await openPeekHeads(
+    items,
+    verifyKey,
+    bagMgr,
+    crypto,
+    conc,
+    (done, n) => {
+      if (onProgress && shouldEmitItemProgress(done, n, every)) {
+        onProgress({ phase: "peek", host: host.label, done, total: n });
+      }
+    },
+  );
+
+  // Queue one download for each fresh head.
+  for (const [opened, stat] of heads) {
     if (stat !== Status.Success) {
-      result = { ok: false, seq: item.seq, stat };
-    } else {
-      const headEncHash = await crypto.blake3(itemDec.headEnc);
-      result = {
-        ok: true,
-        seq: item.seq,
-        kdm: itemDec.kdm,
-        headEnc: itemDec.headEnc,
-        headEncHash,
-      };
-    }
-    cryptoDone += 1;
-    if (
-      onProgress &&
-      shouldEmitItemProgress(cryptoDone, total, every)
-    ) {
-      onProgress({
-        phase: "peek",
-        host: host.label,
-        done: cryptoDone,
-        total,
-      });
-    }
-    return result;
-  });
-
-  // Phase 2: sequential store / enqueue (IDB-safe, stable ordering).
-  // De-dupe downloads within this batch (same msg, multiple bags).
-  const enqMsgs = new Set<string>();
-  for (const result of cryptoResults) {
-    if (!result.ok) {
+      // TODO: record failures. Maybe retry later.
       // Skip desyncs client vs host until CHECK reconciles message sets.
-      console.error("peek: decrypting item head", result.stat);
+      console.error("peek: decrypting item head", stat);
       continue;
     }
-
-    const msgKey = btob64(result.headEncHash);
-    const msgExists = await store.messages.has(result.headEncHash);
-    if (msgExists) {
-      // Already archived (import or prior sync): no download. Drop any stale
-      // download-queue row and redundant upload (host already has this msg).
+    const taken = await takeHead(store, host.label, realm, opened, seen);
+    if (taken.fate === "have") {
       console.info("peek: local msg; skip download, deq upload");
-      await store.uploads.deq(host.label, [result.headEncHash]);
-      await store.downloads.deq(host.label, [result.seq], realm);
       continue;
     }
-
-    // Already enqueueing a download for this msg from an earlier bag in batch.
-    if (enqMsgs.has(msgKey)) {
-      await store.downloads.deq(host.label, [result.seq], realm);
+    if (taken.fate === "dupe") continue;
+    if (taken.fate === "bad") {
+      console.error("peek: reading item head", taken.stat);
       continue;
     }
-
-    const headDec = new Decoder(result.headEnc);
-    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
-      console.error("peek: reading item head", headStatus);
-      continue;
-    }
-
-    enqMsgs.add(msgKey);
-    const dl: IDownloadMessage = {
-      kdm: result.kdm,
-      head,
-      seq: result.seq,
-      host: host.label,
-      headEnc: result.headEnc,
-      headEncHash: result.headEncHash,
-    };
-    const tagged = storedRealm(realm);
-    if (tagged !== undefined) dl.realm = tagged;
+    const dl = downloadFor(host.label, realm, taken.head, opened);
     dls.push(dl);
   }
-  await store.downloads.enq(dls);
+
+  // Enqueue those downloads.
+  if (dls.length > 0) await store.downloads.enq(dls);
 
   // Advance cursor only (bag tallies are not tracked on the host row).
   if (items.length > 0) {
@@ -634,7 +688,7 @@ export async function syncPull<Handle extends HostHandle>(
     onProgress,
   }: ISyncParams<Handle>,
   /** After each opened pull batch (e.g. drainApplyQueue / exec). */
-  afterOpen?: () => Promise<void>,
+  afterOpen?: (hashes: Hash[]) => Promise<void>,
 ): Promise<Status> {
   const limit = maxPullBytes ?? defaultMaxPullBytes;
   const allItems = await store.downloads.list();
@@ -675,20 +729,18 @@ export async function syncPull<Handle extends HostHandle>(
     }
     // Host may return bodies in any order; re-sort before open/exec.
     const ordered = sortByHlcDesc(pulled, (p) => p.dl.head);
-    const [, openStat] = await openPulled(
+    const [opened, openStat] = await openPulled(
       store,
       conn.bagMgrs(),
       crypto,
       ordered,
     );
-    if (openStat !== Status.Success) {
-      return openStat;
-    }
+    if (openStat !== Status.Success) return openStat;
     if (afterOpen) {
       if (onProgress) {
         onProgress({ phase: "exec", host: host.label, done, total });
       }
-      await afterOpen();
+      await afterOpen(opened.hashes);
     }
   }
 
@@ -714,7 +766,8 @@ export function msg2StoredMsgData(
 
 /**
  * notif → open inline bodies into archive; enq incomplete → scheduleSync.
- * `scheduleSync` runs full peek/push/pull (or worker handoff).
+ * A head already in the archive drops that host's upload and consumes the seq.
+ * `sync` is false when that was the whole batch, so no peek/push follows.
  */
 export async function handleNotif<Handle extends HostHandle>(
   bytes: Uint8Array,
@@ -725,16 +778,12 @@ export async function handleNotif<Handle extends HostHandle>(
     crypto,
     onProgress,
   }: ISyncParams<Handle>,
-  scheduleSync: () => void,
+  scheduleSync: (hashes: Hash[], sync: boolean) => void,
 ) {
   const label = host.label;
-  const [hostIdnt, ist] = await conn.identity();
-  if (ist !== Status.Success) return;
-  let verifyKey: CryptoKey;
-  try {
-    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
-  } catch (e) {
-    console.error("Failed importing host verify key", e);
+  const [verifyKey, vst] = await hostVerifyKey(conn, crypto);
+  if (vst !== Status.Success) {
+    console.error("Failed importing host verify key", vst);
     return;
   }
 
@@ -746,6 +795,13 @@ export async function handleNotif<Handle extends HostHandle>(
   }
 
   let outOfSeq = false;
+
+  // known means a head already in the archive.
+  const known: Hash[] = [];
+
+  // seen means a hash already kept in this batch.
+  const seen = new Set<string>();
+  const dls: IDownloadMessage[] = [];
   const currHost = await store.hosts.get(label);
   type Run = { realm: IKDM; seq: number };
   const runs = new Map<string, Run>();
@@ -782,42 +838,38 @@ export async function handleNotif<Handle extends HostHandle>(
     }
 
     const headEncHash = await crypto.blake3(peekItem.headEnc);
-    if (await store.messages.has(headEncHash)) {
+
+    // Classify this head against the archive and this batch.
+    const opened: OpenedHead = {
+      seq: item.seq,
+      kdm: peekItem.kdm,
+      headEnc: peekItem.headEnc,
+      headEncHash,
+    };
+    const taken = await takeHead(store, label, realm, opened, seen);
+    if (taken.fate === "have") {
+      known.push(headEncHash);
+    } else if (taken.fate === "bad") {
+      console.error("Failed to parse head", Status[taken.stat]);
       continue;
+    } else if (taken.fate === "fresh") {
+      // Inline body (or empty) can open now; otherwise enqueue a pull.
+      if (!item.bodyCph && taken.head.len > 0) {
+        needPull = true;
+        dls.push(downloadFor(label, realm, taken.head, opened));
+      } else {
+        completeBags.push({
+          ...peekItem,
+          head: taken.head,
+          bodyCph: item.bodyCph,
+          headEncHash,
+          realm,
+          bagMgr,
+        });
+      }
     }
 
-    const headDec = new Decoder(peekItem.headEnc);
-    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
-      console.error("Failed to parse head", Status[headStatus]);
-      continue;
-    }
-
-    // Inline body (or empty) can open now; otherwise enqueue a pull.
-    if (!item.bodyCph && head.len > 0) {
-      needPull = true;
-      const dl: IDownloadMessage = {
-        seq: item.seq,
-        host: label,
-        kdm: peekItem.kdm,
-        head,
-        headEnc: peekItem.headEnc,
-        headEncHash,
-      };
-      const tagged = storedRealm(realm);
-      if (tagged !== undefined) dl.realm = tagged;
-      await store.downloads.enq([dl]);
-    } else {
-      completeBags.push({
-        ...peekItem,
-        head,
-        bodyCph: item.bodyCph,
-        headEncHash,
-        realm,
-        bagMgr,
-      });
-    }
-
+    // have, dupe, and fresh still advance a contiguous run.
     if (!currHost) {
       console.log("out of seq", item.seq, undefined);
       outOfSeq = true;
@@ -836,6 +888,9 @@ export async function handleNotif<Handle extends HostHandle>(
       run.seq = item.seq;
     }
   }
+
+  // Queue heads whose body was not inlined.
+  if (dls.length > 0) await store.downloads.enq(dls);
 
   if (currHost) {
     for (const run of runs.values()) {
@@ -867,24 +922,37 @@ export async function handleNotif<Handle extends HostHandle>(
   }
 
   const statsStore = await store.messages.add(toStore);
+
+  // Keep hashes that were stored.
+  const stored: Hash[] = [];
   for (let i = 0; i < statsStore.length; i++) {
     const st = statsStore[i];
-    if (st !== Status.Success && st !== Status.NoChange) {
+    const row = toStore[i];
+    if (
+      (st === Status.Success || st === Status.NoChange) &&
+      row !== undefined
+    ) {
+      stored.push(row.key);
+    } else if (st !== Status.Success && st !== Status.NoChange) {
       console.error("ERR storing", Status[st], "for message", i);
     }
   }
 
-  if (onProgress && toStore.length > 0) {
+  if (onProgress && stored.length > 0) {
     onProgress({
       phase: "open",
       host: host.label,
-      done: toStore.length,
-      total: toStore.length,
+      done: stored.length,
+      total: stored.length,
     });
   }
 
-  if (outOfSeq || needPull || toStore.length > 0) {
-    scheduleSync();
+  // sync means a later peek or pull is still needed.
+  const sync = outOfSeq || needPull || stored.length > 0;
+
+  // Report archived and stored hashes either way.
+  if (sync || known.length > 0) {
+    scheduleSync(known.concat(stored), sync);
   }
 }
 
@@ -913,20 +981,14 @@ export async function reconcileHost<Handle extends HostHandle>(
     peekConcurrency,
   } = params;
 
-  const [hostIdnt, ist] = await conn.identity();
-  if (ist !== Status.Success) return err(ist);
-  let verifyKey: CryptoKey;
-  try {
-    verifyKey = await crypto.importVerifyKey(hostIdnt.publicKey);
-  } catch {
-    return err(Status.CryptoError);
-  }
+  const [verifyKey, vst] = await hostVerifyKey(conn, crypto);
+  if (vst !== Status.Success) return err(vst);
 
   // msgKey (archive key / blake3 of encoded msg header) → first bag + count
   type MsgAgg = {
     hash: Hash;
     count: number;
-    sample: Extract<PeekCryptoResult, { ok: true }>;
+    sample: OpenedHead;
     realm: IKDM;
   };
   const byMsg = new Map<string, MsgAgg>();
@@ -948,50 +1010,32 @@ export async function reconcileHost<Handle extends HostHandle>(
       onProgress({ phase: "peek", host: host.label, done: 0, total });
     }
 
-    let cryptoDone = 0;
-    const cryptoResults = await mapPool(items, conc, async (item) => {
-      const [itemDec, stat] = await decryptPeekItem(
-        item,
-        verifyKey,
-        bagMgr,
-        crypto,
-      );
-      let result: PeekCryptoResult;
-      if (stat !== Status.Success) {
-        result = { ok: false, seq: item.seq, stat };
-      } else {
-        const headEncHash = await crypto.blake3(itemDec.headEnc);
-        result = {
-          ok: true,
-          seq: item.seq,
-          kdm: itemDec.kdm,
-          headEnc: itemDec.headEnc,
-          headEncHash,
-        };
-      }
-      cryptoDone += 1;
-      if (onProgress && shouldEmitItemProgress(cryptoDone, total, every)) {
-        onProgress({
-          phase: "peek",
-          host: host.label,
-          done: cryptoDone,
-          total,
-        });
-      }
-      return result;
-    });
+    // Verify and hash this realm's heads.
+    const heads = await openPeekHeads(
+      items,
+      verifyKey,
+      bagMgr,
+      crypto,
+      conc,
+      (done, n) => {
+        if (onProgress && shouldEmitItemProgress(done, n, every)) {
+          onProgress({ phase: "peek", host: host.label, done, total: n });
+        }
+      },
+    );
 
-    for (const result of cryptoResults) {
-      if (!result.ok) continue;
-      const k = btob64(result.headEncHash);
+    // Count bags of each head.
+    for (const [opened, stat] of heads) {
+      if (stat !== Status.Success) continue;
+      const k = btob64(opened.headEncHash);
       const cur = byMsg.get(k);
       if (cur) {
         cur.count += 1;
       } else {
         byMsg.set(k, {
-          hash: result.headEncHash,
+          hash: opened.headEncHash,
           count: 1,
-          sample: result,
+          sample: opened,
           realm,
         });
       }
@@ -1019,60 +1063,41 @@ export async function reconcileHost<Handle extends HostHandle>(
 
   const dls: IDownloadMessage[] = [];
   let missingLocal = 0;
+  const seen = new Set<string>();
+
+  // A head we lack counts as missing. Queue it when pull is on.
   for (const agg of byMsg.values()) {
-    const exists = await store.messages.has(agg.hash);
-    if (exists) {
-      // Host already has this msg — drop redundant upload if any.
-      await store.uploads.deq(host.label, [agg.hash]);
+    const taken = await takeHead(
+      store,
+      host.label,
+      agg.realm,
+      agg.sample,
+      seen,
+    );
+    if (taken.fate === "have" || taken.fate === "dupe") continue;
+    if (taken.fate === "bad") {
+      console.error("reconcile: reading msg header", taken.stat);
       continue;
     }
     missingLocal += 1;
     if (!pull) continue;
-    const r = agg.sample;
-    const headDec = new Decoder(r.headEnc);
-    const [head, headStatus] = headDec.readStruct(messageHeadCodec);
-    if (headStatus !== Status.Success) {
-      console.error("reconcile: reading msg header", headStatus);
-      continue;
-    }
-    const dl: IDownloadMessage = {
-      kdm: r.kdm,
-      head,
-      seq: r.seq,
-      host: host.label,
-      headEnc: r.headEnc,
-      headEncHash: r.headEncHash,
-    };
-    const tagged = storedRealm(agg.realm);
-    if (tagged !== undefined) dl.realm = tagged;
-    dls.push(dl);
-  }
-  if (dls.length > 0) {
-    await store.downloads.enq(dls);
+    dls.push(downloadFor(host.label, agg.realm, taken.head, agg.sample));
   }
 
+  // Enqueue those downloads.
+  if (dls.length > 0) await store.downloads.enq(dls);
+
+  // A local head the host lacks counts as missing. Queue it when push is on.
   let missingHost = 0;
-  if (push) {
-    const localKeys = await store.messages.listKeys();
-    const hostKeys = new Set(byMsg.keys());
-    const toUpload: Hash[] = [];
-    for (const key of localKeys) {
-      if (!hostKeys.has(btob64(key))) {
-        missingHost += 1;
-        toUpload.push(key);
-      }
-    }
-    if (toUpload.length > 0) {
-      await store.uploads.enq(host.label, toUpload);
-    }
-  } else {
-    // Still count local msgs absent on host (no enqueue).
-    const localKeys = await store.messages.listKeys();
-    const hostKeys = new Set(byMsg.keys());
-    for (const key of localKeys) {
-      if (!hostKeys.has(btob64(key))) missingHost += 1;
-    }
+  const localKeys = await store.messages.listKeys();
+  const hostKeys = new Set(byMsg.keys());
+  const toUpload: Hash[] = [];
+  for (const key of localKeys) {
+    if (hostKeys.has(btob64(key))) continue;
+    missingHost += 1;
+    if (push) toUpload.push(key);
   }
+  if (toUpload.length > 0) await store.uploads.enq(host.label, toUpload);
 
   return ok({
     msgcheck: hostMsgcheck,

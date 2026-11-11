@@ -17,6 +17,7 @@ import {
 } from "../../web/src/shared/crypto/pairing.ts";
 import { asSealedMasterKey } from "../../web/src/shared/seed.ts";
 import { SyncClient } from "../../web/src/client.ts";
+import type { IDiplomaticClientXferState } from "../../web/src/types.ts";
 import { entStateManager } from "../../web/src/entdb/manager.ts";
 import { hostBundles, installPair } from "../../bun/src/client/pair.ts";
 import {
@@ -256,11 +257,93 @@ async function ensureHost(client: SyncClient<URL>, host: URL) {
   await client.link({ handle: host, label: "host", idx: 0 }, false);
 }
 
+const countDelayMs = 200;
+
+// showSync rewrites phase, queue depths, and the local msg count on stderr.
+function showSync(client: SyncClient<URL>) {
+  let phase = "idle";
+  let numUp = 0;
+  let numDown = 0;
+  let numLocal: number | undefined;
+  let drawn = 0;
+  let last = "";
+  let heard = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let busy = false;
+  let again = false;
+
+  // Paint the four lines. A TTY rewrites them in place.
+  const paint = () => {
+    const local = numLocal === undefined ? "-" : String(numLocal);
+    const next = [
+      `phase ${phase}`,
+      `upload queue ${numUp}`,
+      `download queue ${numDown}`,
+      `local ${local}`,
+    ].join("\n");
+    if (next === last) return;
+    const lines = next.split("\n");
+    const tty = process.stderr.isTTY === true;
+    if (tty && drawn > 0) process.stderr.write(`\x1b[${drawn}A`);
+    for (const line of lines) {
+      if (tty) process.stderr.write(`\x1b[2K${line}\n`);
+      else process.stderr.write(`${line}\n`);
+    }
+    drawn = lines.length;
+    last = next;
+  };
+
+  // Reload the local count. A newer tick waits until this one finishes.
+  const loadLocal = async () => {
+    if (busy) {
+      again = true;
+      return;
+    }
+    busy = true;
+    try {
+      do {
+        again = false;
+        numLocal = await client.countMsgs();
+        paint();
+      } while (again);
+    } finally {
+      busy = false;
+    }
+  };
+
+  // Schedule a local recount after transfer ticks settle.
+  const schedule = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      void loadLocal();
+    }, countDelayMs);
+  };
+
+  // Take one transfer snapshot: phase plus the two queue depths.
+  const onXfer = (s: IDiplomaticClientXferState) => {
+    phase = s.progress.phase;
+    numUp = s.numUploads;
+    numDown = s.numDownloads;
+    paint();
+    schedule();
+  };
+
+  client.xferState.listen((s) => {
+    heard = true;
+    onXfer(s);
+  });
+  void client.xferState.get().then((s) => {
+    if (!heard) onXfer(s);
+  });
+  void loadLocal();
+}
+
 // live connects every linked host and schedules a sync. The process stays up.
 async function live(client: SyncClient<URL>, host: URL) {
   await ensureHost(client, host);
+  showSync(client);
   await client.connect(true, true);
-  console.error(`syncing ${host.href}`);
   process.stdin.resume();
 }
 

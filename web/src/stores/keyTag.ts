@@ -9,6 +9,7 @@ import type { Enclave } from "../shared/crypto/enclave";
 import type { ICrypto } from "../shared/types";
 import { err, ok, type ValStat } from "../shared/valstat";
 
+// TODO: rename n and h to nonce and fingerprint.
 /** Nonce plus the fingerprint child that names the master. */
 export type KeyTag = {
   n: Uint8Array;

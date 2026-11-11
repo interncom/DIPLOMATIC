@@ -1,9 +1,9 @@
 // Files for bag bodies stored outside a SQLite row.
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { Status } from "../../../shared/consts.ts";
-import { isBodyKey } from "../../../shared/bodykey.ts";
-import { err, ok, type ValStat } from "../../../shared/valstat.ts";
+import { Status } from "../../../../shared/consts.ts";
+import { isBodyKey } from "../../../../shared/bodykey.ts";
+import { err, ok, type ValStat } from "../../../../shared/valstat.ts";
 
 // bodyPath joins a directory and a body key.
 // bodyPath returns InvalidParam when the key is not a locator.

@@ -1,15 +1,15 @@
 // SQLite bag store. Large bodies are files beside the database.
 
 import { Database } from "bun:sqlite";
-import { btoh } from "../../../shared/binary.ts";
+import { btoh } from "../../../../shared/binary.ts";
 import { dropBodyFiles, readBodyFile, writeBodyFile } from "./blobfile.ts";
-import { maxInlineBodyBytes, newBodyKey } from "../../../shared/bodykey.ts";
-import { encodeStruct } from "../../../shared/codec.ts";
-import { peekItemHeadCodec } from "../../../shared/codecs/peekItemHead.ts";
-import { hashBytes, Status } from "../../../shared/consts.ts";
-import type { ISetBagResult, IStorage } from "../../../shared/types.ts";
-import { nullSubMeta } from "../../../shared/types.ts";
-import { err, ok } from "../../../shared/valstat.ts";
+import { maxInlineBodyBytes, newBodyKey } from "../../../../shared/bodykey.ts";
+import { encodeStruct } from "../../../../shared/codec.ts";
+import { peekItemHeadCodec } from "../../../../shared/codecs/peekItemHead.ts";
+import { hashBytes, Status } from "../../../../shared/consts.ts";
+import type { ISetBagResult, IStorage } from "../../../../shared/types.ts";
+import { nullSubMeta } from "../../../../shared/types.ts";
+import { err, ok } from "../../../../shared/valstat.ts";
 
 // Slot is one bag that will get a row.
 // Slot stores a null body when the ciphertext is a file.

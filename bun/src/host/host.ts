@@ -1,15 +1,15 @@
-// TODO: consolidate with src/server.ts. Same host, started by runBunHost.
-import crypto from "./crypto.ts";
+// TODO: consolidate with host/server.ts. Same host, started by runBunHost.
+import crypto from "../crypto.ts";
 import sqliteStorage from "./storage/sqlite.ts";
-import { Clock } from "../../shared/clock.ts";
-import { IAuthTimestamp } from "../../shared/codecs/authTimestamp.ts";
-import { Status } from "../../shared/consts.ts";
+import { Clock } from "../../../shared/clock.ts";
+import { IAuthTimestamp } from "../../../shared/codecs/authTimestamp.ts";
+import { Status } from "../../../shared/consts.ts";
 import {
   DiplomaticHTTPServer,
   validateWebSocketAuth,
-} from "../../shared/http/server.ts";
-import { CallbackNotifier } from "../../shared/lpc/pusher.ts";
-import type { IPushOpenResponse } from "../../shared/types.ts";
+} from "../../../shared/http/server.ts";
+import { CallbackNotifier } from "../../../shared/lpc/pusher.ts";
+import type { IPushOpenResponse } from "../../../shared/types.ts";
 
 const bunNotifier = new CallbackNotifier();
 

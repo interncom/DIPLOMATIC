@@ -219,6 +219,25 @@ export class SqliteAccountStore implements IAccountStore {
     return ok(ents);
   }
 
+  // readKeyring returns the keyring blob, or undefined when that row has none.
+  async readKeyring(label: string): Promise<Uint8Array | undefined> {
+    const [name, lst] = accountLabel(label);
+    if (lst !== Status.Success || name === undefined) return undefined;
+    return this.#read(name)?.keyring;
+  }
+
+  // writeKeyring stores the keyring blob and leaves the key tag in place.
+  async writeKeyring(label: string, keyring: Uint8Array): Promise<Status> {
+    const [name, lst] = accountLabel(label);
+    if (lst !== Status.Success || name === undefined) {
+      return Status.InvalidParam;
+    }
+    const cur = this.#read(name);
+    if (cur === undefined) return Status.NotFound;
+    this.#put({ ...cur, keyring: new Uint8Array(keyring) });
+    return Status.Success;
+  }
+
   // wipe deletes every account's data file, ents file, and spilled bodies.
   async wipe() {
     const list = this.#list();

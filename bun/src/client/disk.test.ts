@@ -24,9 +24,16 @@ import type {
 } from "../../../web/src/shared/types.ts";
 import type { ValStat } from "../../../web/src/shared/valstat.ts";
 import { SyncClient } from "../../../web/src/client.ts";
+import { installPair } from "./pair.ts";
 import { entStateManager } from "../../../web/src/entdb/manager.ts";
+import { nullStateManager } from "../../../web/src/state.ts";
 import { APLD_PENDING, type IStorableMessage } from "../../../web/src/types.ts";
 import { noble as crypto } from "../../../web/src/shared/crypto/noble.ts";
+import {
+  type CliRing,
+  decodeRing,
+  encodeRing,
+} from "../../../tools/keys/cli-prf.ts";
 import { readHash } from "./brand.ts";
 import { openDisk } from "./open.ts";
 import { isRec, run } from "./sql.ts";
@@ -386,6 +393,87 @@ test("wipe removes data, ents, and spilled bodies", async () => {
     meta.close();
     expect(n).toEqual({ n: 0 });
     disk.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("writeKeyring leaves the key tag in place", async () => {
+  const dir = tempDir();
+  try {
+    const { enclave } = master(9);
+    const disk = openDisk(dir);
+    expect((await disk.store.account.save(enclave))[1]).toBe(Status.Success);
+    const src: CliRing = {
+      v: 2,
+      rpId: "diplomatic",
+      salt: new Uint8Array(32).fill(7),
+      entries: [{
+        type: "prf",
+        credId: new Uint8Array([1, 2]),
+        sealedMaster: new Uint8Array(72).fill(3),
+        resident: true,
+      }],
+    };
+    const body = encodeRing(src);
+    expect(await disk.store.account.writeKeyring("", body)).toBe(
+      Status.Success,
+    );
+    body.fill(0);
+    const got = await disk.store.account.readKeyring("");
+    if (got === undefined) throw new Error("keyring");
+    const back = decodeRing(got);
+    if (back === undefined) throw new Error("decode");
+    expect(back.salt).toEqual(new Uint8Array(32).fill(7));
+    expect(back.entries[0]?.sealedMaster).toEqual(new Uint8Array(72).fill(3));
+    expect((await disk.store.account.save(enclave))[1]).toBe(Status.Success);
+    const kept = await disk.store.account.readKeyring("");
+    if (kept === undefined) throw new Error("kept");
+    expect(decodeRing(kept)?.entries[0]?.resident).toBe(true);
+    expect(await disk.store.account.writeKeyring("missing", got)).toBe(
+      Status.NotFound,
+    );
+    disk.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("installPair stores the key tag and hosts, not the seed", async () => {
+  const dir = tempDir();
+  try {
+    const { enclave, seed } = master(8);
+    const disk = openDisk(dir);
+    const client = new SyncClient(
+      new Clock(),
+      nullStateManager,
+      disk.store,
+      hostHTTPTransport,
+      crypto,
+    );
+    const [req, rst] = await Enclave.pairRequest();
+    expect(rst).toBe(Status.Success);
+    if (req === undefined) throw new Error("req");
+    const [pub, qst] = req.dhkeReq();
+    expect(qst).toBe(Status.Success);
+    if (pub === undefined) throw new Error("pub");
+    const [resp, ast] = await enclave.pairAccept(
+      pub,
+      [{ handle: "http://127.0.0.1:9", label: "host", idx: 0 }],
+      { userControlsBothSidesOfPair: true },
+    );
+    expect(ast).toBe(Status.Success);
+    if (resp === undefined) throw new Error("resp");
+    const [opened, ost] = await req.finish(resp);
+    expect(ost).toBe(Status.Success);
+    if (opened === undefined) throw new Error("opened");
+    expect(await installPair(client, opened, { persist: false })).toBe(
+      Status.Success,
+    );
+    const host = await disk.store.hosts.get("host");
+    expect(host?.handle.href).toBe(new URL("http://127.0.0.1:9").href);
+    disk.close();
+    expect(treeHas(dir, seed)).toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

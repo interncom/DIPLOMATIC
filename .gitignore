@@ -1,4 +1,5 @@
 .DS_Store
 diplomatic.db*
+.status/
 fixtures/productivity/client-*-perf.db*
 node_modules/

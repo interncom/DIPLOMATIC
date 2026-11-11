@@ -76,53 +76,93 @@ function isRec(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function hexField(
-  o: Record<string, unknown>,
-  k: string,
-  n?: number,
-): Uint8Array {
-  const v = o[k];
+function hexBytes(v: unknown, n?: number): Uint8Array | undefined {
   if (
     typeof v !== "string" || !/^[0-9a-fA-F]+$/.test(v) || v.length % 2 !== 0
   ) {
-    die(`bad binding field ${k}`);
+    return undefined;
   }
-  if (n !== undefined && v.length !== n * 2) {
-    die(`bad binding field ${k} length`);
-  }
+  if (n !== undefined && v.length !== n * 2) return undefined;
   return htob(v);
 }
 
-function parseEntry(v: unknown): CliEntry {
-  if (!isRec(v) || v.type !== "prf") die("bad keyring entry");
-  return {
-    type: "prf",
-    credId: hexField(v, "credId"),
-    sealedMaster: hexField(v, "sealedMaster", 72),
-    resident: v.resident === true,
-  };
+function entryOf(v: unknown): CliEntry | undefined {
+  if (!isRec(v) || v.type !== "prf") return undefined;
+  const credId = hexBytes(v.credId);
+  const sealedMaster = hexBytes(v.sealedMaster, 72);
+  if (credId === undefined || sealedMaster === undefined) return undefined;
+  return { type: "prf", credId, sealedMaster, resident: v.resident === true };
+}
+
+/** JSON bytes of a CLI keyring. Same body `writeRing` stores. */
+export function encodeRing(ring: CliRing): Uint8Array {
+  const body = JSON.stringify({
+    v: 2,
+    rpId: ring.rpId,
+    salt: btoh(ring.salt),
+    entries: ring.entries.map((e) => ({
+      type: "prf",
+      credId: btoh(e.credId),
+      sealedMaster: btoh(e.sealedMaster),
+      resident: e.resident,
+    })),
+  }) + "\n";
+  return new TextEncoder().encode(body);
+}
+
+/** Parse keyring JSON. Undefined when the body is not a v2 ring. */
+export function decodeRing(bytes: Uint8Array): CliRing | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
+  if (!isRec(raw) || raw.v !== 2) return undefined;
+  if (typeof raw.rpId !== "string" || raw.rpId.length === 0) return undefined;
+  if (!Array.isArray(raw.entries)) return undefined;
+  const salt = hexBytes(raw.salt, 32);
+  if (salt === undefined) return undefined;
+  const entries: CliEntry[] = [];
+  for (const item of raw.entries) {
+    const entry = entryOf(item);
+    if (entry === undefined) return undefined;
+    entries.push(entry);
+  }
+  return { v: 2, rpId: raw.rpId, salt, entries };
 }
 
 /** Load a CLI keyring. Missing file → undefined. */
 export function loadRing(path: string): CliRing | undefined {
   if (!existsSync(path)) return undefined;
-  let raw: unknown;
+  let bytes: Uint8Array;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
+    bytes = readFileSync(path);
   } catch (e) {
     die(`failed to read ${path}: ${e}`);
   }
-  if (!isRec(raw) || raw.v !== 2) die(`bad keyring ${path} (want v: 2)`);
-  if (typeof raw.rpId !== "string" || raw.rpId.length === 0) {
-    die("bad keyring rpId");
-  }
-  if (!Array.isArray(raw.entries)) die("bad keyring entries");
-  return {
-    v: 2,
-    rpId: raw.rpId,
-    salt: hexField(raw, "salt", 32),
-    entries: raw.entries.map(parseEntry),
-  };
+  const ring = decodeRing(bytes);
+  if (ring === undefined) die(`bad keyring ${path}`);
+  return ring;
+}
+
+/** First hmac-secret bind. `seal` is Enclave.sealWithIKM. */
+export async function newPrfEntry(
+  userName: string,
+  resident: boolean,
+  seal: (ikm: Uint8Array) => Promise<Uint8Array>,
+): Promise<CliRing> {
+  const salt = await cliSalt();
+  const ring: CliRing = { v: 2, rpId: CLI_RP_ID, salt, entries: [] };
+  const dev = fidoDev();
+  console.error(`Using ${dev}`);
+  const name = userName.length > 0 ? userName : CLI_USER;
+  const credId = makeHmacCred(dev, ring.rpId, { resident, userName: name });
+  const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
+  const sealedMaster = await seal(ikm);
+  upsertEntry(ring, { type: "prf", credId, sealedMaster, resident });
+  console.error(`credId ${btoh(credId)}`);
+  return ring;
 }
 
 /** First hmac-secret bind for a new label. Refuses if the file exists. */
@@ -135,35 +175,19 @@ export async function persistNewLabel(
   if (loadRing(path) !== undefined) {
     die(`${path} exists; use bind.ts ${label} to add a YubiKey`);
   }
-  const salt = await cliSalt();
-  const ring = { v: 2 as const, rpId: CLI_RP_ID, salt, entries: [] };
-  const dev = fidoDev();
-  console.error(`Using ${dev}`);
-  const credId = makeHmacCred(dev, ring.rpId, { resident, userName: label });
-  const ikm = evalHmac(dev, ring.rpId, credId, ring.salt);
-  const [sealed, sst] = await enc.sealWithIKM(ikm);
-  if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
-  upsertEntry(ring, { type: "prf", credId, sealedMaster: sealed, resident });
+  const ring = await newPrfEntry(label, resident, async (ikm) => {
+    const [sealed, sst] = await enc.sealWithIKM(ikm);
+    if (sst !== Status.Success || sealed === undefined) die(`seal ${sst}`);
+    return sealed;
+  });
   writeRing(path, ring);
   console.error(`Wrote ${path}`);
-  console.error(`credId ${btoh(credId)}`);
 }
 
 /** Write a CLI keyring (mode 0600). */
 export function writeRing(path: string, ring: CliRing): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const body = JSON.stringify({
-    v: 2,
-    rpId: ring.rpId,
-    salt: btoh(ring.salt),
-    entries: ring.entries.map((e) => ({
-      type: "prf",
-      credId: btoh(e.credId),
-      sealedMaster: btoh(e.sealedMaster),
-      resident: e.resident,
-    })),
-  }) + "\n";
-  writeFileSync(path, body, { mode: 0o600 });
+  writeFileSync(path, encodeRing(ring), { mode: 0o600 });
 }
 
 /** Insert or replace an entry by credId. */
@@ -361,21 +385,43 @@ async function readKeys(min: number): Promise<Uint8Array> {
   return takeMusec(st);
 }
 
-/** UV-eval each keyring cred until one unseals. */
-export async function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
+// cliUnseal opens one sealed master with this process's Enclave.
+async function cliUnseal(
+  sealed: Uint8Array,
+  ikm: Uint8Array,
+): Promise<Enclave | undefined> {
+  const [sm, sst] = asSealedMasterKey(sealed);
+  if (sst !== Status.Success || sm === undefined) {
+    ikm.fill(0);
+    return undefined;
+  }
+  const [enc, est] = await Enclave.unsealWithIKM(sm, ikm);
+  if (est !== Status.Success || enc === undefined) return undefined;
+  return enc;
+}
+
+/** UV-eval each cred until `open` returns an enclave. */
+export async function openRing<T>(
+  ring: CliRing,
+  dev: string,
+  open: (sealed: Uint8Array, ikm: Uint8Array) => Promise<T | undefined>,
+): Promise<T> {
   if (ring.entries.length === 0) die("empty keyring");
   for (const e of ring.entries) {
     const tail = btoh(e.credId);
     const short = tail.length <= 8 ? tail : tail.slice(tail.length - 8);
     console.error(`Trying cred …${short}`);
-    const [sm, sst] = asSealedMasterKey(e.sealedMaster);
-    if (sst !== Status.Success || sm === undefined) continue;
     const ikm = tryEvalHmac(dev, ring.rpId, e.credId, ring.salt);
     if (ikm === undefined) continue;
-    const [enc, est] = await Enclave.unsealWithIKM(sm, ikm);
-    if (est === Status.Success && enc !== undefined) return enc;
+    const enc = await open(e.sealedMaster, ikm);
+    if (enc !== undefined) return enc;
   }
   die("no keyring entry unsealed (wrong YubiKey?)");
+}
+
+/** UV-eval each keyring cred until one unseals. */
+export function unlockRing(ring: CliRing, dev: string): Promise<Enclave> {
+  return openRing(ring, dev, cliUnseal);
 }
 
 /** Wait for Enter on a TTY (key swap before binding another token). */

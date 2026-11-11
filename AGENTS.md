@@ -88,6 +88,8 @@ Every varint and every varbytes field must have a maximum length. Check it on en
 
 Host implementations return `ValStat` instead of throwing. Catch a failure from the platform (filesystem, D1, R2) and return a `Status`. Do not use `throw` for control flow inside a host.
 
+A failure is a `ValStat` from `shared/valstat.ts`. Do not invent a bespoke indicator (a `"bad"` string, a `kind` union, or another homemade flag) for an error a `Status` already names. Add a `Status` member in `shared/consts.ts` when none of the existing codes fit.
+
 ## Directory Structure
 
 - `shared` holds common code. It's written in TypeScript, targeting deno.

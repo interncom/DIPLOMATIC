@@ -1,16 +1,26 @@
-import * as Diplomatic from "@interncom/diplomatic-cli";
-import { Decoder, IBagNotifItem, notifItemCodec, IBagPullItem } from "@interncom/diplomatic-cli";
-const { Status } = Diplomatic;
+// Prints status messages as the host sends them. Nothing is stored on disk.
 
-function panic(msg: string) {
+import {
+  Decoder,
+  initCLIOrPanic,
+  loadEnclaveOrPanic,
+  loadHostOrPanic,
+  notifItemCodec,
+  Status,
+} from "../../../cli/src/index.ts";
+import type { IBagNotifItem } from "../../../cli/src/index.ts";
+import type { IBagPullItem } from "../../../cli/src/index.ts";
+
+function panic(msg: string): never {
   console.error(msg);
   process.exit(1);
 }
 
-const enclave = Diplomatic.loadEnclaveOrPanic("DIP_SEED");
-const host = Diplomatic.loadHostOrPanic("DIP_HOST");
-const client = await Diplomatic.initCLIOrPanic({ enclave, host });
+const enclave = loadEnclaveOrPanic("DIP_SEED");
+const host = loadHostOrPanic("DIP_HOST");
+const client = await initCLIOrPanic({ enclave, host });
 
+// handleNotif opens one notification and prints its body.
 async function handleNotif(item: IBagNotifItem): Promise<Status> {
   if (!item.bodyCph) return Status.MissingBody;
   const pullItem: IBagPullItem = { bodyCph: item.bodyCph, seq: item.seq };
@@ -32,6 +42,7 @@ async function handleNotif(item: IBagNotifItem): Promise<Status> {
   return Status.Success;
 }
 
+// handleWebsocketMessage decodes a notification frame and prints each item.
 async function handleWebsocketMessage(bytes: Uint8Array) {
   const dec = new Decoder(bytes);
   const [notifItems, stat] = dec.readStructs(notifItemCodec);
@@ -52,7 +63,6 @@ async function handleWebsocketMessage(bytes: Uint8Array) {
 }
 
 const statListen = await client.listen(handleWebsocketMessage);
-
 if (statListen !== Status.Success) {
   panic(`Failed to listen: ${Status[statListen]}`);
 }

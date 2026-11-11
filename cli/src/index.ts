@@ -1,6 +1,5 @@
 import crypto from "../bun/src/crypto.ts";
 import { IOpenBag, openBagBody } from "../shared/bag.ts";
-import { htob } from "../shared/binary.ts";
 import DiplomaticClientAPI, { hostBagMgrs } from "../shared/client.ts";
 import { Clock, IClock } from "../shared/clock.ts";
 import type { IBagPeekItem } from "../shared/codecs/peekItem.ts";
@@ -207,36 +206,9 @@ export async function initCLIOrPanic<Handle extends URL>(
   return cli;
 }
 
-/** Load master seed hex from env and construct an Enclave immediately. */
-export function loadEnclaveOrPanic(envVar: string): Enclave {
-  const seedHex = process.env[envVar];
-  if (!seedHex) {
-    console.error(`${envVar} env var missing`);
-    process.exit(1);
-  }
-  const bytes = htob(seedHex);
-  const [enclave, st] = Enclave.fromBytes(bytes);
-  bytes.fill(0);
-  if (st !== Status.Success || enclave === undefined) {
-    console.error(`${envVar} must be 64 hex chars (32-byte master seed)`);
-    process.exit(1);
-  }
-  return enclave;
-}
-
-export function loadHostOrPanic(envVar: string): IHostConnectionInfo<URL> {
-  const hostURL = process.env[envVar];
-  if (!hostURL) {
-    console.error(`${envVar} env var missing`);
-    process.exit(1);
-  }
-  return {
-    handle: new URL(hostURL),
-    label: "host",
-  };
-}
-
 // Re-exports for convenience in demos
+export { loadEnclaveOrPanic, loadHostOrPanic } from "./env.ts";
+
 export { Decoder } from "../shared/codec.ts";
 export { notifItemCodec } from "../shared/codecs/notifItem.ts";
 export type { IBagNotifItem } from "../shared/codecs/notifItem.ts";
@@ -244,5 +216,13 @@ export type { IBagPullItem } from "../shared/codecs/pullItem.ts";
 export { Status } from "../shared/consts.ts";
 export { hostHTTPTransport } from "../shared/http.ts";
 
-// For bun host
-export { runBunHost } from "../bun/src/host.ts";
+// runBunHost starts the Bun host.
+// The host module opens diplomatic.db, so it loads on call, not on import.
+export async function runBunHost(port?: number): Promise<void> {
+  const host = await import("../bun/src/host/host.ts");
+  if (port === undefined) {
+    await host.runBunHost();
+    return;
+  }
+  await host.runBunHost(port);
+}

@@ -1,0 +1,8 @@
+{
+  "name": "diplomatic-data",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@interncom/diplomatic": "file:../../pkg"
+  }
+}

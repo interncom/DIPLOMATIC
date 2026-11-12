@@ -45,7 +45,7 @@
     },
     "pkg": {
       "name": "@interncom/diplomatic",
-      "version": "0.4.1",
+      "version": "0.32.0",
       "bin": {
         "diplomatic-host": "dist/cli/bin/host.js",
       },

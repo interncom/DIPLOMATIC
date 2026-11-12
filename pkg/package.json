@@ -22,11 +22,17 @@
     "./cli": {
       "import": "./dist/cli/index.mjs",
       "types": "./dist/cli/index.d.ts"
+    },
+    "./bun": {
+      "bun": {
+        "types": "./dist/bun/index.d.ts",
+        "default": "./dist/bun/index.mjs"
+      }
     }
   },
   "scripts": {
-    "build": "bun run build-web.mjs && bun run build-cli.mjs",
-    "build:verbose": "bun run build-web.mjs --verbose && bun run build-cli.mjs --verbose",
+    "build": "bun run build-web.mjs && bun run build-cli.mjs && bun bun/build-bun.mjs",
+    "build:verbose": "bun run build-web.mjs --verbose && bun run build-cli.mjs --verbose && bun bun/build-bun.mjs",
 
     "check": "node check.mjs",
     "prepublishOnly": "node check.mjs",

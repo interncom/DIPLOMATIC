@@ -94,6 +94,7 @@ import type {
   HostSeqsUpdate,
   IClient,
   IDiplomaticClientState,
+  IDiplomaticClientXferState,
   IHostRow,
   IStore,
   IStoredMessage,
@@ -145,7 +146,7 @@ import type {
 import type { PasskeySeedStoreOpts } from "./passkey/seed";
 import { type BundleHost } from "./shared/codecs/bundleHost";
 import { type IKDM } from "./shared/codecs/kdm";
-import { asDHKEReq, asDHKEResp } from "./shared/crypto/pairing";
+import { asDHKEReq, asDHKEResp, DHKE_RESP_MIN } from "./shared/crypto/pairing";
 import type { DHKEReq, DHKEResp } from "./shared/crypto/pairing";
 import {
   checksumEntRevs,
@@ -163,6 +164,7 @@ import {
 import { WorkerClient } from "./worker/client";
 import type { WorkerClientOptions } from "./worker/client";
 import type { WipeOpts } from "./types";
+import type { ValStat } from "./shared/valstat";
 
 /** Platform advertises largeBlob (not a guarantee the binding key has it). */
 export { largeBlobCapable } from "./shared/webauthn/largeBlob";
@@ -194,6 +196,7 @@ export {
   DEFAULT_PRF_SALT,
   defaultPeekProgressEvery,
   defaultWebAuthnRpId,
+  DHKE_RESP_MIN,
   eidCodec,
   Enclave,
   encodeEnt,
@@ -278,6 +281,7 @@ export type {
   IDateRange,
   IDeleteParams,
   IDiplomaticClientState,
+  IDiplomaticClientXferState,
   IEntRev,
   IEntRow,
   IHostConnectionInfo,
@@ -317,6 +321,7 @@ export type {
   SetSeedOpts,
   SyncProgressEvent,
   TagSpec,
+  ValStat,
   WipeOpts,
   WorkerClientOptions,
 };

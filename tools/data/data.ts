@@ -2,32 +2,35 @@
 
 import { createReadStream, readFileSync } from "node:fs";
 import readline from "node:readline";
-import { type Disk, openDisk } from "../../bun/src/client/open.ts";
-import { Clock } from "../../web/src/shared/clock.ts";
-import { btoh, htob } from "../../web/src/shared/binary.ts";
-import { Status } from "../../web/src/shared/consts.ts";
-import type { BundleHost } from "../../web/src/shared/codecs/bundleHost.ts";
-import { Enclave } from "../../web/src/shared/crypto/enclave.ts";
-import { noble as crypto } from "../../web/src/shared/crypto/noble.ts";
-import { hostHTTPTransport } from "../../web/src/shared/http.ts";
+import {
+  decodeRing,
+  type Disk,
+  encodeRing,
+  fidoDev,
+  hostBundles,
+  installPair,
+  newPrfEntry,
+  openDisk,
+  openRing,
+  parseLabel,
+} from "@interncom/diplomatic/bun";
 import {
   asDHKEReq,
   asDHKEResp,
+  asSealedMasterKey,
+  btoh,
+  type BundleHost,
+  Clock,
+  crypto,
   DHKE_RESP_MIN,
-} from "../../web/src/shared/crypto/pairing.ts";
-import { asSealedMasterKey } from "../../web/src/shared/seed.ts";
-import { SyncClient } from "../../web/src/client.ts";
-import type { IDiplomaticClientXferState } from "../../web/src/types.ts";
-import { entStateManager } from "../../web/src/entdb/manager.ts";
-import { hostBundles, installPair } from "../../bun/src/client/pair.ts";
-import {
-  decodeRing,
-  encodeRing,
-  fidoDev,
-  newPrfEntry,
-  openRing,
-  parseLabel,
-} from "../keys/cli-prf.ts";
+  Enclave,
+  entStateManager,
+  hostHTTPTransport,
+  htob,
+  type IDiplomaticClientXferState,
+  Status,
+  SyncClient,
+} from "@interncom/diplomatic/web";
 
 let disk: Disk | undefined;
 

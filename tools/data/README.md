@@ -10,6 +10,11 @@ Specfiy the host URL with the `--host` flag.
 
 When you first run the app, complete the pairing to load the key.
 
+This tool imports `@interncom/diplomatic/bun` for the disk store and YubiKey
+ring, and `@interncom/diplomatic/web` for `SyncClient` and the pairing helpers.
+Both ship in one package. The Bun client is not the host. Build from `pkg/`,
+then `bun install` from `tools/data/`.
+
 ## Usage
 
 ```

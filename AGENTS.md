@@ -106,8 +106,8 @@ A failure is a `ValStat` from `shared/valstat.ts`. Do not invent a bespoke indic
 - `web/src/types.ts` has various TypeScript types specific to the web client.
 - `cli` holds CLI client code and build configuration.
 - `cli/src` contains the CLI client implementation for connecting to DIPLOMATIC hosts.
-- `bun` holds Bun-specific utilities and crypto implementations, including the Bun host server.
-- `pkg` manages the build and packaging of the `@interncom/diplomatic` NPM module, which exposes web and CLI components from the monorepo. It pulls source from `shared/`, `web/`, `cli/`, and `bun/`. Run `bun install` then `bun run build` from this dir to generate distribution bundles. Publish with `npm run publish-pkg` from the repo root (see Publishing).
+- `bun` holds Bun-specific utilities and crypto implementations, including the Bun host server. The Bun client (disk store, YubiKey ring) and the Bun host are different programs. Do not publish the host from the client entry.
+- `pkg` publishes `@interncom/diplomatic`: the browser client, the node CLI, the host binary `diplomatic-host`, and the Bun client entry `./bun` (disk store and YubiKey ring). One install serves a web app and a TUI. `SyncClient` and the pairing helpers stay on `./web` until the shared client split. `pkg/bun` builds the Bun entry into `pkg/dist/bun`. It is not its own package. Run `bun install` then `bun run build` from `pkg`. Publish with `npm run publish-pkg` from the repo root (see Publishing).
 - `demos` contains example usage of the DIPLOMATIC protocol, depending on the `pkg` module for imports.
 
 ## Checking Work
@@ -118,7 +118,7 @@ A failure is a `ValStat` from `shared/valstat.ts`. Do not invent a bespoke indic
 
 - Check that TypeScript type-checks successfully with `npm run tsc` from `web` dir. That runs web tsc and the pkg CLI tsc gate (`pkg/tsconfig-cli.json`) that `bun run build` / publish uses. Web tsc alone is not sufficient — CLI tsc is a different config (no `strict`) and catches errors web tsc misses. Type errors and warnings are never acceptable.
 
-- Run `bun install` then `bun run build` from `pkg` dir to ensure the NPM module builds successfully. Then `node check.mjs` from `pkg` (`prepublishOnly` / `publish.sh` also run it).
+- Run `bun install` then `bun run build` from `pkg`. That also builds the Bun client. Then `node check.mjs` from `pkg` (`prepublishOnly` / `publish.sh` also run it).
 
 - Run the benchmarks before and after as well, to check for meaningful regressions.
     - `deno bench` from `deno` dir.
@@ -132,4 +132,4 @@ Bump `pkg/package.json` `version` first (and commit). Then from the repo root:
 
     npm run publish-pkg
 
-That `clean`s, `build`s, and runs `pkg/check.mjs` in `pkg/` (CLI `tsc` is a hard gate) and runs `npm publish`. `check.mjs` also runs as `prepublishOnly`. `npm whoami` skips login when the session is still valid; otherwise `npm login` runs first. Both `npm login` and `npm publish` may print a URL — pass it to the human so they can open it on a device with their 2FA token. Wait for them to confirm before treating the step as done.
+That publishes `@interncom/diplomatic` from `pkg`, including the Bun client entry. It `clean`s, `build`s, and runs `pkg/check.mjs` (CLI `tsc` is a hard gate) and runs `npm publish`. `check.mjs` also runs as `prepublishOnly`. `npm whoami` skips login when the session is still valid; otherwise `npm login` runs first. Both `npm login` and `npm publish` may print a URL — pass it to the human so they can open it on a device with their 2FA token. Wait for them to confirm before treating the step as done.

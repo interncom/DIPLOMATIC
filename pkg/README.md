@@ -31,8 +31,9 @@ bun run build
 
 This command:
 1. Builds the web bundle (`dist/web/index.mjs`) from `../web/src/index.ts`
-2. Builds the CLI bundle (`dist/cli/index.mjs`) from `../web/src/cli/index.ts` (with external dependencies like `libsodium-wrappers`)
+2. Builds the CLI bundle (`dist/cli/index.mjs`) from `../cli/src/index.ts` (with external dependencies like `libsodium-wrappers`)
 3. Generates the CLI binary (`dist/cli/bin/host.js`) for the `diplomatic-host` command
+4. Builds the Bun client (`dist/bun/index.mjs`) from `../bun/src/client/pkg.ts`. That entry is not the host.
 
 Note: The CLI bundle uses external dependencies that must be installed and available at runtime.
 
@@ -47,20 +48,25 @@ The package uses conditional exports for environment-specific loading:
     "node": "./dist/cli/index.mjs"
   },
   "./web": "./dist/web/index.mjs",
-  "./cli": "./dist/cli/index.mjs"
+  "./cli": "./dist/cli/index.mjs",
+  "./bun": {
+    "bun": "./dist/bun/index.mjs"
+  }
 }
 ```
 
 - **Browser environments**: Automatically loads web components
-- **Node.js environments**: Automatically loads CLI components
-- **Explicit imports**: Use `./web` or `./cli` subpaths for specific components
+- **Node.js environments**: Automatically loads CLI components, including the host binary
+- **Explicit imports**: Use `./web` or `./cli` for those components
+- **Bun client**: `import { openDisk, installPair, openRing } from "@interncom/diplomatic/bun"`. That entry is the disk store and YubiKey ring. It is not the host. `SyncClient` and the pairing helpers come from `./web`. A tsc project needs `"customConditions": ["bun"]`. `tools/data/data.ts` imports both entries.
 
 ## Dependencies
 
 This package pulls source code from:
 - `../shared/`: Common TypeScript utilities
 - `../web/`: Web client source
-- `../bun/`: Additional utilities (via symlinks in `../web/src/`)
+- `../cli/`: Node CLI and host entry
+- `../bun/`: Host loaded by `diplomatic-host`. `pkg/bun/build-bun.mjs` builds the client entry.
 
 ## Publishing
 

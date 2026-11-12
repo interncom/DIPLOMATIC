@@ -137,7 +137,7 @@ export function loadRing(path: string): CliRing | undefined {
   if (!existsSync(path)) return undefined;
   let bytes: Uint8Array;
   try {
-    bytes = readFileSync(path);
+    bytes = new Uint8Array(readFileSync(path));
   } catch (e) {
     die(`failed to read ${path}: ${e}`);
   }

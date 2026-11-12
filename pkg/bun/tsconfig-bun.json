@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "../dist/bun/.gen",
+    "rootDir": "../..",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["bun", "node"],
+    "typeRoots": [
+      "../node_modules/@types",
+      "../../bun/node_modules/@types",
+      "../../web/node_modules/@types"
+    ]
+  },
+  "files": ["../../bun/src/client/pkg.ts"]
+}
